@@ -20,3 +20,8 @@ jobs:
         run: |
           curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Grade newly-final games (free)
+        run: |
+          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { GameLineRow, GameSummary } from "@/lib/queries/games";
+import type { HitRateResult, TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 
@@ -23,12 +24,40 @@ function formatPoint(point: number | null): string {
   return point > 0 ? ` +${point}` : ` ${point}`;
 }
 
+function formatHitRate(r: HitRateResult): string {
+  if (r.gamesFound === 0) return "no graded games yet";
+  const pct = r.hitRate !== null ? `${Math.round(r.hitRate * 100)}%` : "—";
+  return `${r.record} (${pct}) last ${r.gamesFound}`;
+}
+
+/** Hit-rate caption for a given market tab + side, given both teams' precomputed rates. */
+function hitRateCaption(
+  market: GameLineRow["marketType"],
+  side: string,
+  homeHitRates: TeamHitRates,
+  awayHitRates: TeamHitRates,
+  game: GameSummary
+): string {
+  if (market === "h2h") {
+    return side === "home" ? formatHitRate(homeHitRates.h2h) : formatHitRate(awayHitRates.h2h);
+  }
+  if (market === "spreads") {
+    return side === "home" ? formatHitRate(homeHitRates.spreads) : formatHitRate(awayHitRates.spreads);
+  }
+  // totals: over/under isn't team-specific, so show both teams' rates for this side.
+  const homeRate = side === "over" ? homeHitRates.totalsOver : homeHitRates.totalsUnder;
+  const awayRate = side === "over" ? awayHitRates.totalsOver : awayHitRates.totalsUnder;
+  return `${game.homeTeam.abbreviation} ${formatHitRate(homeRate)} · ${game.awayTeam.abbreviation} ${formatHitRate(awayRate)}`;
+}
+
 interface GameLinesViewProps {
   game: GameSummary;
   lines: GameLineRow[];
+  homeHitRates: TeamHitRates;
+  awayHitRates: TeamHitRates;
 }
 
-export function GameLinesView({ game, lines }: GameLinesViewProps) {
+export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
   const marketLines = useMemo(() => lines.filter((l) => l.marketType === market), [lines, market]);
 
@@ -106,6 +135,9 @@ export function GameLinesView({ game, lines }: GameLinesViewProps) {
                   <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                     {SIDE_LABELS[side]?.(game) ?? side}
                   </h3>
+                  <p className="text-xs text-zinc-400">
+                    {hitRateCaption(market, side, homeHitRates, awayHitRates, game)}
+                  </p>
                   <p className="mb-2 text-xs text-zinc-400">
                     {inRange.length} of {rows.length} books in range
                   </p>

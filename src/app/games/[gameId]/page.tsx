@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
+import { getTeamHitRates } from "@/lib/queries/hitRate";
 import { GameLinesView } from "@/components/GameLinesView";
 
 export default async function GamePage({
@@ -13,6 +14,10 @@ export default async function GamePage({
   if (!result) notFound();
 
   const { game, lines } = result;
+  const [homeHitRates, awayHitRates] = await Promise.all([
+    getTeamHitRates(game.homeTeam.id),
+    getTeamHitRates(game.awayTeam.id),
+  ]);
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
@@ -36,7 +41,12 @@ export default async function GamePage({
       </p>
 
       <div className="mt-8">
-        <GameLinesView game={game} lines={lines} />
+        <GameLinesView
+          game={game}
+          lines={lines}
+          homeHitRates={homeHitRates}
+          awayHitRates={awayHitRates}
+        />
       </div>
     </div>
   );

@@ -1,10 +1,5 @@
 import { getGameWithLines } from "@/lib/queries/games";
-import type { MarketType } from "@/generated/prisma/client";
-
-function parseMarket(value: string | null): MarketType | undefined {
-  if (value === "h2h" || value === "spreads" || value === "totals") return value;
-  return undefined;
-}
+import { parseMarketType } from "@/lib/marketType";
 
 export async function GET(
   request: Request,
@@ -12,7 +7,7 @@ export async function GET(
 ) {
   const { gameId } = await params;
   const { searchParams } = new URL(request.url);
-  const market = parseMarket(searchParams.get("market"));
+  const market = parseMarketType(searchParams.get("market"));
 
   const result = await getGameWithLines(gameId, market);
   if (!result) {
