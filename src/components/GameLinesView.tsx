@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { GameLineRow, GameSummary } from "@/lib/queries/games";
 import type { HitRateResult, TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
+import { computeLineEconomics, lineKey } from "@/lib/odds/lineEconomics";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 
 const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
@@ -50,6 +51,40 @@ function hitRateCaption(
   return `${game.homeTeam.abbreviation} ${formatHitRate(homeRate)} · ${game.awayTeam.abbreviation} ${formatHitRate(awayRate)}`;
 }
 
+function avgOrNull(a: number | null, b: number | null): number | null {
+  if (a === null && b === null) return null;
+  if (a === null) return b;
+  if (b === null) return a;
+  return (a + b) / 2;
+}
+
+/** Historical hit-rate, expressed as a probability per side, for the given market. */
+function historicalProbBySide(
+  market: GameLineRow["marketType"],
+  homeHitRates: TeamHitRates,
+  awayHitRates: TeamHitRates
+): Partial<Record<string, number | null>> {
+  if (market === "h2h") return { home: homeHitRates.h2h.hitRate, away: awayHitRates.h2h.hitRate };
+  if (market === "spreads") {
+    return { home: homeHitRates.spreads.hitRate, away: awayHitRates.spreads.hitRate };
+  }
+  return {
+    over: avgOrNull(homeHitRates.totalsOver.hitRate, awayHitRates.totalsOver.hitRate),
+    under: avgOrNull(homeHitRates.totalsUnder.hitRate, awayHitRates.totalsUnder.hitRate),
+  };
+}
+
+function formatEv(ev: number | null): string {
+  if (ev === null) return "n/a";
+  const pct = (ev * 100).toFixed(1);
+  return ev >= 0 ? `+${pct}%` : `${pct}%`;
+}
+
+function evColorClass(ev: number | null): string {
+  if (ev === null) return "text-zinc-400";
+  return ev >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+}
+
 interface GameLinesViewProps {
   game: GameSummary;
   lines: GameLineRow[];
@@ -83,6 +118,16 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
     }
     return bySide;
   }, [marketLines]);
+
+  const economics = useMemo(
+    () =>
+      computeLineEconomics({
+        marketType: market,
+        lines: marketLines,
+        historicalProbBySide: historicalProbBySide(market, homeHitRates, awayHitRates),
+      }),
+    [market, marketLines, homeHitRates, awayHitRates]
+  );
 
   return (
     <div>
@@ -120,15 +165,18 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
             />
           </div>
 
-          <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <p className="mt-4 text-xs text-zinc-400">
+            Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
+            directional estimate only (small sample, no opponent/park/pitcher adjustment).
+          </p>
+
+          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
             {[...sides.entries()].map(([side, rows]) => {
               const inRange = rows.filter((r) => {
                 const d = americanToDecimal(r.priceAmerican);
                 return d >= effectiveRange[0] && d <= effectiveRange[1];
               });
-              const bestKey = inRange[0]
-                ? `${inRange[0].bookKey}-${inRange[0].side}-${inRange[0].point}`
-                : null;
+              const bestKey = inRange[0] ? lineKey(inRange[0].bookKey, inRange[0].side, inRange[0].point) : null;
 
               return (
                 <div key={side}>
@@ -146,26 +194,38 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
                       <li className="py-3 text-sm text-zinc-400">No books in this range.</li>
                     )}
                     {inRange.map((row) => {
-                      const key = `${row.bookKey}-${row.side}-${row.point}`;
+                      const key = lineKey(row.bookKey, row.side, row.point);
                       const isBest = key === bestKey;
+                      const econ = economics.get(key);
                       return (
-                        <li
-                          key={row.bookKey}
-                          className={`flex items-center justify-between py-2 ${
-                            isBest ? "font-semibold text-zinc-900 dark:text-zinc-50" : "text-zinc-600 dark:text-zinc-400"
-                          }`}
-                        >
-                          <span>
-                            {row.bookName}
-                            {isBest && (
-                              <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-                                BEST
-                              </span>
-                            )}
-                          </span>
-                          <span>
-                            {formatPoint(row.point)} {formatAmerican(row.priceAmerican)}
-                          </span>
+                        <li key={row.bookKey} className="py-2">
+                          <div
+                            className={`flex items-center justify-between ${
+                              isBest
+                                ? "font-semibold text-zinc-900 dark:text-zinc-50"
+                                : "text-zinc-600 dark:text-zinc-400"
+                            }`}
+                          >
+                            <span>
+                              {row.bookName}
+                              {isBest && (
+                                <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                                  BEST
+                                </span>
+                              )}
+                            </span>
+                            <span>
+                              {formatPoint(row.point)} {formatAmerican(row.priceAmerican)}
+                            </span>
+                          </div>
+                          <div className="flex justify-end gap-3 text-xs">
+                            <span className={evColorClass(econ?.marketEv ?? null)}>
+                              Mkt EV: {formatEv(econ?.marketEv ?? null)}
+                            </span>
+                            <span className={evColorClass(econ?.historicalEv ?? null)}>
+                              Hist EV: {formatEv(econ?.historicalEv ?? null)}
+                            </span>
+                          </div>
                         </li>
                       );
                     })}
