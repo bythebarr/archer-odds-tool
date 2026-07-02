@@ -1,0 +1,22 @@
+name: Sync scores & grade outcomes (free)
+
+on:
+  schedule:
+    # Every 15 minutes. Both steps hit only the free MLB Stats API / read
+    # already-stored odds history — no Odds API credits are ever spent here.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync today's game statuses/scores (free)
+        run: |
+          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Grade newly-final games (free)
+        run: |
+          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

@@ -35,14 +35,15 @@ npx prisma studio     # browse local DB
 
 ## Automated ingestion
 
-Two GitHub Actions workflows (`.github/workflows/poll-odds.yml`, `sync-schedule.yml`) call bearer-secret-protected `/api/cron/*` routes on a schedule instead of paying for Vercel Pro cron:
+Three GitHub Actions workflows call bearer-secret-protected `/api/cron/*` routes instead of paying for Vercel Pro cron. They're split by cost, so nothing spends Odds API credits without you asking it to:
 
-- `poll-odds.yml` — every 5 minutes, calls `sync-results` (free), `poll-odds`, then `grade-outcomes` (free). `poll-odds` internally decides whether this tick actually spends Odds API credits, via the tiered cadence in `src/lib/pollingPolicy.ts` (60 min / 20 min / 5 min depending on how close the nearest upcoming game's first pitch is) — most ticks are a fast no-op. `grade-outcomes` grades any newly-final game (moneyline/spread/total hit/miss/push) against its own closing line, captured retroactively from `OddsSnapshot` history.
-- `sync-schedule.yml` — once daily, extends the known schedule window forward.
+- `sync-schedule.yml` — **scheduled, once daily.** Extends the known MLB schedule window forward. Free (MLB Stats API).
+- `sync-free.yml` — **scheduled, every 15 minutes.** Refreshes today's game statuses/scores and grades any newly-final game. Free (MLB Stats API + already-stored odds history) — safe to leave running indefinitely.
+- `poll-odds.yml` — **manual only** (`workflow_dispatch`). Polls The Odds API for current lines. This is the one that costs credits, so it's not on a schedule: trigger it from the repo's Actions tab ("Run workflow") or `gh workflow run poll-odds.yml` whenever you want fresh prices. The free tier (500 credits/month) comfortably covers on-demand use; it would exhaust in a day or two if run on the same tiered cadence continuously, which is exactly why this one isn't automatic. Bump the cadence back to scheduled once running unattended is worth the ~$25-30/mo 20K-credit tier.
 
 Once deployed, set these as GitHub repo secrets (Settings → Secrets and variables → Actions) so the workflows can reach the deployed app:
 
 - `APP_URL` — the deployed base URL (e.g. `https://archer-odds-tool.vercel.app`)
 - `CRON_SECRET` — must match the `CRON_SECRET` env var set on the deployment
 
-Locally, hit any `/api/cron/*` route with `Authorization: Bearer $CRON_SECRET` to trigger it manually.
+Locally, hit any `/api/cron/*` route with `Authorization: Bearer $CRON_SECRET` to trigger it manually, or just run `npm run poll:odds` / `npm run sync:schedule` directly.
