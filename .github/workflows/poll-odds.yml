@@ -1,0 +1,22 @@
+name: Poll odds & sync results
+
+on:
+  schedule:
+    # Fires every 5 minutes; the /api/cron/poll-odds route internally decides
+    # whether this tick actually spends Odds API credits (see pollingPolicy.ts).
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync today's game statuses/scores (free)
+        run: |
+          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Poll odds (throttled, costs credits)
+        run: |
+          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

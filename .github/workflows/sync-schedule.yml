@@ -1,0 +1,16 @@
+name: Sync MLB schedule
+
+on:
+  schedule:
+    # Once daily, extends the known schedule window forward (free, MLB Stats API).
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync schedule
+        run: |
+          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/sync-schedule" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

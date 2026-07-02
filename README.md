@@ -32,3 +32,17 @@ npx prisma studio     # browse local DB
 ```
 
 `GET /api/health` checks DB connectivity.
+
+## Automated ingestion
+
+Two GitHub Actions workflows (`.github/workflows/poll-odds.yml`, `sync-schedule.yml`) call bearer-secret-protected `/api/cron/*` routes on a schedule instead of paying for Vercel Pro cron:
+
+- `poll-odds.yml` — every 5 minutes, calls `sync-results` (free) then `poll-odds`. `poll-odds` internally decides whether this tick actually spends Odds API credits, via the tiered cadence in `src/lib/pollingPolicy.ts` (60 min / 20 min / 5 min depending on how close the nearest upcoming game's first pitch is) — most ticks are a fast no-op.
+- `sync-schedule.yml` — once daily, extends the known schedule window forward.
+
+Once deployed, set these as GitHub repo secrets (Settings → Secrets and variables → Actions) so the workflows can reach the deployed app:
+
+- `APP_URL` — the deployed base URL (e.g. `https://archer-odds-tool.vercel.app`)
+- `CRON_SECRET` — must match the `CRON_SECRET` env var set on the deployment
+
+Locally, hit any `/api/cron/*` route with `Authorization: Bearer $CRON_SECRET` to trigger it manually.
