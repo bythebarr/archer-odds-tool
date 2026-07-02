@@ -49,32 +49,68 @@ export async function getMinutesToNearestFirstPitch(now: Date = new Date()): Pro
   return (nextGame.scheduledStartUtc.getTime() - now.getTime()) / 60_000;
 }
 
+/**
+ * Hard stop once the Odds API's last-reported remaining credits drops below
+ * this — a safety net so a mis-tuned cadence (or an unexpectedly expensive
+ * plan change) can't silently run the account to zero credits or into an
+ * unexpected overage. Below this, poll-odds refuses to spend more credits
+ * until the account's quota resets or the plan is upgraded.
+ */
+export const MIN_CREDITS_REMAINING_GUARDRAIL = 20;
+
 export interface PollDecision {
   shouldPoll: boolean;
+  blockedReason: "not-due" | "low-credits" | null;
   tier: PollTier;
   intervalMinutes: number;
   minutesToNearestFirstPitch: number | null;
 }
 
-/** Combines the tier lookup + PollLog check into the single decision poll-odds needs. */
+/** Combines the tier lookup, PollLog check, and credits guardrail into the single decision poll-odds needs. */
 export async function decidePollOdds(jobName: string, now: Date = new Date()): Promise<PollDecision> {
   const minutesToNearestFirstPitch = await getMinutesToNearestFirstPitch(now);
   const { tier, intervalMinutes } = determineTier(minutesToNearestFirstPitch);
 
   const log = await prisma.pollLog.findUnique({ where: { jobName } });
-  const shouldPoll = shouldPollNow(log?.lastPolledAt ?? null, intervalMinutes, now);
 
-  return { shouldPoll, tier, intervalMinutes, minutesToNearestFirstPitch };
+  if (
+    log?.creditsRemaining !== null &&
+    log?.creditsRemaining !== undefined &&
+    log.creditsRemaining < MIN_CREDITS_REMAINING_GUARDRAIL
+  ) {
+    return { shouldPoll: false, blockedReason: "low-credits", tier, intervalMinutes, minutesToNearestFirstPitch };
+  }
+
+  const isDue = shouldPollNow(log?.lastPolledAt ?? null, intervalMinutes, now);
+  return {
+    shouldPoll: isDue,
+    blockedReason: isDue ? null : "not-due",
+    tier,
+    intervalMinutes,
+    minutesToNearestFirstPitch,
+  };
 }
 
 export async function recordPollLog(
   jobName: string,
   lastStatus: string,
-  creditsUsed?: number | null
+  creditsUsed?: number | null,
+  creditsRemaining?: number | null
 ): Promise<void> {
   await prisma.pollLog.upsert({
     where: { jobName },
-    create: { jobName, lastPolledAt: new Date(), lastStatus, creditsUsed: creditsUsed ?? null },
-    update: { lastPolledAt: new Date(), lastStatus, creditsUsed: creditsUsed ?? null },
+    create: {
+      jobName,
+      lastPolledAt: new Date(),
+      lastStatus,
+      creditsUsed: creditsUsed ?? null,
+      creditsRemaining: creditsRemaining ?? null,
+    },
+    update: {
+      lastPolledAt: new Date(),
+      lastStatus,
+      creditsUsed: creditsUsed ?? null,
+      creditsRemaining: creditsRemaining ?? null,
+    },
   });
 }

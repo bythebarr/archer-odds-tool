@@ -14,8 +14,14 @@ export async function POST(request: Request) {
   if (authError) return authError;
 
   const date = todayUtc();
-  const summary = await syncMlbSchedule(date, date);
-  await recordPollLog(JOB_NAME, "ok");
 
-  return Response.json({ date, ...summary });
+  try {
+    const summary = await syncMlbSchedule(date, date);
+    await recordPollLog(JOB_NAME, "ok");
+    return Response.json({ date, ...summary });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await recordPollLog(JOB_NAME, `error: ${message}`);
+    return Response.json({ error: message }, { status: 502 });
+  }
 }

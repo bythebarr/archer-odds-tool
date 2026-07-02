@@ -14,8 +14,15 @@ export async function POST(request: Request) {
     return Response.json({ polled: false, ...decision });
   }
 
-  const summary = await pollAndStoreOdds();
-  await recordPollLog(JOB_NAME, "ok", summary.creditsUsed);
-
-  return Response.json({ polled: true, ...decision, ...summary });
+  try {
+    const summary = await pollAndStoreOdds();
+    await recordPollLog(JOB_NAME, "ok", summary.creditsUsed, summary.creditsRemaining);
+    return Response.json({ polled: true, ...decision, ...summary });
+  } catch (error) {
+    // Don't let a transient Odds API failure (rate limit, outage, bad key)
+    // crash the cron tick — log it so the next tick can retry.
+    const message = error instanceof Error ? error.message : String(error);
+    await recordPollLog(JOB_NAME, `error: ${message}`);
+    return Response.json({ polled: false, ...decision, error: message }, { status: 502 });
+  }
 }

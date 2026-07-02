@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listGames } from "@/lib/queries/games";
-import { todayEt, shiftEtDate } from "@/lib/dateEt";
+import { todayEt, shiftEtDate, isValidEtDate } from "@/lib/dateEt";
 
 function formatTime(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -16,7 +16,9 @@ export default async function Home({
   searchParams: Promise<{ date?: string }>;
 }) {
   const { date: dateParam } = await searchParams;
-  const date = dateParam ?? todayEt();
+  const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam)
+    ? dateParam
+    : todayEt();
   const games = await listGames(date);
 
   const prevDate = shiftEtDate(date, -1);

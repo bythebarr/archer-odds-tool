@@ -9,8 +9,13 @@ export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
 
-  const gradedGames = await gradeUngradedGames();
-  await recordPollLog(JOB_NAME, "ok");
-
-  return Response.json({ gradedGames });
+  try {
+    const gradedGames = await gradeUngradedGames();
+    await recordPollLog(JOB_NAME, "ok");
+    return Response.json({ gradedGames });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await recordPollLog(JOB_NAME, `error: ${message}`);
+    return Response.json({ error: message }, { status: 500 });
+  }
 }

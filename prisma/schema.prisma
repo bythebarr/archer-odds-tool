@@ -156,8 +156,9 @@ model GameOutcome {
 
 /// Drives the tiered polling throttle — last successful poll timestamp per job.
 model PollLog {
-  jobName      String   @id
-  lastPolledAt DateTime
-  lastStatus   String
-  creditsUsed  Int?
+  jobName          String   @id
+  lastPolledAt     DateTime
+  lastStatus       String
+  creditsUsed      Int?
+  creditsRemaining Int?
 }

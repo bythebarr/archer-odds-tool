@@ -18,8 +18,13 @@ export async function POST(request: Request) {
   const startDate = todayPlus(0);
   const endDate = todayPlus(6);
 
-  const summary = await syncMlbSchedule(startDate, endDate);
-  await recordPollLog(JOB_NAME, "ok");
-
-  return Response.json({ startDate, endDate, ...summary });
+  try {
+    const summary = await syncMlbSchedule(startDate, endDate);
+    await recordPollLog(JOB_NAME, "ok");
+    return Response.json({ startDate, endDate, ...summary });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await recordPollLog(JOB_NAME, `error: ${message}`);
+    return Response.json({ error: message }, { status: 502 });
+  }
 }
