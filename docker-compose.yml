@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: archer
+      POSTGRES_PASSWORD: archer
+      POSTGRES_DB: archer_odds
+    ports:
+      - "5432:5432"
+    volumes:
+      - archer_pg_data:/var/lib/postgresql/data
+
+volumes:
+  archer_pg_data:

@@ -1,0 +1,163 @@
+// Prisma schema for archer-odds-tool (v1: MLB game lines only)
+// See /home/codespace/.claude/plans/sequential-moseying-treehouse.md for the full design rationale.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MarketType {
+  h2h // moneyline
+  spreads
+  totals
+}
+
+enum Side {
+  home
+  away
+  over
+  under
+}
+
+enum GameStatus {
+  scheduled
+  live
+  final
+  postponed
+}
+
+enum OutcomeResult {
+  hit
+  miss
+  push
+}
+
+model Team {
+  id           String   @id @default(cuid())
+  mlbTeamId    Int      @unique
+  name         String
+  abbreviation String
+  league       String
+  division     String
+
+  homeGames Game[]        @relation("HomeTeam")
+  awayGames Game[]        @relation("AwayTeam")
+  outcomes  GameOutcome[]
+
+  @@index([mlbTeamId])
+}
+
+model Game {
+  id                String     @id @default(cuid())
+  mlbGameId         Int        @unique
+  oddsApiEventId    String?    @unique
+  season            Int
+  scheduledStartUtc DateTime
+  status            GameStatus @default(scheduled)
+
+  homeTeamId String
+  homeTeam   Team   @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId String
+  awayTeam   Team   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+
+  homeScore Int?
+  awayScore Int?
+
+  oddsSnapshots  OddsSnapshot[]
+  currentLines   CurrentOddsLine[]
+  closingLines   GameClosingLine[]
+  outcomes       GameOutcome[]
+
+  @@index([scheduledStartUtc])
+  @@index([status])
+}
+
+model Sportsbook {
+  key         String  @id // e.g. "draftkings" — matches The Odds API's bookmaker key
+  displayName String
+  region      String // allowlist filter: only US-legal books belong here
+  logoUrl     String?
+  active      Boolean @default(true)
+
+  oddsSnapshots OddsSnapshot[]
+  currentLines  CurrentOddsLine[]
+}
+
+/// Append-only fact table: every polled price, forever. Source of truth for
+/// history, backtesting, and closing-line capture. Never updated, only inserted.
+model OddsSnapshot {
+  id          String     @id @default(cuid())
+  gameId      String
+  game        Game       @relation(fields: [gameId], references: [id])
+  bookKey     String
+  book        Sportsbook @relation(fields: [bookKey], references: [key])
+  marketType  MarketType
+  side        Side
+  point       Float? // spread/total number; null for h2h
+  priceAmerican Int
+
+  polledAt         DateTime @default(now())
+  sourceLastUpdate DateTime // the book's own last-update time, from the Odds API payload
+
+  @@index([gameId, marketType, bookKey, polledAt])
+}
+
+/// Upsert-latest convenience table, written in the same transaction as each
+/// OddsSnapshot insert, so the slider UI does an O(1) indexed lookup instead
+/// of a window-function query over OddsSnapshot on the hot path.
+model CurrentOddsLine {
+  id            String     @id @default(cuid())
+  gameId        String
+  game          Game       @relation(fields: [gameId], references: [id])
+  bookKey       String
+  book          Sportsbook @relation(fields: [bookKey], references: [key])
+  marketType    MarketType
+  side          Side
+  point         Float?
+  priceAmerican Int
+  polledAt      DateTime
+
+  @@unique([gameId, bookKey, marketType, side])
+}
+
+/// Consensus point/price captured at the last snapshot before first pitch —
+/// the number hit-rate grading is measured against for spread/totals.
+model GameClosingLine {
+  id            String     @id @default(cuid())
+  gameId        String
+  game          Game       @relation(fields: [gameId], references: [id])
+  marketType    MarketType
+  side          Side
+  point         Float?
+  priceAmerican Int
+  capturedAt    DateTime
+
+  @@unique([gameId, marketType, side])
+}
+
+/// Graded outcome per team/market, computed once a game is final.
+model GameOutcome {
+  id         String        @id @default(cuid())
+  gameId     String
+  game       Game          @relation(fields: [gameId], references: [id])
+  teamId     String
+  team       Team          @relation(fields: [teamId], references: [id])
+  marketType MarketType
+  result     OutcomeResult
+  gradedAt   DateTime      @default(now())
+
+  @@unique([gameId, teamId, marketType])
+  @@index([teamId, marketType])
+}
+
+/// Drives the tiered polling throttle — last successful poll timestamp per job.
+model PollLog {
+  jobName      String   @id
+  lastPolledAt DateTime
+  lastStatus   String
+  creditsUsed  Int?
+}
