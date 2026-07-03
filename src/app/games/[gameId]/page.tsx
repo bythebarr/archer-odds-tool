@@ -28,22 +28,28 @@ export default async function GamePage({
         ← Today&apos;s games
       </Link>
 
-      <h1 className="mt-2 flex items-center gap-2 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        <Logo
-          sources={teamLogoSources(game.awayTeam.abbreviation)}
-          alt={game.awayTeam.name}
-          fallbackText={game.awayTeam.abbreviation}
-          color={TEAM_COLORS[game.awayTeam.abbreviation]}
-          size={24}
-        />
-        {game.awayTeam.name} @ {game.homeTeam.name}
-        <Logo
-          sources={teamLogoSources(game.homeTeam.abbreviation)}
-          alt={game.homeTeam.name}
-          fallbackText={game.homeTeam.abbreviation}
-          color={TEAM_COLORS[game.homeTeam.abbreviation]}
-          size={24}
-        />
+      <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <span className="inline-flex items-center gap-2">
+          <Logo
+            sources={teamLogoSources(game.awayTeam.abbreviation)}
+            alt={game.awayTeam.name}
+            fallbackText={game.awayTeam.abbreviation}
+            color={TEAM_COLORS[game.awayTeam.abbreviation]}
+            size={24}
+          />
+          {game.awayTeam.name}
+        </span>
+        <span>@</span>
+        <span className="inline-flex items-center gap-2">
+          <Logo
+            sources={teamLogoSources(game.homeTeam.abbreviation)}
+            alt={game.homeTeam.name}
+            fallbackText={game.homeTeam.abbreviation}
+            color={TEAM_COLORS[game.homeTeam.abbreviation]}
+            size={24}
+          />
+          {game.homeTeam.name}
+        </span>
       </h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         {new Intl.DateTimeFormat("en-US", {
