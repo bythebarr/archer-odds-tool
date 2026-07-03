@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
 import { getTeamHitRates } from "@/lib/queries/hitRate";
@@ -6,6 +5,7 @@ import { teamLogoSources } from "@/lib/logos";
 import { TEAM_COLORS } from "@/lib/teamColors";
 import { GameLinesView } from "@/components/GameLinesView";
 import { Logo } from "@/components/Logo";
+import { BackLink } from "@/components/BackLink";
 
 export default async function GamePage({
   params,
@@ -24,9 +24,9 @@ export default async function GamePage({
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <Link href="/" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
-        ← Today&apos;s games
-      </Link>
+      <BackLink fallbackHref="/" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
+        ← Back
+      </BackLink>
 
       <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
         <span className="inline-flex items-center gap-2">
