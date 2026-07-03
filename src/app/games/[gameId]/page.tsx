@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
 import { getTeamHitRates } from "@/lib/queries/hitRate";
+import { getGameMatchup } from "@/lib/queries/matchup";
 import { teamLogoSources } from "@/lib/logos";
 import { TEAM_COLORS } from "@/lib/teamColors";
 import { GameLinesView } from "@/components/GameLinesView";
+import { MatchupPanel } from "@/components/MatchupPanel";
 import { Logo } from "@/components/Logo";
 import { BackLink } from "@/components/BackLink";
 
@@ -17,9 +19,10 @@ export default async function GamePage({
   if (!result) notFound();
 
   const { game, lines } = result;
-  const [homeHitRates, awayHitRates] = await Promise.all([
+  const [homeHitRates, awayHitRates, matchup] = await Promise.all([
     getTeamHitRates(game.homeTeam.id),
     getTeamHitRates(game.awayTeam.id),
+    getGameMatchup(gameId),
   ]);
 
   return (
@@ -62,6 +65,12 @@ export default async function GamePage({
         }).format(game.scheduledStartUtc)}{" "}
         ET · {game.status}
       </p>
+
+      {matchup && (
+        <div className="mt-6">
+          <MatchupPanel game={game} matchup={matchup} />
+        </div>
+      )}
 
       <div className="mt-8">
         <GameLinesView
