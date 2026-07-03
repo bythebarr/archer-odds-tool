@@ -2,7 +2,9 @@
  * US-legal regulated sportsbooks we show. The Odds API is the source of truth
  * for the exact key/display-title pairing (see poll-odds ingestion) — this is
  * just the filter deciding which of the books in their response we keep.
- * `williamhill_us` is Caesars' key in the Odds API's `us` region.
+ * `williamhill_us` is Caesars' key. `espnbet` and `fanatics` live in different
+ * Odds API regions (`us` vs `us2`) — see fetchMlbOdds's regions param, which
+ * must request both for every book below to actually come back.
  */
 export const ALLOWED_BOOK_KEYS = [
   "draftkings",
@@ -11,6 +13,7 @@ export const ALLOWED_BOOK_KEYS = [
   "williamhill_us", // Caesars
   "betrivers",
   "espnbet",
+  "fanatics",
 ] as const;
 
 /** Short fallback label shown in place of a book's logo until one is provided (see public/logos/books/README.md). */
@@ -21,6 +24,7 @@ export const BOOK_INITIALS: Record<string, string> = {
   williamhill_us: "CZR",
   betrivers: "BR",
   espnbet: "ESPN",
+  fanatics: "FAN",
 };
 
 /** Approximate brand color per book, used for the same fallback badge — not an official asset. */
@@ -31,4 +35,5 @@ export const BOOK_COLORS: Record<string, string> = {
   williamhill_us: "#B7963C",
   betrivers: "#00529B",
   espnbet: "#D00000",
+  fanatics: "#000000",
 };

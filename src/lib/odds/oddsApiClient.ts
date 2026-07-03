@@ -37,9 +37,11 @@ export interface FetchMlbOddsResult {
 }
 
 /**
- * Fetches current MLB odds across the given markets, US region only.
- * Costs `markets.length` credits per The Odds API's quota formula
- * (regions=us is a single region) — see plan doc for the cost model.
+ * Fetches current MLB odds across the given markets and US regions.
+ * Costs `markets.length * regions.length` credits per The Odds API's quota
+ * formula — us2 is required for espnbet, which lives outside the base us
+ * region (fanatics and the rest are already covered by us); see plan doc
+ * for the cost model.
  */
 export async function fetchMlbOdds(
   markets: OddsApiMarketKey[] = ["h2h", "spreads", "totals"]
@@ -51,7 +53,7 @@ export async function fetchMlbOdds(
 
   const url = new URL(`${BASE_URL}/sports/${MLB_SPORT_KEY}/odds`);
   url.searchParams.set("apiKey", apiKey);
-  url.searchParams.set("regions", "us");
+  url.searchParams.set("regions", "us,us2");
   url.searchParams.set("markets", markets.join(","));
   url.searchParams.set("oddsFormat", "american");
   url.searchParams.set("dateFormat", "iso");

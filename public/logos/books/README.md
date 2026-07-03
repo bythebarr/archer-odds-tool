@@ -13,3 +13,4 @@ initials badge instead — nothing breaks either way.
 | Caesars    | `williamhill_us.svg`               |
 | BetRivers  | `betrivers.svg`                    |
 | ESPN BET   | `espnbet.svg`                      |
+| Fanatics   | `fanatics.svg`                     |
