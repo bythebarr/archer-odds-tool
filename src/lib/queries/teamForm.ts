@@ -20,6 +20,32 @@ function reduceRecordSplit(games: { win: boolean }[]): RecordSplit {
   return { wins, losses, gamesFound: games.length, record: `${wins}-${losses}` };
 }
 
+interface FinishedGame {
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  homeScore: number | null;
+  awayScore: number | null;
+}
+
+function formForTeam(teamId: string, games: FinishedGame[]): TeamForm {
+  const teamGames = games
+    .filter((g) => g.homeTeamId === teamId || g.awayTeamId === teamId)
+    .filter((g) => g.homeScore !== null && g.awayScore !== null)
+    .map((g) => {
+      const isHome = g.homeTeamId === teamId;
+      const teamScore = isHome ? g.homeScore! : g.awayScore!;
+      const oppScore = isHome ? g.awayScore! : g.homeScore!;
+      return { isHome, win: teamScore > oppScore };
+    });
+
+  return {
+    homeRecord: reduceRecordSplit(teamGames.filter((g) => g.isHome)),
+    awayRecord: reduceRecordSplit(teamGames.filter((g) => !g.isHome)),
+    last5: reduceRecordSplit(teamGames.slice(0, 5)),
+    last10: reduceRecordSplit(teamGames.slice(0, 10)),
+  };
+}
+
 /**
  * Home/away/last-5/last-10 form for both teams in a matchup, computed from
  * our own Game table (same "computed on read" pattern as hit-rate) rather
@@ -43,24 +69,27 @@ export async function getTeamFormForGame(
     select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
   });
 
-  function formFor(teamId: string): TeamForm {
-    const teamGames = games
-      .filter((g) => g.homeTeamId === teamId || g.awayTeamId === teamId)
-      .filter((g) => g.homeScore !== null && g.awayScore !== null)
-      .map((g) => {
-        const isHome = g.homeTeamId === teamId;
-        const teamScore = isHome ? g.homeScore! : g.awayScore!;
-        const oppScore = isHome ? g.awayScore! : g.homeScore!;
-        return { isHome, win: teamScore > oppScore };
-      });
+  return { home: formForTeam(homeTeamId, games), away: formForTeam(awayTeamId, games) };
+}
 
-    return {
-      homeRecord: reduceRecordSplit(teamGames.filter((g) => g.isHome)),
-      awayRecord: reduceRecordSplit(teamGames.filter((g) => !g.isHome)),
-      last5: reduceRecordSplit(teamGames.slice(0, 5)),
-      last10: reduceRecordSplit(teamGames.slice(0, 10)),
-    };
+/** Same form computation as getTeamFormForGame, batched across many teams in one query — the slate view needs every team's form on the day's card at once instead of one query pair per game. */
+export async function getTeamFormBatch(teamIds: string[], season: number): Promise<Record<string, TeamForm>> {
+  const uniqueIds = [...new Set(teamIds)];
+
+  const games = await prisma.game.findMany({
+    where: {
+      sport: "mlb",
+      season,
+      status: "final",
+      OR: [{ homeTeamId: { in: uniqueIds } }, { awayTeamId: { in: uniqueIds } }],
+    },
+    orderBy: { scheduledStartUtc: "desc" },
+    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
+  });
+
+  const result: Record<string, TeamForm> = {};
+  for (const teamId of uniqueIds) {
+    result[teamId] = formForTeam(teamId, games);
   }
-
-  return { home: formFor(homeTeamId), away: formFor(awayTeamId) };
+  return result;
 }

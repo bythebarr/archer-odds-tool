@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { listGamesWithLinesForDate } from "@/lib/queries/games";
 import { getTeamHitRatesBatch } from "@/lib/queries/hitRate";
+import { getGameMatchupsBatch } from "@/lib/queries/matchup";
+import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { todayEt, shiftEtDate, isValidEtDate } from "@/lib/dateEt";
 import { SlateLinesView } from "@/components/SlateLinesView";
 
@@ -23,6 +25,17 @@ export default async function SlatePage({
     teamIds.add(game.awayTeam.id);
   }
   const hitRatesByTeam = await getTeamHitRatesBatch([...teamIds]);
+
+  const matchupsByGame = await getGameMatchupsBatch(gamesWithLines.map(({ game }) => game.id));
+  const archerProbByGame: Record<string, { home: number | null; away: number | null } | null> = {};
+  for (const [gameId, matchup] of Object.entries(matchupsByGame)) {
+    if (!matchup) {
+      archerProbByGame[gameId] = null;
+      continue;
+    }
+    const { homeProb, awayProb } = computeArcherWinProbability(matchup);
+    archerProbByGame[gameId] = { home: homeProb, away: awayProb };
+  }
 
   const prevDate = shiftEtDate(date, -1);
   const nextDate = shiftEtDate(date, 1);
@@ -56,7 +69,11 @@ export default async function SlatePage({
         </p>
       ) : (
         <div className="mt-8">
-          <SlateLinesView gamesWithLines={gamesWithLines} hitRatesByTeam={hitRatesByTeam} />
+          <SlateLinesView
+            gamesWithLines={gamesWithLines}
+            hitRatesByTeam={hitRatesByTeam}
+            archerProbByGame={archerProbByGame}
+          />
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { GameLineRow, GameSummary, GameWithLines } from "@/lib/queries/games";
 import type { TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
+import { calculateEv } from "@/lib/odds/devig";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint } from "@/lib/odds/format";
 import { PriceRangeSlider } from "./PriceRangeSlider";
@@ -16,6 +17,7 @@ import { PointFilterSelect, MAIN_LINE, type PointFilter } from "./PointFilterSel
 const SORT_OPTIONS = [
   { key: "marketEv", label: "Best Mkt EV" },
   { key: "historicalEv", label: "Best Hist EV" },
+  { key: "archerEv", label: "Best Archer EV" },
   { key: "priceBest", label: "Best price" },
   { key: "priceWorst", label: "Worst price" },
 ] as const;
@@ -27,6 +29,7 @@ interface SlateRow {
   line: GameLineRow;
   marketEv: number | null;
   historicalEv: number | null;
+  archerEv: number | null;
 }
 
 function rowKey(row: SlateRow): string {
@@ -46,6 +49,7 @@ function sortRows(rows: SlateRow[], sortKey: SortKey): SlateRow[] {
   sorted.sort((a, b) => {
     if (sortKey === "marketEv") return compareByMetric(a.marketEv, b.marketEv);
     if (sortKey === "historicalEv") return compareByMetric(a.historicalEv, b.historicalEv);
+    if (sortKey === "archerEv") return compareByMetric(a.archerEv, b.archerEv);
     const da = americanToDecimal(a.line.priceAmerican);
     const db = americanToDecimal(b.line.priceAmerican);
     return sortKey === "priceBest" ? db - da : da - db;
@@ -56,9 +60,11 @@ function sortRows(rows: SlateRow[], sortKey: SortKey): SlateRow[] {
 interface SlateLinesViewProps {
   gamesWithLines: GameWithLines[];
   hitRatesByTeam: Record<string, TeamHitRates>;
+  /** Archer model's home/away win probability per game (see winProbability.ts) — only meaningful for the moneyline market. */
+  archerProbByGame: Record<string, { home: number | null; away: number | null } | null>;
 }
 
-export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesViewProps) {
+export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGame }: SlateLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
   const [sortKey, setSortKey] = useState<SortKey>("marketEv");
   const [pointFilter, setPointFilter] = useState<PointFilter>(MAIN_LINE);
@@ -98,18 +104,23 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
           ? marketLines.filter((l) => !l.isAlternate)
           : marketLines.filter((l) => l.point === pointFilter);
 
+      const archerProb = market === "h2h" ? archerProbByGame[game.id] : null;
+
       for (const line of selectedLines) {
         const econ = economics.get(lineKey(line.bookKey, line.side, line.point));
+        const archerSideProb =
+          archerProb && (line.side === "home" || line.side === "away") ? archerProb[line.side] : null;
         rows.push({
           game,
           line,
           marketEv: econ?.marketEv ?? null,
           historicalEv: econ?.historicalEv ?? null,
+          archerEv: archerSideProb !== null ? calculateEv(archerSideProb, line.priceAmerican) : null,
         });
       }
     }
     return rows;
-  }, [gamesWithLines, market, hitRatesByTeam, pointFilter]);
+  }, [gamesWithLines, market, hitRatesByTeam, pointFilter, archerProbByGame]);
 
   const domain = useMemo(() => {
     if (allRows.length === 0) return null;
@@ -140,6 +151,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
           setMarket(m);
           setRange(null);
           setPointFilter(MAIN_LINE);
+          if (m !== "h2h" && sortKey === "archerEv") setSortKey("marketEv");
         }}
       />
 
@@ -161,6 +173,8 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
           <p className="mt-4 text-xs text-zinc-400">
             Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
             directional estimate only (small sample, no opponent/park/pitcher adjustment).
+            {market === "h2h" &&
+              " Archer EV = vs. the Archer model's pitcher+form win probability."}
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-4">
@@ -185,7 +199,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
                   onChange={(e) => setSortKey(e.target.value as SortKey)}
                   className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
                 >
-                  {SORT_OPTIONS.map((opt) => (
+                  {SORT_OPTIONS.filter((opt) => opt.key !== "archerEv" || market === "h2h").map((opt) => (
                     <option key={opt.key} value={opt.key}>
                       {opt.label}
                     </option>
@@ -239,6 +253,11 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
                   <span className={evColorClass(row.historicalEv)}>
                     Hist EV: {formatEv(row.historicalEv)}
                   </span>
+                  {market === "h2h" && (
+                    <span className={evColorClass(row.archerEv)}>
+                      Archer EV: {formatEv(row.archerEv)}
+                    </span>
+                  )}
                 </div>
               </li>
             ))}

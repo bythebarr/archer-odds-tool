@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getTeamFormForGame, type TeamForm } from "./teamForm";
+import { getTeamFormForGame, getTeamFormBatch, type TeamForm } from "./teamForm";
 
 export interface PitcherInfo {
   fullName: string;
@@ -59,4 +59,38 @@ export async function getGameMatchup(gameId: string): Promise<GameMatchup | null
     homeForm,
     awayForm,
   };
+}
+
+/** Same matchup data as getGameMatchup, batched across many games in one query — the slate view needs this for every game on the day's card instead of one game+one team-form query pair per game. */
+export async function getGameMatchupsBatch(gameIds: string[]): Promise<Record<string, GameMatchup | null>> {
+  const games = await prisma.game.findMany({
+    where: { id: { in: gameIds }, sport: "mlb" },
+    include: {
+      homeProbablePitcher: { include: { seasonStats: true } },
+      awayProbablePitcher: { include: { seasonStats: true } },
+    },
+  });
+
+  const result: Record<string, GameMatchup | null> = {};
+  for (const gameId of gameIds) result[gameId] = null;
+  if (games.length === 0) return result;
+
+  const teamIds = new Set<string>();
+  for (const game of games) {
+    if (game.homeTeamId !== null) teamIds.add(game.homeTeamId);
+    if (game.awayTeamId !== null) teamIds.add(game.awayTeamId);
+  }
+  // A batch call is always scoped to one ET calendar date's slate, so every game shares one season.
+  const formByTeam = await getTeamFormBatch([...teamIds], games[0].season);
+
+  for (const game of games) {
+    if (game.homeTeamId === null || game.awayTeamId === null) continue;
+    result[game.id] = {
+      homePitcher: toPitcherInfo(game.homeProbablePitcher, game.season),
+      awayPitcher: toPitcherInfo(game.awayProbablePitcher, game.season),
+      homeForm: formByTeam[game.homeTeamId],
+      awayForm: formByTeam[game.awayTeamId],
+    };
+  }
+  return result;
 }
