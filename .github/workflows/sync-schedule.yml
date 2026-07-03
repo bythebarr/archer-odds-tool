@@ -12,5 +12,5 @@ jobs:
     steps:
       - name: Sync schedule
         run: |
-          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/sync-schedule" \
+          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/sync-schedule" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

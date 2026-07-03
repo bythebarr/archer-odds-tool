@@ -13,10 +13,10 @@ jobs:
     steps:
       - name: Sync today's game statuses/scores (free)
         run: |
-          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
+          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Grade newly-final games (free)
         run: |
-          curl -sf -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
+          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
