@@ -1,14 +1,7 @@
 import Link from "next/link";
-import { listGames } from "@/lib/queries/games";
+import { listGamesWithLinesForDate } from "@/lib/queries/games";
 import { todayEt, shiftEtDate, isValidEtDate } from "@/lib/dateEt";
-
-function formatTime(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  }).format(date);
-}
+import { HomeGamesList } from "@/components/HomeGamesList";
 
 export default async function Home({
   searchParams,
@@ -19,7 +12,7 @@ export default async function Home({
   const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam)
     ? dateParam
     : todayEt();
-  const games = await listGames(date);
+  const gamesWithLines = await listGamesWithLinesForDate(date);
 
   const prevDate = shiftEtDate(date, -1);
   const nextDate = shiftEtDate(date, 1);
@@ -55,41 +48,9 @@ export default async function Home({
         </Link>
       </div>
 
-      <ul className="mt-6 divide-y divide-zinc-200 dark:divide-zinc-800">
-        {games.length === 0 && (
-          <li className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            No games scheduled for this date.
-          </li>
-        )}
-        {games.map((g) => (
-          <li key={g.id}>
-            <Link
-              href={`/games/${g.id}`}
-              className="flex items-center justify-between py-4 hover:bg-zinc-50 dark:hover:bg-zinc-900"
-            >
-              <div className="flex flex-col">
-                <span className="font-medium text-zinc-900 dark:text-zinc-50">
-                  {g.awayTeam.abbreviation} @ {g.homeTeam.abbreviation}
-                </span>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {g.awayTeam.name} at {g.homeTeam.name}
-                </span>
-              </div>
-              <div className="flex flex-col items-end">
-                <span className="text-sm text-zinc-900 dark:text-zinc-50">
-                  {formatTime(g.scheduledStartUtc)} ET
-                </span>
-                <span className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
-                  {g.status}
-                  {g.status !== "scheduled" && g.homeScore !== null && g.awayScore !== null
-                    ? ` · ${g.awayScore}-${g.homeScore}`
-                    : ""}
-                </span>
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <div className="mt-6">
+        <HomeGamesList gamesWithLines={gamesWithLines} />
+      </div>
     </div>
   );
 }
