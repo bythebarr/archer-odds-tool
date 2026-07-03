@@ -7,6 +7,8 @@ interface LogoProps {
   sources: string[];
   alt: string;
   fallbackText: string;
+  /** Background color for the fallback badge (e.g. a team/book brand color); defaults to neutral gray. */
+  color?: string;
   size?: number;
   className?: string;
 }
@@ -15,7 +17,17 @@ function noopSubscribe() {
   return () => {};
 }
 
-export function Logo({ sources, alt, fallbackText, size = 20, className = "" }: LogoProps) {
+/** Picks readable text color (near-white or near-black) for a given hex background. */
+function textColorFor(hex: string): string {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#18181b" : "#fafafa";
+}
+
+export function Logo({ sources, alt, fallbackText, color, size = 20, className = "" }: LogoProps) {
   const [index, setIndex] = useState(0);
   // Local 404s can fire the img's error event before React finishes hydrating
   // and attaches its listener, so the <img> itself is only rendered once
@@ -27,10 +39,17 @@ export function Logo({ sources, alt, fallbackText, size = 20, className = "" }: 
   );
 
   if (!mounted || index >= sources.length) {
+    const background = color ?? "#a1a1aa";
     return (
       <span
-        style={{ width: size, height: size, fontSize: size * 0.4 }}
-        className={`inline-flex shrink-0 items-center justify-center rounded-full bg-zinc-200 font-semibold leading-none text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 ${className}`}
+        style={{
+          width: size,
+          height: size,
+          fontSize: size * 0.4,
+          backgroundColor: background,
+          color: textColorFor(background),
+        }}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold leading-none ${className}`}
         title={alt}
       >
         {fallbackText}

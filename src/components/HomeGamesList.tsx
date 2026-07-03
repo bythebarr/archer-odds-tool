@@ -6,6 +6,7 @@ import type { GameLineRow, GameSummary, GameWithLines } from "@/lib/queries/game
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatPoint } from "@/lib/odds/format";
 import { teamLogoSources } from "@/lib/logos";
+import { TEAM_COLORS } from "@/lib/teamColors";
 import { Logo } from "./Logo";
 
 const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
@@ -103,12 +104,14 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
                       sources={teamLogoSources(g.awayTeam.abbreviation)}
                       alt={g.awayTeam.name}
                       fallbackText={g.awayTeam.abbreviation}
+                      color={TEAM_COLORS[g.awayTeam.abbreviation]}
                     />
                     {g.awayTeam.abbreviation} @ {g.homeTeam.abbreviation}
                     <Logo
                       sources={teamLogoSources(g.homeTeam.abbreviation)}
                       alt={g.homeTeam.name}
                       fallbackText={g.homeTeam.abbreviation}
+                      color={TEAM_COLORS[g.homeTeam.abbreviation]}
                     />
                   </span>
                   <span className="text-xs text-zinc-500 dark:text-zinc-400">

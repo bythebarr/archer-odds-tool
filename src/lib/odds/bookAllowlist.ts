@@ -22,3 +22,13 @@ export const BOOK_INITIALS: Record<string, string> = {
   betrivers: "BR",
   espnbet: "ESPN",
 };
+
+/** Approximate brand color per book, used for the same fallback badge — not an official asset. */
+export const BOOK_COLORS: Record<string, string> = {
+  draftkings: "#53D337",
+  fanduel: "#1493FF",
+  betmgm: "#B4975A",
+  williamhill_us: "#B7963C",
+  betrivers: "#00529B",
+  espnbet: "#D00000",
+};

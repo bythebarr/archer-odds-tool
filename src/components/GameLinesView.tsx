@@ -6,8 +6,9 @@ import type { TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint, formatHitRate } from "@/lib/odds/format";
-import { BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
+import { BOOK_INITIALS, BOOK_COLORS } from "@/lib/odds/bookAllowlist";
 import { bookLogoSources, teamLogoSources } from "@/lib/logos";
+import { TEAM_COLORS } from "@/lib/teamColors";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 import { Logo } from "./Logo";
 
@@ -147,6 +148,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
                         sources={teamLogoSources(teamAbbr)}
                         alt={SIDE_LABELS[side]?.(game) ?? side}
                         fallbackText={teamAbbr}
+                        color={TEAM_COLORS[teamAbbr]}
                       />
                     )}
                     {SIDE_LABELS[side]?.(game) ?? side}
@@ -179,6 +181,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
                                 sources={bookLogoSources(row.bookKey)}
                                 alt={row.bookName}
                                 fallbackText={BOOK_INITIALS[row.bookKey] ?? row.bookKey.slice(0, 2).toUpperCase()}
+                                color={BOOK_COLORS[row.bookKey]}
                                 size={16}
                               />
                               {row.bookName}

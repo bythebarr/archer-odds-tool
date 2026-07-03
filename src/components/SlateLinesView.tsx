@@ -7,8 +7,9 @@ import type { TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint } from "@/lib/odds/format";
-import { BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
+import { BOOK_INITIALS, BOOK_COLORS } from "@/lib/odds/bookAllowlist";
 import { bookLogoSources, teamLogoSources } from "@/lib/logos";
+import { TEAM_COLORS } from "@/lib/teamColors";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 import { Logo } from "./Logo";
 
@@ -190,12 +191,14 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
                       sources={teamLogoSources(row.game.awayTeam.abbreviation)}
                       alt={row.game.awayTeam.name}
                       fallbackText={row.game.awayTeam.abbreviation}
+                      color={TEAM_COLORS[row.game.awayTeam.abbreviation]}
                       size={16}
                     />
                     <Logo
                       sources={teamLogoSources(row.game.homeTeam.abbreviation)}
                       alt={row.game.homeTeam.name}
                       fallbackText={row.game.homeTeam.abbreviation}
+                      color={TEAM_COLORS[row.game.homeTeam.abbreviation]}
                       size={16}
                     />
                     <Link
@@ -213,6 +216,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
                         sources={bookLogoSources(row.line.bookKey)}
                         alt={row.line.bookName}
                         fallbackText={BOOK_INITIALS[row.line.bookKey] ?? row.line.bookKey.slice(0, 2).toUpperCase()}
+                        color={BOOK_COLORS[row.line.bookKey]}
                         size={16}
                       />
                       {row.line.bookName}

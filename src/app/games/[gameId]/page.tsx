@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
 import { getTeamHitRates } from "@/lib/queries/hitRate";
 import { teamLogoSources } from "@/lib/logos";
+import { TEAM_COLORS } from "@/lib/teamColors";
 import { GameLinesView } from "@/components/GameLinesView";
 import { Logo } from "@/components/Logo";
 
@@ -32,6 +33,7 @@ export default async function GamePage({
           sources={teamLogoSources(game.awayTeam.abbreviation)}
           alt={game.awayTeam.name}
           fallbackText={game.awayTeam.abbreviation}
+          color={TEAM_COLORS[game.awayTeam.abbreviation]}
           size={24}
         />
         {game.awayTeam.name} @ {game.homeTeam.name}
@@ -39,6 +41,7 @@ export default async function GamePage({
           sources={teamLogoSources(game.homeTeam.abbreviation)}
           alt={game.homeTeam.name}
           fallbackText={game.homeTeam.abbreviation}
+          color={TEAM_COLORS[game.homeTeam.abbreviation]}
           size={24}
         />
       </h1>
