@@ -7,13 +7,16 @@ on:
   # see the tennis plan doc's credit budget, which only has ~140/mo of
   # headroom left after MLB's fixed 2x/day schedule.
   #
-  # 09:00 UTC ~ 10am BST/UK time: ahead of Wimbledon's ~10am UTC first
+  # 09:05 UTC ~ 10am BST/UK time: ahead of Wimbledon's ~10am UTC first
   # matches, so this catches the day's pregame lines before they go live.
   # UK-timezone-tuned for the current allowlisted tournament (Wimbledon) —
   # revisit this time when tournamentAllowlist.ts changes to a tournament in
   # a different timezone (e.g. the US Open or Australian Open).
+  # Offset a few minutes past the hour, not on it — see poll-odds.yml's
+  # comment: exact-hour schedules are the most congested and most likely to
+  # be delayed/skipped by GitHub Actions, confirmed live this session.
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "5 9 * * *"
   # Also runnable on demand from the Actions tab (or `gh workflow run poll-odds-tennis.yml`).
   workflow_dispatch:
 

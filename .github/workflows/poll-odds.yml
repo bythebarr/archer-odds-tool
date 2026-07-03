@@ -8,13 +8,17 @@ on:
   # because every poll costs 6 credits (3 markets x 2 regions) regardless
   # of game count. Two runs/day is ~12 credits/day, ~360/mo, leaving room
   # for manual runs too.
-  #   14:00 UTC ~ 10am ET: catches overnight/opening line movement.
+  #   14:05 UTC ~ 10am ET: catches overnight/opening line movement.
   #   22:30 UTC ~ 6:30pm ET: catches most games' pregame window (MLB first
   #     pitches cluster 7-10pm ET).
   # Both times are UTC-fixed, so they drift an hour off their ET target
   # outside EDT (roughly Nov-Mar) — a minor gap outside MLB season.
+  # Offset a few minutes past the hour, not on it — GitHub Actions
+  # explicitly documents that exact-hour schedules see the most congestion
+  # and are the most likely to be delayed or skipped; confirmed live this
+  # session (the 14:00 UTC run never fired, 1h+ overdue when checked).
   schedule:
-    - cron: "0 14 * * *"
+    - cron: "5 14 * * *"
     - cron: "30 22 * * *"
   # Also runnable on demand from the Actions tab (or `gh workflow run poll-odds.yml`).
   workflow_dispatch:
