@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
+/* Every dark: utility in the app now follows the data-theme attribute
+   (set by the inline anti-flash script in layout.tsx + the ThemeToggle)
+   instead of prefers-color-scheme directly, so a manual toggle can
+   override the system preference. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+}
+
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -10,13 +21,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

@@ -1,7 +1,8 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteNav } from "@/components/SiteNav";
+import { THEME_COLORS } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,12 +24,13 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
-  ],
-};
+// Runs before first paint (see the Next.js "preventing flash before
+// hydration" guide) so a stored/system dark preference never flashes light.
+// Deliberately not using the `viewport.themeColor` metadata export: Next
+// renders that as its own React-managed <meta> tag, which would fight this
+// script (and ThemeToggle) for ownership of the same tag and duplicate it.
+// This plain, un-managed <meta id="theme-color-meta"> below is the only one.
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("theme");var resolved=(t==="light"||t==="dark")?t:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",resolved);var m=document.getElementById("theme-color-meta");if(m)m.setAttribute("content",resolved==="dark"?"${THEME_COLORS.dark}":"${THEME_COLORS.light}")}catch(e){}})()`;
 
 export default function RootLayout({
   children,
@@ -38,8 +40,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-theme="light"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <meta id="theme-color-meta" name="theme-color" content={THEME_COLORS.light} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <Suspense fallback={<div className="h-[49px] border-b border-zinc-200 dark:border-zinc-800" />}>
           <SiteNav />
