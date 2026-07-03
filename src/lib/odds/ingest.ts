@@ -219,6 +219,15 @@ export async function pollAndStoreOdds(
     }
     gamesMatched++;
 
+    // The Odds API's odds endpoint includes in-play events by default, not
+    // just upcoming ones — once first pitch passes, its "h2h" price reflects
+    // the live game state (e.g. -10000/+1500 in a blowout), not a shoppable
+    // pregame line. We only do pregame line-shopping, so skip storing
+    // anything for a game that's already started rather than let a live
+    // price silently overwrite CurrentOddsLine as if it were still current.
+    const minutesToStart = (game.scheduledStartUtc.getTime() - now.getTime()) / 60_000;
+    if (minutesToStart < 0) continue;
+
     snapshotsWritten += await storeBookmakerOdds(
       game.id,
       event.home_team,
@@ -226,8 +235,7 @@ export async function pollAndStoreOdds(
       event.bookmakers
     );
 
-    const minutesToStart = (game.scheduledStartUtc.getTime() - now.getTime()) / 60_000;
-    const isImminent = minutesToStart >= 0 && minutesToStart <= IMMINENT_THRESHOLD_MINUTES;
+    const isImminent = minutesToStart <= IMMINENT_THRESHOLD_MINUTES;
     if (!isImminent) continue;
 
     try {
