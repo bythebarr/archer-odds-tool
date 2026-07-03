@@ -12,7 +12,7 @@ import { PriceRangeSlider } from "./PriceRangeSlider";
 import { MarketTabs } from "./MarketTabs";
 import { TeamBadge } from "./TeamBadge";
 import { BookBadge } from "./BookBadge";
-import { PointFilterSelect, MAIN_LINE, type PointFilter } from "./PointFilterSelect";
+import { PointFilterSelect, MAIN_LINE, ALL_ALT_LINES, type PointFilter } from "./PointFilterSelect";
 
 const SORT_OPTIONS = [
   { key: "marketEv", label: "Best Mkt EV" },
@@ -102,7 +102,9 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
       const selectedLines =
         pointFilter === MAIN_LINE
           ? marketLines.filter((l) => !l.isAlternate)
-          : marketLines.filter((l) => l.point === pointFilter);
+          : pointFilter === ALL_ALT_LINES
+            ? marketLines.filter((l) => l.isAlternate)
+            : marketLines.filter((l) => l.point === pointFilter);
 
       const archerProb = market === "h2h" ? archerProbByGame[game.id] : null;
 

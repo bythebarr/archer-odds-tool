@@ -11,7 +11,7 @@ import { PriceRangeSlider } from "./PriceRangeSlider";
 import { MarketTabs } from "./MarketTabs";
 import { TeamBadge } from "./TeamBadge";
 import { BookBadge } from "./BookBadge";
-import { PointFilterSelect, MAIN_LINE, type PointFilter } from "./PointFilterSelect";
+import { PointFilterSelect, MAIN_LINE, ALL_ALT_LINES, type PointFilter } from "./PointFilterSelect";
 
 const SIDE_TEAM_ABBR: Record<string, (game: GameSummary) => string | null> = {
   home: (g) => g.homeTeam.abbreviation,
@@ -72,14 +72,17 @@ export function GameLinesView({
     return [...points].sort((a, b) => a - b);
   }, [marketLines]);
 
-  // The slider/BEST-badge/list above the ladder only ever compare prices at
-  // ONE point — a -1.5 price isn't the same bet as a -2.5 price. That's the
-  // main line by default, or whichever point is picked from the dropdown.
+  // The slider/BEST-badge/list above the ladder compares prices within
+  // whatever's picked from the dropdown: the main line by default, one exact
+  // alt point, or every alt point pooled together (a -1.5 price isn't the
+  // same bet as a -2.5 price, but each row still shows its own point so nothing's hidden).
   const focusLines = useMemo(
     () =>
       pointFilter === MAIN_LINE
         ? marketLines.filter((l) => !l.isAlternate)
-        : marketLines.filter((l) => l.point === pointFilter),
+        : pointFilter === ALL_ALT_LINES
+          ? marketLines.filter((l) => l.isAlternate)
+          : marketLines.filter((l) => l.point === pointFilter),
     [marketLines, pointFilter]
   );
 
