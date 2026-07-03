@@ -5,6 +5,14 @@ import type { GameLineRow } from "@/lib/queries/games";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { PlayerBadge } from "@/components/PlayerBadge";
 
+// Unlike the MLB routes, this page has no searchParams/dynamic segment to
+// signal Next.js that it needs per-request rendering — without this it gets
+// statically prerendered at build time (confirmed: build tried to query the
+// DB during CI and failed). Odds here update via cron, not deploys; a
+// statically-cached build would show stale build-time prices until the next
+// deploy, not the current polled data.
+export const dynamic = "force-dynamic";
+
 function formatTime(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
