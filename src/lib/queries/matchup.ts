@@ -36,13 +36,16 @@ function toPitcherInfo(pitcher: PitcherWithStats | null, season: number): Pitche
 /** Probable-pitcher + team-form context for one game — the "Archer method" comparison, surfaced for the user to read, not blended into EV. */
 export async function getGameMatchup(gameId: string): Promise<GameMatchup | null> {
   const game = await prisma.game.findUnique({
-    where: { id: gameId },
+    where: { id: gameId, sport: "mlb" },
     include: {
       homeProbablePitcher: { include: { seasonStats: true } },
       awayProbablePitcher: { include: { seasonStats: true } },
     },
   });
-  if (!game) return null;
+  // The DB CHECK constraint guarantees homeTeamId/awayTeamId are non-null
+  // whenever sport is "mlb" (see the tennis plan doc), so this null check is
+  // unreachable in practice — kept for type-correctness, not defensiveness.
+  if (!game || game.homeTeamId === null || game.awayTeamId === null) return null;
 
   const { home: homeForm, away: awayForm } = await getTeamFormForGame(
     game.homeTeamId,

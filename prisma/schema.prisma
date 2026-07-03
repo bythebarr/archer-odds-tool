@@ -36,6 +36,11 @@ enum OutcomeResult {
   push
 }
 
+enum Sport {
+  mlb
+  tennis
+}
+
 model Team {
   id           String   @id @default(cuid())
   mlbTeamId    Int      @unique
@@ -51,18 +56,48 @@ model Team {
   @@index([mlbTeamId])
 }
 
+/// A tennis competitor. Deliberately minimal — no rankings/H2H/surface stats,
+/// since no free/reliable live source exists for those yet (see tennis plan
+/// doc). Upserted on the fly by the tennis odds poller the first time a
+/// player's name is seen in an Odds API event; there is no separate
+/// schedule-sync job populating this ahead of time the way MLB's Team is.
+model Player {
+  id          String   @id @default(cuid())
+  name        String
+  oddsApiName String?  @unique // The Odds API's exact player name string, used to upsert idempotently across polls
+  createdAt   DateTime @default(now())
+
+  homeMatches Game[]        @relation("HomePlayer")
+  awayMatches Game[]        @relation("AwayPlayer")
+  outcomes    GameOutcome[]
+}
+
+/// One row per game (MLB) or match (tennis) — `sport` decides which of the
+/// team/player FK pairs below is populated. Both pairs are nullable because
+/// Postgres NULL columns cost nothing and a CHECK constraint (added by hand
+/// in the migration, not expressible in Prisma's schema DSL) enforces that
+/// exactly one pair is set per row, matching `sport`. See the tennis plan
+/// doc (sparkling-plotting-meteor.md) for why this was chosen over a fully
+/// normalized split-table design: every sport-specific query/UI component is
+/// already sport-specific, so there's no shared join path a split would protect.
 model Game {
   id                String     @id @default(cuid())
-  mlbGameId         Int        @unique
+  sport             Sport      @default(mlb)
+  mlbGameId         Int?       @unique
   oddsApiEventId    String?    @unique
   season            Int
   scheduledStartUtc DateTime
   status            GameStatus @default(scheduled)
 
-  homeTeamId String
-  homeTeam   Team   @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeamId String
-  awayTeam   Team   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homeTeamId String?
+  homeTeam   Team?   @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId String?
+  awayTeam   Team?   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+
+  homePlayerId String?
+  homePlayer   Player? @relation("HomePlayer", fields: [homePlayerId], references: [id])
+  awayPlayerId String?
+  awayPlayer   Player? @relation("AwayPlayer", fields: [awayPlayerId], references: [id])
 
   homeScore Int?
   awayScore Int?
@@ -81,6 +116,7 @@ model Game {
 
   @@index([scheduledStartUtc])
   @@index([status])
+  @@index([sport])
 }
 
 model Pitcher {
@@ -178,19 +214,30 @@ model GameClosingLine {
   @@unique([gameId, marketType, side])
 }
 
-/// Graded outcome per team/market, computed once a game is final.
+/// Graded outcome per competitor/market, computed once a game is final.
+/// Exactly one of teamId/playerId is set per row (CHECK constraint added by
+/// hand in the migration — see Game's docstring for why). Two separate
+/// unique constraints rather than one: Postgres treats NULL <> NULL, so a
+/// single `@@unique([gameId, teamId, playerId, marketType])` would never
+/// fire for tennis rows (teamId always null there) and every regrade would
+/// insert a duplicate instead of updating — the same bug class
+/// CurrentOddsLine's h2h "0 sentinel" comment documents elsewhere.
 model GameOutcome {
   id         String        @id @default(cuid())
   gameId     String
   game       Game          @relation(fields: [gameId], references: [id])
-  teamId     String
-  team       Team          @relation(fields: [teamId], references: [id])
+  teamId     String?
+  team       Team?         @relation(fields: [teamId], references: [id])
+  playerId   String?
+  player     Player?       @relation(fields: [playerId], references: [id])
   marketType MarketType
   result     OutcomeResult
   gradedAt   DateTime      @default(now())
 
   @@unique([gameId, teamId, marketType])
+  @@unique([gameId, playerId, marketType])
   @@index([teamId, marketType])
+  @@index([playerId, marketType])
 }
 
 /// Drives the tiered polling throttle — last successful poll timestamp per job.

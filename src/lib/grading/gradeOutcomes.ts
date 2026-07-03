@@ -83,6 +83,11 @@ async function upsertOutcome(
  */
 export async function gradeGame(game: Game): Promise<void> {
   if (game.homeScore === null || game.awayScore === null) return;
+  // MLB-only for now — tennis grading is a separate, gated phase (see the
+  // tennis plan doc). The DB CHECK constraint guarantees homeTeamId/
+  // awayTeamId are non-null whenever sport is "mlb", so these guard clauses
+  // are unreachable in practice, not just type-narrowing noise.
+  if (game.sport !== "mlb" || game.homeTeamId === null || game.awayTeamId === null) return;
 
   // Moneyline: no push in baseball.
   const homeWon = game.homeScore > game.awayScore;
@@ -117,7 +122,7 @@ export async function gradeGame(game: Game): Promise<void> {
 /** Grades every final game that doesn't have outcomes recorded yet. Returns how many were graded. */
 export async function gradeUngradedGames(): Promise<number> {
   const ungraded = await prisma.game.findMany({
-    where: { status: "final", outcomes: { none: {} } },
+    where: { sport: "mlb", status: "final", outcomes: { none: {} } },
   });
 
   for (const game of ungraded) {

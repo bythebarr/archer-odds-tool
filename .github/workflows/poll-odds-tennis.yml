@@ -1,0 +1,35 @@
+name: Poll tennis odds (scheduled 1x/day — costs Odds API credits)
+
+on:
+  # Separate workflow from MLB's poll-odds.yml, not folded into it — own
+  # cadence and own failure isolation. 1x/day (not 2x like MLB) because
+  # /scores grading (once M3 lands) will ALSO cost credits on top of this —
+  # see the tennis plan doc's credit budget, which only has ~140/mo of
+  # headroom left after MLB's fixed 2x/day schedule.
+  #
+  # 09:00 UTC ~ 10am BST/UK time: ahead of Wimbledon's ~10am UTC first
+  # matches, so this catches the day's pregame lines before they go live.
+  # UK-timezone-tuned for the current allowlisted tournament (Wimbledon) —
+  # revisit this time when tournamentAllowlist.ts changes to a tournament in
+  # a different timezone (e.g. the US Open or Australian Open).
+  schedule:
+    - cron: "0 9 * * *"
+  # Also runnable on demand from the Actions tab (or `gh workflow run poll-odds-tennis.yml`).
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll tennis odds (credit-throttled, allowlisted tournament only)
+        run: |
+          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds-tennis" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      # Costs credits (unlike MLB's free grade-outcomes) — the route's own
+      # internal 2-day guardrail makes this a no-op most days even though
+      # this workflow calls it daily. See the tennis plan doc's credit budget.
+      - name: Sync + grade tennis results (credit-throttled, every 2 days)
+        run: |
+          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes-tennis" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

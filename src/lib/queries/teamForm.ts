@@ -34,6 +34,7 @@ export async function getTeamFormForGame(
 ): Promise<{ home: TeamForm; away: TeamForm }> {
   const games = await prisma.game.findMany({
     where: {
+      sport: "mlb",
       season,
       status: "final",
       OR: [{ homeTeamId: { in: [homeTeamId, awayTeamId] } }, { awayTeamId: { in: [homeTeamId, awayTeamId] } }],

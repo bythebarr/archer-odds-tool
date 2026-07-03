@@ -4,9 +4,13 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 
+// carriesDate: MLB's Games/Slate views share a browsed date across nav
+// clicks; Tennis has no date filter (see tennisMatches.ts), so it never
+// carries one.
 const NAV_LINKS = [
-  { href: "/", label: "Games" },
-  { href: "/slate", label: "Slate" },
+  { href: "/", label: "Games", carriesDate: true },
+  { href: "/slate", label: "Slate", carriesDate: true },
+  { href: "/tennis", label: "Tennis", carriesDate: false },
 ];
 
 /**
@@ -28,7 +32,7 @@ export function SiteNav() {
           <div className="flex gap-4">
             {NAV_LINKS.map((link) => {
               const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-              const href = date ? `${link.href}?date=${date}` : link.href;
+              const href = link.carriesDate && date ? `${link.href}?date=${date}` : link.href;
               return (
                 <Link
                   key={link.href}

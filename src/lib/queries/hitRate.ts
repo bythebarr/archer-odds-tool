@@ -94,12 +94,34 @@ export async function getTeamHitRates(teamId: string, window = DEFAULT_WINDOW): 
   return { h2h, spreads, totalsOver, totalsUnder };
 }
 
-function groupByTeam<T extends { teamId: string }>(rows: T[]): Map<string, T[]> {
+/**
+ * Rolling h2h (moneyline) hit-rate for a tennis player — v1's only tennis
+ * market, so no TeamHitRates-style 4-market wrapper is needed here. Reuses
+ * reduceHitRate unchanged; the only difference from getTeamHitRate is the
+ * playerId/teamId column.
+ */
+export async function getPlayerHitRate(playerId: string, window = DEFAULT_WINDOW): Promise<HitRateResult> {
+  const outcomes = await prisma.gameOutcome.findMany({
+    where: { playerId, marketType: "h2h" },
+    orderBy: { game: { scheduledStartUtc: "desc" } },
+    take: window,
+  });
+
+  return reduceHitRate(outcomes, window, false);
+}
+
+// teamId is nullable at the schema level (tennis GameOutcome rows use
+// playerId instead), but every caller here queries by a known non-null
+// teamId, so a null one is unreachable in practice — skipped rather than
+// asserted, since that costs nothing and keeps this correct even if a caller
+// ever changes.
+function groupByTeam<T extends { teamId: string | null }>(rows: T[]): Map<string, T[]> {
   const byTeam = new Map<string, T[]>();
   for (const row of rows) {
-    const rows = byTeam.get(row.teamId) ?? [];
-    rows.push(row);
-    byTeam.set(row.teamId, rows);
+    if (row.teamId === null) continue;
+    const existing = byTeam.get(row.teamId) ?? [];
+    existing.push(row);
+    byTeam.set(row.teamId, existing);
   }
   return byTeam;
 }

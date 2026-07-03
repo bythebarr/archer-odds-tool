@@ -45,8 +45,11 @@ export function shouldPollNow(
 export async function getMinutesToNearestFirstPitch(now: Date = new Date()): Promise<number | null> {
   const lookahead = new Date(now.getTime() + 24 * 3_600_000);
 
+  // sport: "mlb" is required, not cosmetic — without it, a soon-starting
+  // tennis match would skew MLB's own cadence math once tennis Game rows exist.
   const nextGame = await prisma.game.findFirst({
     where: {
+      sport: "mlb",
       status: "scheduled",
       scheduledStartUtc: { gte: now, lte: lookahead },
     },
@@ -66,6 +69,30 @@ export async function getMinutesToNearestFirstPitch(now: Date = new Date()): Pro
  */
 export const MIN_CREDITS_REMAINING_GUARDRAIL = 20;
 
+/**
+ * The most recently observed credits-remaining figure across every job's
+ * PollLog row — credits are account-wide, not per-job. Reading only the
+ * current jobName's own row (the original implementation) meant a
+ * brand-new job's first-ever run found no row of its own and skipped the
+ * guardrail entirely, blind to another job (e.g. MLB's) having already
+ * spent most of the month's budget — a real bug surfaced while adding
+ * tennis polling as a second job. lastPolledAt-based cadence timing stays
+ * correctly per-jobName; only the credits check is account-wide.
+ */
+async function getLatestCreditsRemaining(): Promise<number | null> {
+  const latest = await prisma.pollLog.findFirst({
+    where: { creditsRemaining: { not: null } },
+    orderBy: { lastPolledAt: "desc" },
+  });
+  return latest?.creditsRemaining ?? null;
+}
+
+/** Account-wide credits guardrail — shared by every sport's poll decision, not just MLB's. */
+export async function hasCreditsHeadroom(): Promise<boolean> {
+  const latestCreditsRemaining = await getLatestCreditsRemaining();
+  return latestCreditsRemaining === null || latestCreditsRemaining >= MIN_CREDITS_REMAINING_GUARDRAIL;
+}
+
 export interface PollDecision {
   shouldPoll: boolean;
   blockedReason: "not-due" | "low-credits" | null;
@@ -79,16 +106,11 @@ export async function decidePollOdds(jobName: string, now: Date = new Date()): P
   const minutesToNearestFirstPitch = await getMinutesToNearestFirstPitch(now);
   const { tier, intervalMinutes } = determineTier(minutesToNearestFirstPitch);
 
-  const log = await prisma.pollLog.findUnique({ where: { jobName } });
-
-  if (
-    log?.creditsRemaining !== null &&
-    log?.creditsRemaining !== undefined &&
-    log.creditsRemaining < MIN_CREDITS_REMAINING_GUARDRAIL
-  ) {
+  if (!(await hasCreditsHeadroom())) {
     return { shouldPoll: false, blockedReason: "low-credits", tier, intervalMinutes, minutesToNearestFirstPitch };
   }
 
+  const log = await prisma.pollLog.findUnique({ where: { jobName } });
   const isDue = shouldPollNow(log?.lastPolledAt ?? null, intervalMinutes, now);
   return {
     shouldPoll: isDue,
@@ -97,6 +119,32 @@ export async function decidePollOdds(jobName: string, now: Date = new Date()): P
     intervalMinutes,
     minutesToNearestFirstPitch,
   };
+}
+
+export interface SimplePollDecision {
+  shouldPoll: boolean;
+  blockedReason: "not-due" | "low-credits" | null;
+}
+
+/**
+ * Poll decision for jobs on a fixed external cadence (e.g. tennis's 1x/day
+ * GitHub Actions schedule) rather than MLB's proximity-to-first-pitch tiers
+ * — just the account-wide credits guardrail plus a minimum-interval
+ * anti-duplicate guard (protects against a manual trigger landing too close
+ * to the scheduled one, not the primary cadence control — that's GH
+ * Actions' own schedule).
+ */
+export async function decideFixedCadencePoll(
+  jobName: string,
+  minIntervalMinutes: number,
+  now: Date = new Date()
+): Promise<SimplePollDecision> {
+  if (!(await hasCreditsHeadroom())) {
+    return { shouldPoll: false, blockedReason: "low-credits" };
+  }
+  const log = await prisma.pollLog.findUnique({ where: { jobName } });
+  const isDue = shouldPollNow(log?.lastPolledAt ?? null, minIntervalMinutes, now);
+  return { shouldPoll: isDue, blockedReason: isDue ? null : "not-due" };
 }
 
 export async function recordPollLog(

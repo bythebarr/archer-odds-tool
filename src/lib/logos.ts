@@ -11,3 +11,12 @@ export function bookLogoSources(bookKey: string): string[] {
 export function teamLogoSources(abbreviation: string): string[] {
   return [`/logos/teams/${abbreviation}.svg`, `/logos/teams/${abbreviation}.png`];
 }
+
+/** Tennis players have no stable abbreviation like a team does, so this slugs the full name instead (e.g. "Alex de Minaur" -> "alex-de-minaur"). */
+export function playerLogoSources(name: string): string[] {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return [`/logos/players/${slug}.svg`, `/logos/players/${slug}.png`];
+}
