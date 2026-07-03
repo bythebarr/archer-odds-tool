@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
+import { SiteNav } from "@/components/SiteNav";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,6 +30,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <Suspense fallback={<div className="h-[49px] border-b border-zinc-200 dark:border-zinc-800" />}>
+          <SiteNav />
+        </Suspense>
         {children}
         <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
           For informational and research purposes only. Not betting advice; odds, hit-rates, and EV

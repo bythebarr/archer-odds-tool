@@ -19,18 +19,9 @@ export default async function Home({
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-        archer-odds-tool
-      </h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
         MLB odds line-shopping — research/discovery only, no bet placement or tracking.
       </p>
-      <Link
-        href={`/slate?date=${date}`}
-        className="mt-2 inline-block text-sm font-medium text-zinc-600 hover:underline dark:text-zinc-400"
-      >
-        View full slate odds →
-      </Link>
 
       <div className="mt-6 flex items-center justify-between">
         <Link

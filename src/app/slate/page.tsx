@@ -29,13 +29,7 @@ export default async function SlatePage({
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-4 py-10 font-sans">
-      <Link href="/" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
-        ← Today&apos;s games
-      </Link>
-
-      <h1 className="mt-2 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Full slate odds
-      </h1>
+      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Full slate odds</h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         Every book&apos;s line across the day&apos;s games, filterable by price range.
       </p>
