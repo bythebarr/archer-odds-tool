@@ -25,6 +25,9 @@ const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
   { key: "totals", label: "Total" },
 ];
 
+const MAIN_LINE = "main" as const;
+type PointFilter = typeof MAIN_LINE | number;
+
 /** Hit-rate caption for a given market tab + side, given both teams' precomputed rates. */
 function hitRateCaption(
   market: GameLineRow["marketType"],
@@ -54,18 +57,37 @@ interface GameLinesViewProps {
 
 export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
+  const [pointFilter, setPointFilter] = useState<PointFilter>(MAIN_LINE);
   const marketLines = useMemo(() => lines.filter((l) => l.marketType === market), [lines, market]);
-  // The slider/BEST-badge/main list only ever compare main-line prices —
-  // an alt point isn't the same bet, so it can't share that domain. Alt
-  // lines get their own section below, grouped by point instead.
-  const mainLines = useMemo(() => marketLines.filter((l) => !l.isAlternate), [marketLines]);
   const altLines = useMemo(() => marketLines.filter((l) => l.isAlternate), [marketLines]);
 
+  // Every point on offer for this market — lets you jump straight to a
+  // specific alt line instead of scrolling the ladder below. h2h has none
+  // (its point is always null), so the dropdown just won't render for it.
+  const pointOptions = useMemo(() => {
+    const points = new Set<number>();
+    for (const line of marketLines) {
+      if (line.point !== null) points.add(line.point);
+    }
+    return [...points].sort((a, b) => a - b);
+  }, [marketLines]);
+
+  // The slider/BEST-badge/list above the ladder only ever compare prices at
+  // ONE point — a -1.5 price isn't the same bet as a -2.5 price. That's the
+  // main line by default, or whichever point is picked from the dropdown.
+  const focusLines = useMemo(
+    () =>
+      pointFilter === MAIN_LINE
+        ? marketLines.filter((l) => !l.isAlternate)
+        : marketLines.filter((l) => l.point === pointFilter),
+    [marketLines, pointFilter]
+  );
+
   const domain = useMemo(() => {
-    if (mainLines.length === 0) return null;
-    const decimals = mainLines.map((l) => americanToDecimal(l.priceAmerican));
+    if (focusLines.length === 0) return null;
+    const decimals = focusLines.map((l) => americanToDecimal(l.priceAmerican));
     return { min: Math.min(...decimals), max: Math.max(...decimals) };
-  }, [mainLines]);
+  }, [focusLines]);
 
   const [range, setRange] = useState<[number, number] | null>(null);
   const effectiveRange: [number, number] | null =
@@ -73,7 +95,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
 
   const sides = useMemo(() => {
     const bySide = new Map<string, GameLineRow[]>();
-    for (const line of mainLines) {
+    for (const line of focusLines) {
       const rows = bySide.get(line.side) ?? [];
       rows.push(line);
       bySide.set(line.side, rows);
@@ -82,7 +104,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
       rows.sort((a, b) => americanToDecimal(b.priceAmerican) - americanToDecimal(a.priceAmerican));
     }
     return bySide;
-  }, [mainLines]);
+  }, [focusLines]);
 
   const economics = useMemo(
     () =>
@@ -135,6 +157,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
             onClick={() => {
               setMarket(tab.key);
               setRange(null);
+              setPointFilter(MAIN_LINE);
             }}
             className={`px-3 py-2 text-sm font-medium ${
               market === tab.key
@@ -146,6 +169,28 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
           </button>
         ))}
       </div>
+
+      {pointOptions.length > 0 && (
+        <label className="mt-4 flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+          Line
+          <select
+            value={pointFilter === MAIN_LINE ? MAIN_LINE : String(pointFilter)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setPointFilter(value === MAIN_LINE ? MAIN_LINE : Number(value));
+              setRange(null);
+            }}
+            className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
+          >
+            <option value={MAIN_LINE}>Main line</option>
+            {pointOptions.map((p) => (
+              <option key={p} value={p}>
+                {formatPoint(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {!domain || !effectiveRange ? (
         <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">
@@ -245,7 +290,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
                     })}
                   </ul>
 
-                  {(altSectionsBySide.get(side) ?? []).length > 0 && (
+                  {pointFilter === MAIN_LINE && (altSectionsBySide.get(side) ?? []).length > 0 && (
                     <div className="mt-4">
                       <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
                         Alt lines
