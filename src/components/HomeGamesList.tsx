@@ -72,7 +72,7 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
 
   return (
     <div>
-      <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="sticky top-0 z-10 flex gap-2 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         {MARKET_TABS.map((tab) => (
           <button
             key={tab.key}
