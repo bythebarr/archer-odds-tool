@@ -67,6 +67,13 @@ model Game {
   homeScore Int?
   awayScore Int?
 
+  // Nullable: MLB usually doesn't confirm starters until 1-5 days out, so
+  // these are legitimately empty for most of the forward-looking sync window.
+  homeProbablePitcherId String?
+  homeProbablePitcher   Pitcher? @relation("HomeProbablePitcher", fields: [homeProbablePitcherId], references: [id])
+  awayProbablePitcherId String?
+  awayProbablePitcher   Pitcher? @relation("AwayProbablePitcher", fields: [awayProbablePitcherId], references: [id])
+
   oddsSnapshots  OddsSnapshot[]
   currentLines   CurrentOddsLine[]
   closingLines   GameClosingLine[]
@@ -74,6 +81,34 @@ model Game {
 
   @@index([scheduledStartUtc])
   @@index([status])
+}
+
+model Pitcher {
+  id          String @id @default(cuid())
+  mlbPersonId Int    @unique
+  fullName    String
+
+  seasonStats       PitcherSeasonStats[]
+  homeProbableGames Game[]               @relation("HomeProbablePitcher")
+  awayProbableGames Game[]               @relation("AwayProbablePitcher")
+}
+
+/// Upsert-latest season pitching line (wins/losses/ERA), refreshed on every
+/// pitcher sync — informational context, not something graded/tracked over
+/// time like odds, so no snapshot history is kept.
+model PitcherSeasonStats {
+  id             String   @id @default(cuid())
+  pitcherId      String
+  pitcher        Pitcher  @relation(fields: [pitcherId], references: [id])
+  season         Int
+  wins           Int
+  losses         Int
+  era            Float? // null on parse failure (e.g. 0-IP rookie call-ups return a non-numeric ERA string)
+  inningsPitched Float?
+  gamesStarted   Int
+  updatedAt      DateTime @updatedAt
+
+  @@unique([pitcherId, season])
 }
 
 model Sportsbook {

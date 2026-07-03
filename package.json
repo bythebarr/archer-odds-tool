@@ -11,6 +11,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "sync:schedule": "tsx scripts/sync-schedule.ts",
+    "sync:pitchers": "tsx scripts/sync-pitchers.ts",
     "poll:odds": "tsx scripts/poll-odds.ts"
   },
   "dependencies": {
