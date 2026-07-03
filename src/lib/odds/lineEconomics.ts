@@ -1,4 +1,5 @@
 import type { GameLineRow } from "@/lib/queries/games";
+import type { TeamHitRates } from "@/lib/queries/hitRate";
 import type { MarketType } from "@/generated/prisma/client";
 import { consensusFairProbability, calculateEv, type DevigPair } from "./devig";
 
@@ -74,4 +75,27 @@ export function computeLineEconomics({
     });
   }
   return result;
+}
+
+function avgOrNull(a: number | null, b: number | null): number | null {
+  if (a === null && b === null) return null;
+  if (a === null) return b;
+  if (b === null) return a;
+  return (a + b) / 2;
+}
+
+/** Historical hit-rate, expressed as a probability per side, for the given market. */
+export function historicalProbBySide(
+  market: MarketType,
+  homeHitRates: TeamHitRates,
+  awayHitRates: TeamHitRates
+): Partial<Record<string, number | null>> {
+  if (market === "h2h") return { home: homeHitRates.h2h.hitRate, away: awayHitRates.h2h.hitRate };
+  if (market === "spreads") {
+    return { home: homeHitRates.spreads.hitRate, away: awayHitRates.spreads.hitRate };
+  }
+  return {
+    over: avgOrNull(homeHitRates.totalsOver.hitRate, awayHitRates.totalsOver.hitRate),
+    under: avgOrNull(homeHitRates.totalsUnder.hitRate, awayHitRates.totalsUnder.hitRate),
+  };
 }

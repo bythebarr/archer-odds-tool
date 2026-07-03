@@ -69,6 +69,26 @@ export interface GameWithLines {
   lines: GameLineRow[];
 }
 
+function toLineRow(l: {
+  bookKey: string;
+  book: { displayName: string };
+  marketType: MarketType;
+  side: string;
+  point: number | null;
+  priceAmerican: number;
+  polledAt: Date;
+}): GameLineRow {
+  return {
+    bookKey: l.bookKey,
+    bookName: l.book.displayName,
+    marketType: l.marketType,
+    side: l.side,
+    point: l.point,
+    priceAmerican: l.priceAmerican,
+    polledAt: l.polledAt,
+  };
+}
+
 /** A single game plus its current lines, optionally filtered to one market. */
 export async function getGameWithLines(
   gameId: string,
@@ -88,14 +108,29 @@ export async function getGameWithLines(
 
   return {
     game: toGameSummary(game),
-    lines: lines.map((l) => ({
-      bookKey: l.bookKey,
-      bookName: l.book.displayName,
-      marketType: l.marketType,
-      side: l.side,
-      point: l.point,
-      priceAmerican: l.priceAmerican,
-      polledAt: l.polledAt,
-    })),
+    lines: lines.map(toLineRow),
   };
+}
+
+/** Every game on the given ET calendar date, each with its current lines (all markets). */
+export async function listGamesWithLinesForDate(dateEt: string): Promise<GameWithLines[]> {
+  const { gte, lt } = etDayBoundsUtc(dateEt);
+
+  const games = await prisma.game.findMany({
+    where: { scheduledStartUtc: { gte, lt } },
+    orderBy: { scheduledStartUtc: "asc" },
+    include: {
+      homeTeam: true,
+      awayTeam: true,
+      currentLines: {
+        include: { book: true },
+        orderBy: [{ marketType: "asc" }, { side: "asc" }, { priceAmerican: "asc" }],
+      },
+    },
+  });
+
+  return games.map((g) => ({
+    game: toGameSummary(g),
+    lines: g.currentLines.map(toLineRow),
+  }));
 }

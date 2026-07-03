@@ -18,6 +18,43 @@ function flipForUnder(result: OutcomeResult): OutcomeResult {
 }
 
 /**
+ * Reduces a team's outcomes (already ordered most-recent-first) to a hit-rate
+ * over the first `window` of them. `flip` mirrors results for the Under side
+ * of a totals market, since GameOutcome.result is stored from the Over's
+ * perspective (see gradeOutcomes.ts).
+ */
+function reduceHitRate(
+  outcomes: { result: OutcomeResult }[],
+  window: number,
+  flip: boolean
+): HitRateResult {
+  const sliced = outcomes.slice(0, window);
+
+  let hits = 0;
+  let misses = 0;
+  let pushes = 0;
+
+  for (const o of sliced) {
+    const result = flip ? flipForUnder(o.result) : o.result;
+    if (result === "hit") hits++;
+    else if (result === "miss") misses++;
+    else pushes++;
+  }
+
+  const decided = hits + misses;
+
+  return {
+    window,
+    gamesFound: sliced.length,
+    hits,
+    misses,
+    pushes,
+    hitRate: decided > 0 ? hits / decided : null,
+    record: pushes > 0 ? `${hits}-${misses}-${pushes}` : `${hits}-${misses}`,
+  };
+}
+
+/**
  * Rolling hit-rate for a team over its last `window` graded games in a market.
  * For "totals", GameOutcome.result is stored from the Over's perspective
  * (see gradeOutcomes.ts) — pass side: "under" to flip it.
@@ -30,33 +67,11 @@ export async function getTeamHitRate(
 ): Promise<HitRateResult> {
   const outcomes = await prisma.gameOutcome.findMany({
     where: { teamId, marketType },
-    include: { game: true },
     orderBy: { game: { scheduledStartUtc: "desc" } },
     take: window,
   });
 
-  let hits = 0;
-  let misses = 0;
-  let pushes = 0;
-
-  for (const o of outcomes) {
-    const result = marketType === "totals" && side === "under" ? flipForUnder(o.result) : o.result;
-    if (result === "hit") hits++;
-    else if (result === "miss") misses++;
-    else pushes++;
-  }
-
-  const decided = hits + misses;
-
-  return {
-    window,
-    gamesFound: outcomes.length,
-    hits,
-    misses,
-    pushes,
-    hitRate: decided > 0 ? hits / decided : null,
-    record: pushes > 0 ? `${hits}-${misses}-${pushes}` : `${hits}-${misses}`,
-  };
+  return reduceHitRate(outcomes, window, marketType === "totals" && side === "under");
 }
 
 export interface TeamHitRates {
@@ -77,4 +92,56 @@ export async function getTeamHitRates(teamId: string, window = DEFAULT_WINDOW): 
     getTeamHitRate(teamId, "totals", window, "under"),
   ]);
   return { h2h, spreads, totalsOver, totalsUnder };
+}
+
+function groupByTeam<T extends { teamId: string }>(rows: T[]): Map<string, T[]> {
+  const byTeam = new Map<string, T[]>();
+  for (const row of rows) {
+    const rows = byTeam.get(row.teamId) ?? [];
+    rows.push(row);
+    byTeam.set(row.teamId, rows);
+  }
+  return byTeam;
+}
+
+/**
+ * Same hit-rate views as getTeamHitRates, for many teams at once — 3 queries
+ * total (one per market type; totals is fetched once and reduced twice, for
+ * over and under) instead of 4 queries per team.
+ */
+export async function getTeamHitRatesBatch(
+  teamIds: string[],
+  window = DEFAULT_WINDOW
+): Promise<Record<string, TeamHitRates>> {
+  const uniqueIds = [...new Set(teamIds)];
+
+  const [h2hRows, spreadRows, totalsRows] = await Promise.all([
+    prisma.gameOutcome.findMany({
+      where: { teamId: { in: uniqueIds }, marketType: "h2h" },
+      orderBy: { game: { scheduledStartUtc: "desc" } },
+    }),
+    prisma.gameOutcome.findMany({
+      where: { teamId: { in: uniqueIds }, marketType: "spreads" },
+      orderBy: { game: { scheduledStartUtc: "desc" } },
+    }),
+    prisma.gameOutcome.findMany({
+      where: { teamId: { in: uniqueIds }, marketType: "totals" },
+      orderBy: { game: { scheduledStartUtc: "desc" } },
+    }),
+  ]);
+
+  const h2hByTeam = groupByTeam(h2hRows);
+  const spreadByTeam = groupByTeam(spreadRows);
+  const totalsByTeam = groupByTeam(totalsRows);
+
+  const result: Record<string, TeamHitRates> = {};
+  for (const teamId of uniqueIds) {
+    result[teamId] = {
+      h2h: reduceHitRate(h2hByTeam.get(teamId) ?? [], window, false),
+      spreads: reduceHitRate(spreadByTeam.get(teamId) ?? [], window, false),
+      totalsOver: reduceHitRate(totalsByTeam.get(teamId) ?? [], window, false),
+      totalsUnder: reduceHitRate(totalsByTeam.get(teamId) ?? [], window, true),
+    };
+  }
+  return result;
 }

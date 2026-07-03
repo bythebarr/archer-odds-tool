@@ -32,6 +32,12 @@ export default async function Home({
       <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
         MLB odds line-shopping — research/discovery only, no bet placement or tracking.
       </p>
+      <Link
+        href={`/slate?date=${date}`}
+        className="mt-2 inline-block text-sm font-medium text-zinc-600 hover:underline dark:text-zinc-400"
+      >
+        View full slate odds →
+      </Link>
 
       <div className="mt-6 flex items-center justify-between">
         <Link
