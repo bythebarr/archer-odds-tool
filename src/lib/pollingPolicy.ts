@@ -8,13 +8,21 @@ export interface TierConfig {
 }
 
 /**
+ * Also reused by ingest.ts to decide which individual games are worth an
+ * extra per-event alt-lines call — alt lines only matter once a game is
+ * close enough to be worth shopping, and per-event calls aren't cheap
+ * (~4 credits each), so this same "imminent" cutoff bounds that cost too.
+ */
+export const IMMINENT_THRESHOLD_MINUTES = 60;
+
+/**
  * Tiered polling cadence, keyed off minutes until the nearest not-yet-started
  * game's first pitch. The Odds API bills per-call (markets x regions), not
  * per-game, so the only cost lever is how often we call it — this is that lever.
  * See plan doc's "Odds Ingestion & Polling" section for the table this encodes.
  */
 export function determineTier(minutesToNearestFirstPitch: number | null): TierConfig {
-  if (minutesToNearestFirstPitch !== null && minutesToNearestFirstPitch <= 60) {
+  if (minutesToNearestFirstPitch !== null && minutesToNearestFirstPitch <= IMMINENT_THRESHOLD_MINUTES) {
     return { tier: "imminent", intervalMinutes: 5 };
   }
   if (minutesToNearestFirstPitch !== null && minutesToNearestFirstPitch <= 240) {

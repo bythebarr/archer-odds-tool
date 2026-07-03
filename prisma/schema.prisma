@@ -97,8 +97,9 @@ model OddsSnapshot {
   book        Sportsbook @relation(fields: [bookKey], references: [key])
   marketType  MarketType
   side        Side
-  point       Float? // spread/total number; null for h2h
+  point       Float? // spread/total number; genuinely null for h2h (no sentinel needed — append-only, no unique constraint)
   priceAmerican Int
+  isAlternate Boolean @default(false) // true if sourced from alternate_spreads/alternate_totals rather than the main market
 
   polledAt         DateTime @default(now())
   sourceLastUpdate DateTime // the book's own last-update time, from the Odds API payload
@@ -117,11 +118,14 @@ model CurrentOddsLine {
   book          Sportsbook @relation(fields: [bookKey], references: [key])
   marketType    MarketType
   side          Side
-  point         Float?
+  point         Float? // NOTE: stored as 0 (sentinel), never null, for h2h rows — Postgres NULL<>NULL would break
+                        // upsert idempotency for the unique constraint below otherwise. Always null in every
+                        // other table (OddsSnapshot, GameClosingLine); normalize back to null at the query layer.
   priceAmerican Int
+  isAlternate   Boolean  @default(false) // true if sourced from alternate_spreads/alternate_totals rather than the main market
   polledAt      DateTime
 
-  @@unique([gameId, bookKey, marketType, side])
+  @@unique([gameId, bookKey, marketType, side, point])
 }
 
 /// Consensus point/price captured at the last snapshot before first pitch —

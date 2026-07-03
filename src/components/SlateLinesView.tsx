@@ -28,6 +28,9 @@ const SORT_OPTIONS = [
 
 type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 
+const MAIN_LINE = "main" as const;
+type PointFilter = typeof MAIN_LINE | number;
+
 interface SlateRow {
   game: GameSummary;
   line: GameLineRow;
@@ -67,6 +70,21 @@ interface SlateLinesViewProps {
 export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
   const [sortKey, setSortKey] = useState<SortKey>("marketEv");
+  const [pointFilter, setPointFilter] = useState<PointFilter>(MAIN_LINE);
+
+  // Distinct points on offer across the whole slate for the active market —
+  // h2h has none (its point is always null), so the dropdown just won't
+  // render for that tab. Selecting one of these shops that exact number
+  // across every game, whether it's that game's main line or an alt line.
+  const pointOptions = useMemo(() => {
+    const points = new Set<number>();
+    for (const { lines } of gamesWithLines) {
+      for (const line of lines) {
+        if (line.marketType === market && line.point !== null) points.add(line.point);
+      }
+    }
+    return [...points].sort((a, b) => a - b);
+  }, [gamesWithLines, market]);
 
   const allRows = useMemo(() => {
     const rows: SlateRow[] = [];
@@ -84,7 +102,12 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
         historicalProbBySide: historicalProbBySide(market, homeHitRates, awayHitRates),
       });
 
-      for (const line of marketLines) {
+      const selectedLines =
+        pointFilter === MAIN_LINE
+          ? marketLines.filter((l) => !l.isAlternate)
+          : marketLines.filter((l) => l.point === pointFilter);
+
+      for (const line of selectedLines) {
         const econ = economics.get(lineKey(line.bookKey, line.side, line.point));
         rows.push({
           game,
@@ -95,7 +118,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
       }
     }
     return rows;
-  }, [gamesWithLines, market, hitRatesByTeam]);
+  }, [gamesWithLines, market, hitRatesByTeam, pointFilter]);
 
   const domain = useMemo(() => {
     if (allRows.length === 0) return null;
@@ -127,6 +150,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
             onClick={() => {
               setMarket(tab.key);
               setRange(null);
+              setPointFilter(MAIN_LINE);
             }}
             className={`px-3 py-2 text-sm font-medium ${
               market === tab.key
@@ -159,24 +183,47 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
             directional estimate only (small sample, no opponent/park/pitcher adjustment).
           </p>
 
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4 flex items-center justify-between gap-4">
             <p className="text-xs text-zinc-400">
               {inRange.length} of {allRows.length} lines in range
             </p>
-            <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-              Sort by
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
-              >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.key} value={opt.key}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex items-center gap-3">
+              {pointOptions.length > 0 && (
+                <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  Line
+                  <select
+                    value={pointFilter === MAIN_LINE ? MAIN_LINE : String(pointFilter)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setPointFilter(value === MAIN_LINE ? MAIN_LINE : Number(value));
+                      setRange(null);
+                    }}
+                    className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
+                  >
+                    <option value={MAIN_LINE}>Main line</option>
+                    {pointOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {formatPoint(p)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Sort by
+                <select
+                  value={sortKey}
+                  onChange={(e) => setSortKey(e.target.value as SortKey)}
+                  className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
+                >
+                  {SORT_OPTIONS.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
 
           <ul className="mt-2 divide-y divide-zinc-200 dark:divide-zinc-800">

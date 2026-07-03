@@ -25,8 +25,19 @@ function modePoint(rows: { point: number | null }[]): number | null {
  * price among books quoting that point. Upserts GameClosingLine and returns it.
  */
 async function captureClosingLine(game: Game, marketType: MarketType, side: Side) {
+  // isAlternate: false is required, not optional, once alt lines exist — a
+  // single poll now writes multiple OddsSnapshot rows per book (one per
+  // point) at the same polledAt, and without this filter the per-book
+  // "latest" dedup below could arbitrarily grab an alt-line row instead of
+  // the main line, corrupting the modePoint() consensus grading depends on.
   const snapshots = await prisma.oddsSnapshot.findMany({
-    where: { gameId: game.id, marketType, side, polledAt: { lt: game.scheduledStartUtc } },
+    where: {
+      gameId: game.id,
+      marketType,
+      side,
+      polledAt: { lt: game.scheduledStartUtc },
+      isAlternate: false,
+    },
     orderBy: { polledAt: "desc" },
   });
 

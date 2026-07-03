@@ -62,6 +62,7 @@ export interface GameLineRow {
   point: number | null;
   priceAmerican: number;
   polledAt: Date;
+  isAlternate: boolean;
 }
 
 export interface GameWithLines {
@@ -77,15 +78,20 @@ function toLineRow(l: {
   point: number | null;
   priceAmerican: number;
   polledAt: Date;
+  isAlternate: boolean;
 }): GameLineRow {
   return {
     bookKey: l.bookKey,
     bookName: l.book.displayName,
     marketType: l.marketType,
     side: l.side,
-    point: l.point,
+    // CurrentOddsLine stores 0 (a sentinel, not a real point) for h2h rows —
+    // see ingest.ts for why — normalized back to null here so every
+    // consumer sees exactly what it did before alt lines existed.
+    point: l.marketType === "h2h" ? null : l.point,
     priceAmerican: l.priceAmerican,
     polledAt: l.polledAt,
+    isAlternate: l.isAlternate,
   };
 }
 

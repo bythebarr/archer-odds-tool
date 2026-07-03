@@ -30,9 +30,12 @@ function formatTime(date: Date): string {
   }).format(date);
 }
 
-/** Best (highest decimal-odds) price per side for a game's given market, ignoring point differences across books. */
+/** Best (highest decimal-odds) main-line price per side for a game's given market. */
 function bestPricePreview(game: GameSummary, lines: GameLineRow[], market: GameLineRow["marketType"]): string | null {
-  const marketLines = lines.filter((l) => l.marketType === market);
+  // isAlternate filter is required, not cosmetic: without it, a deep alt
+  // line's price could outrank the real main line here and be shown as if
+  // it were the best available price on the main bet.
+  const marketLines = lines.filter((l) => l.marketType === market && !l.isAlternate);
   if (marketLines.length === 0) return null;
 
   const bestBySide = new Map<string, GameLineRow>();

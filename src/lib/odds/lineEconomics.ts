@@ -40,17 +40,17 @@ export function lineKey(bookKey: string, side: string, point: number | null): st
 }
 
 /**
- * Computes, per line row, EV against two fair-probability estimates: the
- * de-vigged market consensus, and the team/side's historical hit rate. Market
- * EV is only computed for rows quoting the modal point (see devig.ts) — a
- * book on an off-market point isn't the same bet, so there's nothing correct
- * to compare it against.
+ * Computes, per line row in one point-group, EV against two fair-probability
+ * estimates: the de-vigged market consensus, and the team/side's historical
+ * hit rate. Market EV is only computed for rows quoting the modal point
+ * within this group (see devig.ts) — a book on an off-market point isn't the
+ * same bet, so there's nothing correct to compare it against.
  */
-export function computeLineEconomics({
-  marketType,
-  lines,
-  historicalProbBySide,
-}: EconomicsContext): Map<string, RowEconomics> {
+function computeEconomicsForGroup(
+  lines: GameLineRow[],
+  marketType: MarketType,
+  historicalProbBySide: Partial<Record<string, number | null>>
+): Map<string, RowEconomics> {
   const sideA = SIDE_A[marketType];
   const sideB = SIDE_B[marketType];
   const consensus = consensusFairProbability(buildPairs(lines, marketType));
@@ -74,6 +74,39 @@ export function computeLineEconomics({
         historicalFairProb !== null ? calculateEv(historicalFairProb, line.priceAmerican) : null,
     });
   }
+  return result;
+}
+
+/**
+ * Computes EV for every line, main and alt alike. Main-line rows (isAlternate
+ * false) get one consensus across the whole side, exactly as before alt
+ * lines existed. Alt-line rows can't share that consensus — a -1.5 price
+ * isn't the same bet as a -2.5 price — so they're grouped by their own point
+ * and each point gets its own independent consensus/EV, reusing the same
+ * pairing+devig math per group.
+ */
+export function computeLineEconomics({
+  marketType,
+  lines,
+  historicalProbBySide,
+}: EconomicsContext): Map<string, RowEconomics> {
+  const mainLines = lines.filter((l) => !l.isAlternate);
+  const altLines = lines.filter((l) => l.isAlternate);
+
+  const result = computeEconomicsForGroup(mainLines, marketType, historicalProbBySide);
+
+  const altByPoint = new Map<number | null, GameLineRow[]>();
+  for (const line of altLines) {
+    const group = altByPoint.get(line.point) ?? [];
+    group.push(line);
+    altByPoint.set(line.point, group);
+  }
+  for (const group of altByPoint.values()) {
+    for (const [key, econ] of computeEconomicsForGroup(group, marketType, historicalProbBySide)) {
+      result.set(key, econ);
+    }
+  }
+
   return result;
 }
 

@@ -55,12 +55,17 @@ interface GameLinesViewProps {
 export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
   const marketLines = useMemo(() => lines.filter((l) => l.marketType === market), [lines, market]);
+  // The slider/BEST-badge/main list only ever compare main-line prices —
+  // an alt point isn't the same bet, so it can't share that domain. Alt
+  // lines get their own section below, grouped by point instead.
+  const mainLines = useMemo(() => marketLines.filter((l) => !l.isAlternate), [marketLines]);
+  const altLines = useMemo(() => marketLines.filter((l) => l.isAlternate), [marketLines]);
 
   const domain = useMemo(() => {
-    if (marketLines.length === 0) return null;
-    const decimals = marketLines.map((l) => americanToDecimal(l.priceAmerican));
+    if (mainLines.length === 0) return null;
+    const decimals = mainLines.map((l) => americanToDecimal(l.priceAmerican));
     return { min: Math.min(...decimals), max: Math.max(...decimals) };
-  }, [marketLines]);
+  }, [mainLines]);
 
   const [range, setRange] = useState<[number, number] | null>(null);
   const effectiveRange: [number, number] | null =
@@ -68,7 +73,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
 
   const sides = useMemo(() => {
     const bySide = new Map<string, GameLineRow[]>();
-    for (const line of marketLines) {
+    for (const line of mainLines) {
       const rows = bySide.get(line.side) ?? [];
       rows.push(line);
       bySide.set(line.side, rows);
@@ -77,7 +82,7 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
       rows.sort((a, b) => americanToDecimal(b.priceAmerican) - americanToDecimal(a.priceAmerican));
     }
     return bySide;
-  }, [marketLines]);
+  }, [mainLines]);
 
   const economics = useMemo(
     () =>
@@ -88,6 +93,38 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
       }),
     [market, marketLines, homeHitRates, awayHitRates]
   );
+
+  /** Alt points per side, ordered by proximity to that side's main point; each point's rows sorted by EV. */
+  const altSectionsBySide = useMemo(() => {
+    const byPointBySide = new Map<string, Map<number | null, GameLineRow[]>>();
+    for (const line of altLines) {
+      const byPoint = byPointBySide.get(line.side) ?? new Map<number | null, GameLineRow[]>();
+      const rows = byPoint.get(line.point) ?? [];
+      rows.push(line);
+      byPoint.set(line.point, rows);
+      byPointBySide.set(line.side, byPoint);
+    }
+
+    const result = new Map<string, { point: number | null; rows: GameLineRow[] }[]>();
+    for (const [side, byPoint] of byPointBySide) {
+      const mainPoint = sides.get(side)?.[0]?.point ?? null;
+      const groups = [...byPoint.entries()]
+        .sort(([a], [b]) => {
+          if (a === null || b === null || mainPoint === null) return (a ?? 0) - (b ?? 0);
+          return Math.abs(a - mainPoint) - Math.abs(b - mainPoint);
+        })
+        .map(([point, rows]) => ({
+          point,
+          rows: [...rows].sort(
+            (a, b) =>
+              (economics.get(lineKey(b.bookKey, b.side, b.point))?.marketEv ?? -Infinity) -
+              (economics.get(lineKey(a.bookKey, a.side, a.point))?.marketEv ?? -Infinity)
+          ),
+        }));
+      result.set(side, groups);
+    }
+    return result;
+  }, [altLines, sides, economics]);
 
   return (
     <div>
@@ -207,6 +244,53 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
                       );
                     })}
                   </ul>
+
+                  {(altSectionsBySide.get(side) ?? []).length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                        Alt lines
+                      </h4>
+                      {altSectionsBySide.get(side)!.map(({ point, rows: altRows }) => (
+                        <div key={String(point)} className="mt-2">
+                          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                            {formatPoint(point)}
+                          </p>
+                          <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                            {altRows.map((row) => {
+                              const econ = economics.get(lineKey(row.bookKey, row.side, row.point));
+                              return (
+                                <li key={row.bookKey} className="py-1.5">
+                                  <div className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-400">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <Logo
+                                        sources={bookLogoSources(row.bookKey)}
+                                        alt={row.bookName}
+                                        fallbackText={
+                                          BOOK_INITIALS[row.bookKey] ?? row.bookKey.slice(0, 2).toUpperCase()
+                                        }
+                                        color={BOOK_COLORS[row.bookKey]}
+                                        size={14}
+                                      />
+                                      {row.bookName}
+                                    </span>
+                                    <span>{formatAmerican(row.priceAmerican)}</span>
+                                  </div>
+                                  <div className="flex justify-end gap-3 text-xs">
+                                    <span className={evColorClass(econ?.marketEv ?? null)}>
+                                      Mkt EV: {formatEv(econ?.marketEv ?? null)}
+                                    </span>
+                                    <span className={evColorClass(econ?.historicalEv ?? null)}>
+                                      Hist EV: {formatEv(econ?.historicalEv ?? null)}
+                                    </span>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
