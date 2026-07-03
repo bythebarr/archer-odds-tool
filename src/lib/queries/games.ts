@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { etDayBoundsUtc, todayEt } from "@/lib/dateEt";
 import type { MarketType } from "@/generated/prisma/client";
@@ -95,8 +96,13 @@ function toLineRow(l: {
   };
 }
 
-/** A single game plus its current lines, optionally filtered to one market. */
-export async function getGameWithLines(
+/**
+ * A single game plus its current lines, optionally filtered to one market.
+ * Wrapped in React's `cache()` so the game page's `generateMetadata` and its
+ * page component (both calling this per request) share one DB round-trip
+ * instead of two.
+ */
+export const getGameWithLines = cache(async function getGameWithLines(
   gameId: string,
   market?: MarketType
 ): Promise<GameWithLines | null> {
@@ -116,7 +122,7 @@ export async function getGameWithLines(
     game: toGameSummary(game),
     lines: lines.map(toLineRow),
   };
-}
+});
 
 /** Every game on the given ET calendar date, each with its current lines (all markets). */
 export async function listGamesWithLinesForDate(dateEt: string): Promise<GameWithLines[]> {

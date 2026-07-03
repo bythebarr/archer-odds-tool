@@ -15,12 +15,28 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const SITE_DESCRIPTION = "MLB odds line-shopping, hit-rates, and EV — research/discovery only.";
+
 export const metadata: Metadata = {
-  title: "archer-odds-tool",
-  description: "MLB odds line-shopping, hit-rates, and EV — research/discovery only.",
+  title: {
+    default: "archer — MLB odds, hit-rates & EV",
+    template: "%s · archer",
+  },
+  description: SITE_DESCRIPTION,
   appleWebApp: {
     title: "archer",
     statusBarStyle: "default",
+  },
+  openGraph: {
+    siteName: "archer",
+    title: "archer — MLB odds, hit-rates & EV",
+    description: SITE_DESCRIPTION,
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "archer — MLB odds, hit-rates & EV",
+    description: SITE_DESCRIPTION,
   },
 };
 

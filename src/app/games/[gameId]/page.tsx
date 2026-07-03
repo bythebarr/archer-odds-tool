@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
 import { getTeamHitRates } from "@/lib/queries/hitRate";
@@ -8,6 +9,27 @@ import { GameLinesView } from "@/components/GameLinesView";
 import { MatchupPanel } from "@/components/MatchupPanel";
 import { TeamBadge } from "@/components/TeamBadge";
 import { BackLink } from "@/components/BackLink";
+
+/** Shares getGameWithLines's per-request cache with the page component below, so this costs no extra DB round-trip. */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ gameId: string }>;
+}): Promise<Metadata> {
+  const { gameId } = await params;
+  const result = await getGameWithLines(gameId);
+  if (!result) return {};
+
+  const { game } = result;
+  const title = `${game.awayTeam.abbreviation} @ ${game.homeTeam.abbreviation}`;
+  const description = `${game.awayTeam.name} at ${game.homeTeam.name} — line-shopping, hit-rates, and EV.`;
+  return {
+    title,
+    description,
+    openGraph: { title, description },
+    twitter: { title, description },
+  };
+}
 
 export default async function GamePage({
   params,
