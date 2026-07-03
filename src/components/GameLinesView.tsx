@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { GameLineRow, GameSummary } from "@/lib/queries/games";
 import type { TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
+import { calculateEv } from "@/lib/odds/devig";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint, formatHitRate } from "@/lib/odds/format";
 import { BOOK_INITIALS, BOOK_COLORS } from "@/lib/odds/bookAllowlist";
@@ -53,9 +54,17 @@ interface GameLinesViewProps {
   lines: GameLineRow[];
   homeHitRates: TeamHitRates;
   awayHitRates: TeamHitRates;
+  /** Archer model's home/away win probability (see winProbability.ts) — only meaningful for the moneyline market. */
+  archerWinProb: { home: number | null; away: number | null } | null;
 }
 
-export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameLinesViewProps) {
+export function GameLinesView({
+  game,
+  lines,
+  homeHitRates,
+  awayHitRates,
+  archerWinProb,
+}: GameLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
   const [pointFilter, setPointFilter] = useState<PointFilter>(MAIN_LINE);
   const marketLines = useMemo(() => lines.filter((l) => l.marketType === market), [lines, market]);
@@ -115,6 +124,13 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
       }),
     [market, marketLines, homeHitRates, awayHitRates]
   );
+
+  /** EV of one line against the Archer model's win probability — moneyline only; null elsewhere or if the model has no probability yet. */
+  function archerEvForSide(side: string, priceAmerican: number): number | null {
+    if (market !== "h2h" || !archerWinProb) return null;
+    const prob = side === "home" ? archerWinProb.home : side === "away" ? archerWinProb.away : null;
+    return prob !== null ? calculateEv(prob, priceAmerican) : null;
+  }
 
   /** Alt points per side, ordered by proximity to that side's main point; each point's rows sorted by EV. */
   const altSectionsBySide = useMemo(() => {
@@ -210,6 +226,8 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
           <p className="mt-4 text-xs text-zinc-400">
             Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
             directional estimate only (small sample, no opponent/park/pitcher adjustment).
+            {market === "h2h" &&
+              " Archer EV = vs. the Archer model's pitcher+form win probability (see Matchup panel above)."}
           </p>
 
           <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -284,6 +302,11 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
                             <span className={evColorClass(econ?.historicalEv ?? null)}>
                               Hist EV: {formatEv(econ?.historicalEv ?? null)}
                             </span>
+                            {market === "h2h" && (
+                              <span className={evColorClass(archerEvForSide(row.side, row.priceAmerican))}>
+                                Archer EV: {formatEv(archerEvForSide(row.side, row.priceAmerican))}
+                              </span>
+                            )}
                           </div>
                         </li>
                       );

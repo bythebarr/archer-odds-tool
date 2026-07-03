@@ -51,7 +51,8 @@ export interface FetchMlbOddsResult {
  * Fetches current MLB odds across the given markets and US regions.
  * Costs `markets.length * regions.length` credits per The Odds API's quota
  * formula — us2 is required for espnbet, which lives outside the base us
- * region (fanatics and the rest are already covered by us).
+ * region (the rest of ALLOWED_BOOK_KEYS is covered by us; Caesars/Fanatics
+ * also live in us but are paid-tier gated — see bookAllowlist.ts).
  *
  * alternate_spreads/alternate_totals are NOT valid here — The Odds API
  * rejects them with INVALID_MARKET on this bulk endpoint ("featured markets"

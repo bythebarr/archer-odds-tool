@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
 import { getTeamHitRates } from "@/lib/queries/hitRate";
 import { getGameMatchup } from "@/lib/queries/matchup";
+import { h2hMarketConsensus } from "@/lib/odds/lineEconomics";
+import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { teamLogoSources } from "@/lib/logos";
 import { TEAM_COLORS } from "@/lib/teamColors";
 import { GameLinesView } from "@/components/GameLinesView";
@@ -24,6 +26,9 @@ export default async function GamePage({
     getTeamHitRates(game.awayTeam.id),
     getGameMatchup(gameId),
   ]);
+
+  const marketH2h = h2hMarketConsensus(lines);
+  const archerProb = matchup ? computeArcherWinProbability(matchup) : null;
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
@@ -66,9 +71,9 @@ export default async function GamePage({
         ET · {game.status}
       </p>
 
-      {matchup && (
+      {matchup && archerProb && (
         <div className="mt-6">
-          <MatchupPanel game={game} matchup={matchup} />
+          <MatchupPanel game={game} matchup={matchup} archerProb={archerProb} marketProb={marketH2h} />
         </div>
       )}
 
@@ -78,6 +83,7 @@ export default async function GamePage({
           lines={lines}
           homeHitRates={homeHitRates}
           awayHitRates={awayHitRates}
+          archerWinProb={archerProb ? { home: archerProb.homeProb, away: archerProb.awayProb } : null}
         />
       </div>
     </div>

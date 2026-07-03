@@ -1,7 +1,12 @@
 import type { GameLineRow } from "@/lib/queries/games";
 import type { TeamHitRates } from "@/lib/queries/hitRate";
 import type { MarketType } from "@/generated/prisma/client";
-import { consensusFairProbability, calculateEv, type DevigPair } from "./devig";
+import {
+  consensusFairProbability,
+  calculateEv,
+  type ConsensusFairProbability,
+  type DevigPair,
+} from "./devig";
 
 /** The two sides paired together for devig purposes, per market. */
 const SIDE_A: Record<MarketType, string> = { h2h: "home", spreads: "home", totals: "over" };
@@ -37,6 +42,15 @@ export interface EconomicsContext {
 
 export function lineKey(bookKey: string, side: string, point: number | null): string {
   return `${bookKey}-${side}-${point}`;
+}
+
+/**
+ * De-vigged market consensus win probability for a game's moneyline market
+ * (fairProbA = home, fairProbB = away), reusable outside computeLineEconomics
+ * — e.g. to compare against the Archer model's own win probability.
+ */
+export function h2hMarketConsensus(lines: GameLineRow[]): ConsensusFairProbability {
+  return consensusFairProbability(buildPairs(lines.filter((l) => l.marketType === "h2h"), "h2h"));
 }
 
 /**
