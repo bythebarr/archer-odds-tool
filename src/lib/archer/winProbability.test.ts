@@ -19,8 +19,8 @@ function form(overrides: Partial<TeamForm> = {}): TeamForm {
   };
 }
 
-function pitcher(era: number): PitcherInfo {
-  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted: 10 };
+function pitcher(era: number, gamesStarted = 10): PitcherInfo {
+  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted };
 }
 
 function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
@@ -54,6 +54,30 @@ describe("computeArcherWinProbability", () => {
       matchup({ awayForm: form({ last10: record(9, 1), last5: record(5, 0) }) })
     );
     expect(betterAwayForm.awayProb!).toBeGreaterThan(baseline.awayProb!);
+  });
+
+  it("discounts a small-sample ERA toward neutral instead of trusting it at full strength", () => {
+    const fewStarts = computeArcherWinProbability(
+      matchup({ homePitcher: pitcher(1.0, 2) })
+    );
+    const fullSample = computeArcherWinProbability(
+      matchup({ homePitcher: pitcher(1.0, 10) })
+    );
+    expect(fewStarts.homeProb!).toBeGreaterThan(0.5);
+    expect(fewStarts.homeProb!).toBeLessThan(fullSample.homeProb!);
+  });
+
+  it("caps win probability even when every input points the same direction", () => {
+    const result = computeArcherWinProbability(
+      matchup({
+        homePitcher: pitcher(0.5),
+        awayPitcher: pitcher(8.0),
+        homeForm: form({ homeRecord: record(9, 1), last10: record(9, 1), last5: record(5, 0) }),
+        awayForm: form({ awayRecord: record(1, 9), last10: record(1, 9), last5: record(0, 5) }),
+      })
+    );
+    expect(result.homeProb!).toBeCloseTo(0.85, 10);
+    expect(result.awayProb!).toBeCloseTo(0.15, 10);
   });
 
   it("falls back to form alone when a probable pitcher isn't set yet", () => {

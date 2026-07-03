@@ -21,6 +21,8 @@ import type { RecordSplit, TeamForm } from "@/lib/queries/teamForm";
 const LEAGUE_AVERAGE_ERA = 4.2;
 /** Controls how sharply an ERA gap moves quality away from 0.5 — larger = gentler. */
 const ERA_QUALITY_SPREAD = 1.4;
+/** Starts needed before a pitcher's season ERA is trusted at full strength; below this the score is shrunk toward neutral (0.5) proportionally, since a handful of starts is too noisy to weight the same as a full sample. */
+const PITCHER_FULL_CONFIDENCE_STARTS = 8;
 
 /** Recency weights for team-form components; renormalized over whichever splits actually have games played (see teamFormScore). Last10 leads so a hot/cold streak reads as such, rather than being diluted by the season-long split. */
 const FORM_WEIGHTS = { split: 0.35, last10: 0.4, last5: 0.25 } as const;
@@ -33,6 +35,10 @@ const FORM_WEIGHT = 0.6;
 const HOME_FIELD_LOGIT = Math.log(0.54 / 0.46);
 /** Scales the (roughly -0.3..0.3) strength differential into logit space. */
 const STRENGTH_SENSITIVITY = 6;
+
+/** Ceiling/floor on the final win probability. A single 9-inning game stays inherently volatile even when pitcher and form all point the same way, and real markets essentially never price a lone game beyond this — so the model shouldn't either, regardless of how strongly its inputs agree. */
+const PROB_CEILING = 0.85;
+const PROB_FLOOR = 1 - PROB_CEILING;
 
 function logistic(x: number): number {
   return 1 / (1 + Math.exp(-x));
@@ -56,10 +62,12 @@ function teamFormScore(form: TeamForm, isHome: boolean): number | null {
   return available.reduce((sum, [v, w]) => sum + v * w, 0) / weightSum;
 }
 
-/** Pitcher quality in the same [0,1] units as teamFormScore: 0.5 at league-average ERA. Null if no probable starter or no ERA yet. */
+/** Pitcher quality in the same [0,1] units as teamFormScore: 0.5 at league-average ERA. Shrunk toward 0.5 when gamesStarted is below the full-confidence threshold, since an ERA over a handful of starts is too noisy to trust outright. Null if no probable starter or no ERA yet. */
 function pitcherQualityScore(pitcher: PitcherInfo | null): number | null {
   if (!pitcher || pitcher.era === null) return null;
-  return logistic((LEAGUE_AVERAGE_ERA - pitcher.era) / ERA_QUALITY_SPREAD);
+  const rawScore = logistic((LEAGUE_AVERAGE_ERA - pitcher.era) / ERA_QUALITY_SPREAD);
+  const confidence = Math.min(pitcher.gamesStarted / PITCHER_FULL_CONFIDENCE_STARTS, 1);
+  return 0.5 + confidence * (rawScore - 0.5);
 }
 
 /** Blends pitcher quality and form into one team-strength score, falling back to whichever component is actually available. */
@@ -93,6 +101,7 @@ export function computeArcherWinProbability(matchup: GameMatchup): ArcherWinProb
     return { homeProb: null, awayProb: null, homeStrength, awayStrength, usedPitcher };
   }
 
-  const homeProb = logistic((homeStrength - awayStrength) * STRENGTH_SENSITIVITY + HOME_FIELD_LOGIT);
+  const rawHomeProb = logistic((homeStrength - awayStrength) * STRENGTH_SENSITIVITY + HOME_FIELD_LOGIT);
+  const homeProb = Math.min(Math.max(rawHomeProb, PROB_FLOOR), PROB_CEILING);
   return { homeProb, awayProb: 1 - homeProb, homeStrength, awayStrength, usedPitcher };
 }
