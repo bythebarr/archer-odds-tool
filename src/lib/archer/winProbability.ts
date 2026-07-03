@@ -22,12 +22,12 @@ const LEAGUE_AVERAGE_ERA = 4.2;
 /** Controls how sharply an ERA gap moves quality away from 0.5 — larger = gentler. */
 const ERA_QUALITY_SPREAD = 1.4;
 
-/** Recency weights for team-form components; renormalized over whichever splits actually have games played (see teamFormScore). */
-const FORM_WEIGHTS = { split: 0.5, last10: 0.3, last5: 0.2 } as const;
+/** Recency weights for team-form components; renormalized over whichever splits actually have games played (see teamFormScore). Last10 leads so a hot/cold streak reads as such, rather than being diluted by the season-long split. */
+const FORM_WEIGHTS = { split: 0.35, last10: 0.4, last5: 0.25 } as const;
 
-/** Relative weight of starting pitcher vs. team form; renormalized to form-only if no probable pitcher/ERA is set yet. */
-const PITCHER_WEIGHT = 0.55;
-const FORM_WEIGHT = 0.45;
+/** Relative weight of starting pitcher vs. team form; renormalized to form-only if no probable pitcher/ERA is set yet. Form leads — a close pitcher matchup shouldn't cancel out a clear recent-form edge. */
+const PITCHER_WEIGHT = 0.4;
+const FORM_WEIGHT = 0.6;
 
 /** MLB's long-run home win rate is ~54% — applied as a logit shift on top of the strength differential. */
 const HOME_FIELD_LOGIT = Math.log(0.54 / 0.46);
