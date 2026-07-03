@@ -7,11 +7,11 @@ import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { calculateEv } from "@/lib/odds/devig";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint, formatHitRate } from "@/lib/odds/format";
-import { BOOK_INITIALS, BOOK_COLORS } from "@/lib/odds/bookAllowlist";
-import { bookLogoSources, teamLogoSources } from "@/lib/logos";
-import { TEAM_COLORS } from "@/lib/teamColors";
 import { PriceRangeSlider } from "./PriceRangeSlider";
-import { Logo } from "./Logo";
+import { MarketTabs } from "./MarketTabs";
+import { TeamBadge } from "./TeamBadge";
+import { BookBadge } from "./BookBadge";
+import { PointFilterSelect, MAIN_LINE, type PointFilter } from "./PointFilterSelect";
 
 const SIDE_TEAM_ABBR: Record<string, (game: GameSummary) => string | null> = {
   home: (g) => g.homeTeam.abbreviation,
@@ -19,15 +19,6 @@ const SIDE_TEAM_ABBR: Record<string, (game: GameSummary) => string | null> = {
   over: () => null,
   under: () => null,
 };
-
-const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
-  { key: "h2h", label: "Moneyline" },
-  { key: "spreads", label: "Spread" },
-  { key: "totals", label: "Total" },
-];
-
-const MAIN_LINE = "main" as const;
-type PointFilter = typeof MAIN_LINE | number;
 
 /** Hit-rate caption for a given market tab + side, given both teams' precomputed rates. */
 function hitRateCaption(
@@ -166,46 +157,26 @@ export function GameLinesView({
 
   return (
     <div>
-      <div className="sticky top-0 z-10 flex gap-2 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        {MARKET_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => {
-              setMarket(tab.key);
-              setRange(null);
-              setPointFilter(MAIN_LINE);
-            }}
-            className={`px-3 py-2 text-sm font-medium ${
-              market === tab.key
-                ? "border-b-2 border-zinc-900 text-zinc-900 dark:border-zinc-50 dark:text-zinc-50"
-                : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <MarketTabs
+        market={market}
+        onChange={(m) => {
+          setMarket(m);
+          setRange(null);
+          setPointFilter(MAIN_LINE);
+        }}
+      />
 
       {pointOptions.length > 0 && (
-        <label className="mt-4 flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-          Line
-          <select
-            value={pointFilter === MAIN_LINE ? MAIN_LINE : String(pointFilter)}
-            onChange={(e) => {
-              const value = e.target.value;
-              setPointFilter(value === MAIN_LINE ? MAIN_LINE : Number(value));
+        <div className="mt-4">
+          <PointFilterSelect
+            pointOptions={pointOptions}
+            value={pointFilter}
+            onChange={(v) => {
+              setPointFilter(v);
               setRange(null);
             }}
-            className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
-          >
-            <option value={MAIN_LINE}>Main line</option>
-            {pointOptions.map((p) => (
-              <option key={p} value={p}>
-                {formatPoint(p)}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
       )}
 
       {!domain || !effectiveRange ? (
@@ -244,12 +215,7 @@ export function GameLinesView({
                 <div key={side}>
                   <h3 className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                     {teamAbbr && (
-                      <Logo
-                        sources={teamLogoSources(teamAbbr)}
-                        alt={SIDE_LABELS[side]?.(game) ?? side}
-                        fallbackText={teamAbbr}
-                        color={TEAM_COLORS[teamAbbr]}
-                      />
+                      <TeamBadge abbreviation={teamAbbr} name={SIDE_LABELS[side]?.(game) ?? side} />
                     )}
                     {SIDE_LABELS[side]?.(game) ?? side}
                   </h3>
@@ -277,13 +243,7 @@ export function GameLinesView({
                             }`}
                           >
                             <span className="inline-flex items-center gap-1.5">
-                              <Logo
-                                sources={bookLogoSources(row.bookKey)}
-                                alt={row.bookName}
-                                fallbackText={BOOK_INITIALS[row.bookKey] ?? row.bookKey.slice(0, 2).toUpperCase()}
-                                color={BOOK_COLORS[row.bookKey]}
-                                size={16}
-                              />
+                              <BookBadge bookKey={row.bookKey} bookName={row.bookName} size={16} />
                               {row.bookName}
                               {isBest && (
                                 <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
@@ -330,15 +290,7 @@ export function GameLinesView({
                                 <li key={row.bookKey} className="py-1.5">
                                   <div className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-400">
                                     <span className="inline-flex items-center gap-1.5">
-                                      <Logo
-                                        sources={bookLogoSources(row.bookKey)}
-                                        alt={row.bookName}
-                                        fallbackText={
-                                          BOOK_INITIALS[row.bookKey] ?? row.bookKey.slice(0, 2).toUpperCase()
-                                        }
-                                        color={BOOK_COLORS[row.bookKey]}
-                                        size={14}
-                                      />
+                                      <BookBadge bookKey={row.bookKey} bookName={row.bookName} size={14} />
                                       {row.bookName}
                                     </span>
                                     <span>{formatAmerican(row.priceAmerican)}</span>

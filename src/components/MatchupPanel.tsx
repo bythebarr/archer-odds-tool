@@ -3,9 +3,7 @@ import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { ArcherWinProbability } from "@/lib/archer/winProbability";
 import type { ConsensusFairProbability } from "@/lib/odds/devig";
 import { formatRecordSplit, formatEra } from "@/lib/odds/format";
-import { teamLogoSources } from "@/lib/logos";
-import { TEAM_COLORS } from "@/lib/teamColors";
-import { Logo } from "./Logo";
+import { TeamBadge } from "./TeamBadge";
 
 function PitcherLine({ pitcher }: { pitcher: PitcherInfo | null }) {
   if (!pitcher) {
@@ -92,12 +90,7 @@ export function MatchupPanel({ game, matchup, archerProb, marketProb }: MatchupP
       <div className="mt-3 grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            <Logo
-              sources={teamLogoSources(game.awayTeam.abbreviation)}
-              alt={game.awayTeam.name}
-              fallbackText={game.awayTeam.abbreviation}
-              color={TEAM_COLORS[game.awayTeam.abbreviation]}
-            />
+            <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} />
             {game.awayTeam.abbreviation}
           </h3>
           <div className="mt-2 space-y-2">
@@ -112,12 +105,7 @@ export function MatchupPanel({ game, matchup, archerProb, marketProb }: MatchupP
 
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            <Logo
-              sources={teamLogoSources(game.homeTeam.abbreviation)}
-              alt={game.homeTeam.name}
-              fallbackText={game.homeTeam.abbreviation}
-              color={TEAM_COLORS[game.homeTeam.abbreviation]}
-            />
+            <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} />
             {game.homeTeam.abbreviation}
           </h3>
           <div className="mt-2 space-y-2">

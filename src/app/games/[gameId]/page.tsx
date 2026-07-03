@@ -4,11 +4,9 @@ import { getTeamHitRates } from "@/lib/queries/hitRate";
 import { getGameMatchup } from "@/lib/queries/matchup";
 import { h2hMarketConsensus } from "@/lib/odds/lineEconomics";
 import { computeArcherWinProbability } from "@/lib/archer/winProbability";
-import { teamLogoSources } from "@/lib/logos";
-import { TEAM_COLORS } from "@/lib/teamColors";
 import { GameLinesView } from "@/components/GameLinesView";
 import { MatchupPanel } from "@/components/MatchupPanel";
-import { Logo } from "@/components/Logo";
+import { TeamBadge } from "@/components/TeamBadge";
 import { BackLink } from "@/components/BackLink";
 
 export default async function GamePage({
@@ -38,24 +36,12 @@ export default async function GamePage({
 
       <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
         <span className="inline-flex items-center gap-2">
-          <Logo
-            sources={teamLogoSources(game.awayTeam.abbreviation)}
-            alt={game.awayTeam.name}
-            fallbackText={game.awayTeam.abbreviation}
-            color={TEAM_COLORS[game.awayTeam.abbreviation]}
-            size={24}
-          />
+          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} size={24} />
           {game.awayTeam.name}
         </span>
         <span>@</span>
         <span className="inline-flex items-center gap-2">
-          <Logo
-            sources={teamLogoSources(game.homeTeam.abbreviation)}
-            alt={game.homeTeam.name}
-            fallbackText={game.homeTeam.abbreviation}
-            color={TEAM_COLORS[game.homeTeam.abbreviation]}
-            size={24}
-          />
+          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} size={24} />
           {game.homeTeam.name}
         </span>
       </h1>

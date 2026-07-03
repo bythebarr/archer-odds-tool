@@ -5,15 +5,8 @@ import Link from "next/link";
 import type { GameLineRow, GameSummary, GameWithLines } from "@/lib/queries/games";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatPoint } from "@/lib/odds/format";
-import { teamLogoSources } from "@/lib/logos";
-import { TEAM_COLORS } from "@/lib/teamColors";
-import { Logo } from "./Logo";
-
-const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
-  { key: "h2h", label: "Moneyline" },
-  { key: "spreads", label: "Spread" },
-  { key: "totals", label: "Total" },
-];
+import { MarketTabs } from "./MarketTabs";
+import { TeamBadge } from "./TeamBadge";
 
 const SIDE_ABBR: Record<string, (g: GameSummary) => string> = {
   home: (g) => g.homeTeam.abbreviation,
@@ -72,21 +65,7 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
 
   return (
     <div>
-      <div className="sticky top-0 z-10 flex gap-2 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        {MARKET_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setMarket(tab.key)}
-            className={`px-3 py-2 text-sm font-medium ${
-              market === tab.key
-                ? "border-b-2 border-zinc-900 text-zinc-900 dark:border-zinc-50 dark:text-zinc-50"
-                : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <MarketTabs market={market} onChange={setMarket} />
 
       <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
         {gamesWithLines.length === 0 && (
@@ -103,19 +82,9 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
                   <span className="flex items-center gap-1.5 font-medium text-zinc-900 dark:text-zinc-50">
-                    <Logo
-                      sources={teamLogoSources(g.awayTeam.abbreviation)}
-                      alt={g.awayTeam.name}
-                      fallbackText={g.awayTeam.abbreviation}
-                      color={TEAM_COLORS[g.awayTeam.abbreviation]}
-                    />
+                    <TeamBadge abbreviation={g.awayTeam.abbreviation} name={g.awayTeam.name} />
                     {g.awayTeam.abbreviation} @ {g.homeTeam.abbreviation}
-                    <Logo
-                      sources={teamLogoSources(g.homeTeam.abbreviation)}
-                      alt={g.homeTeam.name}
-                      fallbackText={g.homeTeam.abbreviation}
-                      color={TEAM_COLORS[g.homeTeam.abbreviation]}
-                    />
+                    <TeamBadge abbreviation={g.homeTeam.abbreviation} name={g.homeTeam.name} />
                   </span>
                   <span className="text-xs text-zinc-500 dark:text-zinc-400">
                     {g.awayTeam.name} at {g.homeTeam.name}
