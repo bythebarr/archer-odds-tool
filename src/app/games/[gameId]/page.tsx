@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
 import { getTeamHitRates } from "@/lib/queries/hitRate";
+import { teamLogoSources } from "@/lib/logos";
 import { GameLinesView } from "@/components/GameLinesView";
+import { Logo } from "@/components/Logo";
 
 export default async function GamePage({
   params,
@@ -25,8 +27,20 @@ export default async function GamePage({
         ← Today&apos;s games
       </Link>
 
-      <h1 className="mt-2 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <h1 className="mt-2 flex items-center gap-2 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <Logo
+          sources={teamLogoSources(game.awayTeam.abbreviation)}
+          alt={game.awayTeam.name}
+          fallbackText={game.awayTeam.abbreviation}
+          size={24}
+        />
         {game.awayTeam.name} @ {game.homeTeam.name}
+        <Logo
+          sources={teamLogoSources(game.homeTeam.abbreviation)}
+          alt={game.homeTeam.name}
+          fallbackText={game.homeTeam.abbreviation}
+          size={24}
+        />
       </h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         {new Intl.DateTimeFormat("en-US", {

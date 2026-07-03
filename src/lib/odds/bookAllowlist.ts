@@ -12,3 +12,13 @@ export const ALLOWED_BOOK_KEYS = [
   "betrivers",
   "espnbet",
 ] as const;
+
+/** Short fallback label shown in place of a book's logo until one is provided (see public/logos/books/README.md). */
+export const BOOK_INITIALS: Record<string, string> = {
+  draftkings: "DK",
+  fanduel: "FD",
+  betmgm: "MGM",
+  williamhill_us: "CZR",
+  betrivers: "BR",
+  espnbet: "ESPN",
+};

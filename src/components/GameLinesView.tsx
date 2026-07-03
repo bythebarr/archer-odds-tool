@@ -6,7 +6,17 @@ import type { TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint, formatHitRate } from "@/lib/odds/format";
+import { BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
+import { bookLogoSources, teamLogoSources } from "@/lib/logos";
 import { PriceRangeSlider } from "./PriceRangeSlider";
+import { Logo } from "./Logo";
+
+const SIDE_TEAM_ABBR: Record<string, (game: GameSummary) => string | null> = {
+  home: (g) => g.homeTeam.abbreviation,
+  away: (g) => g.awayTeam.abbreviation,
+  over: () => null,
+  under: () => null,
+};
 
 const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
   { key: "h2h", label: "Moneyline" },
@@ -127,9 +137,18 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
               });
               const bestKey = inRange[0] ? lineKey(inRange[0].bookKey, inRange[0].side, inRange[0].point) : null;
 
+              const teamAbbr = SIDE_TEAM_ABBR[side]?.(game) ?? null;
+
               return (
                 <div key={side}>
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                    {teamAbbr && (
+                      <Logo
+                        sources={teamLogoSources(teamAbbr)}
+                        alt={SIDE_LABELS[side]?.(game) ?? side}
+                        fallbackText={teamAbbr}
+                      />
+                    )}
                     {SIDE_LABELS[side]?.(game) ?? side}
                   </h3>
                   <p className="text-xs text-zinc-400">
@@ -155,7 +174,13 @@ export function GameLinesView({ game, lines, homeHitRates, awayHitRates }: GameL
                                 : "text-zinc-600 dark:text-zinc-400"
                             }`}
                           >
-                            <span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <Logo
+                                sources={bookLogoSources(row.bookKey)}
+                                alt={row.bookName}
+                                fallbackText={BOOK_INITIALS[row.bookKey] ?? row.bookKey.slice(0, 2).toUpperCase()}
+                                size={16}
+                              />
                               {row.bookName}
                               {isBest && (
                                 <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">

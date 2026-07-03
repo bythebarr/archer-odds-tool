@@ -5,6 +5,8 @@ import Link from "next/link";
 import type { GameLineRow, GameSummary, GameWithLines } from "@/lib/queries/games";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatPoint } from "@/lib/odds/format";
+import { teamLogoSources } from "@/lib/logos";
+import { Logo } from "./Logo";
 
 const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
   { key: "h2h", label: "Moneyline" },
@@ -96,8 +98,18 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
             >
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                  <span className="flex items-center gap-1.5 font-medium text-zinc-900 dark:text-zinc-50">
+                    <Logo
+                      sources={teamLogoSources(g.awayTeam.abbreviation)}
+                      alt={g.awayTeam.name}
+                      fallbackText={g.awayTeam.abbreviation}
+                    />
                     {g.awayTeam.abbreviation} @ {g.homeTeam.abbreviation}
+                    <Logo
+                      sources={teamLogoSources(g.homeTeam.abbreviation)}
+                      alt={g.homeTeam.name}
+                      fallbackText={g.homeTeam.abbreviation}
+                    />
                   </span>
                   <span className="text-xs text-zinc-500 dark:text-zinc-400">
                     {g.awayTeam.name} at {g.homeTeam.name}

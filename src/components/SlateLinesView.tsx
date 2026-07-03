@@ -7,7 +7,10 @@ import type { TeamHitRates } from "@/lib/queries/hitRate";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint } from "@/lib/odds/format";
+import { BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
+import { bookLogoSources, teamLogoSources } from "@/lib/logos";
 import { PriceRangeSlider } from "./PriceRangeSlider";
+import { Logo } from "./Logo";
 
 const MARKET_TABS: { key: GameLineRow["marketType"]; label: string }[] = [
   { key: "h2h", label: "Moneyline" },
@@ -182,18 +185,38 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam }: SlateLinesVie
             {inRange.map((row) => (
               <li key={rowKey(row)} className="py-2">
                 <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
-                  <span>
+                  <span className="inline-flex flex-wrap items-center gap-1">
+                    <Logo
+                      sources={teamLogoSources(row.game.awayTeam.abbreviation)}
+                      alt={row.game.awayTeam.name}
+                      fallbackText={row.game.awayTeam.abbreviation}
+                      size={16}
+                    />
+                    <Logo
+                      sources={teamLogoSources(row.game.homeTeam.abbreviation)}
+                      alt={row.game.homeTeam.name}
+                      fallbackText={row.game.homeTeam.abbreviation}
+                      size={16}
+                    />
                     <Link
                       href={`/games/${row.game.id}`}
                       className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
                     >
                       {row.game.awayTeam.abbreviation} @ {row.game.homeTeam.abbreviation}
                     </Link>
-                    <span className="ml-2">
+                    <span className="ml-1">
                       {SIDE_LABELS[row.line.side]?.(row.game) ?? row.line.side}
                       {formatPoint(row.line.point)}
                     </span>
-                    <span className="ml-2 text-zinc-400">{row.line.bookName}</span>
+                    <span className="ml-1 inline-flex items-center gap-1 text-zinc-400">
+                      <Logo
+                        sources={bookLogoSources(row.line.bookKey)}
+                        alt={row.line.bookName}
+                        fallbackText={BOOK_INITIALS[row.line.bookKey] ?? row.line.bookKey.slice(0, 2).toUpperCase()}
+                        size={16}
+                      />
+                      {row.line.bookName}
+                    </span>
                   </span>
                   <span className="font-medium text-zinc-900 dark:text-zinc-50">
                     {formatAmerican(row.line.priceAmerican)}
