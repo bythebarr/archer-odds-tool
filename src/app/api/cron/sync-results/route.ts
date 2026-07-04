@@ -1,10 +1,12 @@
 import { checkCronAuth } from "@/lib/cronAuth";
-import { recordPollLog } from "@/lib/pollingPolicy";
+import { isPollOddsStale, recordPollLog } from "@/lib/pollingPolicy";
 import { syncMlbSchedule } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
+import { pollAndStoreOdds } from "@/lib/odds/ingest";
 
 const JOB_NAME = "sync-results";
 const PITCHERS_JOB_NAME = "sync-pitchers";
+const POLL_ODDS_JOB_NAME = "poll-odds";
 
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
@@ -32,7 +34,27 @@ export async function POST(request: Request) {
       await recordPollLog(PITCHERS_JOB_NAME, `error: ${message}`);
     }
 
-    return Response.json({ date, ...summary, pitchers: pitchersSummary });
+    // Self-heal: poll-odds.yml's own schedule can silently fail to fire at
+    // all (confirmed happening — see pollingPolicy.ts's isPollOddsStale doc).
+    // This 15-min free cron is the reliable one, so it doubles as the
+    // catch-up path if a whole poll-odds cycle gets missed.
+    let selfHealSummary = null;
+    try {
+      if (await isPollOddsStale(POLL_ODDS_JOB_NAME)) {
+        selfHealSummary = await pollAndStoreOdds();
+        await recordPollLog(
+          POLL_ODDS_JOB_NAME,
+          "ok (self-heal via sync-results)",
+          selfHealSummary.creditsUsed,
+          selfHealSummary.creditsRemaining
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollLog(POLL_ODDS_JOB_NAME, `error (self-heal via sync-results): ${message}`);
+    }
+
+    return Response.json({ date, ...summary, pitchers: pitchersSummary, selfHealPollOdds: selfHealSummary });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await recordPollLog(JOB_NAME, `error: ${message}`);
