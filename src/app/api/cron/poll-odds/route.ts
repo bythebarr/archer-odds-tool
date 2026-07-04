@@ -4,6 +4,11 @@ import { pollAndStoreOdds } from "@/lib/odds/ingest";
 
 const JOB_NAME = "poll-odds";
 
+/** GET: Vercel Cron (always invokes via GET). POST: manual/GH Actions dispatch. Same handler either way. */
+export async function GET(request: Request) {
+  return POST(request);
+}
+
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;

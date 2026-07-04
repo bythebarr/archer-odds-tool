@@ -1,9 +1,10 @@
-name: Sync MLB schedule
+name: Sync MLB schedule (manual)
 
+# Scheduling moved to Vercel Cron (see vercel.json, "0 9 * * *") — GH
+# Actions' own `schedule:` trigger was confirmed to silently not fire at
+# all for a full day+, so it's no longer relied on for cadence. Kept here
+# as a manual fallback (Actions tab or `gh workflow run sync-schedule.yml`).
 on:
-  schedule:
-    # Once daily, extends the known schedule window forward (free, MLB Stats API).
-    - cron: "0 9 * * *"
   workflow_dispatch:
 
 jobs:

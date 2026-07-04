@@ -1,3 +1,10 @@
 {
-  "buildCommand": "prisma migrate deploy && next build"
+  "buildCommand": "prisma migrate deploy && next build",
+  "crons": [
+    { "path": "/api/cron/poll-odds", "schedule": "5 14 * * *" },
+    { "path": "/api/cron/poll-odds", "schedule": "30 22 * * *" },
+    { "path": "/api/cron/sync-schedule", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/poll-odds-tennis", "schedule": "5 9 * * *" },
+    { "path": "/api/cron/grade-outcomes-tennis", "schedule": "10 9 * * *" }
+  ]
 }

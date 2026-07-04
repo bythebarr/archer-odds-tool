@@ -1,26 +1,12 @@
-name: Poll odds (scheduled 2x/day — costs Odds API credits)
+name: Poll odds (manual — costs Odds API credits)
 
+# Scheduling moved to Vercel Cron (see vercel.json) — GH Actions' own
+# `schedule:` trigger was confirmed to silently not fire at all for a full
+# day+ (no error, no run, nothing), so it's no longer relied on for cadence.
+# This workflow is now manual-only: a fallback you can run by hand from the
+# Actions tab (or `gh workflow run poll-odds.yml`) if you ever need to force
+# a poll outside Vercel's own 2x/day schedule (14:05 and 22:30 UTC).
 on:
-  # Two fixed UTC times/day, NOT the tiered 5-min cadence pollingPolicy.ts
-  # was designed for — that throttle only pays off on the Odds API's paid
-  # tier (~20K credits/mo). On the free 500-credits/mo tier, even a 30-min
-  # external cadence simulated out to ~4,100 credits/mo (8x over budget),
-  # because every poll costs 6 credits (3 markets x 2 regions) regardless
-  # of game count. Two runs/day is ~12 credits/day, ~360/mo, leaving room
-  # for manual runs too.
-  #   14:05 UTC ~ 10am ET: catches overnight/opening line movement.
-  #   22:30 UTC ~ 6:30pm ET: catches most games' pregame window (MLB first
-  #     pitches cluster 7-10pm ET).
-  # Both times are UTC-fixed, so they drift an hour off their ET target
-  # outside EDT (roughly Nov-Mar) — a minor gap outside MLB season.
-  # Offset a few minutes past the hour, not on it — GitHub Actions
-  # explicitly documents that exact-hour schedules see the most congestion
-  # and are the most likely to be delayed or skipped; confirmed live this
-  # session (the 14:00 UTC run never fired, 1h+ overdue when checked).
-  schedule:
-    - cron: "5 14 * * *"
-    - cron: "30 22 * * *"
-  # Also runnable on demand from the Actions tab (or `gh workflow run poll-odds.yml`).
   workflow_dispatch:
 
 jobs:

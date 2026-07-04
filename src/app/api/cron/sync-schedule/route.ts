@@ -17,6 +17,10 @@ const PITCHERS_JOB_NAME = "sync-pitchers";
  * pitchers are only ever synced for the normal forward window regardless
  * of the override, since historical games don't have probable starters.
  */
+export async function GET(request: Request) {
+  return POST(request);
+}
+
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;

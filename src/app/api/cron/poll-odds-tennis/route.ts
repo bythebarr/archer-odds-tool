@@ -3,8 +3,13 @@ import { decideFixedCadencePoll, recordPollLog } from "@/lib/pollingPolicy";
 import { pollAndStoreTennisOdds } from "@/lib/tennis/ingest";
 
 const JOB_NAME = "poll-odds-tennis";
-/** Anti-duplicate guard, not the primary cadence — GH Actions' own schedule (1x/day) controls that. See the tennis plan doc's credit budget. */
+/** Anti-duplicate guard, not the primary cadence — Vercel Cron's own schedule (1x/day) controls that. See the tennis plan doc's credit budget. */
 const MIN_INTERVAL_MINUTES = 12 * 60;
+
+/** GET: Vercel Cron (always invokes via GET). POST: manual/GH Actions dispatch. Same handler either way. */
+export async function GET(request: Request) {
+  return POST(request);
+}
 
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);

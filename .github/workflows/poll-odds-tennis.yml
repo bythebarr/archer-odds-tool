@@ -1,23 +1,10 @@
-name: Poll tennis odds (scheduled 1x/day — costs Odds API credits)
+name: Poll tennis odds (manual — costs Odds API credits)
 
+# Scheduling moved to Vercel Cron (see vercel.json) — GH Actions' own
+# `schedule:` trigger was confirmed to silently not fire at all for a full
+# day+, so it's no longer relied on for cadence. Kept here as a manual
+# fallback (Actions tab or `gh workflow run poll-odds-tennis.yml`).
 on:
-  # Separate workflow from MLB's poll-odds.yml, not folded into it — own
-  # cadence and own failure isolation. 1x/day (not 2x like MLB) because
-  # /scores grading (once M3 lands) will ALSO cost credits on top of this —
-  # see the tennis plan doc's credit budget, which only has ~140/mo of
-  # headroom left after MLB's fixed 2x/day schedule.
-  #
-  # 09:05 UTC ~ 10am BST/UK time: ahead of Wimbledon's ~10am UTC first
-  # matches, so this catches the day's pregame lines before they go live.
-  # UK-timezone-tuned for the current allowlisted tournament (Wimbledon) —
-  # revisit this time when tournamentAllowlist.ts changes to a tournament in
-  # a different timezone (e.g. the US Open or Australian Open).
-  # Offset a few minutes past the hour, not on it — see poll-odds.yml's
-  # comment: exact-hour schedules are the most congested and most likely to
-  # be delayed/skipped by GitHub Actions, confirmed live this session.
-  schedule:
-    - cron: "5 9 * * *"
-  # Also runnable on demand from the Actions tab (or `gh workflow run poll-odds-tennis.yml`).
   workflow_dispatch:
 
 jobs:
