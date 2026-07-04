@@ -6,10 +6,27 @@ import {
   type OddsApiMarketKey,
 } from "./oddsApiClient";
 import { storeBookmakerOdds } from "./storeOdds";
-import { IMMINENT_THRESHOLD_MINUTES } from "@/lib/pollingPolicy";
+import type { Game } from "@/generated/prisma/client";
 
 /** Games are matched to Odds API events within this window around commence_time. */
 const MATCH_WINDOW_HOURS = 6;
+
+/**
+ * How many games get an alt-line fetch per poll, capped at a fixed number
+ * rather than "every game within N minutes of first pitch" — the fixed
+ * 60-min-before-first-pitch gate this replaced rarely lined up with the
+ * fixed 2x/day poll schedule (most games start hours away from either fixed
+ * poll time), so alt lines effectively never populated in practice. This
+ * instead always fetches alt lines for the single soonest-starting
+ * not-yet-started game seen this poll — bounded to a known, budgeted cost
+ * (currently 1 game x 4 credits x 2 polls/day = ~240 credits/mo) rather than
+ * scaling with slate size (an uncapped "every game before the next poll"
+ * version was costed at ~2,160 credits/mo against a ~500/mo plan — see the
+ * conversation this was added in). Raise this only after confirming real
+ * plan headroom on the Odds API dashboard, not the ~500/mo figure in these
+ * comments, which is unverified.
+ */
+const MAX_ALT_LINE_GAMES_PER_POLL = 1;
 
 /**
  * Finds the Game a given Odds API event refers to. Once matched, the event id
@@ -58,11 +75,11 @@ export interface PollOddsSummary {
  *
  * Alt lines (alternate_spreads/alternate_totals) aren't part of the bulk
  * fetch — The Odds API only serves them one event at a time, at ~4 credits
- * per game (2 markets x 2 regions), which is too expensive to fetch for
- * every game on every poll. Instead, once the main bulk odds are matched to
- * games, any game starting within IMMINENT_THRESHOLD_MINUTES gets one extra
- * per-event call for its alt lines — bounding the extra cost to however many
- * games are actually close to first pitch right now, not the whole slate.
+ * per game (2 markets x 2 regions). Once the main bulk odds are matched and
+ * stored for every game, the MAX_ALT_LINE_GAMES_PER_POLL soonest-starting
+ * not-yet-started game(s) also get one extra per-event call for alt lines —
+ * see that constant's comment for why it's a fixed cap rather than a
+ * proximity-to-first-pitch window.
  */
 export async function pollAndStoreOdds(
   markets: OddsApiMarketKey[] = ["h2h", "spreads", "totals"]
@@ -77,6 +94,8 @@ export async function pollAndStoreOdds(
   let creditsRemaining = mainCreditsRemaining;
   const gamesUnmatched: string[] = [];
   const now = new Date();
+
+  const upcomingMatches: { event: OddsApiEvent; game: Game; minutesToStart: number }[] = [];
 
   for (const event of events) {
     const game = await matchGameForEvent(event);
@@ -102,9 +121,14 @@ export async function pollAndStoreOdds(
       event.bookmakers
     );
 
-    const isImminent = minutesToStart <= IMMINENT_THRESHOLD_MINUTES;
-    if (!isImminent) continue;
+    upcomingMatches.push({ event, game, minutesToStart });
+  }
 
+  const altLineTargets = upcomingMatches
+    .sort((a, b) => a.minutesToStart - b.minutesToStart)
+    .slice(0, MAX_ALT_LINE_GAMES_PER_POLL);
+
+  for (const { event, game } of altLineTargets) {
     try {
       const altResult = await fetchEventAlternateOdds(event.id);
       snapshotsWritten += await storeBookmakerOdds(

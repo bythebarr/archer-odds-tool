@@ -7,12 +7,6 @@ export interface TierConfig {
   intervalMinutes: number;
 }
 
-/**
- * Also reused by ingest.ts to decide which individual games are worth an
- * extra per-event alt-lines call — alt lines only matter once a game is
- * close enough to be worth shopping, and per-event calls aren't cheap
- * (~4 credits each), so this same "imminent" cutoff bounds that cost too.
- */
 export const IMMINENT_THRESHOLD_MINUTES = 60;
 
 /**
