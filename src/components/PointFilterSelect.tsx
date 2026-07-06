@@ -1,4 +1,5 @@
 import { formatPoint } from "@/lib/odds/format";
+import type { GameLineRow } from "@/lib/queries/games";
 
 export const MAIN_LINE = "main" as const;
 export const ALL_ALT_LINES = "alt" as const;
@@ -8,10 +9,11 @@ interface PointFilterSelectProps {
   pointOptions: number[];
   value: PointFilter;
   onChange: (value: PointFilter) => void;
+  market: GameLineRow["marketType"];
 }
 
 /** "Line" dropdown shared by GameLinesView/SlateLinesView: jump to the main line, every alt line pooled together, or one specific point on offer. */
-export function PointFilterSelect({ pointOptions, value, onChange }: PointFilterSelectProps) {
+export function PointFilterSelect({ pointOptions, value, onChange, market }: PointFilterSelectProps) {
   return (
     <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
       Line
@@ -27,7 +29,7 @@ export function PointFilterSelect({ pointOptions, value, onChange }: PointFilter
         <option value={ALL_ALT_LINES}>All alt lines</option>
         {pointOptions.map((p) => (
           <option key={p} value={p}>
-            {formatPoint(p)}
+            {formatPoint(p, market)}
           </option>
         ))}
       </select>

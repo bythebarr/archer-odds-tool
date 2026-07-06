@@ -1,6 +1,7 @@
 import type { GameSummary } from "@/lib/queries/games";
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { ArcherWinProbability } from "@/lib/archer/winProbability";
+import type { ExpectedRuns } from "@/lib/archer/expectedRuns";
 import type { ConsensusFairProbability } from "@/lib/odds/devig";
 import { formatRecordSplit, formatEra } from "@/lib/odds/format";
 import { TeamBadge } from "./TeamBadge";
@@ -73,7 +74,12 @@ interface MatchupPanelProps {
   game: GameSummary;
   matchup: GameMatchup;
   archerProb: ArcherWinProbability;
+  archerRuns: ExpectedRuns;
   marketProb: ConsensusFairProbability;
+}
+
+function formatRuns(runs: number | null): string {
+  return runs !== null ? runs.toFixed(1) : "—";
 }
 
 /**
@@ -83,7 +89,7 @@ interface MatchupPanelProps {
  * probability (see winProbability.ts) shown against the market's own
  * de-vigged implied probability below.
  */
-export function MatchupPanel({ game, matchup, archerProb, marketProb }: MatchupPanelProps) {
+export function MatchupPanel({ game, matchup, archerProb, archerRuns, marketProb }: MatchupPanelProps) {
   return (
     <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Matchup</h2>
@@ -139,10 +145,30 @@ export function MatchupPanel({ game, matchup, archerProb, marketProb }: MatchupP
         </div>
       )}
 
+      {(archerRuns.home !== null || archerRuns.away !== null) && (
+        <div className="mt-4 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Archer projected runs
+          </h3>
+          <div className="mt-2 space-y-1">
+            <StatRow label={`${game.awayTeam.abbreviation} projected runs`} value={formatRuns(archerRuns.away)} />
+            <StatRow label={`${game.homeTeam.abbreviation} projected runs`} value={formatRuns(archerRuns.home)} />
+            <StatRow
+              label="Projected total"
+              value={
+                archerRuns.home !== null && archerRuns.away !== null
+                  ? formatRuns(archerRuns.home + archerRuns.away)
+                  : "—"
+              }
+            />
+          </div>
+        </div>
+      )}
+
       <p className="mt-3 text-xs text-zinc-400">
-        Archer probability is a v1 heuristic from pitcher ERA + recent form only — directional, not
-        a rigorous projection. It powers the Archer EV column on the Moneyline tab below; spread/
-        total EV still comes only from market consensus and historical hit-rate.
+        Archer probability/runs are a v1 heuristic from pitcher ERA + recent form only — directional,
+        not a rigorous projection. They power the Archer EV column on every tab below (win probability
+        for Moneyline, expected-runs-derived cover probability for Spread/Total).
       </p>
     </div>
   );

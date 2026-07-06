@@ -7,6 +7,8 @@ import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { calculateEv } from "@/lib/odds/devig";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint, formatHitRate } from "@/lib/odds/format";
+import type { ExpectedRuns } from "@/lib/archer/expectedRuns";
+import { archerProbForRow } from "@/lib/archer/runProbability";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 import { MarketTabs } from "./MarketTabs";
 import { TeamBadge } from "./TeamBadge";
@@ -45,8 +47,10 @@ interface GameLinesViewProps {
   lines: GameLineRow[];
   homeHitRates: TeamHitRates;
   awayHitRates: TeamHitRates;
-  /** Archer model's home/away win probability (see winProbability.ts) — only meaningful for the moneyline market. */
+  /** Archer model's home/away win probability (see winProbability.ts) — used for the moneyline market. */
   archerWinProb: { home: number | null; away: number | null } | null;
+  /** Archer model's expected runs for each team (see expectedRuns.ts) — used for the spreads/totals markets. */
+  archerRuns: ExpectedRuns | null;
 }
 
 export function GameLinesView({
@@ -55,6 +59,7 @@ export function GameLinesView({
   homeHitRates,
   awayHitRates,
   archerWinProb,
+  archerRuns,
 }: GameLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
   const [pointFilter, setPointFilter] = useState<PointFilter>(MAIN_LINE);
@@ -119,10 +124,9 @@ export function GameLinesView({
     [market, marketLines, homeHitRates, awayHitRates]
   );
 
-  /** EV of one line against the Archer model's win probability — moneyline only; null elsewhere or if the model has no probability yet. */
-  function archerEvForSide(side: string, priceAmerican: number): number | null {
-    if (market !== "h2h" || !archerWinProb) return null;
-    const prob = side === "home" ? archerWinProb.home : side === "away" ? archerWinProb.away : null;
+  /** EV of one line against the Archer model's probability for that side — win probability for h2h, expected-runs-derived cover probability for spreads/totals. Null if the model has no input data yet. */
+  function archerEvForSide(side: string, point: number | null, priceAmerican: number): number | null {
+    const prob = archerProbForRow(market, side, point, archerWinProb, archerRuns);
     return prob !== null ? calculateEv(prob, priceAmerican) : null;
   }
 
@@ -174,6 +178,7 @@ export function GameLinesView({
           <PointFilterSelect
             pointOptions={pointOptions}
             value={pointFilter}
+            market={market}
             onChange={(v) => {
               setPointFilter(v);
               setRange(null);
@@ -200,8 +205,9 @@ export function GameLinesView({
           <p className="mt-4 text-xs text-zinc-400">
             Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
             directional estimate only (small sample, no opponent/park/pitcher adjustment).
-            {market === "h2h" &&
-              " Archer EV = vs. the Archer model's pitcher+form win probability (see Matchup panel above)."}
+            {market === "h2h"
+              ? " Archer EV = vs. the Archer model's pitcher+form win probability (see Matchup panel above)."
+              : " Archer EV = vs. the Archer model's expected-runs projection (recent runs scored/allowed + starting pitcher ERA)."}
           </p>
 
           <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -236,6 +242,7 @@ export function GameLinesView({
                       const key = lineKey(row.bookKey, row.side, row.point);
                       const isBest = key === bestKey;
                       const econ = economics.get(key);
+                      const archerEv = archerEvForSide(row.side, row.point, row.priceAmerican);
                       return (
                         <li key={row.bookKey} className="py-2">
                           <div
@@ -255,7 +262,7 @@ export function GameLinesView({
                               )}
                             </span>
                             <span>
-                              {formatPoint(row.point)} {formatAmerican(row.priceAmerican)}
+                              {formatPoint(row.point, market)} {formatAmerican(row.priceAmerican)}
                             </span>
                           </div>
                           <div className="flex justify-end gap-3 text-xs">
@@ -265,11 +272,9 @@ export function GameLinesView({
                             <span className={evColorClass(econ?.historicalEv ?? null)}>
                               Hist EV: {formatEv(econ?.historicalEv ?? null)}
                             </span>
-                            {market === "h2h" && (
-                              <span className={evColorClass(archerEvForSide(row.side, row.priceAmerican))}>
-                                Archer EV: {formatEv(archerEvForSide(row.side, row.priceAmerican))}
-                              </span>
-                            )}
+                            <span className={evColorClass(archerEv)}>
+                              Archer EV: {formatEv(archerEv)}
+                            </span>
                           </div>
                         </li>
                       );
@@ -284,11 +289,12 @@ export function GameLinesView({
                       {altSectionsBySide.get(side)!.map(({ point, rows: altRows }) => (
                         <div key={String(point)} className="mt-2">
                           <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                            {formatPoint(point)}
+                            {formatPoint(point, market)}
                           </p>
                           <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
                             {altRows.map((row) => {
                               const econ = economics.get(lineKey(row.bookKey, row.side, row.point));
+                              const archerEv = archerEvForSide(row.side, row.point, row.priceAmerican);
                               return (
                                 <li key={row.bookKey} className="py-1.5">
                                   <div className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-400">
@@ -304,6 +310,9 @@ export function GameLinesView({
                                     </span>
                                     <span className={evColorClass(econ?.historicalEv ?? null)}>
                                       Hist EV: {formatEv(econ?.historicalEv ?? null)}
+                                    </span>
+                                    <span className={evColorClass(archerEv)}>
+                                      Archer EV: {formatEv(archerEv)}
                                     </span>
                                   </div>
                                 </li>

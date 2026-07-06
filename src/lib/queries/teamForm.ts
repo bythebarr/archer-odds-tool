@@ -7,17 +7,35 @@ export interface RecordSplit {
   record: string;
 }
 
+/** Runs scored ("for") and allowed ("against") over some window, the raw inputs to the Archer expected-runs model (see archer/expectedRuns.ts). */
+export interface RunsSplit {
+  runsFor: number;
+  runsAgainst: number;
+  gamesFound: number;
+}
+
 export interface TeamForm {
   homeRecord: RecordSplit; // this team's record when playing at home
   awayRecord: RecordSplit; // this team's record when playing away
   last5: RecordSplit;
   last10: RecordSplit;
+  runsSeason: RunsSplit;
+  runsLast10: RunsSplit;
+  runsLast5: RunsSplit;
 }
 
 function reduceRecordSplit(games: { win: boolean }[]): RecordSplit {
   const wins = games.filter((g) => g.win).length;
   const losses = games.length - wins;
   return { wins, losses, gamesFound: games.length, record: `${wins}-${losses}` };
+}
+
+function reduceRunsSplit(games: { teamScore: number; oppScore: number }[]): RunsSplit {
+  return {
+    runsFor: games.reduce((sum, g) => sum + g.teamScore, 0),
+    runsAgainst: games.reduce((sum, g) => sum + g.oppScore, 0),
+    gamesFound: games.length,
+  };
 }
 
 interface FinishedGame {
@@ -35,7 +53,7 @@ function formForTeam(teamId: string, games: FinishedGame[]): TeamForm {
       const isHome = g.homeTeamId === teamId;
       const teamScore = isHome ? g.homeScore! : g.awayScore!;
       const oppScore = isHome ? g.awayScore! : g.homeScore!;
-      return { isHome, win: teamScore > oppScore };
+      return { isHome, win: teamScore > oppScore, teamScore, oppScore };
     });
 
   return {
@@ -43,6 +61,9 @@ function formForTeam(teamId: string, games: FinishedGame[]): TeamForm {
     awayRecord: reduceRecordSplit(teamGames.filter((g) => !g.isHome)),
     last5: reduceRecordSplit(teamGames.slice(0, 5)),
     last10: reduceRecordSplit(teamGames.slice(0, 10)),
+    runsSeason: reduceRunsSplit(teamGames),
+    runsLast10: reduceRunsSplit(teamGames.slice(0, 10)),
+    runsLast5: reduceRunsSplit(teamGames.slice(0, 5)),
   };
 }
 

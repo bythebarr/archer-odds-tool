@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeArcherWinProbability } from "./winProbability";
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
-import type { RecordSplit, TeamForm } from "@/lib/queries/teamForm";
+import type { RecordSplit, RunsSplit, TeamForm } from "@/lib/queries/teamForm";
 
 function record(wins: number, losses: number): RecordSplit {
   return { wins, losses, gamesFound: wins + losses, record: `${wins}-${losses}` };
@@ -9,12 +9,19 @@ function record(wins: number, losses: number): RecordSplit {
 
 const emptyRecord = record(0, 0);
 
+function runs(runsFor: number, runsAgainst: number, gamesFound: number): RunsSplit {
+  return { runsFor, runsAgainst, gamesFound };
+}
+
 function form(overrides: Partial<TeamForm> = {}): TeamForm {
   return {
     homeRecord: record(5, 5),
     awayRecord: record(5, 5),
     last10: record(5, 5),
     last5: record(2, 3),
+    runsSeason: runs(43, 43, 10),
+    runsLast10: runs(43, 43, 10),
+    runsLast5: runs(21, 21, 5),
     ...overrides,
   };
 }

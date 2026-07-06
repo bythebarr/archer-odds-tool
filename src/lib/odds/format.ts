@@ -1,4 +1,4 @@
-import type { GameSummary } from "@/lib/queries/games";
+import type { GameSummary, GameLineRow } from "@/lib/queries/games";
 import type { HitRateResult } from "@/lib/queries/hitRate";
 import type { RecordSplit } from "@/lib/queries/teamForm";
 
@@ -9,8 +9,14 @@ export const SIDE_LABELS: Record<string, (game: GameSummary) => string> = {
   under: () => "Under",
 };
 
-export function formatPoint(point: number | null): string {
+/**
+ * Totals points (e.g. 8.5) aren't signed — only spreads are. A "+" on a
+ * totals line reads as a (nonexistent) positive spread, so only add the
+ * sign when the market is actually spreads.
+ */
+export function formatPoint(point: number | null, market: GameLineRow["marketType"]): string {
   if (point === null) return "";
+  if (market !== "spreads") return ` ${point}`;
   return point > 0 ? ` +${point}` : ` ${point}`;
 }
 

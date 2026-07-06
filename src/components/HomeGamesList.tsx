@@ -43,7 +43,7 @@ function bestPricePreview(game: GameSummary, lines: GameLineRow[], market: GameL
   const parts = order
     .map((side) => bestBySide.get(side))
     .filter((line): line is GameLineRow => line !== undefined)
-    .map((line) => `${SIDE_ABBR[line.side]?.(game) ?? line.side}${formatPoint(line.point)} ${formatAmerican(line.priceAmerican)}`);
+    .map((line) => `${SIDE_ABBR[line.side]?.(game) ?? line.side}${formatPoint(line.point, market)} ${formatAmerican(line.priceAmerican)}`);
 
   return parts.length > 0 ? parts.join("  ·  ") : null;
 }

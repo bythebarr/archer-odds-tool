@@ -1,5 +1,6 @@
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { RecordSplit, TeamForm } from "@/lib/queries/teamForm";
+import { weightedAverage, sampleConfidence, shrinkToward } from "@/lib/stats/weightedAverage";
 
 /**
  * The "Archer" win-probability model: turns the matchup panel's own
@@ -50,34 +51,27 @@ function winPct(r: RecordSplit): number | null {
 
 /** Weighted recent-form score in [0,1], renormalized over whichever splits have games played. Null if none do (e.g. brand-new season). */
 function teamFormScore(form: TeamForm, isHome: boolean): number | null {
-  const components: [number | null, number][] = [
+  return weightedAverage([
     [winPct(isHome ? form.homeRecord : form.awayRecord), FORM_WEIGHTS.split],
     [winPct(form.last10), FORM_WEIGHTS.last10],
     [winPct(form.last5), FORM_WEIGHTS.last5],
-  ];
-  const available = components.filter((c): c is [number, number] => c[0] !== null);
-  if (available.length === 0) return null;
-
-  const weightSum = available.reduce((sum, [, w]) => sum + w, 0);
-  return available.reduce((sum, [v, w]) => sum + v * w, 0) / weightSum;
+  ]);
 }
 
 /** Pitcher quality in the same [0,1] units as teamFormScore: 0.5 at league-average ERA. Shrunk toward 0.5 when gamesStarted is below the full-confidence threshold, since an ERA over a handful of starts is too noisy to trust outright. Null if no probable starter or no ERA yet. */
 function pitcherQualityScore(pitcher: PitcherInfo | null): number | null {
   if (!pitcher || pitcher.era === null) return null;
   const rawScore = logistic((LEAGUE_AVERAGE_ERA - pitcher.era) / ERA_QUALITY_SPREAD);
-  const confidence = Math.min(pitcher.gamesStarted / PITCHER_FULL_CONFIDENCE_STARTS, 1);
-  return 0.5 + confidence * (rawScore - 0.5);
+  const confidence = sampleConfidence(pitcher.gamesStarted, PITCHER_FULL_CONFIDENCE_STARTS);
+  return shrinkToward(rawScore, 0.5, confidence);
 }
 
 /** Blends pitcher quality and form into one team-strength score, falling back to whichever component is actually available. */
 function teamStrength(pitcher: PitcherInfo | null, form: TeamForm, isHome: boolean): number | null {
-  const formScore = teamFormScore(form, isHome);
-  const pitcherScore = pitcherQualityScore(pitcher);
-
-  if (formScore === null) return pitcherScore;
-  if (pitcherScore === null) return formScore;
-  return PITCHER_WEIGHT * pitcherScore + FORM_WEIGHT * formScore;
+  return weightedAverage([
+    [teamFormScore(form, isHome), FORM_WEIGHT],
+    [pitcherQualityScore(pitcher), PITCHER_WEIGHT],
+  ]);
 }
 
 export interface ArcherWinProbability {

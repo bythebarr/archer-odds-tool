@@ -8,6 +8,8 @@ import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { calculateEv } from "@/lib/odds/devig";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint } from "@/lib/odds/format";
+import type { ExpectedRuns } from "@/lib/archer/expectedRuns";
+import { archerProbForRow } from "@/lib/archer/runProbability";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 import { MarketTabs } from "./MarketTabs";
 import { TeamBadge } from "./TeamBadge";
@@ -60,11 +62,18 @@ function sortRows(rows: SlateRow[], sortKey: SortKey): SlateRow[] {
 interface SlateLinesViewProps {
   gamesWithLines: GameWithLines[];
   hitRatesByTeam: Record<string, TeamHitRates>;
-  /** Archer model's home/away win probability per game (see winProbability.ts) — only meaningful for the moneyline market. */
+  /** Archer model's home/away win probability per game (see winProbability.ts) — used for the moneyline market. */
   archerProbByGame: Record<string, { home: number | null; away: number | null } | null>;
+  /** Archer model's expected runs per game (see expectedRuns.ts) — used for the spreads/totals markets. */
+  archerRunsByGame: Record<string, ExpectedRuns | null>;
 }
 
-export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGame }: SlateLinesViewProps) {
+export function SlateLinesView({
+  gamesWithLines,
+  hitRatesByTeam,
+  archerProbByGame,
+  archerRunsByGame,
+}: SlateLinesViewProps) {
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
   const [sortKey, setSortKey] = useState<SortKey>("marketEv");
   const [pointFilter, setPointFilter] = useState<PointFilter>(MAIN_LINE);
@@ -106,12 +115,13 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
             ? marketLines.filter((l) => l.isAlternate)
             : marketLines.filter((l) => l.point === pointFilter);
 
-      const archerProb = market === "h2h" ? archerProbByGame[game.id] : null;
+      const archerProb = archerProbByGame[game.id];
+      const archerRuns = archerRunsByGame[game.id];
 
       for (const line of selectedLines) {
         const econ = economics.get(lineKey(line.bookKey, line.side, line.point));
-        const archerSideProb =
-          archerProb && (line.side === "home" || line.side === "away") ? archerProb[line.side] : null;
+        const archerSideProb = archerProbForRow(market, line.side, line.point, archerProb, archerRuns);
+
         rows.push({
           game,
           line,
@@ -122,7 +132,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
       }
     }
     return rows;
-  }, [gamesWithLines, market, hitRatesByTeam, pointFilter, archerProbByGame]);
+  }, [gamesWithLines, market, hitRatesByTeam, pointFilter, archerProbByGame, archerRunsByGame]);
 
   const domain = useMemo(() => {
     if (allRows.length === 0) return null;
@@ -153,7 +163,6 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
           setMarket(m);
           setRange(null);
           setPointFilter(MAIN_LINE);
-          if (m !== "h2h" && sortKey === "archerEv") setSortKey("marketEv");
         }}
       />
 
@@ -175,8 +184,9 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
           <p className="mt-4 text-xs text-zinc-400">
             Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
             directional estimate only (small sample, no opponent/park/pitcher adjustment).
-            {market === "h2h" &&
-              " Archer EV = vs. the Archer model's pitcher+form win probability."}
+            {market === "h2h"
+              ? " Archer EV = vs. the Archer model's pitcher+form win probability."
+              : " Archer EV = vs. the Archer model's expected-runs projection (recent runs scored/allowed + starting pitcher ERA)."}
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-4">
@@ -188,6 +198,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
                 <PointFilterSelect
                   pointOptions={pointOptions}
                   value={pointFilter}
+                  market={market}
                   onChange={(v) => {
                     setPointFilter(v);
                     setRange(null);
@@ -201,7 +212,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
                   onChange={(e) => setSortKey(e.target.value as SortKey)}
                   className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
                 >
-                  {SORT_OPTIONS.filter((opt) => opt.key !== "archerEv" || market === "h2h").map((opt) => (
+                  {SORT_OPTIONS.map((opt) => (
                     <option key={opt.key} value={opt.key}>
                       {opt.label}
                     </option>
@@ -237,7 +248,7 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
                     </Link>
                     <span className="ml-1">
                       {SIDE_LABELS[row.line.side]?.(row.game) ?? row.line.side}
-                      {formatPoint(row.line.point)}
+                      {formatPoint(row.line.point, market)}
                     </span>
                     <span className="ml-1 inline-flex items-center gap-1 text-zinc-400">
                       <BookBadge bookKey={row.line.bookKey} bookName={row.line.bookName} size={16} />
@@ -255,11 +266,9 @@ export function SlateLinesView({ gamesWithLines, hitRatesByTeam, archerProbByGam
                   <span className={evColorClass(row.historicalEv)}>
                     Hist EV: {formatEv(row.historicalEv)}
                   </span>
-                  {market === "h2h" && (
-                    <span className={evColorClass(row.archerEv)}>
-                      Archer EV: {formatEv(row.archerEv)}
-                    </span>
-                  )}
+                  <span className={evColorClass(row.archerEv)}>
+                    Archer EV: {formatEv(row.archerEv)}
+                  </span>
                 </div>
               </li>
             ))}
