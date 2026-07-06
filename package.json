@@ -13,7 +13,8 @@
     "sync:schedule": "tsx scripts/sync-schedule.ts",
     "sync:pitchers": "tsx scripts/sync-pitchers.ts",
     "poll:odds": "tsx scripts/poll-odds.ts",
-    "poll:odds:tennis": "tsx scripts/poll-odds-tennis.ts"
+    "poll:odds:tennis": "tsx scripts/poll-odds-tennis.ts",
+    "poll:odds:soccer": "tsx scripts/poll-odds-soccer.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

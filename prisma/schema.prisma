@@ -21,6 +21,7 @@ enum Side {
   away
   over
   under
+  draw // soccer h2h's third outcome — line-shopping only, no devig/EV (see lineEconomics.ts, 2-way only)
 }
 
 enum GameStatus {
@@ -39,11 +40,19 @@ enum OutcomeResult {
 enum Sport {
   mlb
   tennis
+  soccer
 }
 
+/// mlbTeamId is MLB-only (nullable so soccer rows can omit it); soccer teams
+/// are instead upserted by oddsApiName, mirroring Player's pattern, since
+/// there's no free authoritative team-id source for international soccer the
+/// way MLB Stats API provides. abbreviation/league/division are still
+/// required but hold synthesized placeholder values for soccer (no real
+/// crest/league data source yet) — see soccer/ingest.ts's upsertTeam.
 model Team {
   id           String   @id @default(cuid())
-  mlbTeamId    Int      @unique
+  mlbTeamId    Int?     @unique
+  oddsApiName  String?  @unique
   name         String
   abbreviation String
   league       String
@@ -72,8 +81,10 @@ model Player {
   outcomes    GameOutcome[]
 }
 
-/// One row per game (MLB) or match (tennis) — `sport` decides which of the
-/// team/player FK pairs below is populated. Both pairs are nullable because
+/// One row per game (MLB, soccer) or match (tennis) — `sport` decides which
+/// of the team/player FK pairs below is populated. Soccer reuses the same
+/// team-pair shape as MLB (homeTeamId/awayTeamId), just via a different Team
+/// upsert path (see Team's docstring). Both pairs are nullable because
 /// Postgres NULL columns cost nothing and a CHECK constraint (added by hand
 /// in the migration, not expressible in Prisma's schema DSL) enforces that
 /// exactly one pair is set per row, matching `sport`. See the tennis plan

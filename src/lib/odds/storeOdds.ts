@@ -31,6 +31,10 @@ function outcomeToSide(
   }
   if (outcomeName === homeCompetitorName) return "home";
   if (outcomeName === awayCompetitorName) return "away";
+  // Soccer's 3-way h2h market only — MLB/tennis h2h never produces this
+  // outcome name. Stored for line-shopping only; see lineEconomics.ts's
+  // 2-way-only devig, which deliberately doesn't run against soccer h2h.
+  if (marketType === "h2h" && outcomeName === "Draw") return "draw";
   return null;
 }
 

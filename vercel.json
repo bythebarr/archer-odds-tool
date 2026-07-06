@@ -5,6 +5,7 @@
     { "path": "/api/cron/poll-odds", "schedule": "30 22 * * *" },
     { "path": "/api/cron/sync-schedule", "schedule": "0 9 * * *" },
     { "path": "/api/cron/poll-odds-tennis", "schedule": "5 9 * * *" },
-    { "path": "/api/cron/grade-outcomes-tennis", "schedule": "10 9 * * *" }
+    { "path": "/api/cron/grade-outcomes-tennis", "schedule": "10 9 * * *" },
+    { "path": "/api/cron/poll-odds-soccer", "schedule": "0 0,6,12,18 * * *" }
   ]
 }
