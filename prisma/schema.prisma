@@ -248,3 +248,18 @@ model PollLog {
   creditsUsed      Int?
   creditsRemaining Int?
 }
+
+/// Append-only history of credit snapshots, one row per poll — PollLog
+/// itself upserts a single row per job (all it needs for "is this job due
+/// yet" cadence checks), so it can't answer "how has credit usage trended
+/// over time." This table exists purely for that; written alongside PollLog
+/// on every recordPollLog call that carries a non-null credits value.
+model PollCreditLog {
+  id               String   @id @default(cuid())
+  jobName          String
+  polledAt         DateTime @default(now())
+  creditsUsed      Int?
+  creditsRemaining Int?
+
+  @@index([jobName, polledAt])
+}

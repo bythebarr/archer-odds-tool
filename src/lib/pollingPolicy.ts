@@ -169,20 +169,37 @@ export async function recordPollLog(
   creditsUsed?: number | null,
   creditsRemaining?: number | null
 ): Promise<void> {
+  const now = new Date();
   await prisma.pollLog.upsert({
     where: { jobName },
     create: {
       jobName,
-      lastPolledAt: new Date(),
+      lastPolledAt: now,
       lastStatus,
       creditsUsed: creditsUsed ?? null,
       creditsRemaining: creditsRemaining ?? null,
     },
     update: {
-      lastPolledAt: new Date(),
+      lastPolledAt: now,
       lastStatus,
       creditsUsed: creditsUsed ?? null,
       creditsRemaining: creditsRemaining ?? null,
     },
   });
+
+  // PollLog only keeps the latest row per job (needed for O(1) cadence
+  // checks), so it can't answer "how has credit usage trended over time" —
+  // this append-only table exists purely for that. Skipped for jobs that
+  // never spend credits (creditsUsed/creditsRemaining both null) so it only
+  // grows for the jobs a credit trend is actually meaningful for.
+  if (creditsUsed != null || creditsRemaining != null) {
+    await prisma.pollCreditLog.create({
+      data: {
+        jobName,
+        polledAt: now,
+        creditsUsed: creditsUsed ?? null,
+        creditsRemaining: creditsRemaining ?? null,
+      },
+    });
+  }
 }
