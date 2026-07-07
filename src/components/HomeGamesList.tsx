@@ -7,6 +7,8 @@ import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatPoint } from "@/lib/odds/format";
 import { MarketTabs } from "./MarketTabs";
 import { TeamBadge } from "./TeamBadge";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 const SIDE_ABBR: Record<string, (g: GameSummary) => string> = {
   home: (g) => g.homeTeam.abbreviation,
@@ -23,13 +25,18 @@ function formatTime(date: Date): string {
   }).format(date);
 }
 
-/** Best (highest decimal-odds) main-line price per side for a game's given market. */
-function bestPricePreview(game: GameSummary, lines: GameLineRow[], market: GameLineRow["marketType"]): string | null {
+interface PricePreviewChip {
+  label: string;
+  value: string;
+}
+
+/** Best (highest decimal-odds) main-line price per side for a game's given market, one chip per side. */
+function bestPricePreview(game: GameSummary, lines: GameLineRow[], market: GameLineRow["marketType"]): PricePreviewChip[] {
   // isAlternate filter is required, not cosmetic: without it, a deep alt
   // line's price could outrank the real main line here and be shown as if
   // it were the best available price on the main bet.
   const marketLines = lines.filter((l) => l.marketType === market && !l.isAlternate);
-  if (marketLines.length === 0) return null;
+  if (marketLines.length === 0) return [];
 
   const bestBySide = new Map<string, GameLineRow>();
   for (const line of marketLines) {
@@ -40,12 +47,13 @@ function bestPricePreview(game: GameSummary, lines: GameLineRow[], market: GameL
   }
 
   const order = market === "totals" ? ["over", "under"] : ["away", "home"];
-  const parts = order
+  return order
     .map((side) => bestBySide.get(side))
     .filter((line): line is GameLineRow => line !== undefined)
-    .map((line) => `${SIDE_ABBR[line.side]?.(game) ?? line.side}${formatPoint(line.point, market)} ${formatAmerican(line.priceAmerican)}`);
-
-  return parts.length > 0 ? parts.join("  ·  ") : null;
+    .map((line) => ({
+      label: `${SIDE_ABBR[line.side]?.(game) ?? line.side}${formatPoint(line.point, market)}`,
+      value: formatAmerican(line.priceAmerican),
+    }));
 }
 
 interface HomeGamesListProps {
@@ -67,43 +75,63 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
     <div>
       <MarketTabs market={market} onChange={setMarket} />
 
-      <ul className="divide-y divide-border">
-        {gamesWithLines.length === 0 && (
-          <li className="py-6 text-center text-sm text-muted-foreground">
-            No games scheduled for this date.
-          </li>
-        )}
-        {gamesWithLines.map(({ game: g }) => (
-          <li key={g.id}>
-            <Link href={`/games/${g.id}`} className="block py-4 hover:bg-accent/50">
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col">
-                  <span className="flex items-center gap-1.5 font-medium text-foreground">
-                    <TeamBadge abbreviation={g.awayTeam.abbreviation} name={g.awayTeam.name} />
-                    {g.awayTeam.abbreviation} @ {g.homeTeam.abbreviation}
-                    <TeamBadge abbreviation={g.homeTeam.abbreviation} name={g.homeTeam.name} />
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {g.awayTeam.name} at {g.homeTeam.name}
-                  </span>
-                </div>
-                <div className="flex flex-col items-end">
-                  <span className="text-sm text-foreground">{formatTime(g.scheduledStartUtc)} ET</span>
-                  <span className="text-xs uppercase text-muted-foreground">
-                    {g.status}
-                    {g.status !== "scheduled" && g.homeScore !== null && g.awayScore !== null
-                      ? ` · ${g.awayScore}-${g.homeScore}`
-                      : ""}
-                  </span>
-                </div>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {previews.get(g.id) ?? "No odds polled yet"}
-              </p>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {gamesWithLines.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted-foreground">No games scheduled for this date.</p>
+      ) : (
+        <div className="mt-4 flex flex-col gap-3">
+          {gamesWithLines.map(({ game: g }) => {
+            const chips = previews.get(g.id) ?? [];
+            const isLive = g.status === "live";
+            return (
+              <Link key={g.id} href={`/games/${g.id}`} className="block">
+                <Card className="transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/40">
+                  <CardContent className="flex items-center justify-between gap-4">
+                    <div className="flex flex-1 items-center gap-3">
+                      <div className="flex flex-col items-center gap-1">
+                        <TeamBadge abbreviation={g.awayTeam.abbreviation} name={g.awayTeam.name} size={36} />
+                        <span className="text-xs font-semibold text-foreground">{g.awayTeam.abbreviation}</span>
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground">@</span>
+                      <div className="flex flex-col items-center gap-1">
+                        <TeamBadge abbreviation={g.homeTeam.abbreviation} name={g.homeTeam.name} size={36} />
+                        <span className="text-xs font-semibold text-foreground">{g.homeTeam.abbreviation}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-sm font-medium text-foreground">{formatTime(g.scheduledStartUtc)} ET</span>
+                      {isLive ? (
+                        <Badge className="border-transparent bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
+                          <span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-red-500" />
+                          LIVE
+                          {g.homeScore !== null && g.awayScore !== null ? ` ${g.awayScore}-${g.homeScore}` : ""}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs uppercase text-muted-foreground">
+                          {g.status}
+                          {g.status !== "scheduled" && g.homeScore !== null && g.awayScore !== null
+                            ? ` · ${g.awayScore}-${g.homeScore}`
+                            : ""}
+                        </span>
+                      )}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="gap-2 bg-transparent border-t-0 p-0 px-(--card-spacing) pb-(--card-spacing)">
+                    {chips.length === 0 ? (
+                      <span className="text-xs text-muted-foreground">No odds polled yet</span>
+                    ) : (
+                      chips.map((chip) => (
+                        <Badge key={chip.label} variant="outline" className="font-mono">
+                          {chip.label} {chip.value}
+                        </Badge>
+                      ))
+                    )}
+                  </CardFooter>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
