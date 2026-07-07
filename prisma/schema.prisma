@@ -126,6 +126,8 @@ model Game {
   closingLines   GameClosingLine[]
   outcomes       GameOutcome[]
   playerGameLogs PlayerGameLog[]
+  playerPropSnapshots    PlayerPropSnapshot[]
+  currentPlayerPropLines CurrentPlayerPropLine[]
 
   @@index([scheduledStartUtc])
   @@index([status])
@@ -197,6 +199,8 @@ model MlbPlayer {
 
   gameLogs            PlayerGameLog[] @relation("PlayerLogs")
   opposingStarterLogs PlayerGameLog[] @relation("OpposingStarterLogs")
+  propSnapshots       PlayerPropSnapshot[]
+  currentPropLines    CurrentPlayerPropLine[]
 
   @@index([mlbPersonId])
 }
@@ -265,6 +269,8 @@ model Sportsbook {
 
   oddsSnapshots OddsSnapshot[]
   currentLines  CurrentOddsLine[]
+  playerPropSnapshots    PlayerPropSnapshot[]
+  currentPlayerPropLines CurrentPlayerPropLine[]
 }
 
 /// Append-only fact table: every polled price, forever. Source of truth for
@@ -306,6 +312,53 @@ model CurrentOddsLine {
   polledAt      DateTime
 
   @@unique([gameId, bookKey, marketType, side, point])
+}
+
+/// Append-only fact table for player-prop prices, mirroring OddsSnapshot's
+/// shape/purpose but keyed by (gameId, mlbPlayerId, statCategory) instead of
+/// team side — props are always Over/Under against a single player, never a
+/// two-competitor market. Fetched via the per-event endpoint (see
+/// oddsApiClient.fetchEventPlayerProps), never the bulk endpoint — see
+/// odds_api_credit_budget notes on why props cost scales per-game.
+model PlayerPropSnapshot {
+  id            String       @id @default(cuid())
+  gameId        String
+  game          Game         @relation(fields: [gameId], references: [id])
+  mlbPlayerId   String
+  mlbPlayer     MlbPlayer    @relation(fields: [mlbPlayerId], references: [id])
+  bookKey       String
+  book          Sportsbook   @relation(fields: [bookKey], references: [key])
+  statCategory  StatCategory
+  side          Side // over | under only — never home/away/draw
+  point         Float // the prop line, e.g. 1.5 hits — never null, unlike CurrentOddsLine's spread/totals point
+  priceAmerican Int
+
+  polledAt         DateTime @default(now())
+  sourceLastUpdate DateTime
+
+  @@index([gameId, mlbPlayerId, statCategory, bookKey, polledAt])
+}
+
+/// Upsert-latest convenience table for player props, same purpose as
+/// CurrentOddsLine. point is part of the unique key (not a NULL/sentinel
+/// concern here — props always carry a real point), so a book moving a
+/// player's line creates a new current-line row rather than overwriting the
+/// old point in place, matching CurrentOddsLine's behavior for spreads/totals.
+model CurrentPlayerPropLine {
+  id            String       @id @default(cuid())
+  gameId        String
+  game          Game         @relation(fields: [gameId], references: [id])
+  mlbPlayerId   String
+  mlbPlayer     MlbPlayer    @relation(fields: [mlbPlayerId], references: [id])
+  bookKey       String
+  book          Sportsbook   @relation(fields: [bookKey], references: [key])
+  statCategory  StatCategory
+  side          Side
+  point         Float
+  priceAmerican Int
+  polledAt      DateTime
+
+  @@unique([gameId, mlbPlayerId, bookKey, statCategory, side, point])
 }
 
 /// Consensus point/price captured at the last snapshot before first pitch —

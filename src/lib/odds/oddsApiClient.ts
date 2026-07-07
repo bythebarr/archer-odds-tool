@@ -9,9 +9,12 @@ export type OddsApiMarketKey =
   | "alternate_totals";
 
 export interface OddsApiOutcome {
-  name: string; // team name for h2h/spreads; "Over"/"Under" for totals
+  name: string; // team name for h2h/spreads; "Over"/"Under" for totals and player props
   price: number; // American odds (we always request oddsFormat=american)
   point?: number;
+  // Present on player-prop outcomes only: the player's full name. Confirmed
+  // live against a real per-event player-props response — see propMarkets.ts.
+  description?: string;
 }
 
 export interface OddsApiMarket {
@@ -172,6 +175,47 @@ export async function fetchEventAlternateOdds(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`The Odds API event-odds request failed: ${res.status} ${res.statusText} — ${body}`);
+  }
+
+  const event = (await res.json()) as OddsApiEvent;
+
+  return {
+    event,
+    creditsUsed: parseIntHeader(res.headers.get("x-requests-last")),
+    creditsRemaining: parseIntHeader(res.headers.get("x-requests-remaining")),
+  };
+}
+
+/**
+ * Fetches player-prop odds for ONE MLB game via the per-event endpoint —
+ * the only place The Odds API serves props, same as alt lines. Costs
+ * `markets.length * regions.length` credits per game. Market keys are plain
+ * strings here (not OddsApiMarketKey) since prop markets are a completely
+ * different key namespace (batter_hits, pitcher_strikeouts, etc.) that
+ * storeOdds.ts's game-line parsing has no notion of — see
+ * propMarkets.ts/storePropOdds.ts for the props-specific mapping and parsing.
+ */
+export async function fetchEventPlayerProps(
+  eventId: string,
+  markets: string[],
+  regions: string[]
+): Promise<FetchEventOddsResult> {
+  const apiKey = process.env.ODDS_API_KEY;
+  if (!apiKey) {
+    throw new Error("ODDS_API_KEY is not set");
+  }
+
+  const url = new URL(`${BASE_URL}/sports/${MLB_SPORT_KEY}/events/${eventId}/odds`);
+  url.searchParams.set("apiKey", apiKey);
+  url.searchParams.set("regions", regions.join(","));
+  url.searchParams.set("markets", markets.join(","));
+  url.searchParams.set("oddsFormat", "american");
+  url.searchParams.set("dateFormat", "iso");
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`The Odds API player-props request failed: ${res.status} ${res.statusText} — ${body}`);
   }
 
   const event = (await res.json()) as OddsApiEvent;
