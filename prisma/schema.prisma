@@ -612,3 +612,98 @@ model UfcBoutRoundStats {
 
   @@unique([boutId, fighterId, round])
 }
+
+// ---------------------------------------------------------------------------
+// Formula 1 — free historical results foundation via the Jolpica API (the
+// no-auth Ergast successor, api.jolpi.ca). Mirrors the UFC Phase-1 approach:
+// data-only, ingested by a dormant cron, no odds and no UI yet. External
+// `ergast*Id` fields are Jolpica's own stable slugs (e.g. "max_verstappen",
+// "red_bull", "bahrain") and are what ingest upserts on.
+// ---------------------------------------------------------------------------
+
+model F1Driver {
+  id              String    @id @default(cuid())
+  ergastDriverId  String    @unique // Jolpica driverId slug, e.g. "max_verstappen"
+  code            String? // 3-letter TV code, e.g. "VER" (missing for some historical drivers)
+  permanentNumber Int?
+  givenName       String
+  familyName      String
+  nationality     String?
+  dateOfBirth     DateTime?
+
+  results F1RaceResult[]
+
+  @@index([ergastDriverId])
+}
+
+model F1Constructor {
+  id                  String @id @default(cuid())
+  ergastConstructorId String @unique // Jolpica constructorId slug, e.g. "red_bull"
+  name                String
+  nationality         String?
+
+  results F1RaceResult[]
+
+  @@index([ergastConstructorId])
+}
+
+model F1Circuit {
+  id             String  @id @default(cuid())
+  ergastCircuitId String @unique // Jolpica circuitId slug, e.g. "bahrain"
+  name           String
+  locality       String?
+  country        String?
+  lat            Float?
+  long           Float?
+
+  races F1Race[]
+}
+
+model F1Race {
+  id       String    @id @default(cuid())
+  season   Int
+  round    Int
+  raceName String
+  raceDate DateTime // combined date+time when Jolpica provides a time, else midnight UTC of the date
+  wikiUrl  String?
+
+  circuitId String
+  circuit   F1Circuit @relation(fields: [circuitId], references: [id])
+
+  results F1RaceResult[]
+
+  @@unique([season, round])
+  @@index([raceDate])
+  @@index([circuitId])
+}
+
+/// One row per driver per race — mirrors PlayerGameLog's one-row-per-entity-
+/// per-event grain. `positionText` keeps the raw Ergast value ("1", "R" for
+/// retired, "D" disqualified, etc.); `position` is the numeric finishing
+/// place, null when the car didn't classify.
+model F1RaceResult {
+  id     String @id @default(cuid())
+  raceId String
+  race   F1Race @relation(fields: [raceId], references: [id])
+
+  driverId String
+  driver   F1Driver @relation(fields: [driverId], references: [id])
+
+  constructorId String
+  constructor   F1Constructor @relation(fields: [constructorId], references: [id])
+
+  position     Int?
+  positionText String
+  points       Float
+  grid         Int?
+  laps         Int?
+  status       String // raw Ergast status, e.g. "Finished", "+1 Lap", "Engine", "Collision"
+
+  timeMillis     Int? // total race time in ms (winner only has an absolute time; others are gaps)
+  fastestLapRank Int?
+  fastestLapTime String?
+
+  @@unique([raceId, driverId])
+  @@index([driverId])
+  @@index([constructorId])
+}
