@@ -186,6 +186,11 @@ export function GameLinesView({
         // clamp oddly against the next one's.
         key={`${market}-${String(pointFilter)}`}
         rows={focusLines}
+        slipContext={{
+          sport: "mlb",
+          matchId: game.id,
+          matchLabel: `${game.awayTeam.abbreviation} @ ${game.homeTeam.abbreviation}`,
+        }}
         sideHeader={(side) => {
           const teamAbbr = SIDE_TEAM_ABBR[side]?.(game) ?? null;
           const label = SIDE_LABELS[side]?.(game) ?? side;

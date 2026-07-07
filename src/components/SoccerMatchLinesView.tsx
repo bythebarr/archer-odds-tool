@@ -34,6 +34,11 @@ export function SoccerMatchLinesView({ match, lines }: SoccerMatchLinesViewProps
       rows={lines}
       sideOrder={SIDE_ORDER}
       gridColsClassName="sm:grid-cols-3"
+      slipContext={{
+        sport: "soccer",
+        matchId: match.id,
+        matchLabel: `${match.awayTeam.abbreviation} @ ${match.homeTeam.abbreviation}`,
+      }}
       sideHeader={(side) => {
         const team = SIDE_TEAM[side]?.(match);
         return {

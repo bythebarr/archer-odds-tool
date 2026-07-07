@@ -8,6 +8,7 @@ import { lineKey } from "@/lib/odds/lineEconomics";
 import { Badge } from "@/components/ui/badge";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 import { BookBadge } from "./BookBadge";
+import { useSlip, buildSlipPickId, type SlipSport } from "@/lib/slip/SlipContext";
 
 export interface LinesLadderEvColumn {
   label: string;
@@ -37,6 +38,8 @@ interface LinesLadderProps {
   disclaimer: ReactNode;
   emptyMessage: ReactNode;
   gridColsClassName?: string;
+  /** Enough context to build a slip entry from a row — omitted means no add-to-slip control is rendered. */
+  slipContext?: { sport: SlipSport; matchId: string; matchLabel: string };
 }
 
 function EvRow({ row, evColumns }: { row: GameLineRow; evColumns: LinesLadderEvColumn[] }) {
@@ -55,16 +58,81 @@ function EvRow({ row, evColumns }: { row: GameLineRow; evColumns: LinesLadderEvC
   );
 }
 
+function AddToSlipButton({
+  row,
+  sideLabel,
+  slipContext,
+}: {
+  row: GameLineRow;
+  sideLabel: string;
+  slipContext: { sport: SlipSport; matchId: string; matchLabel: string };
+}) {
+  const { addPick, removePick, isInSlip } = useSlip();
+  const id = buildSlipPickId({
+    sport: slipContext.sport,
+    matchId: slipContext.matchId,
+    marketType: row.marketType,
+    side: row.side,
+    point: row.point,
+    bookKey: row.bookKey,
+  });
+  const inSlip = isInSlip(id);
+
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        inSlip
+          ? removePick(id)
+          : addPick({
+              id,
+              sport: slipContext.sport,
+              matchId: slipContext.matchId,
+              matchLabel: slipContext.matchLabel,
+              selectionLabel: `${sideLabel}${formatPoint(row.point, row.marketType)}`.trim(),
+              marketType: row.marketType,
+              point: row.point,
+              bookKey: row.bookKey,
+              bookName: row.bookName,
+              priceAmerican: row.priceAmerican,
+              addedAt: Date.now(),
+            })
+      }
+      aria-label={inSlip ? "Remove from slip" : "Add to slip"}
+      aria-pressed={inSlip}
+      className={`ml-2 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+        inSlip
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+      }`}
+    >
+      {inSlip ? (
+        <svg viewBox="0 0 12 12" fill="none" className="size-3">
+          <path d="M2.5 6.5l2.2 2.2L9.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 12 12" fill="none" className="size-3">
+          <path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function LadderRow({
   row,
   isBest,
   evColumns,
   compact,
+  sideLabel,
+  slipContext,
 }: {
   row: GameLineRow;
   isBest: boolean;
   evColumns: LinesLadderEvColumn[];
   compact?: boolean;
+  sideLabel: string;
+  slipContext?: { sport: SlipSport; matchId: string; matchLabel: string };
 }) {
   return (
     <li className={compact ? "py-1.5" : "py-2"}>
@@ -82,8 +150,9 @@ function LadderRow({
             </Badge>
           )}
         </span>
-        <span>
+        <span className="inline-flex items-center">
           {formatPoint(row.point, row.marketType)} {formatAmerican(row.priceAmerican)}
+          {slipContext && <AddToSlipButton row={row} sideLabel={sideLabel} slipContext={slipContext} />}
         </span>
       </div>
       <EvRow row={row} evColumns={evColumns} />
@@ -107,6 +176,7 @@ export function LinesLadder({
   disclaimer,
   emptyMessage,
   gridColsClassName = "sm:grid-cols-2",
+  slipContext,
 }: LinesLadderProps) {
   const sides = useMemo(() => {
     const bySide = new Map<string, GameLineRow[]>();
@@ -174,7 +244,16 @@ export function LinesLadder({
                 )}
                 {inRange.map((row) => {
                   const key = lineKey(row.bookKey, row.side, row.point);
-                  return <LadderRow key={row.bookKey} row={row} isBest={key === bestKey} evColumns={evColumns} />;
+                  return (
+                    <LadderRow
+                      key={row.bookKey}
+                      row={row}
+                      isBest={key === bestKey}
+                      evColumns={evColumns}
+                      sideLabel={header.label}
+                      slipContext={slipContext}
+                    />
+                  );
                 })}
               </ul>
 
@@ -190,7 +269,15 @@ export function LinesLadder({
                       </p>
                       <ul className="divide-y divide-border">
                         {altRows.map((row) => (
-                          <LadderRow key={row.bookKey} row={row} isBest={false} evColumns={evColumns} compact />
+                          <LadderRow
+                            key={row.bookKey}
+                            row={row}
+                            isBest={false}
+                            evColumns={evColumns}
+                            compact
+                            sideLabel={header.label}
+                            slipContext={slipContext}
+                          />
                         ))}
                       </ul>
                     </div>

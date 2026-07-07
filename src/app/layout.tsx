@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteNav } from "@/components/SiteNav";
+import { SlipProvider } from "@/lib/slip/SlipContext";
+import { SlipButton } from "@/components/slip/SlipButton";
 import { THEME_COLORS } from "@/lib/theme";
 import "./globals.css";
 
@@ -65,16 +67,19 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <Suspense fallback={<div className="h-[49px] border-b border-border" />}>
-          <SiteNav />
-        </Suspense>
-        {children}
-        <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-muted-foreground">
-          For informational and research purposes only. Not betting advice; odds, hit-rates, and EV
-          figures are not guaranteed accurate and carry no warranty. This tool does not facilitate
-          bet placement. If you or someone you know has a gambling problem, call or text the National
-          Problem Gambling Helpline at 1-800-522-4700.
-        </footer>
+        <SlipProvider>
+          <Suspense fallback={<div className="h-[49px] border-b border-border" />}>
+            <SiteNav />
+          </Suspense>
+          {children}
+          <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-muted-foreground">
+            For informational and research purposes only. Not betting advice; odds, hit-rates, and EV
+            figures are not guaranteed accurate and carry no warranty. This tool does not facilitate
+            bet placement. If you or someone you know has a gambling problem, call or text the National
+            Problem Gambling Helpline at 1-800-522-4700.
+          </footer>
+          <SlipButton />
+        </SlipProvider>
       </body>
     </html>
   );

@@ -40,6 +40,11 @@ export function MatchLinesView({ match, lines, homeHitRate, awayHitRate }: Match
   return (
     <LinesLadder
       rows={lines}
+      slipContext={{
+        sport: "tennis",
+        matchId: match.id,
+        matchLabel: `${match.awayPlayer.name} vs. ${match.homePlayer.name}`,
+      }}
       sideHeader={(side) => {
         const player = SIDE_PLAYER[side]?.(match);
         return {
