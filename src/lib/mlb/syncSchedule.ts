@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { etDateOf } from "@/lib/dateEt";
+import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
 import { fetchMlbTeams, fetchMlbSchedule, mapDetailedStateToStatus } from "./statsApi";
+
+/**
+ * 2026 regular-season opening day (ET). Everything before this is spring
+ * training / exhibition — see the gameType filter in statsApi.ts. Kept in sync
+ * with SEASON_START_ET in props/syncGameLogs.ts.
+ */
+const REGULAR_SEASON_START_ET = "2026-03-25";
 
 export interface SyncScheduleSummary {
   teamsUpserted: number;
@@ -107,4 +114,46 @@ export async function healStrandedGames(now: Date): Promise<HealStrandedSummary>
   const summary = await syncMlbSchedule(dates[0], dates[dates.length - 1]);
 
   return { strandedFound: stranded.length, datesResynced: dates, gamesUpserted: summary.gamesUpserted };
+}
+
+export interface PurgePreseasonSummary {
+  gamesPurged: number;
+  logsPurged: number;
+}
+
+/**
+ * One-time (idempotent) cleanup of spring-training / exhibition MLB games that
+ * were ingested as regular-season finals before fetchMlbSchedule got its
+ * gameType filter (see statsApi.ts). Those games inflated season records and
+ * the runs feeding Archer EV, and their player logs polluted prop hit-rates.
+ * The gameType filter stops new ones, but already-stored rows never self-heal
+ * (sync only upserts), so this deletes them — child rows first (every FK to
+ * Game is RESTRICT). Runs each sync-schedule cycle and no-ops once clean (and
+ * stays a no-op: nothing dated before opening day can be ingested again).
+ */
+export async function purgePreseasonGames(): Promise<PurgePreseasonSummary> {
+  const cutoff = etDayBoundsUtc(REGULAR_SEASON_START_ET).gte;
+  const preseason = await prisma.game.findMany({
+    where: { sport: "mlb", scheduledStartUtc: { lt: cutoff } },
+    select: { id: true },
+  });
+  if (preseason.length === 0) return { gamesPurged: 0, logsPurged: 0 };
+
+  const ids = preseason.map((g) => g.id);
+  const where = { gameId: { in: ids } };
+  // Delete every child of these games before the games themselves (all FKs to
+  // Game are ON DELETE RESTRICT), atomically.
+  const results = await prisma.$transaction([
+    prisma.playerGameLog.deleteMany({ where }),
+    prisma.lineupSlot.deleteMany({ where }),
+    prisma.oddsSnapshot.deleteMany({ where }),
+    prisma.currentOddsLine.deleteMany({ where }),
+    prisma.playerPropSnapshot.deleteMany({ where }),
+    prisma.currentPlayerPropLine.deleteMany({ where }),
+    prisma.gameClosingLine.deleteMany({ where }),
+    prisma.gameOutcome.deleteMany({ where }),
+    prisma.game.deleteMany({ where: { id: { in: ids } } }),
+  ]);
+
+  return { gamesPurged: preseason.length, logsPurged: results[0].count };
 }

@@ -1,11 +1,12 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
-import { syncMlbSchedule } from "@/lib/mlb/syncSchedule";
+import { syncMlbSchedule, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { todayEt, shiftEtDate } from "@/lib/dateEt";
 
 const JOB_NAME = "sync-schedule";
 const PITCHERS_JOB_NAME = "sync-pitchers";
+const PURGE_JOB_NAME = "purge-preseason-games";
 
 /**
  * How many ET days back this daily sync re-checks. This is the reliable
@@ -58,7 +59,24 @@ export async function POST(request: Request) {
       await recordPollLog(PITCHERS_JOB_NAME, `error: ${message}`);
     }
 
-    return Response.json({ startDate, endDate, ...summary, pitchers: pitchersSummary });
+    // Idempotent one-time cleanup of pre-season/exhibition games mistakenly
+    // stored as regular-season finals (see purgePreseasonGames). No-ops once
+    // clean; own try/catch so it can't fail the schedule sync.
+    let purgeSummary = null;
+    try {
+      purgeSummary = await purgePreseasonGames();
+      await recordPollLog(
+        PURGE_JOB_NAME,
+        purgeSummary.gamesPurged === 0
+          ? "ok"
+          : `ok (purged ${purgeSummary.gamesPurged} games, ${purgeSummary.logsPurged} logs)`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollLog(PURGE_JOB_NAME, `error: ${message}`);
+    }
+
+    return Response.json({ startDate, endDate, ...summary, pitchers: pitchersSummary, purge: purgeSummary });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await recordPollLog(JOB_NAME, `error: ${message}`);
