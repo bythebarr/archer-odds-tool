@@ -1,12 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useSlip, type SlipPick } from "@/lib/slip/SlipContext";
 import { americanToDecimal, decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatPoint } from "@/lib/odds/format";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { BookBadge } from "../BookBadge";
+
+const DEFAULT_STAKE = 10;
+
+function formatMoney(value: number): string {
+  return value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+}
 
 function PickRow({ pick, onRemove }: { pick: SlipPick; onRemove: () => void }) {
   return (
@@ -47,12 +54,18 @@ interface SlipDrawerProps {
  */
 export function SlipDrawer({ open, onClose }: SlipDrawerProps) {
   const { picks, removePick, clearSlip } = useSlip();
+  const [stake, setStake] = useState(String(DEFAULT_STAKE));
 
-  const combinedAmerican = useMemo(() => {
-    if (picks.length < 2) return null;
-    const combinedDecimal = picks.reduce((product, p) => product * americanToDecimal(p.priceAmerican), 1);
-    return decimalToAmerican(combinedDecimal);
-  }, [picks]);
+  const combinedDecimal = useMemo(
+    () => picks.reduce((product, p) => product * americanToDecimal(p.priceAmerican), 1),
+    [picks]
+  );
+  const combinedAmerican = picks.length >= 2 ? decimalToAmerican(combinedDecimal) : null;
+
+  const stakeValue = Number(stake);
+  const validStake = Number.isFinite(stakeValue) && stakeValue > 0;
+  const payout = validStake ? stakeValue * combinedDecimal : null;
+  const profit = payout !== null ? payout - stakeValue : null;
 
   return (
     <>
@@ -99,14 +112,48 @@ export function SlipDrawer({ open, onClose }: SlipDrawerProps) {
           )}
         </div>
 
-        {picks.length >= 2 && combinedAmerican !== null && (
+        {picks.length > 0 && (
           <>
             <Separator />
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-muted-foreground">Combined odds ({picks.length} picks)</span>
-              <span className="font-mono text-sm font-semibold text-foreground">
-                {formatAmerican(combinedAmerican)}
-              </span>
+            <div className="space-y-3 px-4 py-3">
+              {combinedAmerican !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Combined odds ({picks.length} picks)</span>
+                  <span className="font-mono text-sm font-semibold text-foreground">
+                    {formatAmerican(combinedAmerican)}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="slip-stake" className="text-sm text-muted-foreground">
+                  {picks.length >= 2 ? "Parlay stake" : "Stake"}
+                </label>
+                <div className="relative w-28">
+                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input
+                    id="slip-stake"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="1"
+                    value={stake}
+                    onChange={(e) => setStake(e.target.value)}
+                    className="pl-5 text-right font-mono"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">To win</span>
+                <span className="font-mono text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                  {profit !== null ? formatMoney(profit) : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total payout</span>
+                <span className="font-mono text-sm font-semibold text-foreground">
+                  {payout !== null ? formatMoney(payout) : "—"}
+                </span>
+              </div>
             </div>
           </>
         )}
