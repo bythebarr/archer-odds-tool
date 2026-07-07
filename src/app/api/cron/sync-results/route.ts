@@ -1,6 +1,6 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { isPollOddsStale, recordPollLog } from "@/lib/pollingPolicy";
-import { syncMlbSchedule } from "@/lib/mlb/syncSchedule";
+import { syncMlbSchedule, healStrandedGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { syncLineups } from "@/lib/mlb/syncLineups";
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
@@ -12,6 +12,7 @@ const PITCHERS_JOB_NAME = "sync-pitchers";
 const LINEUPS_JOB_NAME = "sync-lineups";
 const POLL_ODDS_JOB_NAME = "poll-odds";
 const GAME_LOGS_JOB_NAME = "sync-player-game-logs";
+const HEAL_JOB_NAME = "heal-stranded-games";
 
 /**
  * Re-sync a few ET days back, not just "today". MLB games are ET-dated and
@@ -99,6 +100,25 @@ export async function POST(request: Request) {
       await recordPollLog(GAME_LOGS_JOB_NAME, `error: ${message}`);
     }
 
+    // Unbounded backstop: heal any past game still stuck non-final, regardless
+    // of how long ago it was — the fixed RESULTS_LOOKBACK_DAYS / HEAL_LOOKBACK_DAYS
+    // windows can't recover a slate whose results-write was missed once the date
+    // ages past them (see healStrandedGames). Runs last so a normal-path failure
+    // above still surfaces first.
+    let healSummary = null;
+    try {
+      healSummary = await healStrandedGames(new Date());
+      await recordPollLog(
+        HEAL_JOB_NAME,
+        healSummary.strandedFound === 0
+          ? "ok"
+          : `ok (healed ${healSummary.strandedFound} on ${healSummary.datesResynced.join(", ")})`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollLog(HEAL_JOB_NAME, `error: ${message}`);
+    }
+
     return Response.json({
       startDate,
       endDate,
@@ -107,6 +127,7 @@ export async function POST(request: Request) {
       lineups: lineupsSummary,
       selfHealPollOdds: selfHealSummary,
       playerGameLogs: gameLogsSummary,
+      healStranded: healSummary,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

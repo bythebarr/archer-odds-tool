@@ -11,8 +11,8 @@ import { ingestGameLogsForGame } from "./gameLogIngest";
  */
 const LOOKBACK_DAYS = 3;
 
-/** Local dev backfilled from here (see scripts/backfill-player-game-logs.ts) — production's one-time historical backfill uses the same start. */
-const SEASON_START_ET = "2026-03-01";
+/** Regular-season opening day (gameType R begins here; earlier dates are spring training / exhibition). Local dev backfilled from here (see scripts/backfill-player-game-logs.ts) — production's one-time historical backfill uses the same start. */
+const SEASON_START_ET = "2026-03-25";
 
 export interface SyncGameLogsSummary {
   gamesIngested: number;

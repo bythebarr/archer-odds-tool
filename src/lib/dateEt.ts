@@ -17,6 +17,11 @@ export function todayEt(): string {
   return DateTime.now().setZone(MLB_TIMEZONE).toISODate()!;
 }
 
+/** The ET calendar date (YYYY-MM-DD) a given UTC instant falls on. */
+export function etDateOf(instant: Date): string {
+  return DateTime.fromJSDate(instant).setZone(MLB_TIMEZONE).toISODate()!;
+}
+
 export function isValidEtDate(dateEt: string): boolean {
   return DateTime.fromISO(dateEt, { zone: MLB_TIMEZONE }).isValid;
 }

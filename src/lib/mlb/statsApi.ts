@@ -75,7 +75,11 @@ export function mapDetailedStateToStatus(
 
 /** Fetches the MLB schedule for every date in [startDate, endDate], inclusive (YYYY-MM-DD, ET). */
 export async function fetchMlbSchedule(startDate: string, endDate: string): Promise<MlbGame[]> {
-  const url = `${BASE_URL}/schedule?sportId=${MLB_SPORT_ID}&startDate=${startDate}&endDate=${endDate}`;
+  // gameType=R,F,D,L,W keeps only games that count toward records: regular
+  // season + every postseason round. Without it the API also returns spring
+  // training (S), exhibition (E), and All-Star (A) games, which were being
+  // stored as regular-season finals and polluting team form + player hit-rates.
+  const url = `${BASE_URL}/schedule?sportId=${MLB_SPORT_ID}&startDate=${startDate}&endDate=${endDate}&gameType=R,F,D,L,W`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`MLB Stats API schedule request failed: ${res.status} ${res.statusText}`);
@@ -112,7 +116,7 @@ export async function fetchMlbProbablePitchers(
   startDate: string,
   endDate: string
 ): Promise<MlbGameProbablePitchers[]> {
-  const url = `${BASE_URL}/schedule?sportId=${MLB_SPORT_ID}&startDate=${startDate}&endDate=${endDate}&hydrate=probablePitcher`;
+  const url = `${BASE_URL}/schedule?sportId=${MLB_SPORT_ID}&startDate=${startDate}&endDate=${endDate}&gameType=R,F,D,L,W&hydrate=probablePitcher`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`MLB Stats API probable-pitcher request failed: ${res.status} ${res.statusText}`);
