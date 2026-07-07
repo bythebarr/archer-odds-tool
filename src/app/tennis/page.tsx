@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { listTennisMatchesWithLines } from "@/lib/queries/tennisMatches";
 import type { MatchSummary } from "@/lib/queries/tennisMatches";
 import type { GameLineRow } from "@/lib/queries/games";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { PlayerBadge } from "@/components/PlayerBadge";
+import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
 
 // Unlike the MLB routes, this page has no searchParams/dynamic segment to
 // signal Next.js that it needs per-request rendering — without this it gets
@@ -22,8 +22,14 @@ function formatTime(date: Date): string {
   }).format(date);
 }
 
+/** Surname only — chip labels stay compact even for long two-part names. */
+function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts[parts.length - 1] ?? name;
+}
+
 /** Best (highest decimal-odds) price per side — moneyline only, tennis v1 has no other market. */
-function bestPricePreview(match: MatchSummary, lines: GameLineRow[]): string | null {
+function bestPricePreview(match: MatchSummary, lines: GameLineRow[]): MatchCardChip[] {
   const bestBySide = new Map<string, GameLineRow>();
   for (const line of lines) {
     const current = bestBySide.get(line.side);
@@ -32,15 +38,13 @@ function bestPricePreview(match: MatchSummary, lines: GameLineRow[]): string | n
     }
   }
 
-  const parts = ["away", "home"]
+  return ["away", "home"]
     .map((side) => bestBySide.get(side))
     .filter((line): line is GameLineRow => line !== undefined)
-    .map((line) => {
-      const name = line.side === "home" ? match.homePlayer.name : match.awayPlayer.name;
-      return `${name} ${formatAmerican(line.priceAmerican)}`;
-    });
-
-  return parts.length > 0 ? parts.join("  ·  ") : null;
+    .map((line) => ({
+      label: shortName(line.side === "home" ? match.homePlayer.name : match.awayPlayer.name),
+      value: formatAmerican(line.priceAmerican),
+    }));
 }
 
 export default async function TennisPage() {
@@ -48,45 +52,34 @@ export default async function TennisPage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
+      <h1 className="text-xl font-semibold text-foreground">Tennis</h1>
       <p className="text-sm text-muted-foreground">
         Tennis odds line-shopping — moneyline only, one tournament tracked at a time.
         Research/discovery only, no bet placement or tracking.
       </p>
 
-      <ul className="mt-6 divide-y divide-border">
-        {matches.length === 0 && (
-          <li className="py-6 text-center text-sm text-muted-foreground">
-            No tennis matches tracked right now.
-          </li>
-        )}
-        {matches.map(({ match, lines }) => (
-          <li key={match.id}>
-            <Link
+      {matches.length === 0 ? (
+        <p className="mt-6 py-10 text-center text-sm text-muted-foreground">
+          No tennis matches tracked right now.
+        </p>
+      ) : (
+        <div className="mt-6 flex flex-col gap-3">
+          {matches.map(({ match, lines }) => (
+            <MatchCard
+              key={match.id}
               href={`/tennis/${match.id}`}
-              className="block py-4 hover:bg-accent/50"
-            >
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-medium text-foreground">
-                  <PlayerBadge name={match.awayPlayer.name} />
-                  {match.awayPlayer.name} vs {match.homePlayer.name}
-                  <PlayerBadge name={match.homePlayer.name} />
-                </span>
-                <div className="flex flex-col items-end">
-                  <span className="text-sm text-foreground">
-                    {formatTime(match.scheduledStartUtc)} ET
-                  </span>
-                  <span className="text-xs uppercase text-muted-foreground">
-                    {match.status}
-                  </span>
-                </div>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {bestPricePreview(match, lines) ?? "No odds polled yet"}
-              </p>
-            </Link>
-          </li>
-        ))}
-      </ul>
+              competitors={[
+                { badge: <PlayerBadge name={match.awayPlayer.name} size={28} />, label: match.awayPlayer.name },
+                { badge: <PlayerBadge name={match.homePlayer.name} size={28} />, label: match.homePlayer.name },
+              ]}
+              timeLabel={`${formatTime(match.scheduledStartUtc)} ET`}
+              status={match.status}
+              isLive={match.status === "live"}
+              chips={bestPricePreview(match, lines)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

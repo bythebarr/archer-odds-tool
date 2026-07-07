@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listMlbTeams, type MlbTeamSummary } from "@/lib/queries/games";
 import { PropsSearchBox } from "@/components/PropsSearchBox";
+import { TeamBadge } from "@/components/TeamBadge";
 
 function groupByDivision(teams: MlbTeamSummary[]): Map<string, MlbTeamSummary[]> {
   const groups = new Map<string, MlbTeamSummary[]>();
@@ -35,13 +36,14 @@ export default async function PropsHubPage() {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {division}
             </h2>
-            <ul className="mt-2 divide-y divide-border">
+            <ul className="mt-2 space-y-0.5">
               {divisionTeams.map((team) => (
                 <li key={team.id}>
                   <Link
                     href={`/props/team/${team.id}`}
-                    className="block py-2 text-sm font-medium text-foreground hover:text-primary hover:underline"
+                    className="flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium text-foreground hover:bg-accent/50 hover:text-primary"
                   >
+                    <TeamBadge abbreviation={team.abbreviation} name={team.name} size={26} />
                     {team.name}
                   </Link>
                 </li>
