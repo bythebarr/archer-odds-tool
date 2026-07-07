@@ -68,7 +68,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <SlipProvider>
-          <Suspense fallback={<div className="h-[49px] border-b border-border" />}>
+          <Suspense fallback={<div className="h-[57px] border-b border-border" />}>
             <SiteNav />
           </Suspense>
           {children}
