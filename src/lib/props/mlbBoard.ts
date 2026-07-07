@@ -183,6 +183,7 @@ async function buildBatterBoard(dateEt: string, statKey: string): Promise<PropBo
   const games = await prisma.game.findMany({
     where: { sport: "mlb", scheduledStartUtc: { gte, lt } },
     select: {
+      id: true,
       homeTeam: { select: { id: true, abbreviation: true } },
       awayTeam: { select: { id: true, abbreviation: true } },
     },
@@ -190,23 +191,61 @@ async function buildBatterBoard(dateEt: string, statKey: string): Promise<PropBo
 
   const teamContext = new Map<string, string>();
   const teamIds: string[] = [];
+  const gameIds: string[] = [];
   for (const g of games) {
     if (g.homeTeam && g.awayTeam) {
       teamContext.set(g.homeTeam.id, `vs ${g.awayTeam.abbreviation}`);
       teamContext.set(g.awayTeam.id, `@ ${g.homeTeam.abbreviation}`);
       teamIds.push(g.homeTeam.id, g.awayTeam.id);
+      gameIds.push(g.id);
     }
   }
   if (teamIds.length === 0) return [];
 
-  const recentByTeam = await getRecentTeamPlayersBatch(teamIds, 13);
+  // Confirmed starters where the lineup has been posted; fall back to
+  // recently-active players for teams whose lineup hasn't dropped yet.
+  const lineupSlots = await prisma.lineupSlot.findMany({
+    where: { gameId: { in: gameIds } },
+    orderBy: { battingOrder: "asc" },
+    select: { teamId: true, mlbPersonId: true, battingOrder: true },
+  });
+  const lineupByTeam = new Map<string, { personId: number; order: number }[]>();
+  for (const s of lineupSlots) {
+    const list = lineupByTeam.get(s.teamId) ?? [];
+    list.push({ personId: s.mlbPersonId, order: s.battingOrder });
+    lineupByTeam.set(s.teamId, list);
+  }
+
+  const lineupPersonIds = [...new Set(lineupSlots.map((s) => s.mlbPersonId))];
+  const lineupPlayers = lineupPersonIds.length
+    ? await prisma.mlbPlayer.findMany({
+        where: { mlbPersonId: { in: lineupPersonIds } },
+        select: { id: true, mlbPersonId: true, fullName: true },
+      })
+    : [];
+  const playerByPerson = new Map(lineupPlayers.map((p) => [p.mlbPersonId, p]));
+
+  const fallbackTeamIds = teamIds.filter((id) => !lineupByTeam.has(id));
+  const recentByTeam = fallbackTeamIds.length ? await getRecentTeamPlayersBatch(fallbackTeamIds, 13) : {};
+
   const candidates: Candidate[] = [];
   const seen = new Set<string>();
   for (const teamId of teamIds) {
-    for (const { player } of recentByTeam[teamId] ?? []) {
-      if (seen.has(player.id)) continue;
-      seen.add(player.id);
-      candidates.push({ playerId: player.id, personId: player.mlbPersonId, name: player.fullName, meta: teamContext.get(teamId) ?? null });
+    const context = teamContext.get(teamId) ?? null;
+    const lineup = lineupByTeam.get(teamId);
+    if (lineup) {
+      for (const { personId, order } of lineup) {
+        const p = playerByPerson.get(personId);
+        if (!p || seen.has(p.id)) continue;
+        seen.add(p.id);
+        candidates.push({ playerId: p.id, personId: p.mlbPersonId, name: p.fullName, meta: context ? `#${order} · ${context}` : `#${order}` });
+      }
+    } else {
+      for (const { player } of recentByTeam[teamId] ?? []) {
+        if (seen.has(player.id)) continue;
+        seen.add(player.id);
+        candidates.push({ playerId: player.id, personId: player.mlbPersonId, name: player.fullName, meta: context });
+      }
     }
   }
   if (candidates.length === 0) return [];

@@ -128,10 +128,32 @@ model Game {
   playerGameLogs         PlayerGameLog[]
   playerPropSnapshots    PlayerPropSnapshot[]
   currentPlayerPropLines CurrentPlayerPropLine[]
+  lineupSlots            LineupSlot[]
 
   @@index([scheduledStartUtc])
   @@index([status])
   @@index([sport])
+}
+
+/**
+ * A confirmed starting-lineup spot for one game — the posted batting order,
+ * ingested from the MLB Stats API boxscore's `battingOrder` once the lineup
+ * drops (a few hours pre-game). Lets the props board show actual starters
+ * instead of "recently active" players. Fully replaced per game on each sync
+ * (scratches happen), so it always reflects the latest posted card.
+ */
+model LineupSlot {
+  id           String @id @default(cuid())
+  gameId       String
+  game         Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  teamId       String
+  mlbPersonId  Int
+  /** 1-9, the batting-order position. */
+  battingOrder Int
+
+  @@unique([gameId, mlbPersonId])
+  @@index([gameId])
+  @@index([teamId])
 }
 
 model Pitcher {

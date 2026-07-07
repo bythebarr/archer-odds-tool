@@ -312,6 +312,28 @@ export async function fetchMlbBoxscore(gamePk: number): Promise<MlbBoxscore> {
   return { home: toTeamBoxscore(data.teams.home), away: toTeamBoxscore(data.teams.away) };
 }
 
+export interface MlbGameLineup {
+  mlbTeamId: number;
+  /** Starter person ids in batting order; empty until the lineup is posted (~hours pre-game). */
+  personIds: number[];
+}
+
+interface BoxscoreLineupTeamRaw {
+  team: { id: number };
+  battingOrder?: number[];
+}
+
+/** Just the posted batting orders for a game — lighter than the full boxscore. Free. */
+export async function fetchMlbLineup(gamePk: number): Promise<{ home: MlbGameLineup; away: MlbGameLineup }> {
+  const res = await fetch(`${BASE_URL}/game/${gamePk}/boxscore`);
+  if (!res.ok) {
+    throw new Error(`MLB Stats API lineup request failed: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { teams: { home: BoxscoreLineupTeamRaw; away: BoxscoreLineupTeamRaw } };
+  const side = (t: BoxscoreLineupTeamRaw): MlbGameLineup => ({ mlbTeamId: t.team.id, personIds: t.battingOrder ?? [] });
+  return { home: side(data.teams.home), away: side(data.teams.away) };
+}
+
 export interface MlbPersonHandedness {
   batSide: "L" | "R" | "S" | null;
   pitchHand: "L" | "R" | null;

@@ -2,12 +2,14 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { isPollOddsStale, recordPollLog } from "@/lib/pollingPolicy";
 import { syncMlbSchedule } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
+import { syncLineups } from "@/lib/mlb/syncLineups";
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
 import { syncRecentPlayerGameLogs } from "@/lib/props/syncGameLogs";
 import { todayEt, shiftEtDate } from "@/lib/dateEt";
 
 const JOB_NAME = "sync-results";
 const PITCHERS_JOB_NAME = "sync-pitchers";
+const LINEUPS_JOB_NAME = "sync-lineups";
 const POLL_ODDS_JOB_NAME = "poll-odds";
 const GAME_LOGS_JOB_NAME = "sync-player-game-logs";
 
@@ -52,6 +54,18 @@ export async function POST(request: Request) {
       await recordPollLog(PITCHERS_JOB_NAME, `error: ${message}`);
     }
 
+    // Today's posted starting lineups (free) — powers the props board's
+    // actual-starter filtering. Lineups drop a few hours pre-game, so freshness
+    // is bounded by how often this cron runs (see the Hobby daily-cron note).
+    let lineupsSummary = null;
+    try {
+      lineupsSummary = await syncLineups(endDate);
+      await recordPollLog(LINEUPS_JOB_NAME, "ok");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollLog(LINEUPS_JOB_NAME, `error: ${message}`);
+    }
+
     // Self-heal: poll-odds.yml's own schedule can silently fail to fire at
     // all (confirmed happening — see pollingPolicy.ts's isPollOddsStale doc).
     // This 15-min free cron is the reliable one, so it doubles as the
@@ -90,6 +104,7 @@ export async function POST(request: Request) {
       endDate,
       ...summary,
       pitchers: pitchersSummary,
+      lineups: lineupsSummary,
       selfHealPollOdds: selfHealSummary,
       playerGameLogs: gameLogsSummary,
     });
