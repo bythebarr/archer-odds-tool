@@ -210,7 +210,9 @@ export function SlateLinesView({
                 Sort by
                 <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
                   <SelectTrigger size="sm" className="text-xs">
-                    <SelectValue />
+                    <SelectValue>
+                      {(v: SortKey) => SORT_OPTIONS.find((opt) => opt.key === v)?.label ?? v}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {SORT_OPTIONS.map((opt) => (

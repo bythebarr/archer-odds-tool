@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { getGameWithLines } from "@/lib/queries/games";
 import { getTeamHitRates } from "@/lib/queries/hitRate";
 import { getGameMatchup } from "@/lib/queries/matchup";
+import { getRecentTeamPlayersBatch } from "@/lib/queries/props";
 import { h2hMarketConsensus } from "@/lib/odds/lineEconomics";
 import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns } from "@/lib/archer/expectedRuns";
 import { GameLinesView } from "@/components/GameLinesView";
 import { MatchupPanel } from "@/components/MatchupPanel";
+import { PlayerPropsSection } from "@/components/PlayerPropsSection";
 import { TeamBadge } from "@/components/TeamBadge";
 import { BackLink } from "@/components/BackLink";
 
@@ -42,10 +44,11 @@ export default async function GamePage({
   if (!result) notFound();
 
   const { game, lines } = result;
-  const [homeHitRates, awayHitRates, matchup] = await Promise.all([
+  const [homeHitRates, awayHitRates, matchup, playersByTeam] = await Promise.all([
     getTeamHitRates(game.homeTeam.id),
     getTeamHitRates(game.awayTeam.id),
     getGameMatchup(gameId),
+    getRecentTeamPlayersBatch([game.homeTeam.id, game.awayTeam.id]),
   ]);
 
   const marketH2h = h2hMarketConsensus(lines);
@@ -101,6 +104,14 @@ export default async function GamePage({
           awayHitRates={awayHitRates}
           archerWinProb={archerProb ? { home: archerProb.homeProb, away: archerProb.awayProb } : null}
           archerRuns={archerRuns}
+        />
+      </div>
+
+      <div className="mt-8">
+        <PlayerPropsSection
+          game={game}
+          homePlayers={playersByTeam[game.homeTeam.id] ?? []}
+          awayPlayers={playersByTeam[game.awayTeam.id] ?? []}
         />
       </div>
     </div>

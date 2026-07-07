@@ -13,6 +13,7 @@ const NAV_LINKS = [
   { href: "/slate", label: "Slate", carriesDate: true },
   { href: "/tennis", label: "Tennis", carriesDate: false },
   { href: "/soccer", label: "Soccer", carriesDate: false },
+  { href: "/props", label: "Props", carriesDate: false },
 ];
 
 /**

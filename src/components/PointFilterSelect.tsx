@@ -24,7 +24,13 @@ export function PointFilterSelect({ pointOptions, value, onChange, market }: Poi
         onValueChange={(v) => onChange(v === MAIN_LINE || v === ALL_ALT_LINES ? v : Number(v))}
       >
         <SelectTrigger size="sm" className="text-xs">
-          <SelectValue />
+          <SelectValue>
+            {(v: string) => {
+              if (v === MAIN_LINE) return "Main line";
+              if (v === ALL_ALT_LINES) return "All alt lines";
+              return formatPoint(Number(v), market);
+            }}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={MAIN_LINE}>Main line</SelectItem>
