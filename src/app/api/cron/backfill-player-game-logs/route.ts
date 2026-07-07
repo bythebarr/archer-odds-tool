@@ -26,7 +26,10 @@ export async function POST(request: Request) {
 
   try {
     const summary = await backfillMissingPlayerGameLogs(BATCH_LIMIT);
-    await recordPollLog(JOB_NAME, "ok");
+    // Remaining count surfaced in lastStatus (visible via /api/status) since
+    // this cron's response body otherwise isn't observable from outside a
+    // running deployment during the multi-call historical catch-up.
+    await recordPollLog(JOB_NAME, `ok (remaining: ${summary.remaining})`);
     return Response.json(summary);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
