@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { recordPollLog } from "@/lib/pollingPolicy";
 import { fetchUfcEvents, fetchUpcomingUfcEvents, type CitoBoutFighter, type CitoEvent } from "./citoApiClient";
 import { parseStatLine } from "./citoStats";
 import type { Prisma } from "@/generated/prisma/client";
@@ -253,25 +254,34 @@ async function isEventAlreadySettled(citoEvent: CitoEvent): Promise<boolean> {
 }
 
 interface SweepOptions {
+  /** First page to fetch (1-based). Defaults to 1. Lets a chunked seed resume mid-history. */
+  startPage?: number;
   /** Hard cap on pages fetched in one run (Cito call budget). */
   maxPages?: number;
   /** Stop as soon as an already-settled event is reached (incremental daily sync). */
   stopWhenSettled?: boolean;
 }
 
+interface SweepResult {
+  /** True if the final page of history was consumed (no more pages beyond). */
+  reachedEnd: boolean;
+  /** The last page number actually fetched this run. */
+  lastPage: number;
+}
+
 /**
  * Shared paging loop over `/events/recent` (newest-first), ingesting each
  * event via ingestEvent. `stopWhenSettled` turns it into an incremental sync
- * that halts at the first immutable already-ingested event; without it, it's
- * a full/bounded sweep. Mutates and returns nothing — the caller owns the
- * summary and fighter cache.
+ * that halts at the first immutable already-ingested event; `startPage`/
+ * `maxPages` let a chunked seed cover the history a slice at a time. Mutates
+ * the caller-owned summary; returns where paging ended so a caller can resume.
  */
 async function sweepRecentEvents(
   fighterCache: Map<string, string>,
   summary: BackfillSummary,
   opts: SweepOptions
-): Promise<void> {
-  let page = 1;
+): Promise<SweepResult> {
+  let page = opts.startPage ?? 1;
 
   while (true) {
     const { events, meta } = await fetchUfcEvents(page, true);
@@ -279,13 +289,17 @@ async function sweepRecentEvents(
 
     for (const citoEvent of events) {
       if (opts.stopWhenSettled && (await isEventAlreadySettled(citoEvent))) {
-        return; // reached immutable, fully-ingested history — everything older is settled too
+        // Reached immutable, fully-ingested history — everything older is settled too.
+        return { reachedEnd: true, lastPage: page };
       }
       await ingestEvent(citoEvent, fighterCache, summary);
     }
 
-    if (!meta.hasNextPage || (opts.maxPages !== undefined && summary.pagesProcessed >= opts.maxPages)) {
-      break;
+    if (!meta.hasNextPage) {
+      return { reachedEnd: true, lastPage: page };
+    }
+    if (opts.maxPages !== undefined && summary.pagesProcessed >= opts.maxPages) {
+      return { reachedEnd: false, lastPage: page };
     }
     page++;
   }
@@ -366,4 +380,60 @@ export async function backfillUpcomingUfcEvents(): Promise<BackfillSummary> {
   }
 
   return summary;
+}
+
+// One-time historical photo seed. When an additive column (e.g. fighter
+// imageUrl) ships, the incremental daily sync only refreshes recent events —
+// it never re-touches the deep historical roster. This seed walks the full
+// history ONCE to backfill it, but in small page-chunks across successive
+// daily runs so it stays well under Cito's rate limit (a single 81-page burst
+// tripped a 429 in testing). Progress is a cursor persisted in PollLog under
+// PHOTO_SEED_JOB: a "next=<page>" status, or "done" when complete.
+const PHOTO_SEED_JOB = "backfill-ufc-photo-seed";
+// Conservative: today's 429 hit after only ~15-20 calls in a short window, so
+// keep a run's total (this + the ~2 recent/upcoming calls) comfortably under
+// that. ~81 pages of history therefore finish in ~8-9 daily runs.
+const PHOTO_SEED_PAGES_PER_RUN = 10;
+
+/** Cursor decode: null status → start at page 1; "done" → complete (null); "next=N" → N. */
+export function parseSeedNextPage(status: string | null | undefined): number | null {
+  if (!status) return 1;
+  if (status.startsWith("done")) return null;
+  const match = status.match(/next=(\d+)/);
+  return match ? Number(match[1]) : 1;
+}
+
+/**
+ * One chunk of the historical seed: ingest up to `maxPages` of `/events/recent`
+ * starting at `startPage`. No early-stop — the whole point is to re-touch old
+ * already-settled events so newly-added columns populate. Returns where to
+ * resume next run (nextPage), or null once the end of history is reached.
+ */
+async function seedUfcHistoryChunk(
+  startPage: number,
+  maxPages: number
+): Promise<{ summary: BackfillSummary; nextPage: number | null }> {
+  const summary = emptySummary();
+  const fighterCache = new Map<string, string>();
+  const { reachedEnd, lastPage } = await sweepRecentEvents(fighterCache, summary, { startPage, maxPages });
+  return { summary, nextPage: reachedEnd ? null : lastPage + 1 };
+}
+
+/**
+ * Advance the one-time historical photo seed by one chunk, if it isn't already
+ * complete. Reads/writes its own PollLog cursor and is a no-op once done, so
+ * the daily cron can call it unconditionally. Returns a short status note for
+ * the caller's log line ("complete", "done", or "next=<page>"). The cursor
+ * only advances after a chunk fully succeeds, so a mid-chunk 429 just re-runs
+ * the same (idempotent) chunk next time rather than skipping pages.
+ */
+export async function advanceUfcPhotoSeed(): Promise<string> {
+  const log = await prisma.pollLog.findUnique({ where: { jobName: PHOTO_SEED_JOB } });
+  const nextPage = parseSeedNextPage(log?.lastStatus);
+  if (nextPage === null) return "complete";
+
+  const { nextPage: after } = await seedUfcHistoryChunk(nextPage, PHOTO_SEED_PAGES_PER_RUN);
+  const note = after === null ? "done" : `next=${after}`;
+  await recordPollLog(PHOTO_SEED_JOB, note);
+  return note;
 }
