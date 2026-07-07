@@ -21,7 +21,15 @@ export default async function PropsHubPage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <h1 className="text-xl font-semibold text-foreground">Player Props</h1>
+      <div className="flex items-baseline justify-between gap-3">
+        <h1 className="text-xl font-semibold text-foreground">Player Props</h1>
+        <Link
+          href="/props/board"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Today&apos;s hit-rate board →
+        </Link>
+      </div>
       <p className="text-sm text-muted-foreground">
         Hit-rate history for MLB player props — research/discovery only, no bet placement or tracking.
       </p>
@@ -29,6 +37,19 @@ export default async function PropsHubPage() {
       <div className="mt-6">
         <PropsSearchBox />
       </div>
+
+      <Link
+        href="/props/board"
+        className="mt-4 flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-primary/50 hover:bg-accent/40"
+      >
+        <span className="flex flex-col">
+          <span className="text-sm font-semibold text-foreground">Today&apos;s Props Board</span>
+          <span className="text-xs text-muted-foreground">
+            Every player on the slate, ranked by hit rate — sortable by line, window, and LHP/RHP split.
+          </span>
+        </span>
+        <span aria-hidden className="text-lg text-muted-foreground">→</span>
+      </Link>
 
       {teams.length === 0 ? (
         <p className="mt-8 text-center text-sm text-muted-foreground">
