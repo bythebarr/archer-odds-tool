@@ -61,18 +61,28 @@ export default async function GamePage({
         ← Back
       </BackLink>
 
-      <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-foreground">
-        <span className="inline-flex items-center gap-2">
-          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} size={24} />
-          {game.awayTeam.name}
-        </span>
-        <span>@</span>
-        <span className="inline-flex items-center gap-2">
-          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} size={24} />
-          {game.homeTeam.name}
-        </span>
+      <h1 className="sr-only">
+        {game.awayTeam.name} at {game.homeTeam.name}
       </h1>
-      <p className="text-sm text-muted-foreground">
+
+      <div className="mt-3 flex items-center justify-center gap-4 rounded-xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:gap-8">
+        <div className="flex flex-1 flex-col items-center gap-2 text-center">
+          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} size={48} />
+          <span className="text-sm font-semibold text-foreground">{game.awayTeam.name}</span>
+          {game.awayScore !== null && (
+            <span className="font-mono text-2xl font-bold text-foreground">{game.awayScore}</span>
+          )}
+        </div>
+        <span className="text-sm font-medium text-muted-foreground">@</span>
+        <div className="flex flex-1 flex-col items-center gap-2 text-center">
+          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} size={48} />
+          <span className="text-sm font-semibold text-foreground">{game.homeTeam.name}</span>
+          {game.homeScore !== null && (
+            <span className="font-mono text-2xl font-bold text-foreground">{game.homeScore}</span>
+          )}
+        </div>
+      </div>
+      <p className="mt-2 text-center text-sm text-muted-foreground">
         {new Intl.DateTimeFormat("en-US", {
           weekday: "short",
           month: "short",
