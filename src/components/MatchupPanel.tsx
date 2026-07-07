@@ -5,15 +5,16 @@ import type { ExpectedRuns } from "@/lib/archer/expectedRuns";
 import type { ConsensusFairProbability } from "@/lib/odds/devig";
 import { formatRecordSplit, formatEra } from "@/lib/odds/format";
 import { TeamBadge } from "./TeamBadge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function PitcherLine({ pitcher }: { pitcher: PitcherInfo | null }) {
   if (!pitcher) {
-    return <p className="text-sm text-zinc-400">Probable starter TBD</p>;
+    return <p className="text-sm text-muted-foreground">Probable starter TBD</p>;
   }
   return (
-    <p className="text-sm text-zinc-900 dark:text-zinc-50">
+    <p className="text-sm text-foreground">
       {pitcher.fullName}
-      <span className="ml-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+      <span className="ml-1.5 text-xs text-muted-foreground">
         {pitcher.wins}-{pitcher.losses}, {formatEra(pitcher.era)} ERA
       </span>
     </p>
@@ -27,9 +28,9 @@ interface StatRowProps {
 
 function StatRow({ label, value }: StatRowProps) {
   return (
-    <div className="flex justify-between text-xs text-zinc-500 dark:text-zinc-400">
+    <div className="flex justify-between text-xs text-muted-foreground">
       <span>{label}</span>
-      <span className="text-zinc-700 dark:text-zinc-300">{value}</span>
+      <span className="text-foreground/80">{value}</span>
     </div>
   );
 }
@@ -49,10 +50,10 @@ function ProbabilityRow({ label, archer, market }: ProbabilityRowProps) {
   const edge = archer !== null && market !== null ? archer - market : null;
   return (
     <div className="flex items-center justify-between text-sm">
-      <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
+      <span className="text-muted-foreground">{label}</span>
       <span className="flex items-center gap-3">
-        <span className="text-zinc-900 dark:text-zinc-50">{formatProb(archer)}</span>
-        <span className="text-zinc-400">vs {formatProb(market)}</span>
+        <span className="text-foreground">{formatProb(archer)}</span>
+        <span className="text-muted-foreground">vs {formatProb(market)}</span>
         {edge !== null && (
           <span
             className={
@@ -91,85 +92,91 @@ function formatRuns(runs: number | null): string {
  */
 export function MatchupPanel({ game, matchup, archerProb, archerRuns, marketProb }: MatchupPanelProps) {
   return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Matchup</h2>
-      <div className="mt-3 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <div>
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} />
-            {game.awayTeam.abbreviation}
-          </h3>
-          <div className="mt-2 space-y-2">
-            <PitcherLine pitcher={matchup.awayPitcher} />
-            <div className="space-y-1">
-              <StatRow label="Away record" value={formatRecordSplit(matchup.awayForm.awayRecord)} />
-              <StatRow label="Last 10" value={formatRecordSplit(matchup.awayForm.last10, 10)} />
-              <StatRow label="Last 5" value={formatRecordSplit(matchup.awayForm.last5, 5)} />
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Matchup
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} />
+              {game.awayTeam.abbreviation}
+            </h3>
+            <div className="mt-2 space-y-2">
+              <PitcherLine pitcher={matchup.awayPitcher} />
+              <div className="space-y-1">
+                <StatRow label="Away record" value={formatRecordSplit(matchup.awayForm.awayRecord)} />
+                <StatRow label="Last 10" value={formatRecordSplit(matchup.awayForm.last10, 10)} />
+                <StatRow label="Last 5" value={formatRecordSplit(matchup.awayForm.last5, 5)} />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} />
+              {game.homeTeam.abbreviation}
+            </h3>
+            <div className="mt-2 space-y-2">
+              <PitcherLine pitcher={matchup.homePitcher} />
+              <div className="space-y-1">
+                <StatRow label="Home record" value={formatRecordSplit(matchup.homeForm.homeRecord)} />
+                <StatRow label="Last 10" value={formatRecordSplit(matchup.homeForm.last10, 10)} />
+                <StatRow label="Last 5" value={formatRecordSplit(matchup.homeForm.last5, 5)} />
+              </div>
             </div>
           </div>
         </div>
 
-        <div>
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} />
-            {game.homeTeam.abbreviation}
-          </h3>
-          <div className="mt-2 space-y-2">
-            <PitcherLine pitcher={matchup.homePitcher} />
-            <div className="space-y-1">
-              <StatRow label="Home record" value={formatRecordSplit(matchup.homeForm.homeRecord)} />
-              <StatRow label="Last 10" value={formatRecordSplit(matchup.homeForm.last10, 10)} />
-              <StatRow label="Last 5" value={formatRecordSplit(matchup.homeForm.last5, 5)} />
+        {(archerProb.homeProb !== null || marketProb.fairProbA !== null) && (
+          <div className="mt-4 rounded-md border border-border bg-muted/40 p-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Archer win probability vs. market
+            </h3>
+            <div className="mt-2 space-y-1">
+              <ProbabilityRow
+                label={`${game.awayTeam.abbreviation} to win`}
+                archer={archerProb.awayProb}
+                market={marketProb.fairProbB}
+              />
+              <ProbabilityRow
+                label={`${game.homeTeam.abbreviation} to win`}
+                archer={archerProb.homeProb}
+                market={marketProb.fairProbA}
+              />
             </div>
           </div>
-        </div>
-      </div>
+        )}
 
-      {(archerProb.homeProb !== null || marketProb.fairProbA !== null) && (
-        <div className="mt-4 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Archer win probability vs. market
-          </h3>
-          <div className="mt-2 space-y-1">
-            <ProbabilityRow
-              label={`${game.awayTeam.abbreviation} to win`}
-              archer={archerProb.awayProb}
-              market={marketProb.fairProbB}
-            />
-            <ProbabilityRow
-              label={`${game.homeTeam.abbreviation} to win`}
-              archer={archerProb.homeProb}
-              market={marketProb.fairProbA}
-            />
+        {(archerRuns.home !== null || archerRuns.away !== null) && (
+          <div className="mt-4 rounded-md border border-border bg-muted/40 p-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Archer projected runs
+            </h3>
+            <div className="mt-2 space-y-1">
+              <StatRow label={`${game.awayTeam.abbreviation} projected runs`} value={formatRuns(archerRuns.away)} />
+              <StatRow label={`${game.homeTeam.abbreviation} projected runs`} value={formatRuns(archerRuns.home)} />
+              <StatRow
+                label="Projected total"
+                value={
+                  archerRuns.home !== null && archerRuns.away !== null
+                    ? formatRuns(archerRuns.home + archerRuns.away)
+                    : "—"
+                }
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {(archerRuns.home !== null || archerRuns.away !== null) && (
-        <div className="mt-4 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Archer projected runs
-          </h3>
-          <div className="mt-2 space-y-1">
-            <StatRow label={`${game.awayTeam.abbreviation} projected runs`} value={formatRuns(archerRuns.away)} />
-            <StatRow label={`${game.homeTeam.abbreviation} projected runs`} value={formatRuns(archerRuns.home)} />
-            <StatRow
-              label="Projected total"
-              value={
-                archerRuns.home !== null && archerRuns.away !== null
-                  ? formatRuns(archerRuns.home + archerRuns.away)
-                  : "—"
-              }
-            />
-          </div>
-        </div>
-      )}
-
-      <p className="mt-3 text-xs text-zinc-400">
-        Archer probability/runs are a v1 heuristic from pitcher ERA + recent form only — directional,
-        not a rigorous projection. They power the Archer EV column on every tab below (win probability
-        for Moneyline, expected-runs-derived cover probability for Spread/Total).
-      </p>
-    </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Archer probability/runs are a v1 heuristic from pitcher ERA + recent form only — directional,
+          not a rigorous projection. They power the Archer EV column on every tab below (win probability
+          for Moneyline, expected-runs-derived cover probability for Spread/Total).
+        </p>
+      </CardContent>
+    </Card>
   );
 }

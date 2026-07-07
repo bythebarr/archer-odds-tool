@@ -19,21 +19,21 @@ export default async function Home({
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-muted-foreground">
         MLB odds line-shopping — research/discovery only, no bet placement or tracking.
       </p>
 
       <div className="mt-6 flex items-center justify-between">
         <Link
           href={`/?date=${prevDate}`}
-          className="text-sm font-medium text-zinc-600 hover:underline dark:text-zinc-400"
+          className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
         >
           ← Prev day
         </Link>
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{date}</span>
+        <span className="text-sm font-medium text-foreground">{date}</span>
         <Link
           href={`/?date=${nextDate}`}
-          className="text-sm font-medium text-zinc-600 hover:underline dark:text-zinc-400"
+          className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
         >
           Next day →
         </Link>

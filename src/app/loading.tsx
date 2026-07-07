@@ -12,7 +12,7 @@ export default function HomeLoading() {
       </div>
 
       <div className="mt-6">
-        <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex gap-2 border-b border-border">
           <div className="border-b-2 border-transparent px-3 py-2">
             <Skeleton className="h-4 w-16" />
           </div>
@@ -23,7 +23,7 @@ export default function HomeLoading() {
             <Skeleton className="h-4 w-12" />
           </div>
         </div>
-        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+        <div className="divide-y divide-border">
           {Array.from({ length: 7 }).map((_, i) => (
             <GameRowSkeleton key={i} />
           ))}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { THEME_COLORS, THEME_STORAGE_KEY, type Theme } from "@/lib/theme";
+import { Button } from "@/components/ui/button";
 
 function initialTheme(): Theme {
   if (typeof document === "undefined") return "light";
@@ -21,15 +22,17 @@ export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       onClick={() => {
         const next: Theme = theme === "dark" ? "light" : "dark";
         setTheme(next);
         applyTheme(next);
       }}
       aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+      className="rounded-full text-muted-foreground"
     >
       {/* Server always renders "light" state (sun/moon SVG below matches),
           client may immediately correct to the resolved theme — expected,
@@ -46,6 +49,6 @@ export function ThemeToggle() {
           </svg>
         )}
       </span>
-    </button>
+    </Button>
   );
 }

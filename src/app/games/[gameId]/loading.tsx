@@ -7,7 +7,7 @@ export default function GameLoading() {
       <Skeleton className="mt-2 h-7 w-72" />
       <Skeleton className="mt-2 h-4 w-52" />
 
-      <div className="mt-6 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+      <div className="mt-6 rounded-xl border border-border bg-card p-4">
         <Skeleton className="h-3 w-20" />
         <div className="mt-3 grid grid-cols-1 gap-6 sm:grid-cols-2">
           {Array.from({ length: 2 }).map((_, i) => (
@@ -23,7 +23,7 @@ export default function GameLoading() {
       </div>
 
       <div className="mt-8">
-        <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex gap-2 border-b border-border">
           <div className="border-b-2 border-transparent px-3 py-2">
             <Skeleton className="h-4 w-16" />
           </div>

@@ -15,6 +15,7 @@ import { MarketTabs } from "./MarketTabs";
 import { TeamBadge } from "./TeamBadge";
 import { BookBadge } from "./BookBadge";
 import { PointFilterSelect, MAIN_LINE, ALL_ALT_LINES, type PointFilter } from "./PointFilterSelect";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const SORT_OPTIONS = [
   { key: "marketEv", label: "Best Mkt EV" },
@@ -167,7 +168,7 @@ export function SlateLinesView({
       />
 
       {!domain || !effectiveRange ? (
-        <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-6 text-sm text-muted-foreground">
           No odds polled for this market yet.
         </p>
       ) : (
@@ -181,7 +182,7 @@ export function SlateLinesView({
             />
           </div>
 
-          <p className="mt-4 text-xs text-zinc-400">
+          <p className="mt-4 text-xs text-muted-foreground">
             Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
             directional estimate only (small sample, no opponent/park/pitcher adjustment).
             {market === "h2h"
@@ -190,7 +191,7 @@ export function SlateLinesView({
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-4">
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-muted-foreground">
               {inRange.length} of {allRows.length} lines in range
             </p>
             <div className="flex items-center gap-3">
@@ -205,30 +206,31 @@ export function SlateLinesView({
                   }}
                 />
               )}
-              <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 Sort by
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value as SortKey)}
-                  className="rounded border border-zinc-200 bg-transparent px-2 py-1 text-xs text-zinc-900 dark:border-zinc-800 dark:text-zinc-50"
-                >
-                  {SORT_OPTIONS.map((opt) => (
-                    <option key={opt.key} value={opt.key}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+                  <SelectTrigger size="sm" className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.key} value={opt.key}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             </div>
           </div>
 
-          <ul className="mt-2 divide-y divide-zinc-200 dark:divide-zinc-800">
+          <ul className="mt-2 divide-y divide-border">
             {inRange.length === 0 && (
-              <li className="py-3 text-sm text-zinc-400">No lines in this range.</li>
+              <li className="py-3 text-sm text-muted-foreground">No lines in this range.</li>
             )}
             {inRange.map((row) => (
               <li key={rowKey(row)} className="py-2">
-                <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+                <div className="flex items-center justify-between text-muted-foreground">
                   <span className="inline-flex flex-wrap items-center gap-1">
                     <TeamBadge
                       abbreviation={row.game.awayTeam.abbreviation}
@@ -242,7 +244,7 @@ export function SlateLinesView({
                     />
                     <Link
                       href={`/games/${row.game.id}`}
-                      className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
+                      className="font-medium text-foreground hover:text-primary hover:underline"
                     >
                       {row.game.awayTeam.abbreviation} @ {row.game.homeTeam.abbreviation}
                     </Link>
@@ -250,12 +252,12 @@ export function SlateLinesView({
                       {SIDE_LABELS[row.line.side]?.(row.game) ?? row.line.side}
                       {formatPoint(row.line.point, market)}
                     </span>
-                    <span className="ml-1 inline-flex items-center gap-1 text-zinc-400">
+                    <span className="ml-1 inline-flex items-center gap-1 text-muted-foreground">
                       <BookBadge bookKey={row.line.bookKey} bookName={row.line.bookName} size={16} />
                       {row.line.bookName}
                     </span>
                   </span>
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                  <span className="font-medium text-foreground">
                     {formatAmerican(row.line.priceAmerican)}
                   </span>
                 </div>

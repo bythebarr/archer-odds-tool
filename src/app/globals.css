@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /* Every dark: utility in the app now follows the data-theme attribute
    (set by the inline anti-flash script in layout.tsx + the ThemeToggle)
@@ -6,30 +8,103 @@
    override the system preference. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-[data-theme="dark"] {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Literal font-family names, not var(--font-geist-sans)/var(--font-sans):
+     @theme inline resolves at Tailwind's parse time, but next/font injects
+     its CSS variables via a className at runtime, so a var() reference here
+     never actually resolves — it must name the self-hosted family directly. */
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
   /* Odds, EV%, W-L records, and dates are the entire product surface —
      tabular digits keep every price/stat column aligned instead of jittering
      with proportional widths. No screen in this app benefits from the
      opposite, so this is set once, globally, rather than per-element. */
   font-variant-numeric: tabular-nums;
+}
+
+/* "Sharp data-terminal" palette: navy/near-black base, electric-blue accent.
+   Positive/negative EV keep their own literal emerald/red (see evColorClass
+   in src/lib/odds/format.ts) — --destructive mirrors that red so shadcn's
+   destructive variants don't introduce a second, slightly different one. */
+:root {
+  --background: #f7f9fc;
+  --foreground: #0b1120;
+  --card: #ffffff;
+  --card-foreground: #0b1120;
+  --popover: #ffffff;
+  --popover-foreground: #0b1120;
+  --primary: #2563eb;
+  --primary-foreground: #f8fafc;
+  --secondary: #eef2f7;
+  --secondary-foreground: #0b1120;
+  --muted: #eef2f7;
+  --muted-foreground: #5b6b82;
+  --accent: #eef2f7;
+  --accent-foreground: #0b1120;
+  --destructive: #dc2626;
+  --border: #dfe5ee;
+  --input: #dfe5ee;
+  --ring: color-mix(in oklch, #2563eb 50%, transparent);
+  --radius: 0.375rem;
+}
+
+[data-theme="dark"] {
+  --background: #0a0e17;
+  --foreground: #e6edf5;
+  --card: #10151f;
+  --card-foreground: #e6edf5;
+  --popover: #10151f;
+  --popover-foreground: #e6edf5;
+  --primary: #38bdf8;
+  --primary-foreground: #04121c;
+  --secondary: #17202e;
+  --secondary-foreground: #e6edf5;
+  --muted: #131a26;
+  --muted-foreground: #7c8aa0;
+  --accent: #17202e;
+  --accent-foreground: #e6edf5;
+  --destructive: #f87171;
+  --border: #1c2433;
+  --input: #1c2433;
+  --ring: color-mix(in oklch, #38bdf8 50%, transparent);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

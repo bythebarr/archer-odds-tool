@@ -65,11 +65,11 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <Suspense fallback={<div className="h-[49px] border-b border-zinc-200 dark:border-zinc-800" />}>
+        <Suspense fallback={<div className="h-[49px] border-b border-border" />}>
           <SiteNav />
         </Suspense>
         {children}
-        <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
+        <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-muted-foreground">
           For informational and research purposes only. Not betting advice; odds, hit-rates, and EV
           figures are not guaranteed accurate and carry no warranty. This tool does not facilitate
           bet placement. If you or someone you know has a gambling problem, call or text the National

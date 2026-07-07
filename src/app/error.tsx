@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function Error({
   reset,
@@ -10,22 +11,17 @@ export default function Error({
 }) {
   return (
     <div className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-2 px-4 text-center font-sans">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Something went wrong
-      </h1>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <h1 className="text-xl font-semibold text-foreground">Something went wrong</h1>
+      <p className="text-sm text-muted-foreground">
         The page hit an unexpected error. Try again, or head back to today&apos;s games.
       </p>
       <div className="mt-2 flex gap-4">
-        <button
-          onClick={reset}
-          className="text-sm font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-        >
+        <Button variant="link" onClick={reset} className="h-auto p-0 text-sm font-medium">
           Try again
-        </button>
-        <Link href="/" className="text-sm font-medium text-zinc-900 hover:underline dark:text-zinc-50">
+        </Button>
+        <Button variant="link" render={<Link href="/" />} className="h-auto p-0 text-sm font-medium">
           ← Today&apos;s games
-        </Link>
+        </Button>
       </div>
     </div>
   );

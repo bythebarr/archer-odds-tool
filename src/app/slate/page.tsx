@@ -46,29 +46,29 @@ export default async function SlatePage({
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-4 py-10 font-sans">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Full slate odds</h1>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <h1 className="text-xl font-semibold text-foreground">Full slate odds</h1>
+      <p className="text-sm text-muted-foreground">
         Every book&apos;s line across the day&apos;s games, filterable by price range.
       </p>
 
       <div className="mt-6 flex items-center justify-between">
         <Link
           href={`/slate?date=${prevDate}`}
-          className="text-sm font-medium text-zinc-600 hover:underline dark:text-zinc-400"
+          className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
         >
           ← Prev day
         </Link>
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{date}</span>
+        <span className="text-sm font-medium text-foreground">{date}</span>
         <Link
           href={`/slate?date=${nextDate}`}
-          className="text-sm font-medium text-zinc-600 hover:underline dark:text-zinc-400"
+          className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
         >
           Next day →
         </Link>
       </div>
 
       {gamesWithLines.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-8 text-center text-sm text-muted-foreground">
           No games scheduled for this date.
         </p>
       ) : (

@@ -51,6 +51,6 @@ export function formatEv(ev: number | null): string {
 }
 
 export function evColorClass(ev: number | null): string {
-  if (ev === null) return "text-zinc-400";
+  if (ev === null) return "text-muted-foreground";
   return ev >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
 }

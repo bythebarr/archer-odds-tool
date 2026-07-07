@@ -39,11 +39,11 @@ export default async function SoccerMatchPage({
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <BackLink fallbackHref="/soccer" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
+      <BackLink fallbackHref="/soccer" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
         ← Back
       </BackLink>
 
-      <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-foreground">
         <span className="inline-flex items-center gap-2">
           <TeamBadge abbreviation={match.awayTeam.abbreviation} name={match.awayTeam.name} size={24} />
           {match.awayTeam.name}
@@ -54,7 +54,7 @@ export default async function SoccerMatchPage({
           {match.homeTeam.name}
         </span>
       </h1>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-muted-foreground">
         {new Intl.DateTimeFormat("en-US", {
           weekday: "short",
           month: "short",

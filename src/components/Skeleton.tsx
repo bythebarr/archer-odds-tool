@@ -1,11 +1,6 @@
-interface SkeletonProps {
-  className?: string;
-}
+import { Skeleton } from "@/components/ui/skeleton";
 
-/** A single pulsing placeholder block, sized/positioned by the caller's className. */
-export function Skeleton({ className = "" }: SkeletonProps) {
-  return <div className={`animate-pulse rounded bg-zinc-200 dark:bg-zinc-800 ${className}`} />;
-}
+export { Skeleton };
 
 /** One game-row-shaped skeleton, matching HomeGamesList/SlateLinesView's row layout. */
 export function GameRowSkeleton() {

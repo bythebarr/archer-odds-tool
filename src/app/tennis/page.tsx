@@ -48,14 +48,14 @@ export default async function TennisPage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-muted-foreground">
         Tennis odds line-shopping — moneyline only, one tournament tracked at a time.
         Research/discovery only, no bet placement or tracking.
       </p>
 
-      <ul className="mt-6 divide-y divide-zinc-200 dark:divide-zinc-800">
+      <ul className="mt-6 divide-y divide-border">
         {matches.length === 0 && (
-          <li className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          <li className="py-6 text-center text-sm text-muted-foreground">
             No tennis matches tracked right now.
           </li>
         )}
@@ -63,24 +63,24 @@ export default async function TennisPage() {
           <li key={match.id}>
             <Link
               href={`/tennis/${match.id}`}
-              className="block py-4 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              className="block py-4 hover:bg-accent/50"
             >
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-medium text-zinc-900 dark:text-zinc-50">
+                <span className="flex items-center gap-1.5 font-medium text-foreground">
                   <PlayerBadge name={match.awayPlayer.name} />
                   {match.awayPlayer.name} vs {match.homePlayer.name}
                   <PlayerBadge name={match.homePlayer.name} />
                 </span>
                 <div className="flex flex-col items-end">
-                  <span className="text-sm text-zinc-900 dark:text-zinc-50">
+                  <span className="text-sm text-foreground">
                     {formatTime(match.scheduledStartUtc)} ET
                   </span>
-                  <span className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                  <span className="text-xs uppercase text-muted-foreground">
                     {match.status}
                   </span>
                 </div>
               </div>
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {bestPricePreview(match, lines) ?? "No odds polled yet"}
               </p>
             </Link>

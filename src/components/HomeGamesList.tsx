@@ -67,34 +67,29 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
     <div>
       <MarketTabs market={market} onChange={setMarket} />
 
-      <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+      <ul className="divide-y divide-border">
         {gamesWithLines.length === 0 && (
-          <li className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          <li className="py-6 text-center text-sm text-muted-foreground">
             No games scheduled for this date.
           </li>
         )}
         {gamesWithLines.map(({ game: g }) => (
           <li key={g.id}>
-            <Link
-              href={`/games/${g.id}`}
-              className="block py-4 hover:bg-zinc-50 dark:hover:bg-zinc-900"
-            >
+            <Link href={`/games/${g.id}`} className="block py-4 hover:bg-accent/50">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="flex items-center gap-1.5 font-medium text-zinc-900 dark:text-zinc-50">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground">
                     <TeamBadge abbreviation={g.awayTeam.abbreviation} name={g.awayTeam.name} />
                     {g.awayTeam.abbreviation} @ {g.homeTeam.abbreviation}
                     <TeamBadge abbreviation={g.homeTeam.abbreviation} name={g.homeTeam.name} />
                   </span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className="text-xs text-muted-foreground">
                     {g.awayTeam.name} at {g.homeTeam.name}
                   </span>
                 </div>
                 <div className="flex flex-col items-end">
-                  <span className="text-sm text-zinc-900 dark:text-zinc-50">
-                    {formatTime(g.scheduledStartUtc)} ET
-                  </span>
-                  <span className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                  <span className="text-sm text-foreground">{formatTime(g.scheduledStartUtc)} ET</span>
+                  <span className="text-xs uppercase text-muted-foreground">
                     {g.status}
                     {g.status !== "scheduled" && g.homeScore !== null && g.awayScore !== null
                       ? ` · ${g.awayScore}-${g.homeScore}`
@@ -102,7 +97,7 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
                   </span>
                 </div>
               </div>
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {previews.get(g.id) ?? "No odds polled yet"}
               </p>
             </Link>
