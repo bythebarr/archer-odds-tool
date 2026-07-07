@@ -13,12 +13,19 @@ interface SplitCellProps {
 function SplitCell({ label, result, highlighted }: SplitCellProps) {
   return (
     <div
-      className={`rounded-md border p-2 text-center ${
+      className={`relative rounded-md border p-2 text-center ${
         highlighted ? "border-primary ring-1 ring-primary" : "border-border"
       }`}
     >
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-semibold text-foreground">{formatPropHitRate(result)}</p>
+      {/* Non-color cue so the highlighted (matchup-relevant) split reads for
+          colorblind users, not just via the primary ring/border. */}
+      {highlighted ? (
+        <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-primary">
+          matchup
+        </span>
+      ) : null}
     </div>
   );
 }
