@@ -15,6 +15,7 @@ const NAV_LINKS = [
   { href: "/slate", label: "Slate", icon: "📊", carriesDate: true },
   { href: "/tennis", label: "Tennis", icon: "🎾", carriesDate: false },
   { href: "/soccer", label: "Soccer", icon: "⚽", carriesDate: false },
+  { href: "/ufc", label: "UFC", icon: "🥊", carriesDate: false },
   { href: "/props", label: "Props", icon: "🎯", carriesDate: false },
 ];
 
