@@ -51,12 +51,95 @@ export interface UfcEventSummary {
 }
 
 function locationOf(city: string | null, country: string | null): string | null {
-  return [city, country].filter(Boolean).join(", ") || null;
+  // Cito's upcoming feed sometimes stores the same polluted string in BOTH
+  // city and country (e.g. both "Las Vegas United States"), so dedupe to
+  // avoid rendering it twice.
+  const parts = [city, country].filter((p): p is string => Boolean(p));
+  const unique = parts.filter((p, i) => parts.indexOf(p) === i);
+  return unique.join(", ") || null;
 }
 
 /** Sorted fighter-pair key — collapses the occasional duplicate Cito bout row (same two fighters listed twice per event, e.g. "Lightweight" and "Lightweight Bout"). */
 function pairKey(redId: string, blueId: string): string {
   return [redId, blueId].sort().join(":");
+}
+
+/** Fighter columns the list/summary shape needs — shared by both event queries so their payloads map identically. */
+const summaryFighterSelect = {
+  id: true,
+  fullName: true,
+  recordWins: true,
+  recordLosses: true,
+  recordDraws: true,
+} as const;
+
+// Structural shapes for mapEventSummary — narrower than the Prisma payloads
+// (which carry more columns), so both listRecent/listUpcoming results assign
+// to them, keeping the mapper independent of the generator's type surface.
+interface SummaryFighter {
+  id: string;
+  fullName: string;
+  recordWins: number | null;
+  recordLosses: number | null;
+  recordDraws: number | null;
+}
+interface SummaryBout {
+  id: string;
+  weightClass: string;
+  titleBout: boolean;
+  cardSection: string | null;
+  method: string | null;
+  resultRound: number | null;
+  winnerFighterId: string | null;
+  redCornerFighterId: string;
+  blueCornerFighterId: string;
+  redCornerFighter: SummaryFighter;
+  blueCornerFighter: SummaryFighter;
+}
+interface SummaryEvent {
+  id: string;
+  title: string;
+  eventDate: Date;
+  city: string | null;
+  country: string | null;
+  bouts: SummaryBout[];
+}
+
+/** Shared event → summary shaping (dedupe the occasional duplicate fighter-pair row; strip the "Bout" suffix; format records). */
+function mapEventSummary(event: SummaryEvent): UfcEventSummary {
+  const seen = new Set<string>();
+  const bouts: UfcBoutSummary[] = [];
+  for (const b of event.bouts) {
+    const key = pairKey(b.redCornerFighterId, b.blueCornerFighterId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    bouts.push({
+      id: b.id,
+      weightClass: b.weightClass.replace(/\s+Bout$/i, ""),
+      titleBout: b.titleBout,
+      cardSection: b.cardSection,
+      method: b.method,
+      resultRound: b.resultRound,
+      winnerFighterId: b.winnerFighterId,
+      red: {
+        id: b.redCornerFighter.id,
+        name: b.redCornerFighter.fullName,
+        record: formatFighterRecord(b.redCornerFighter.recordWins, b.redCornerFighter.recordLosses, b.redCornerFighter.recordDraws),
+      },
+      blue: {
+        id: b.blueCornerFighter.id,
+        name: b.blueCornerFighter.fullName,
+        record: formatFighterRecord(b.blueCornerFighter.recordWins, b.blueCornerFighter.recordLosses, b.blueCornerFighter.recordDraws),
+      },
+    });
+  }
+  return {
+    id: event.id,
+    title: event.title,
+    eventDate: event.eventDate,
+    location: locationOf(event.city, event.country),
+    bouts,
+  };
 }
 
 /**
@@ -72,48 +155,57 @@ export const listRecentUfcEvents = cache(async (limit = 12): Promise<UfcEventSum
       bouts: {
         orderBy: { boutOrder: "asc" },
         include: {
-          redCornerFighter: { select: { id: true, fullName: true, recordWins: true, recordLosses: true, recordDraws: true } },
-          blueCornerFighter: { select: { id: true, fullName: true, recordWins: true, recordLosses: true, recordDraws: true } },
+          redCornerFighter: { select: summaryFighterSelect },
+          blueCornerFighter: { select: summaryFighterSelect },
         },
       },
     },
   });
 
-  return events.map((event) => {
-    const seen = new Set<string>();
-    const bouts: UfcBoutSummary[] = [];
-    for (const b of event.bouts) {
-      const key = pairKey(b.redCornerFighterId, b.blueCornerFighterId);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      bouts.push({
-        id: b.id,
-        weightClass: b.weightClass.replace(/\s+Bout$/i, ""),
-        titleBout: b.titleBout,
-        cardSection: b.cardSection,
-        method: b.method,
-        resultRound: b.resultRound,
-        winnerFighterId: b.winnerFighterId,
-        red: {
-          id: b.redCornerFighter.id,
-          name: b.redCornerFighter.fullName,
-          record: formatFighterRecord(b.redCornerFighter.recordWins, b.redCornerFighter.recordLosses, b.redCornerFighter.recordDraws),
+  return events.map(mapEventSummary);
+});
+
+/**
+ * Upcoming/scheduled UFC cards, soonest first — the not-yet-fought fights
+ * ingested from Cito's /events/upcoming feed (see backfillUpcomingUfcEvents).
+ *
+ * "Upcoming" is keyed off bout `status` (`confirmed`/`scheduled`), NOT the
+ * event date: every historical bout in the DB is `completed`, including the
+ * handful of Cito's +1yr mis-dated duplicate events (which are future-dated
+ * but `hasStats=false` and `completed`), so filtering on non-completed bout
+ * status is what cleanly separates real upcoming cards from that garbage. The
+ * eventDate floor is a secondary guard so a stale scheduled event that never
+ * got its results synced eventually drops off the list.
+ */
+export const listUpcomingUfcEvents = cache(async (limit = 8): Promise<UfcEventSummary[]> => {
+  // Yesterday's UTC midnight — keeps a card visible through its fight night
+  // while dropping genuinely-past scheduled events that were never updated.
+  const cutoff = new Date();
+  cutoff.setUTCHours(0, 0, 0, 0);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+
+  const notCompleted = { status: { not: "completed" } } as const;
+
+  const events = await prisma.ufcEvent.findMany({
+    where: {
+      eventDate: { gte: cutoff },
+      bouts: { some: notCompleted },
+    },
+    orderBy: { eventDate: "asc" },
+    take: limit,
+    include: {
+      bouts: {
+        where: notCompleted,
+        orderBy: { boutOrder: "asc" },
+        include: {
+          redCornerFighter: { select: summaryFighterSelect },
+          blueCornerFighter: { select: summaryFighterSelect },
         },
-        blue: {
-          id: b.blueCornerFighter.id,
-          name: b.blueCornerFighter.fullName,
-          record: formatFighterRecord(b.blueCornerFighter.recordWins, b.blueCornerFighter.recordLosses, b.blueCornerFighter.recordDraws),
-        },
-      });
-    }
-    return {
-      id: event.id,
-      title: event.title,
-      eventDate: event.eventDate,
-      location: locationOf(event.city, event.country),
-      bouts,
-    };
+      },
+    },
   });
+
+  return events.map(mapEventSummary);
 });
 
 export interface UfcFighterBio {

@@ -1,6 +1,6 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
-import { backfillUfcHistory } from "@/lib/ufc/backfillUfc";
+import { backfillUfcHistory, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 
 const JOB_NAME = "backfill-ufc";
 
@@ -22,12 +22,18 @@ export async function POST(request: Request) {
   if (authError) return authError;
 
   try {
-    const summary = await backfillUfcHistory();
+    // History first (completed events), then upcoming scheduled cards — both
+    // idempotent, and once an upcoming event is fought the history sweep
+    // re-upserts its bouts as completed with real results.
+    const recent = await backfillUfcHistory();
+    const upcoming = await backfillUpcomingUfcEvents();
     await recordPollLog(
       JOB_NAME,
-      `ok (events: ${summary.eventsProcessed}, bouts: ${summary.boutsProcessed}, skipped: ${summary.skippedBouts.length})`
+      `ok (recent events: ${recent.eventsProcessed}, upcoming events: ${upcoming.eventsProcessed}, ` +
+        `bouts: ${recent.boutsProcessed + upcoming.boutsProcessed}, ` +
+        `skipped: ${recent.skippedBouts.length + upcoming.skippedBouts.length})`
     );
-    return Response.json(summary);
+    return Response.json({ recent, upcoming });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await recordPollLog(JOB_NAME, `error: ${message}`);

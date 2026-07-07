@@ -159,6 +159,27 @@ export async function fetchUfcEvents(
   return { events: data, meta };
 }
 
+/**
+ * Upcoming/scheduled UFC cards (soonest-first) from Cito's separate
+ * `/events/upcoming` feed — same embedded-bouts shape as the recent listing,
+ * but every event is `status=scheduled` with `hasStats=false`, every bout is
+ * `status=confirmed`/`scheduled` with no result or stats yet, and the API
+ * already excludes cancelled bouts by default (`includeCancelled=false`). A
+ * small feed (~8 events, single page as of writing), but kept paginated for
+ * safety so the caller can loop on `meta.hasNextPage` exactly like the
+ * historical sweep does.
+ */
+export async function fetchUpcomingUfcEvents(
+  page: number,
+  includeBouts: boolean
+): Promise<CitoEventsPage> {
+  const { data, meta } = await citoFetch<CitoEvent[]>("/ufc/events/upcoming", { page, includeBouts });
+  if (!meta) {
+    throw new Error("Cito API response for /ufc/events/upcoming was missing pagination meta");
+  }
+  return { events: data, meta };
+}
+
 /** Single bout's stats, for the rare case a bout needs re-fetching outside a full events listing pass. */
 export async function fetchUfcBoutStats(
   boutId: string
