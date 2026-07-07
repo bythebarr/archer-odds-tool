@@ -28,6 +28,7 @@ export interface UfcBoutCorner {
   id: string;
   name: string;
   record: string | null;
+  imageUrl: string | null;
 }
 
 export interface UfcBoutSummary {
@@ -68,6 +69,7 @@ function pairKey(redId: string, blueId: string): string {
 const summaryFighterSelect = {
   id: true,
   fullName: true,
+  imageUrl: true,
   recordWins: true,
   recordLosses: true,
   recordDraws: true,
@@ -79,6 +81,7 @@ const summaryFighterSelect = {
 interface SummaryFighter {
   id: string;
   fullName: string;
+  imageUrl: string | null;
   recordWins: number | null;
   recordLosses: number | null;
   recordDraws: number | null;
@@ -125,11 +128,13 @@ function mapEventSummary(event: SummaryEvent): UfcEventSummary {
         id: b.redCornerFighter.id,
         name: b.redCornerFighter.fullName,
         record: formatFighterRecord(b.redCornerFighter.recordWins, b.redCornerFighter.recordLosses, b.redCornerFighter.recordDraws),
+        imageUrl: b.redCornerFighter.imageUrl,
       },
       blue: {
         id: b.blueCornerFighter.id,
         name: b.blueCornerFighter.fullName,
         record: formatFighterRecord(b.blueCornerFighter.recordWins, b.blueCornerFighter.recordLosses, b.blueCornerFighter.recordDraws),
+        imageUrl: b.blueCornerFighter.imageUrl,
       },
     });
   }
@@ -214,6 +219,7 @@ export interface UfcFighterBio {
   nickname: string | null;
   division: string | null;
   record: string | null;
+  imageUrl: string | null;
 }
 
 export interface UfcBoutHeader {
@@ -238,6 +244,7 @@ function bioOf(f: {
   fullName: string;
   nickname: string | null;
   division: string | null;
+  imageUrl: string | null;
   recordWins: number | null;
   recordLosses: number | null;
   recordDraws: number | null;
@@ -248,6 +255,7 @@ function bioOf(f: {
     nickname: f.nickname,
     division: f.division,
     record: formatFighterRecord(f.recordWins, f.recordLosses, f.recordDraws),
+    imageUrl: f.imageUrl,
   };
 }
 

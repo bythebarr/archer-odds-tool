@@ -457,6 +457,7 @@ model UfcFighter {
   nickname String?
   division String? // current weight class, not bout-specific (a fighter's UfcBout.weightClass can differ, e.g. a catchweight bout)
   stance   String?
+  imageUrl String? // headshot from Cito's UFC.com CDN (profile.headshotUrl, falling back to the bout's standing-body image); nullable — not every fighter row has one, and the UI falls back to an initials badge
 
   heightInches Float?
   reachInches  Float?

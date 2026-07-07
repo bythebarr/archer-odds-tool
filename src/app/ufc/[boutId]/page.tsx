@@ -31,7 +31,7 @@ function formatEventDate(date: Date): string {
 function FighterColumn({ fighter, color }: { fighter: UfcFighterBio; color: string }) {
   return (
     <div className="flex flex-1 flex-col items-center gap-1.5 text-center">
-      <FighterBadge name={fighter.name} color={color} size={44} />
+      <FighterBadge name={fighter.name} imageUrl={fighter.imageUrl} color={color} size={44} />
       <span className="text-sm font-semibold text-foreground">{fighter.name}</span>
       {fighter.nickname ? <span className="text-xs italic text-muted-foreground">&ldquo;{fighter.nickname}&rdquo;</span> : null}
       {fighter.record ? <span className="font-mono text-xs text-muted-foreground">{fighter.record}</span> : null}

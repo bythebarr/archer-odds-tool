@@ -24,6 +24,16 @@ function resolveFighterSlug(boutFighter: CitoBoutFighter): string | null {
   return boutFighter.fighterSlug ?? boutFighter.profile?.slug ?? null;
 }
 
+/**
+ * Prefer the profile's face-focused headshot for a round avatar; fall back to
+ * the bout-level standing-body cutout, then the profile's own imageUrl.
+ * Returns null when Cito has no photo for this appearance (older fighters).
+ */
+function resolveFighterImageUrl(boutFighter: CitoBoutFighter): string | null {
+  const profile = boutFighter.profile;
+  return profile?.headshotUrl ?? boutFighter.imageUrl ?? profile?.imageUrl ?? null;
+}
+
 async function upsertFighter(
   fighterCache: Map<string, string>,
   boutFighter: CitoBoutFighter,
@@ -34,6 +44,7 @@ async function upsertFighter(
 
   const profile = boutFighter.profile;
   const record = profile?.record;
+  const imageUrl = resolveFighterImageUrl(boutFighter);
 
   const fighter = await prisma.ufcFighter.upsert({
     where: { citoSlug: slug },
@@ -42,6 +53,7 @@ async function upsertFighter(
       fullName: boutFighter.fighterName,
       nickname: profile?.nickname ?? null,
       division: profile?.division ?? null,
+      imageUrl,
       recordWins: record?.wins ?? null,
       recordLosses: record?.losses ?? null,
       recordDraws: record?.draws ?? null,
@@ -51,6 +63,9 @@ async function upsertFighter(
       fullName: boutFighter.fighterName,
       nickname: profile?.nickname ?? null,
       division: profile?.division ?? null,
+      // Only overwrite when this appearance actually has a photo, so a later
+      // photo-less bout can't wipe a headshot captured from an earlier one.
+      ...(imageUrl ? { imageUrl } : {}),
       recordWins: record?.wins ?? null,
       recordLosses: record?.losses ?? null,
       recordDraws: record?.draws ?? null,

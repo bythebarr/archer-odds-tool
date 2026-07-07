@@ -9,6 +9,7 @@ export interface UfcFightRecord {
   opponentId: string;
   opponentSlug: string;
   opponentName: string;
+  opponentImageUrl: string | null;
   result: UfcFightResult;
   method: string | null;
   resultRound: number | null;
@@ -90,6 +91,7 @@ export async function getUfcFightHistory(fighterId: string): Promise<UfcFighterH
       opponentId: opponent.id,
       opponentSlug: opponent.citoSlug,
       opponentName: opponent.fullName,
+      opponentImageUrl: opponent.imageUrl,
       result: inferResult(bout.winnerFighterId, fighterId, bout.method),
       method: bout.method,
       resultRound: bout.resultRound,

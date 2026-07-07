@@ -1,5 +1,6 @@
 import type { UfcFightRecord, UfcFightResult } from "@/lib/queries/ufcMatchup";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FighterBadge } from "@/components/FighterBadge";
 
 const RESULT_STYLE: Record<UfcFightResult, { label: string; className: string }> = {
   win: { label: "W", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
@@ -42,6 +43,7 @@ export function UfcFightHistory({ fighterName, fights, limit = 5 }: UfcFightHist
                     >
                       {style.label}
                     </span>
+                    <FighterBadge name={fight.opponentName} imageUrl={fight.opponentImageUrl} size={22} />
                     <span className="truncate text-sm text-foreground">{fight.opponentName}</span>
                   </div>
                   <div className="shrink-0 text-right">

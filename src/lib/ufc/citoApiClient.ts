@@ -21,6 +21,8 @@ export interface CitoFighterProfile {
   stance?: string | null;
   heightInches?: string | null;
   reachInches?: string | null;
+  headshotUrl?: string | null; // face-focused teaser image — preferred for round avatars
+  imageUrl?: string | null; // usually the same teaser as headshotUrl at the profile level
 }
 
 export interface CitoBoutFighter {
@@ -30,6 +32,7 @@ export interface CitoBoutFighter {
   fighterName: string;
   corner: "red" | "blue" | string;
   outcome: string | null;
+  imageUrl?: string | null; // standing full-body cutout at the bout level (fallback when the profile has no headshot)
   profile: CitoFighterProfile | null;
 }
 

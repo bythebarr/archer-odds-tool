@@ -2,6 +2,8 @@ import { Logo } from "./Logo";
 
 interface FighterBadgeProps {
   name: string;
+  /** Cito UFC.com headshot URL when we have one; falls back to an initials badge otherwise. */
+  imageUrl?: string | null;
   /** Optional corner tint (UFC red/blue) — omit for a neutral badge. */
   color?: string;
   size?: number;
@@ -15,10 +17,10 @@ function initialsFor(name: string): string {
 }
 
 /**
- * Initials avatar for a UFC fighter. Cito has no fighter photo source, so —
- * unlike PlayerBadge — this never attempts an image fetch (empty `sources`
- * renders Logo's fallback badge directly), avoiding pointless 404s.
+ * Avatar for a UFC fighter — a real headshot from Cito's UFC.com CDN when
+ * available (ingested onto UfcFighter.imageUrl), otherwise a neutral initials
+ * badge. Older fighters with no photo on file just render the fallback.
  */
-export function FighterBadge({ name, color, size = 28 }: FighterBadgeProps) {
-  return <Logo sources={[]} alt={name} fallbackText={initialsFor(name)} color={color} size={size} />;
+export function FighterBadge({ name, imageUrl, color, size = 28 }: FighterBadgeProps) {
+  return <Logo sources={imageUrl ? [imageUrl] : []} alt={name} fallbackText={initialsFor(name)} color={color} size={size} />;
 }

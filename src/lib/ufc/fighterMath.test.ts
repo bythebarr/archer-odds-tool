@@ -47,6 +47,7 @@ function fight(overrides: Partial<UfcFightRecord> = {}): UfcFightRecord {
     opponentId: "opp-default",
     opponentSlug: "opp-default",
     opponentName: "Default Opponent",
+    opponentImageUrl: null,
     result: "win" as UfcFightResult,
     method: "Decision - Unanimous",
     resultRound: 3,
