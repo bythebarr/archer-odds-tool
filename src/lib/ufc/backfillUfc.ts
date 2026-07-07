@@ -234,20 +234,43 @@ async function ingestEvent(
 }
 
 /**
- * Full historical UFC backfill: pages through every event (most-recent
- * first), embedding bouts + stats inline via includeBouts=true — confirmed
- * live that this covers the entire ~806-event dataset in ~81 calls,
- * comfortably under Cito's 500/month free-tier quota in a single run.
- * Idempotent throughout (upserts for Fighter/Event/Bout, createMany +
- * skipDuplicates for the immutable stat-row tables), so this doubles as the
- * ongoing sync mechanism for newly-completed events later — just re-run it.
- *
- * maxPages bounds a single invocation (mainly for local testing without
- * spending the full call budget); omit it for a real full backfill.
+ * True once an event is fully ingested AND immutable: it already exists in
+ * the DB with hasStats=true and the incoming copy is still hasStats=true, so
+ * nothing about it can have changed. Because `/events/recent` is ordered
+ * newest-first, the first such event means every older event is likewise
+ * settled — the signal the incremental sync uses to stop paging. Returns
+ * false for not-yet-enriched events (hasStats=false — freshly-fought events
+ * still being scored, plus Cito's +1yr mis-dated dup garbage), so those keep
+ * getting re-synced until they settle.
  */
-export async function backfillUfcHistory(maxPages?: number): Promise<BackfillSummary> {
-  const summary = emptySummary();
-  const fighterCache = new Map<string, string>();
+async function isEventAlreadySettled(citoEvent: CitoEvent): Promise<boolean> {
+  if (!citoEvent.hasStats) return false;
+  const existing = await prisma.ufcEvent.findUnique({
+    where: { citoEventId: citoEvent.id },
+    select: { hasStats: true },
+  });
+  return existing?.hasStats === true;
+}
+
+interface SweepOptions {
+  /** Hard cap on pages fetched in one run (Cito call budget). */
+  maxPages?: number;
+  /** Stop as soon as an already-settled event is reached (incremental daily sync). */
+  stopWhenSettled?: boolean;
+}
+
+/**
+ * Shared paging loop over `/events/recent` (newest-first), ingesting each
+ * event via ingestEvent. `stopWhenSettled` turns it into an incremental sync
+ * that halts at the first immutable already-ingested event; without it, it's
+ * a full/bounded sweep. Mutates and returns nothing — the caller owns the
+ * summary and fighter cache.
+ */
+async function sweepRecentEvents(
+  fighterCache: Map<string, string>,
+  summary: BackfillSummary,
+  opts: SweepOptions
+): Promise<void> {
   let page = 1;
 
   while (true) {
@@ -255,15 +278,62 @@ export async function backfillUfcHistory(maxPages?: number): Promise<BackfillSum
     summary.pagesProcessed++;
 
     for (const citoEvent of events) {
+      if (opts.stopWhenSettled && (await isEventAlreadySettled(citoEvent))) {
+        return; // reached immutable, fully-ingested history — everything older is settled too
+      }
       await ingestEvent(citoEvent, fighterCache, summary);
     }
 
-    if (!meta.hasNextPage || (maxPages !== undefined && summary.pagesProcessed >= maxPages)) {
+    if (!meta.hasNextPage || (opts.maxPages !== undefined && summary.pagesProcessed >= opts.maxPages)) {
       break;
     }
     page++;
   }
+}
 
+/**
+ * Full historical UFC backfill: pages through every event (most-recent
+ * first), embedding bouts + stats inline via includeBouts=true — confirmed
+ * live that this covers the entire ~806-event dataset in ~81 calls. Idempotent
+ * throughout (upserts for Fighter/Event/Bout, createMany + skipDuplicates for
+ * the immutable stat-row tables). Use this for the initial catch-up or a
+ * manual full re-sync; the DAILY cron uses syncRecentUfcEvents instead.
+ *
+ * maxPages bounds a single invocation (mainly for local testing without
+ * spending the full call budget); omit it for a real full backfill.
+ */
+export async function backfillUfcHistory(maxPages?: number): Promise<BackfillSummary> {
+  const summary = emptySummary();
+  const fighterCache = new Map<string, string>();
+  await sweepRecentEvents(fighterCache, summary, { maxPages });
+  return summary;
+}
+
+// Safety backstop for the incremental sync: even if the settled-event signal
+// somehow never fires, never fetch more than this many pages in a daily run.
+// The natural stop is ~3-4 pages (past Cito's ~27 mis-dated dups + the latest
+// real events), so this only ever bounds a pathological case.
+const DAILY_SYNC_MAX_PAGES = 10;
+
+/**
+ * Incremental daily UFC sync — the cheap replacement for re-sweeping all ~806
+ * events (~81 calls) every day, which blew Cito's 500/month free tier
+ * (~2,400/month). Pages `/events/recent` newest-first and stops at the first
+ * already-settled event (see isEventAlreadySettled), so it only re-fetches the
+ * handful of events that could have changed since yesterday: brand-new cards,
+ * freshly-fought events still being enriched, and the not-yet-deduped +1yr
+ * mis-dated dup garbage near the top. Typically ~3-4 calls; hard-capped at
+ * DAILY_SYNC_MAX_PAGES. A late enrichment of a very old event would be missed
+ * (it sits below the stop point) — rerun backfillUfcHistory() manually for
+ * that rare case.
+ */
+export async function syncRecentUfcEvents(): Promise<BackfillSummary> {
+  const summary = emptySummary();
+  const fighterCache = new Map<string, string>();
+  await sweepRecentEvents(fighterCache, summary, {
+    stopWhenSettled: true,
+    maxPages: DAILY_SYNC_MAX_PAGES,
+  });
   return summary;
 }
 

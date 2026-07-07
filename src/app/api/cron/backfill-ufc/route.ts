@@ -1,6 +1,6 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
-import { backfillUfcHistory, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
+import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 
 const JOB_NAME = "backfill-ufc";
 
@@ -10,22 +10,22 @@ export async function GET(request: Request) {
 }
 
 /**
- * Runs the full historical UFC backfill (see backfillUfc.ts) — confirmed
- * locally that the entire ~806-event dataset completes in ~81 Cito API
- * calls, well under the 500/month free-tier quota, so no BATCH_LIMIT/resume
- * logic is needed here unlike backfill-player-game-logs.ts. Idempotent
- * throughout, so the daily schedule also keeps newly-completed events
- * synced going forward — this isn't purely a one-time catch-up job.
+ * Daily UFC sync (see backfillUfc.ts). Deliberately does NOT re-sweep the full
+ * ~806-event history every day (that was ~81 Cito calls/day ≈ 2,400/month,
+ * blowing the 500/month free tier). Instead syncRecentUfcEvents pages
+ * newest-first and stops at the first already-settled event (~3-4 calls),
+ * then backfillUpcomingUfcEvents pulls scheduled cards (~1 call). The initial
+ * full catch-up is a separate manual backfillUfcHistory() run.
  */
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
 
   try {
-    // History first (completed events), then upcoming scheduled cards — both
-    // idempotent, and once an upcoming event is fought the history sweep
+    // Recent/completed events first, then upcoming scheduled cards — both
+    // idempotent, and once an upcoming event is fought the recent sync
     // re-upserts its bouts as completed with real results.
-    const recent = await backfillUfcHistory();
+    const recent = await syncRecentUfcEvents();
     const upcoming = await backfillUpcomingUfcEvents();
     await recordPollLog(
       JOB_NAME,
