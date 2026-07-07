@@ -1,6 +1,7 @@
 {
   "buildCommand": "prisma migrate deploy && next build",
   "crons": [
+    { "path": "/api/cron/sync-results", "schedule": "0 * * * *" },
     { "path": "/api/cron/poll-odds", "schedule": "5 14 * * *" },
     { "path": "/api/cron/poll-odds", "schedule": "30 22 * * *" },
     { "path": "/api/cron/sync-schedule", "schedule": "0 9 * * *" },

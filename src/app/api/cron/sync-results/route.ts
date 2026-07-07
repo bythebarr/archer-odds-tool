@@ -23,6 +23,11 @@ const GAME_LOGS_JOB_NAME = "sync-player-game-logs";
  */
 const RESULTS_LOOKBACK_DAYS = 3;
 
+/** GET: Vercel Cron (always invokes via GET). POST: GitHub Actions / manual dispatch. Same handler. */
+export async function GET(request: Request) {
+  return POST(request);
+}
+
 /** Free (MLB Stats API), run frequently to keep recent games' status/scores fresh. */
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
