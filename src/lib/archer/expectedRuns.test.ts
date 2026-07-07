@@ -27,8 +27,8 @@ function averageForm(overrides: Partial<TeamForm> = {}): TeamForm {
   };
 }
 
-function pitcher(era: number, gamesStarted = 10): PitcherInfo {
-  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted };
+function pitcher(era: number, gamesStarted = 10, inningsPitched: number | null = gamesStarted * 5.5): PitcherInfo {
+  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted, inningsPitched };
 }
 
 const avgPitcher = pitcher(4.2);
@@ -106,6 +106,21 @@ describe("computeExpectedRuns", () => {
     // Both point the same direction (above league average), but the small sample should be shrunk closer to it.
     expect(fewGames.home!).toBeGreaterThan(4.3);
     expect(fewGames.home!).toBeLessThan(fullSample.home!);
+  });
+
+  it("discounts an ace's runs impact toward league average for the innings the bullpen covers", () => {
+    // A dominant 1.0 ERA over a full 9-inning workload would project very
+    // few runs; a realistic ~5.5-inning outing should land meaningfully
+    // higher, since ~3.5 innings still get league-average bullpen risk.
+    const fullGameAce = computeExpectedRuns(matchup({ awayPitcher: pitcher(1.0, 10, 90) })); // 9 IP/start
+    const realisticAce = computeExpectedRuns(matchup({ awayPitcher: pitcher(1.0, 10, 55) })); // 5.5 IP/start
+    expect(realisticAce.home!).toBeGreaterThan(fullGameAce.home!);
+  });
+
+  it("falls back to a default innings/start assumption when inningsPitched data is missing", () => {
+    const withData = computeExpectedRuns(matchup({ awayPitcher: pitcher(2.0, 10, 55) }));
+    const withoutData = computeExpectedRuns(matchup({ awayPitcher: pitcher(2.0, 10, null) }));
+    expect(withoutData.home!).toBeCloseTo(withData.home!, 6);
   });
 
   it("falls back to whatever inputs are available when a probable pitcher isn't set", () => {

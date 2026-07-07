@@ -7,6 +7,8 @@ export interface PitcherInfo {
   losses: number;
   era: number | null;
   gamesStarted: number;
+  /** Season innings pitched — lets expectedRuns.ts scale ERA to how much of a game this pitcher actually covers (see pitcherExpectedRuns), rather than treating ERA as if the starter pitches all 9 innings. Null on parse failure, same as era. */
+  inningsPitched: number | null;
 }
 
 export interface GameMatchup {
@@ -18,7 +20,14 @@ export interface GameMatchup {
 
 interface PitcherWithStats {
   fullName: string;
-  seasonStats: { season: number; wins: number; losses: number; era: number | null; gamesStarted: number }[];
+  seasonStats: {
+    season: number;
+    wins: number;
+    losses: number;
+    era: number | null;
+    gamesStarted: number;
+    inningsPitched: number | null;
+  }[];
 }
 
 function toPitcherInfo(pitcher: PitcherWithStats | null, season: number): PitcherInfo | null {
@@ -30,6 +39,7 @@ function toPitcherInfo(pitcher: PitcherWithStats | null, season: number): Pitche
     losses: stats?.losses ?? 0,
     era: stats?.era ?? null,
     gamesStarted: stats?.gamesStarted ?? 0,
+    inningsPitched: stats?.inningsPitched ?? null,
   };
 }
 

@@ -24,6 +24,9 @@ const RUNS_FULL_CONFIDENCE_GAMES = 15;
 /** Starts needed before a pitcher's ERA is trusted at full strength — same threshold and rationale as winProbability.ts's PITCHER_FULL_CONFIDENCE_STARTS, kept separate here since the two models could be tuned independently. */
 const PITCHER_FULL_CONFIDENCE_STARTS = 8;
 
+/** Fallback innings/start when inningsPitched isn't available — roughly a modern-era typical outing, used only so the model degrades to a reasonable estimate rather than losing the bullpen adjustment entirely. */
+const DEFAULT_INNINGS_PER_START = 5.5;
+
 /** Recency weights for runs splits; renormalized over whichever windows actually have games played. Mirrors winProbability.ts's FORM_WEIGHTS shape (last10 leads) but keyed to runs windows instead of win/loss ones. */
 const RUNS_WEIGHTS = { season: 0.35, last10: 0.4, last5: 0.25 } as const;
 
@@ -50,11 +53,32 @@ function weightedRunsRate(form: TeamForm, side: "for" | "against"): number | nul
   return shrinkToward(rawRate, LEAGUE_AVG_RUNS_PER_GAME, confidence);
 }
 
-/** Pitcher's expected runs allowed in this start, in the same runs/game units as weightedRunsRate — ERA treated as a direct proxy (ignores unearned runs). Shrunk toward league average when gamesStarted is low. Null if no probable starter or no ERA yet. */
+/**
+ * Pitcher's expected contribution to the team's runs allowed, in the same
+ * runs/game units as weightedRunsRate. ERA is a rate over 9 innings, but a
+ * starter doesn't pitch 9 innings — a typical outing is ~5-6, with the
+ * bullpen covering the rest at a different (roughly league-average) rate.
+ * Without this split, a great start (low ERA) understated the team's true
+ * runs-allowed expectation, and a poor start overstated it, since a
+ * meaningful chunk of any game happens after the starter leaves regardless
+ * of how they pitched. ERA itself still treated as a direct runs proxy
+ * (ignores unearned runs) — same simplification as before, just no longer
+ * silently applied to the whole game. Shrunk toward league average when
+ * gamesStarted is low. Null if no probable starter or no ERA yet.
+ */
 function pitcherExpectedRuns(pitcher: PitcherInfo | null): number | null {
   if (!pitcher || pitcher.era === null) return null;
   const confidence = sampleConfidence(pitcher.gamesStarted, PITCHER_FULL_CONFIDENCE_STARTS);
-  return shrinkToward(pitcher.era, LEAGUE_AVG_RUNS_PER_GAME, confidence);
+  const shrunkEraRunsPerNine = shrinkToward(pitcher.era, LEAGUE_AVG_RUNS_PER_GAME, confidence);
+
+  const avgInningsPerStart =
+    pitcher.inningsPitched !== null && pitcher.gamesStarted > 0
+      ? pitcher.inningsPitched / pitcher.gamesStarted
+      : DEFAULT_INNINGS_PER_START;
+  const starterShare = Math.min(Math.max(avgInningsPerStart / 9, 0), 1);
+  const bullpenShare = 1 - starterShare;
+
+  return shrunkEraRunsPerNine * starterShare + LEAGUE_AVG_RUNS_PER_GAME * bullpenShare;
 }
 
 /** Blends one team's offense with the opponent's defense (runs allowed) and the opposing starter's expected runs allowed, falling back to whichever components are actually available. Null only if none are. */

@@ -27,7 +27,7 @@ function form(overrides: Partial<TeamForm> = {}): TeamForm {
 }
 
 function pitcher(era: number, gamesStarted = 10): PitcherInfo {
-  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted };
+  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted, inningsPitched: gamesStarted * 5.5 };
 }
 
 function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
