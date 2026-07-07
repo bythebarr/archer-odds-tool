@@ -205,3 +205,141 @@ export async function fetchPitcherSeasonStats(
     };
   });
 }
+
+export interface MlbBattingLine {
+  atBats: number;
+  plateAppearances: number;
+  hits: number;
+  totalBases: number;
+  homeRuns: number;
+  rbi: number;
+  runs: number;
+  baseOnBalls: number;
+  strikeOuts: number;
+  stolenBases: number;
+}
+
+export interface MlbPitchingLine {
+  gamesStarted: number; // 1 if this player started the game, else 0 — used to identify the starter, not stored itself
+  outs: number;
+  strikeOuts: number;
+  earnedRuns: number;
+  hits: number; // hits allowed
+  baseOnBalls: number; // walks allowed
+}
+
+export interface MlbBoxscorePlayer {
+  personId: number;
+  fullName: string;
+  batting: MlbBattingLine | null;
+  pitching: MlbPitchingLine | null;
+}
+
+export interface MlbBoxscoreTeam {
+  mlbTeamId: number;
+  players: MlbBoxscorePlayer[];
+}
+
+export interface MlbBoxscore {
+  home: MlbBoxscoreTeam;
+  away: MlbBoxscoreTeam;
+}
+
+interface MlbBoxscorePlayerRaw {
+  person: { id: number; fullName: string };
+  stats?: {
+    batting?: Partial<MlbBattingLine> & Record<string, unknown>;
+    pitching?: Partial<MlbPitchingLine> & Record<string, unknown>;
+  };
+}
+
+interface MlbBoxscoreTeamRaw {
+  team: { id: number };
+  players: Record<string, MlbBoxscorePlayerRaw>;
+}
+
+interface MlbBoxscoreResponse {
+  teams: { home: MlbBoxscoreTeamRaw; away: MlbBoxscoreTeamRaw };
+}
+
+function toTeamBoxscore(raw: MlbBoxscoreTeamRaw): MlbBoxscoreTeam {
+  const players: MlbBoxscorePlayer[] = Object.values(raw.players).map((p) => {
+    const battingStats = p.stats?.batting;
+    // A player who didn't come to the plate has a batting stats object with
+    // no atBats field at all (not zero) — treat that as "didn't bat", not "0-for-0".
+    const batting: MlbBattingLine | null =
+      battingStats && typeof battingStats.atBats === "number"
+        ? {
+            atBats: battingStats.atBats,
+            plateAppearances: battingStats.plateAppearances ?? 0,
+            hits: battingStats.hits ?? 0,
+            totalBases: battingStats.totalBases ?? 0,
+            homeRuns: battingStats.homeRuns ?? 0,
+            rbi: battingStats.rbi ?? 0,
+            runs: battingStats.runs ?? 0,
+            baseOnBalls: battingStats.baseOnBalls ?? 0,
+            strikeOuts: battingStats.strikeOuts ?? 0,
+            stolenBases: battingStats.stolenBases ?? 0,
+          }
+        : null;
+
+    const pitchingStats = p.stats?.pitching;
+    const pitching: MlbPitchingLine | null =
+      pitchingStats && typeof pitchingStats.outs === "number"
+        ? {
+            gamesStarted: pitchingStats.gamesStarted ?? 0,
+            outs: pitchingStats.outs,
+            strikeOuts: pitchingStats.strikeOuts ?? 0,
+            earnedRuns: pitchingStats.earnedRuns ?? 0,
+            hits: pitchingStats.hits ?? 0,
+            baseOnBalls: pitchingStats.baseOnBalls ?? 0,
+          }
+        : null;
+
+    return { personId: p.person.id, fullName: p.person.fullName, batting, pitching };
+  });
+
+  return { mlbTeamId: raw.team.id, players };
+}
+
+/** Full per-player batting/pitching lines for one completed game — the hit-rate engine's raw data source, free. */
+export async function fetchMlbBoxscore(gamePk: number): Promise<MlbBoxscore> {
+  const res = await fetch(`${BASE_URL}/game/${gamePk}/boxscore`);
+  if (!res.ok) {
+    throw new Error(`MLB Stats API boxscore request failed: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as MlbBoxscoreResponse;
+  return { home: toTeamBoxscore(data.teams.home), away: toTeamBoxscore(data.teams.away) };
+}
+
+export interface MlbPersonHandedness {
+  batSide: "L" | "R" | "S" | null;
+  pitchHand: "L" | "R" | null;
+}
+
+interface MlbPersonHandednessRaw {
+  id: number;
+  batSide?: { code: string };
+  pitchHand?: { code: string };
+}
+
+/** Batched — one call covers every new player seen across a whole backfill batch/day, not one call per player. */
+export async function fetchMlbPersonHandedness(personIds: number[]): Promise<Map<number, MlbPersonHandedness>> {
+  if (personIds.length === 0) return new Map();
+
+  const url = `${BASE_URL}/people?personIds=${personIds.join(",")}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`MLB Stats API people request failed: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { people?: MlbPersonHandednessRaw[] };
+
+  const result = new Map<number, MlbPersonHandedness>();
+  for (const p of data.people ?? []) {
+    result.set(p.id, {
+      batSide: (p.batSide?.code as MlbPersonHandedness["batSide"]) ?? null,
+      pitchHand: (p.pitchHand?.code as MlbPersonHandedness["pitchHand"]) ?? null,
+    });
+  }
+  return result;
+}

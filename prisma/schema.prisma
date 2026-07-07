@@ -61,6 +61,7 @@ model Team {
   homeGames Game[]        @relation("HomeTeam")
   awayGames Game[]        @relation("AwayTeam")
   outcomes  GameOutcome[]
+  playerGameLogs PlayerGameLog[]
 
   @@index([mlbTeamId])
 }
@@ -124,6 +125,7 @@ model Game {
   currentLines   CurrentOddsLine[]
   closingLines   GameClosingLine[]
   outcomes       GameOutcome[]
+  playerGameLogs PlayerGameLog[]
 
   @@index([scheduledStartUtc])
   @@index([status])
@@ -156,6 +158,102 @@ model PitcherSeasonStats {
   updatedAt      DateTime @updatedAt
 
   @@unique([pitcherId, season])
+}
+
+enum Handedness {
+  L
+  R
+  S // switch-hitter — batSide only, pitchHand is never S
+}
+
+enum StatCategory {
+  hits
+  totalBases
+  homeRuns
+  rbi
+  runs
+  battingStrikeouts
+  pitcherStrikeouts
+  earnedRuns
+  hitsAllowed
+  walksAllowed
+  outsRecorded
+}
+
+/// A general MLB player identity (batter or pitcher, by mlbPersonId),
+/// deliberately separate from Pitcher above rather than unifying them — the
+/// same non-unification call as tennis's Player vs Team (see Team's
+/// docstring): Pitcher already has a narrow, working purpose (the Archer
+/// matchup model's probable-starter ERA), and retrofitting it into a general
+/// player identity risks that existing feature for no real gain. A real
+/// two-way player (e.g. a pitcher who also bats) will have rows in both
+/// tables under the same mlbPersonId — that's fine, they're independent.
+model MlbPlayer {
+  id          String       @id @default(cuid())
+  mlbPersonId Int          @unique
+  fullName    String
+  batSide     Handedness?
+  pitchHand   Handedness?
+
+  gameLogs            PlayerGameLog[] @relation("PlayerLogs")
+  opposingStarterLogs PlayerGameLog[] @relation("OpposingStarterLogs")
+
+  @@index([mlbPersonId])
+}
+
+/// One row per player per game — the hit-rate engine's only source of truth.
+/// Wide (nullable batting/pitching column groups on the same row) rather
+/// than an EAV table: matches how MLB Stats API's boxscore naturally
+/// delivers one stat line per player per game, and keeps windowed hit-rate
+/// queries (last N rows for a player, ordered by gameDate) a simple indexed
+/// scan instead of a pivot. A two-way player has both groups populated on
+/// the same row. Backfilled once from full-season boxscore history (free,
+/// MLB Stats API — see scripts/backfill-player-game-logs.ts), then kept
+/// current by a daily cron, independent of any odds polling.
+model PlayerGameLog {
+  id     String @id @default(cuid())
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id])
+  // Denormalized off Game.scheduledStartUtc so windowed queries (last N for
+  // a player) don't need to join Game just to order/filter by date.
+  gameDate DateTime
+
+  mlbPlayerId String
+  mlbPlayer   MlbPlayer @relation("PlayerLogs", fields: [mlbPlayerId], references: [id])
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id])
+  isHome      Boolean
+
+  // The opposing team's starter that game — the reference point for the
+  // "vs LHP/RHP" split. Hand is denormalized (copied from MlbPlayer.pitchHand
+  // at ingest time) so the split filter never needs a join.
+  opposingStarterId   String?
+  opposingStarter     MlbPlayer?  @relation("OpposingStarterLogs", fields: [opposingStarterId], references: [id])
+  opposingStarterHand Handedness?
+
+  // Batting line — null for a game where this player didn't bat.
+  atBats            Int?
+  plateAppearances  Int?
+  hits              Int?
+  totalBases        Int?
+  homeRuns          Int?
+  rbi               Int?
+  runs              Int?
+  baseOnBalls       Int?
+  strikeoutsBatting Int?
+  stolenBases       Int?
+
+  // Pitching line — null for a game where this player didn't pitch.
+  isStarter           Boolean?
+  outsRecorded        Int?
+  strikeoutsPitching  Int?
+  earnedRuns          Int?
+  hitsAllowed         Int?
+  walksAllowed        Int?
+
+  @@unique([mlbPlayerId, gameId])
+  @@index([mlbPlayerId, gameDate])
+  @@index([mlbPlayerId, opposingStarterHand, gameDate])
 }
 
 model Sportsbook {

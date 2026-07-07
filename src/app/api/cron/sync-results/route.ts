@@ -3,10 +3,12 @@ import { isPollOddsStale, recordPollLog } from "@/lib/pollingPolicy";
 import { syncMlbSchedule } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
+import { syncRecentPlayerGameLogs } from "@/lib/props/syncGameLogs";
 
 const JOB_NAME = "sync-results";
 const PITCHERS_JOB_NAME = "sync-pitchers";
 const POLL_ODDS_JOB_NAME = "poll-odds";
+const GAME_LOGS_JOB_NAME = "sync-player-game-logs";
 
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
@@ -54,7 +56,26 @@ export async function POST(request: Request) {
       await recordPollLog(POLL_ODDS_JOB_NAME, `error (self-heal via sync-results): ${message}`);
     }
 
-    return Response.json({ date, ...summary, pitchers: pitchersSummary, selfHealPollOdds: selfHealSummary });
+    // Free (MLB Stats API) — feeds the prop hit-rate engine, independent of
+    // (and much cheaper than) any odds polling. Looks back a few days on
+    // its own (see syncRecentPlayerGameLogs) so a late finish can't get
+    // stranded past this cycle's single-day window.
+    let gameLogsSummary = null;
+    try {
+      gameLogsSummary = await syncRecentPlayerGameLogs();
+      await recordPollLog(GAME_LOGS_JOB_NAME, "ok");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollLog(GAME_LOGS_JOB_NAME, `error: ${message}`);
+    }
+
+    return Response.json({
+      date,
+      ...summary,
+      pitchers: pitchersSummary,
+      selfHealPollOdds: selfHealSummary,
+      playerGameLogs: gameLogsSummary,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await recordPollLog(JOB_NAME, `error: ${message}`);
