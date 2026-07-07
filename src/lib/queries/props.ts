@@ -4,6 +4,7 @@ import type { Handedness } from "@/generated/prisma/client";
 
 export interface MlbPlayerSummary {
   id: string;
+  mlbPersonId: number;
   fullName: string;
   batSide: Handedness | null;
   pitchHand: Handedness | null;
@@ -14,7 +15,7 @@ export const getMlbPlayerById = cache(async function getMlbPlayerById(
 ): Promise<MlbPlayerSummary | null> {
   return prisma.mlbPlayer.findUnique({
     where: { id: mlbPlayerId },
-    select: { id: true, fullName: true, batSide: true, pitchHand: true },
+    select: { id: true, mlbPersonId: true, fullName: true, batSide: true, pitchHand: true },
   });
 });
 
@@ -27,7 +28,7 @@ export async function searchMlbPlayers(query: string, limit = 20): Promise<MlbPl
     where: { fullName: { contains: trimmed, mode: "insensitive" } },
     orderBy: { fullName: "asc" },
     take: limit,
-    select: { id: true, fullName: true, batSide: true, pitchHand: true },
+    select: { id: true, mlbPersonId: true, fullName: true, batSide: true, pitchHand: true },
   });
 }
 
@@ -54,7 +55,7 @@ export async function getRecentTeamPlayers(teamId: string, limit = 15): Promise<
     where: { teamId, gameDate: { gte: cutoff } },
     orderBy: { gameDate: "desc" },
     distinct: ["mlbPlayerId"],
-    include: { mlbPlayer: { select: { id: true, fullName: true, batSide: true, pitchHand: true } } },
+    include: { mlbPlayer: { select: { id: true, mlbPersonId: true, fullName: true, batSide: true, pitchHand: true } } },
   });
 
   return rows.slice(0, limit).map((r) => ({ player: r.mlbPlayer, lastGameDate: r.gameDate }));
@@ -70,7 +71,7 @@ export async function getRecentTeamPlayersBatch(
     where: { teamId: { in: teamIds }, gameDate: { gte: cutoff } },
     orderBy: { gameDate: "desc" },
     distinct: ["teamId", "mlbPlayerId"],
-    include: { mlbPlayer: { select: { id: true, fullName: true, batSide: true, pitchHand: true } } },
+    include: { mlbPlayer: { select: { id: true, mlbPersonId: true, fullName: true, batSide: true, pitchHand: true } } },
   });
 
   const byTeam: Record<string, RecentTeamPlayer[]> = {};

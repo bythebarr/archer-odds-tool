@@ -51,7 +51,7 @@ export default async function PlayerPropsPage({
       </BackLink>
 
       <h1 className="mt-2 flex items-center gap-2 text-xl font-semibold text-foreground">
-        <PlayerBadge name={player.fullName} size={24} />
+        <PlayerBadge name={player.fullName} mlbPersonId={player.mlbPersonId} size={32} />
         {player.fullName}
       </h1>
       <p className="text-sm text-muted-foreground">

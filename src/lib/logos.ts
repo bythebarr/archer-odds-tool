@@ -20,3 +20,17 @@ export function playerLogoSources(name: string): string[] {
     .replace(/^-+|-+$/g, "");
   return [`/logos/players/${slug}.svg`, `/logos/players/${slug}.png`];
 }
+
+/**
+ * MLB's own official photo CDN (img.mlbstatic.com) — the same one MLB.com
+ * itself serves headshots from, keyed by mlbPersonId. Hotlinked directly
+ * rather than downloaded/rehosted: unlike team crests or sportsbook brand
+ * marks (which would need a real licensing decision, deliberately not made
+ * here — see the local /logos/{teams,books} fallback-only setup), this is
+ * a public data CDN we're already pulling player data from for legitimate
+ * stats purposes, the same hotlinking pattern virtually every third-party
+ * baseball site uses for player photos.
+ */
+export function mlbHeadshotUrl(mlbPersonId: number): string {
+  return `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_100/v1/people/${mlbPersonId}/headshot/67/current`;
+}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { MlbPlayerSummary } from "@/lib/queries/props";
 import { Input } from "@/components/ui/input";
+import { PlayerBadge } from "./PlayerBadge";
 
 const DEBOUNCE_MS = 250;
 
@@ -44,8 +45,9 @@ export function PropsSearchBox() {
             <li key={p.id}>
               <Link
                 href={`/props/${p.id}`}
-                className="block px-3 py-1.5 text-sm text-foreground hover:bg-accent/50"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-foreground hover:bg-accent/50"
               >
+                <PlayerBadge name={p.fullName} mlbPersonId={p.mlbPersonId} size={24} />
                 {p.fullName}
               </Link>
             </li>

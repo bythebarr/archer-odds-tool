@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getMlbTeamById } from "@/lib/queries/games";
 import { getRecentTeamPlayers } from "@/lib/queries/props";
 import { BackLink } from "@/components/BackLink";
+import { PlayerBadge } from "@/components/PlayerBadge";
 
 export async function generateMetadata({
   params,
@@ -44,8 +45,9 @@ export default async function TeamPropsPage({ params }: { params: Promise<{ team
           <li key={player.id}>
             <Link
               href={`/props/${player.id}`}
-              className="block py-3 text-sm font-medium text-foreground hover:bg-accent/50"
+              className="flex items-center gap-3 py-3 text-sm font-medium text-foreground hover:bg-accent/50"
             >
+              <PlayerBadge name={player.fullName} mlbPersonId={player.mlbPersonId} size={36} />
               {player.fullName}
             </Link>
           </li>
