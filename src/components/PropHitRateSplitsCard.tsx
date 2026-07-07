@@ -50,7 +50,7 @@ export function PropHitRateSplitsCard({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           <SplitCell label="L3" result={splits.l3} />
           <SplitCell label="L5" result={splits.l5} />
           <SplitCell label="L10" result={splits.l10} />

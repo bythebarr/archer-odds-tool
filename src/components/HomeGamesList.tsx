@@ -115,7 +115,7 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
                       )}
                     </div>
                   </CardContent>
-                  <CardFooter className="gap-2 bg-transparent border-t-0 p-0 px-(--card-spacing) pb-(--card-spacing)">
+                  <CardFooter className="flex-wrap gap-2 bg-transparent border-t-0 p-0 px-(--card-spacing) pb-(--card-spacing)">
                     {chips.length === 0 ? (
                       <span className="text-xs text-muted-foreground">No odds polled yet</span>
                     ) : (

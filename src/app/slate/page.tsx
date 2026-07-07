@@ -4,7 +4,7 @@ import { getTeamHitRatesBatch } from "@/lib/queries/hitRate";
 import { getGameMatchupsBatch } from "@/lib/queries/matchup";
 import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns, type ExpectedRuns } from "@/lib/archer/expectedRuns";
-import { todayEt, shiftEtDate, isValidEtDate } from "@/lib/dateEt";
+import { todayEt, shiftEtDate, isValidEtDate, formatEtDateLabel } from "@/lib/dateEt";
 import { SlateLinesView } from "@/components/SlateLinesView";
 
 export default async function SlatePage({
@@ -58,7 +58,7 @@ export default async function SlatePage({
         >
           ← Prev day
         </Link>
-        <span className="text-sm font-medium text-foreground">{date}</span>
+        <span className="text-sm font-medium text-foreground">{formatEtDateLabel(date)}</span>
         <Link
           href={`/slate?date=${nextDate}`}
           className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"

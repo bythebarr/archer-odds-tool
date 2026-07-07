@@ -30,6 +30,11 @@ export default async function PropsHubPage() {
         <PropsSearchBox />
       </div>
 
+      {teams.length === 0 ? (
+        <p className="mt-8 text-center text-sm text-muted-foreground">
+          No teams available right now.
+        </p>
+      ) : (
       <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
         {[...groups.entries()].map(([division, divisionTeams]) => (
           <div key={division}>
@@ -52,6 +57,7 @@ export default async function PropsHubPage() {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

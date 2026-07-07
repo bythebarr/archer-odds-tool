@@ -263,7 +263,7 @@ export function SlateLinesView({
                     {formatAmerican(row.line.priceAmerican)}
                   </span>
                 </div>
-                <div className="flex justify-end gap-3 text-xs">
+                <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-xs">
                   <span className={evColorClass(row.marketEv)}>
                     Mkt EV: {formatEv(row.marketEv)}
                   </span>

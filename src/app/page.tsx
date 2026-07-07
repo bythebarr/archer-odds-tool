@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listGamesWithLinesForDate } from "@/lib/queries/games";
-import { todayEt, shiftEtDate, isValidEtDate } from "@/lib/dateEt";
+import { todayEt, shiftEtDate, isValidEtDate, formatEtDateLabel } from "@/lib/dateEt";
 import { HomeGamesList } from "@/components/HomeGamesList";
 
 export default async function Home({
@@ -19,6 +19,7 @@ export default async function Home({
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
+      <h1 className="text-xl font-semibold text-foreground">MLB Games</h1>
       <p className="text-sm text-muted-foreground">
         MLB odds line-shopping — research/discovery only, no bet placement or tracking.
       </p>
@@ -30,7 +31,7 @@ export default async function Home({
         >
           ← Prev day
         </Link>
-        <span className="text-sm font-medium text-foreground">{date}</span>
+        <span className="text-sm font-medium text-foreground">{formatEtDateLabel(date)}</span>
         <Link
           href={`/?date=${nextDate}`}
           className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"

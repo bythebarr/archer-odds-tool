@@ -69,7 +69,7 @@ export function PropControlsPanel({
             setLine(STAT_CATEGORY_DEFAULT_LINE[next]);
           }}
         >
-          <SelectTrigger>
+          <SelectTrigger aria-label="Stat category">
             <SelectValue>{(value: StatCategory) => STAT_CATEGORY_LABELS[value]}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -87,6 +87,7 @@ export function PropControlsPanel({
           value={line}
           onChange={(e) => setLine(Number(e.target.value))}
           className="w-20"
+          aria-label="Prop line"
         />
 
         <div className="flex gap-1">

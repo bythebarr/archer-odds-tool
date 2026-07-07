@@ -24,3 +24,13 @@ export function isValidEtDate(dateEt: string): boolean {
 export function shiftEtDate(dateEt: string, days: number): string {
   return DateTime.fromISO(dateEt, { zone: MLB_TIMEZONE }).plus({ days }).toISODate()!;
 }
+
+/**
+ * Human-friendly label for an ET calendar date (YYYY-MM-DD), e.g. "Tue, Jul 8".
+ * Used for the day-nav center label so the two most-visited pages don't show a
+ * raw ISO string. Falls back to the raw input if it can't be parsed.
+ */
+export function formatEtDateLabel(dateEt: string): string {
+  const dt = DateTime.fromISO(dateEt, { zone: MLB_TIMEZONE });
+  return dt.isValid ? dt.toFormat("ccc, LLL d") : dateEt;
+}
