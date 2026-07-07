@@ -50,17 +50,17 @@ enum Sport {
 /// required but hold synthesized placeholder values for soccer (no real
 /// crest/league data source yet) — see soccer/ingest.ts's upsertTeam.
 model Team {
-  id           String   @id @default(cuid())
-  mlbTeamId    Int?     @unique
-  oddsApiName  String?  @unique
+  id           String  @id @default(cuid())
+  mlbTeamId    Int?    @unique
+  oddsApiName  String? @unique
   name         String
   abbreviation String
   league       String
   division     String
 
-  homeGames Game[]        @relation("HomeTeam")
-  awayGames Game[]        @relation("AwayTeam")
-  outcomes  GameOutcome[]
+  homeGames      Game[]          @relation("HomeTeam")
+  awayGames      Game[]          @relation("AwayTeam")
+  outcomes       GameOutcome[]
   playerGameLogs PlayerGameLog[]
 
   @@index([mlbTeamId])
@@ -121,11 +121,11 @@ model Game {
   awayProbablePitcherId String?
   awayProbablePitcher   Pitcher? @relation("AwayProbablePitcher", fields: [awayProbablePitcherId], references: [id])
 
-  oddsSnapshots  OddsSnapshot[]
-  currentLines   CurrentOddsLine[]
-  closingLines   GameClosingLine[]
-  outcomes       GameOutcome[]
-  playerGameLogs PlayerGameLog[]
+  oddsSnapshots          OddsSnapshot[]
+  currentLines           CurrentOddsLine[]
+  closingLines           GameClosingLine[]
+  outcomes               GameOutcome[]
+  playerGameLogs         PlayerGameLog[]
   playerPropSnapshots    PlayerPropSnapshot[]
   currentPlayerPropLines CurrentPlayerPropLine[]
 
@@ -191,14 +191,14 @@ enum StatCategory {
 /// two-way player (e.g. a pitcher who also bats) will have rows in both
 /// tables under the same mlbPersonId — that's fine, they're independent.
 model MlbPlayer {
-  id          String       @id @default(cuid())
-  mlbPersonId Int          @unique
+  id          String      @id @default(cuid())
+  mlbPersonId Int         @unique
   fullName    String
   batSide     Handedness?
   pitchHand   Handedness?
 
-  gameLogs            PlayerGameLog[] @relation("PlayerLogs")
-  opposingStarterLogs PlayerGameLog[] @relation("OpposingStarterLogs")
+  gameLogs            PlayerGameLog[]         @relation("PlayerLogs")
+  opposingStarterLogs PlayerGameLog[]         @relation("OpposingStarterLogs")
   propSnapshots       PlayerPropSnapshot[]
   currentPropLines    CurrentPlayerPropLine[]
 
@@ -215,9 +215,9 @@ model MlbPlayer {
 /// MLB Stats API — see scripts/backfill-player-game-logs.ts), then kept
 /// current by a daily cron, independent of any odds polling.
 model PlayerGameLog {
-  id     String @id @default(cuid())
-  gameId String
-  game   Game   @relation(fields: [gameId], references: [id])
+  id       String   @id @default(cuid())
+  gameId   String
+  game     Game     @relation(fields: [gameId], references: [id])
   // Denormalized off Game.scheduledStartUtc so windowed queries (last N for
   // a player) don't need to join Game just to order/filter by date.
   gameDate DateTime
@@ -248,12 +248,12 @@ model PlayerGameLog {
   stolenBases       Int?
 
   // Pitching line — null for a game where this player didn't pitch.
-  isStarter           Boolean?
-  outsRecorded        Int?
-  strikeoutsPitching  Int?
-  earnedRuns          Int?
-  hitsAllowed         Int?
-  walksAllowed        Int?
+  isStarter          Boolean?
+  outsRecorded       Int?
+  strikeoutsPitching Int?
+  earnedRuns         Int?
+  hitsAllowed        Int?
+  walksAllowed       Int?
 
   @@unique([mlbPlayerId, gameId])
   @@index([mlbPlayerId, gameDate])
@@ -267,8 +267,8 @@ model Sportsbook {
   logoUrl     String?
   active      Boolean @default(true)
 
-  oddsSnapshots OddsSnapshot[]
-  currentLines  CurrentOddsLine[]
+  oddsSnapshots          OddsSnapshot[]
+  currentLines           CurrentOddsLine[]
   playerPropSnapshots    PlayerPropSnapshot[]
   currentPlayerPropLines CurrentPlayerPropLine[]
 }
@@ -276,16 +276,16 @@ model Sportsbook {
 /// Append-only fact table: every polled price, forever. Source of truth for
 /// history, backtesting, and closing-line capture. Never updated, only inserted.
 model OddsSnapshot {
-  id          String     @id @default(cuid())
-  gameId      String
-  game        Game       @relation(fields: [gameId], references: [id])
-  bookKey     String
-  book        Sportsbook @relation(fields: [bookKey], references: [key])
-  marketType  MarketType
-  side        Side
-  point       Float? // spread/total number; genuinely null for h2h (no sentinel needed — append-only, no unique constraint)
+  id            String     @id @default(cuid())
+  gameId        String
+  game          Game       @relation(fields: [gameId], references: [id])
+  bookKey       String
+  book          Sportsbook @relation(fields: [bookKey], references: [key])
+  marketType    MarketType
+  side          Side
+  point         Float? // spread/total number; genuinely null for h2h (no sentinel needed — append-only, no unique constraint)
   priceAmerican Int
-  isAlternate Boolean @default(false) // true if sourced from alternate_spreads/alternate_totals rather than the main market
+  isAlternate   Boolean    @default(false) // true if sourced from alternate_spreads/alternate_totals rather than the main market
 
   polledAt         DateTime @default(now())
   sourceLastUpdate DateTime // the book's own last-update time, from the Odds API payload
@@ -305,10 +305,10 @@ model CurrentOddsLine {
   marketType    MarketType
   side          Side
   point         Float? // NOTE: stored as 0 (sentinel), never null, for h2h rows — Postgres NULL<>NULL would break
-                        // upsert idempotency for the unique constraint below otherwise. Always null in every
-                        // other table (OddsSnapshot, GameClosingLine); normalize back to null at the query layer.
+  // upsert idempotency for the unique constraint below otherwise. Always null in every
+  // other table (OddsSnapshot, GameClosingLine); normalize back to null at the query layer.
   priceAmerican Int
-  isAlternate   Boolean  @default(false) // true if sourced from alternate_spreads/alternate_totals rather than the main market
+  isAlternate   Boolean    @default(false) // true if sourced from alternate_spreads/alternate_totals rather than the main market
   polledAt      DateTime
 
   @@unique([gameId, bookKey, marketType, side, point])
@@ -424,4 +424,191 @@ model PollCreditLog {
   creditsRemaining Int?
 
   @@index([jobName, polledAt])
+}
+
+// ---------------------------------------------------------------------------
+// UFC (Phase 1: fight-history foundation, sourced from Cito API — a
+// completely separate provider/budget from The Odds API above, no sportsbook
+// odds involved at all yet). Fight-graph-shaped by design — UfcBout is an
+// edge between two UfcFighters (red/blue corner, mirroring Cito's own
+// terminology rather than inventing home/away for a sport with no home
+// venue concept) — so Phase 2's common-opponent/style-matchup analysis can
+// traverse this data without a schema rework. See the "fighter math"
+// conversation this was scoped in for why Phase 2 isn't built yet.
+//
+// Known Cito data-quality caveat, confirmed live: some events' eventDate is
+// off by exactly one year (UFC 318, the real Poirier-Holloway card from
+// July 2025, is dated 2026-07-19 in their system) — every such case
+// observed so far also has hasStats=false. hasStats (denormalized from
+// Cito's own event-level flag) is the practical trust signal: bout results
+// are stored regardless, but detailed stats are only ever fetched for
+// hasStats=true bouts, and eventDate on hasStats=false events shouldn't be
+// trusted for anything date-sensitive.
+// ---------------------------------------------------------------------------
+
+/// A UFC fighter, upserted incrementally from whichever Cito response first
+/// mentions them (event/bout listings embed a fighter profile inline — no
+/// separate full-roster backfill needed, mirroring how tennis's Player is
+/// upserted on the fly rather than pre-synced).
+model UfcFighter {
+  id       String  @id @default(cuid())
+  citoSlug String  @unique
+  fullName String
+  nickname String?
+  division String? // current weight class, not bout-specific (a fighter's UfcBout.weightClass can differ, e.g. a catchweight bout)
+  stance   String?
+
+  heightInches Float?
+  reachInches  Float?
+
+  recordWins      Int?
+  recordLosses    Int?
+  recordDraws     Int?
+  recordNoContest Int?
+
+  redCornerBouts  UfcBout[]             @relation("RedCorner")
+  blueCornerBouts UfcBout[]             @relation("BlueCorner")
+  wonBouts        UfcBout[]             @relation("Winner")
+  boutStats       UfcBoutFighterStats[]
+  roundStats      UfcBoutRoundStats[]
+
+  @@index([citoSlug])
+}
+
+model UfcEvent {
+  id          String   @id @default(cuid())
+  citoEventId String   @unique
+  citoSlug    String   @unique
+  title       String
+  eventDate   DateTime // see the caveat above — not trustworthy on hasStats=false events
+  venue       String?
+  city        String?
+  country     String?
+  hasStats    Boolean  @default(false) // Cito's own event-level flag, refreshed on every backfill pass
+
+  bouts UfcBout[]
+
+  @@index([eventDate])
+}
+
+model UfcBout {
+  id         String   @id @default(cuid())
+  citoBoutId String   @unique
+  eventId    String
+  event      UfcEvent @relation(fields: [eventId], references: [id])
+
+  weightClass String
+  titleBout   Boolean @default(false)
+  cardSection String?
+  boutOrder   Int?
+
+  redCornerFighterId  String
+  redCornerFighter    UfcFighter @relation("RedCorner", fields: [redCornerFighterId], references: [id])
+  blueCornerFighterId String
+  blueCornerFighter   UfcFighter @relation("BlueCorner", fields: [blueCornerFighterId], references: [id])
+
+  status          String // raw Cito status string ("scheduled" | "completed" | "cancelled" | ...) — not normalized into an enum since the full vocabulary isn't characterized yet
+  winnerFighterId String?
+  winnerFighter   UfcFighter? @relation("Winner", fields: [winnerFighterId], references: [id])
+  method          String? // raw Cito string (formatting varies by endpoint, e.g. "KO/TKO" vs "Decision - Unanimous") — stored as-is, normalized at the query layer once the real vocabulary is known
+  methodDetails   String?
+  resultRound     Int?
+  resultTime      String?
+
+  // Our own fetch-state marker, separate from UfcEvent.hasStats (Cito's
+  // event-level hint) — this is the actual dedup/pacing signal for the
+  // batched bout-stats backfill cron, set only once we've successfully
+  // stored this bout's own stats.
+  statsFetchedAt DateTime?
+
+  fighterStats UfcBoutFighterStats[]
+  roundStats   UfcBoutRoundStats[]
+
+  @@index([eventId])
+  @@index([redCornerFighterId])
+  @@index([blueCornerFighterId])
+  @@index([statsFetchedAt])
+}
+
+/// Bout-level aggregate stats, one row per fighter per bout — mirrors
+/// PlayerGameLog's one-row-per-player-per-game shape. Landed/attempted
+/// pairs throughout (Cito returns "X of Y" strings; parsed into two ints on
+/// ingest — see citoStats.ts).
+model UfcBoutFighterStats {
+  id        String     @id @default(cuid())
+  boutId    String
+  bout      UfcBout    @relation(fields: [boutId], references: [id])
+  fighterId String
+  fighter   UfcFighter @relation(fields: [fighterId], references: [id])
+
+  knockdowns         Int
+  submissionAttempts Int
+  reversals          Int
+  controlTimeSeconds Int
+
+  significantStrikesLanded    Int
+  significantStrikesAttempted Int
+  totalStrikesLanded          Int
+  totalStrikesAttempted       Int
+  takedownsLanded             Int
+  takedownsAttempted          Int
+
+  headStrikesLanded    Int
+  headStrikesAttempted Int
+  bodyStrikesLanded    Int
+  bodyStrikesAttempted Int
+  legStrikesLanded     Int
+  legStrikesAttempted  Int
+
+  distanceStrikesLanded    Int
+  distanceStrikesAttempted Int
+  clinchStrikesLanded      Int
+  clinchStrikesAttempted   Int
+  groundStrikesLanded      Int
+  groundStrikesAttempted   Int
+
+  @@unique([boutId, fighterId])
+}
+
+/// Same field shape as UfcBoutFighterStats, scoped to a single round —
+/// separate table rather than a roundNumber-nullable column on the same
+/// model, since "bout aggregate" and "one round" are genuinely different
+/// grains (a 3-round decision has 1 aggregate row + 3 round rows per
+/// fighter, and aggregate isn't just a sum of rounds we happen to have —
+/// Cito provides both independently).
+model UfcBoutRoundStats {
+  id        String     @id @default(cuid())
+  boutId    String
+  bout      UfcBout    @relation(fields: [boutId], references: [id])
+  fighterId String
+  fighter   UfcFighter @relation(fields: [fighterId], references: [id])
+  round     Int
+
+  knockdowns         Int
+  submissionAttempts Int
+  reversals          Int
+  controlTimeSeconds Int
+
+  significantStrikesLanded    Int
+  significantStrikesAttempted Int
+  totalStrikesLanded          Int
+  totalStrikesAttempted       Int
+  takedownsLanded             Int
+  takedownsAttempted          Int
+
+  headStrikesLanded    Int
+  headStrikesAttempted Int
+  bodyStrikesLanded    Int
+  bodyStrikesAttempted Int
+  legStrikesLanded     Int
+  legStrikesAttempted  Int
+
+  distanceStrikesLanded    Int
+  distanceStrikesAttempted Int
+  clinchStrikesLanded      Int
+  clinchStrikesAttempted   Int
+  groundStrikesLanded      Int
+  groundStrikesAttempted   Int
+
+  @@unique([boutId, fighterId, round])
 }
