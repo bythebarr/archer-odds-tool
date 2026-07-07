@@ -63,14 +63,32 @@ export interface PropBoardRow {
 export interface PropBoard {
   sport: PropSport;
   date: string;
-  /** Stat chips. */
+  /** View tabs within the sport (MLB Batters/Pitchers; UFC Striking/Grappling…). */
+  views: { key: string; label: string }[];
+  activeView: string;
+  /** Stat chips for the active view. */
   stats: { key: string; label: string; shortLabel: string; role?: string }[];
   activeStatKey: string;
   /** The active stat's alt-lines, for the increment selector. */
   lines: number[];
-  /** Window + split columns for this sport. */
+  /** Window + split columns for the active view. */
   columns: PropBoardColumnDef[];
   rows: PropBoardRow[];
+}
+
+/**
+ * A coherent (population + splits + stat-catalog) bundle within a sport. MLB
+ * Batters and Pitchers are two views: different entities (recent batters vs
+ * probable starters) and different meaningful splits (vs LHP/RHP vs home/away).
+ * The board UI is generic over views, so a sport exposes as many as it needs.
+ */
+export interface PropView {
+  key: string;
+  label: string;
+  stats: PropStatDef[];
+  columns: PropBoardColumnDef[];
+  /** Build the day's rows for one stat (all entities × the stat's lines). */
+  buildBoard: (dateEt: string, statKey: string) => Promise<PropBoardRow[]>;
 }
 
 /** What each sport implements to appear on the universal board. */
@@ -78,8 +96,5 @@ export interface SportPropConfig {
   sport: PropSport;
   label: string;
   icon: string;
-  stats: PropStatDef[];
-  columns: PropBoardColumnDef[];
-  /** Build the day's rows for one stat (all entities × the stat's lines). */
-  buildBoard: (dateEt: string, statKey: string) => Promise<PropBoardRow[]>;
+  views: PropView[];
 }

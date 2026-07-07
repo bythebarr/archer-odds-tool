@@ -59,6 +59,27 @@ export function PropBoard({ board, date }: { board: PropBoardData; date: string 
 
   return (
     <div>
+      {/* View tabs (Batters / Pitchers) — navigate, resets to the view's first stat */}
+      {board.views.length > 1 && (
+        <div className="mb-4 inline-flex rounded-lg bg-muted p-0.5">
+          {board.views.map((v) => {
+            const active = v.key === board.activeView;
+            return (
+              <Link
+                key={v.key}
+                href={`/props/board?date=${date}&view=${v.key}`}
+                scroll={false}
+                className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                  active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {v.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
       {/* Stat chips — navigate (server re-query) */}
       <div className="flex flex-wrap gap-1.5">
         {board.stats.map((s) => {
@@ -66,7 +87,7 @@ export function PropBoard({ board, date }: { board: PropBoardData; date: string 
           return (
             <Link
               key={s.key}
-              href={`/props/board?date=${date}&stat=${s.key}`}
+              href={`/props/board?date=${date}&view=${board.activeView}&stat=${s.key}`}
               scroll={false}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 active

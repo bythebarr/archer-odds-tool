@@ -9,17 +9,19 @@ export const dynamic = "force-dynamic";
 export default async function PropBoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; stat?: string }>;
+  searchParams: Promise<{ date?: string; view?: string; stat?: string }>;
 }) {
-  const { date: dateParam, stat } = await searchParams;
+  const { date: dateParam, view, stat } = await searchParams;
   const date =
     dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam) ? dateParam : todayEt();
 
   // Only MLB has prop data today; the framework is sport-agnostic (other sports
-  // register a config in board.ts and appear here with their own stats/splits).
-  const board = await getPropBoard("mlb", date, stat);
+  // register a config in board.ts and appear here with their own views/splits).
+  const board = await getPropBoard("mlb", date, view, stat);
   const sports = listPropSports();
 
+  // Carry the active view (not the stat — it resets per view) across day nav.
+  const navSuffix = `&view=${board.activeView}`;
   const prevDate = shiftEtDate(date, -1);
   const nextDate = shiftEtDate(date, 1);
 
@@ -55,14 +57,14 @@ export default async function PropBoardPage({
 
       <div className="mt-6 flex items-center justify-between">
         <Link
-          href={`/props/board?date=${prevDate}${stat ? `&stat=${stat}` : ""}`}
+          href={`/props/board?date=${prevDate}${navSuffix}`}
           className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
         >
           ← Prev day
         </Link>
         <span className="text-sm font-medium text-foreground">{formatEtDateLabel(date)}</span>
         <Link
-          href={`/props/board?date=${nextDate}${stat ? `&stat=${stat}` : ""}`}
+          href={`/props/board?date=${nextDate}${navSuffix}`}
           className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
         >
           Next day →
