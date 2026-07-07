@@ -27,6 +27,16 @@ function textColorFor(hex: string): string {
   return luminance > 0.6 ? "#18181b" : "#fafafa";
 }
 
+/** Darkens a hex color by `amount` (0-1) — the gradient's second stop, for a bit of depth on the fallback badge instead of a flat fill. */
+function darken(hex: string, amount: number): string {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  const scale = (c: number) => Math.round(c * (1 - amount));
+  return `rgb(${scale(r)}, ${scale(g)}, ${scale(b)})`;
+}
+
 export function Logo({ sources, alt, fallbackText, color, size = 20, className = "" }: LogoProps) {
   const [index, setIndex] = useState(0);
   // Local 404s can fire the img's error event before React finishes hydrating
@@ -39,17 +49,17 @@ export function Logo({ sources, alt, fallbackText, color, size = 20, className =
   );
 
   if (!mounted || index >= sources.length) {
-    const background = color ?? "#a1a1aa";
+    const background = color ?? "#71717a";
     return (
       <span
         style={{
           width: size,
           height: size,
-          fontSize: size * 0.4,
-          backgroundColor: background,
+          fontSize: size * 0.38,
+          background: `linear-gradient(135deg, ${background} 0%, ${darken(background, 0.22)} 100%)`,
           color: textColorFor(background),
         }}
-        className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold leading-none ${className}`}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full font-bold leading-none tracking-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(0,0,0,0.15)] ring-1 ring-black/10 dark:ring-white/10 ${className}`}
         title={alt}
       >
         {fallbackText}
@@ -64,7 +74,7 @@ export function Logo({ sources, alt, fallbackText, color, size = 20, className =
       alt={alt}
       width={size}
       height={size}
-      className={`inline-block shrink-0 rounded-full object-contain ${className}`}
+      className={`inline-block shrink-0 rounded-full bg-background object-contain ring-1 ring-black/5 dark:ring-white/10 ${className}`}
       onError={() => setIndex((i) => i + 1)}
     />
   );
