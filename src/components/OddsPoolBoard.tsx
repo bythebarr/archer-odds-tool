@@ -96,11 +96,11 @@ type Lens = "market" | "model";
 
 const VALUE_TITLE: Record<Lens, string> = {
   market: "EV of this price vs the de-vigged market consensus",
-  model: "EV of this price vs Archer's own win probability",
+  model: "EV of this price vs Archer's own model probability",
 };
 const EMPTY_TITLE: Record<Lens, string> = {
   market: "Three-way market — no fair-price value yet",
-  model: "No Archer model for this play — MLB moneylines only",
+  model: "No Archer model for this play — MLB game lines only",
 };
 
 function PlayRow({ play, value, lens }: { play: OddsPlay; value: number | null; lens: Lens }) {
@@ -308,7 +308,7 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
             ))}
           </div>
           <span className="text-muted-foreground">
-            {lens === "market" ? "Best price vs the de-vigged market" : "Archer win prob vs price · MLB moneylines"}
+            {lens === "market" ? "Best price vs the de-vigged market" : "Archer model vs price · MLB game lines"}
           </span>
         </div>
       )}
