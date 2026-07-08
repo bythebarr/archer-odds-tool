@@ -237,11 +237,13 @@ export function SlateLinesView({
                     <TeamBadge
                       abbreviation={row.game.awayTeam.abbreviation}
                       name={row.game.awayTeam.name}
+                      mlbTeamId={row.game.awayTeam.mlbTeamId}
                       size={16}
                     />
                     <TeamBadge
                       abbreviation={row.game.homeTeam.abbreviation}
                       name={row.game.homeTeam.name}
+                      mlbTeamId={row.game.homeTeam.mlbTeamId}
                       size={16}
                     />
                     <Link
