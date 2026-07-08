@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useSlip, type SlipPick } from "@/lib/slip/SlipContext";
 import { americanToDecimal, decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
-import { formatPoint } from "@/lib/odds/format";
+import { formatPoint, formatEv } from "@/lib/odds/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -29,10 +29,22 @@ function PickRow({ pick, onRemove }: { pick: SlipPick; onRemove: () => void }) {
           )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <span className="font-mono text-sm font-semibold text-foreground">
-          {formatAmerican(pick.priceAmerican)}
-        </span>
+      <div className="flex shrink-0 items-start gap-2">
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="font-mono text-sm font-semibold text-foreground">
+            {formatAmerican(pick.priceAmerican)}
+          </span>
+          {pick.ev != null && (
+            <span
+              className={`font-mono text-[11px] font-semibold tabular-nums ${
+                pick.ev > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+              }`}
+              title="Market value when added (best price vs de-vigged consensus)"
+            >
+              {formatEv(pick.ev)}
+            </span>
+          )}
+        </div>
         <Button variant="ghost" size="icon-sm" onClick={onRemove} aria-label={`Remove ${pick.selectionLabel} from slip`}>
           <svg viewBox="0 0 16 16" fill="none" className="size-3.5">
             <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

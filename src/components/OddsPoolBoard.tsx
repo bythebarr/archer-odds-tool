@@ -54,6 +54,7 @@ function toSlipPick(play: OddsPlay): SlipPick {
     bookKey: play.bestBookKey,
     bookName: play.bestBookName,
     priceAmerican: play.bestPrice,
+    ev: play.ev,
     addedAt: 0,
   };
 }

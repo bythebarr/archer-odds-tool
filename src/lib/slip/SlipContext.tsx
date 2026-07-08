@@ -19,6 +19,8 @@ export interface SlipPick {
   bookKey: string;
   bookName: string;
   priceAmerican: number;
+  /** Market value (best price vs de-vigged consensus) at the moment it was added — lets the slip read as a value watchlist. Optional: older picks / non-pool sources may not carry it. */
+  ev?: number | null;
   addedAt: number;
 }
 
