@@ -25,7 +25,7 @@ export default async function Home({
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {formatEtDateLabel(date)}
       </p>
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">Today on archer</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Today on ARCHR</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Pick a sport to dive in, or jump to the{" "}
         <span className="font-medium text-foreground">full slate</span> for every play in one pool.

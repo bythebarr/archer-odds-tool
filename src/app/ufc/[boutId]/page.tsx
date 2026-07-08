@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: { params: Promise<{ boutId: s
   if (!header) return {};
 
   const title = `${header.red.name} vs ${header.blue.name}`;
-  const description = `${title} (${header.weightClass}) — archer fighter-math win-probability projection.`;
+  const description = `${title} (${header.weightClass}) — Archer fighter-math win-probability projection.`;
   return { title, description, openGraph: { title, description }, twitter: { title, description } };
 }
 

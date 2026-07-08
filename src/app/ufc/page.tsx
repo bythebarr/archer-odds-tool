@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "UFC — fighter-math matchups",
   description:
-    "Upcoming UFC cards and recent results with archer's transparent fighter-math win-probability projections.",
+    "Upcoming UFC cards and recent results with Archer's transparent fighter-math win-probability projections.",
 };
 
 function formatEventDate(date: Date): string {
@@ -107,7 +107,7 @@ export default async function UfcPage() {
     <PageShell width="2xl">
       <PageHeader
         title="UFC"
-        description="Upcoming cards and recent results with archer's transparent fighter-math projections."
+        description="Upcoming cards and recent results with Archer's transparent fighter-math projections."
       />
 
       {upcoming.length > 0 ? (

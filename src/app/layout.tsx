@@ -24,23 +24,23 @@ const SITE_DESCRIPTION = "Every sport, one board — model leans, hit-rates, and
 
 export const metadata: Metadata = {
   title: {
-    default: "archer — every-sport odds, model leans & EV",
-    template: "%s · archer",
+    default: "ARCHR Edge — every-sport odds, model leans & EV",
+    template: "%s · ARCHR Edge",
   },
   description: SITE_DESCRIPTION,
   appleWebApp: {
-    title: "archer",
+    title: "ARCHR Edge",
     statusBarStyle: "default",
   },
   openGraph: {
-    siteName: "archer",
-    title: "archer — every-sport odds, model leans & EV",
+    siteName: "ARCHR Edge",
+    title: "ARCHR Edge — every-sport odds, model leans & EV",
     description: SITE_DESCRIPTION,
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "archer — every-sport odds, model leans & EV",
+    title: "ARCHR Edge — every-sport odds, model leans & EV",
     description: SITE_DESCRIPTION,
   },
 };
@@ -79,7 +79,7 @@ export default function RootLayout({
           {children}
           <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-muted-foreground">
             <Link href="/learn" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
-              How to read Archer · Glossary
+              How to read ARCHR · Glossary
             </Link>
             <p className="mt-3">
               For informational and research purposes only. Not betting advice; odds, hit-rates, and EV

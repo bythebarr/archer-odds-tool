@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 /**
  * The app's opening moment: an arrow flies in and strikes the bullseye of the
@@ -13,25 +13,29 @@ import { useEffect, useState } from "react";
 const TOTAL_MS = 1650;
 
 export function LaunchIntro() {
-  const [show, setShow] = useState(true);
+  // Already played this session? Read via an external store so the check is
+  // SSR-safe without a setState-in-effect. Server snapshot = "played" → nothing
+  // renders during SSR, which also kills the brief replay flash on refresh.
+  const alreadyPlayed = useSyncExternalStore(
+    () => () => {},
+    () => sessionStorage.getItem("archer:intro") === "1",
+    () => true
+  );
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    // Already played this session → don't replay on refresh/return.
-    if (sessionStorage.getItem("archer:intro")) {
-      setShow(false);
-      return;
-    }
+    if (alreadyPlayed) return;
     sessionStorage.setItem("archer:intro", "1");
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const t = setTimeout(() => setShow(false), reduce ? 350 : TOTAL_MS);
+    const t = setTimeout(() => setDismissed(true), reduce ? 350 : TOTAL_MS);
     return () => clearTimeout(t);
-  }, []);
+  }, [alreadyPlayed]);
 
-  if (!show) return null;
+  if (alreadyPlayed || dismissed) return null;
 
   return (
     <div
-      onClick={() => setShow(false)}
+      onClick={() => setDismissed(true)}
       style={{ backgroundColor: "var(--background, #0a0e17)" }}
       className="archer-intro fixed inset-0 z-[100] flex flex-col items-center justify-center"
       role="presentation"
@@ -62,7 +66,7 @@ export function LaunchIntro() {
           </g>
         </svg>
       </div>
-      <div className="ai-word mt-6 font-mono text-2xl font-bold tracking-tight text-foreground">archer</div>
+      <div className="ai-word mt-6 font-mono text-2xl font-bold tracking-[0.15em] text-foreground">ARCHR</div>
 
       <style>{`
         @keyframes ai-fly {

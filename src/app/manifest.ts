@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "archer — MLB odds line-shopping",
-    short_name: "archer",
-    description: "MLB odds line-shopping, hit-rates, and EV — research/discovery only.",
+    name: "ARCHR Edge — every-sport odds, model leans & EV",
+    short_name: "ARCHR Edge",
+    description: "Odds line-shopping, model leans, hit-rates, and EV across every sport — research/discovery only.",
     start_url: "/",
     display: "standalone",
     background_color: "#f7f9fc",

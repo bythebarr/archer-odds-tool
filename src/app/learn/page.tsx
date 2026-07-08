@@ -4,7 +4,7 @@ import { GLOSSARY, GLOSSARY_CATEGORIES } from "@/lib/glossary";
 
 export const metadata: Metadata = {
   title: "Learn",
-  description: "Plain-language guide to every term in Archer — EV, de-vig, hit rate, model lean, and more.",
+  description: "Plain-language guide to every term in ARCHR — EV, de-vig, hit rate, model lean, and more.",
 };
 
 /**
@@ -16,7 +16,7 @@ export default function LearnPage() {
   return (
     <PageShell width="2xl">
       <PageHeader
-        title="How to read Archer"
+        title="How to read ARCHR"
         description="Every term the app uses, in plain language. New to odds tools? Start with Value & EV — that's the whole game."
       />
 
@@ -26,7 +26,7 @@ export default function LearnPage() {
         <ol className="mt-2 space-y-1.5 text-sm text-muted-foreground">
           <li>
             <span className="font-medium text-foreground">1. Find value.</span>{" "}
-            Archer shops every book for the same bet and flags prices that are better than the true odds —
+            ARCHR shops every book for the same bet and flags prices that are better than the true odds —
             that&apos;s a <span className="text-foreground">+value</span> play.
           </li>
           <li>

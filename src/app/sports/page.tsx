@@ -6,7 +6,7 @@ import { PageShell, PageHeader } from "@/components/PageShell";
 
 export const metadata: Metadata = {
   title: "All Sports",
-  description: "Every sport Archer covers — in-season boards and what's on today.",
+  description: "Every sport ARCHR covers — in-season boards and what's on today.",
 };
 
 // Rides the daily slate, so what's "live today" changes day to day.
@@ -34,7 +34,7 @@ export default async function SportsLobbyPage({
     <PageShell width="2xl">
       <PageHeader
         title="All Sports"
-        description="Every sport Archer covers. What's playing today is up top; the rest are ready when their season is."
+        description="Every sport ARCHR covers. What's playing today is up top; the rest are ready when their season is."
       />
 
       {live.length > 0 && (

@@ -23,7 +23,9 @@ export function SiteNav() {
             <span className="block h-[18px] w-[18px] overflow-hidden rounded-[22%]">
               <AppIconMark />
             </span>
-            archer
+            <span>
+              ARCHR<span className="ml-1 font-normal text-muted-foreground">Edge</span>
+            </span>
           </Link>
           {/* Desktop: full sport list in the top bar. On mobile it's hidden —
               the fixed BottomNav carries the primary tabs instead. Horizontal
