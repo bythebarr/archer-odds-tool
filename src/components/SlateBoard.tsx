@@ -45,6 +45,13 @@ function inTimeWindow(item: SlateItem, window: TimeWindow): boolean {
 /** Slider ceiling: model moneyline leans rarely clear ~30pp, so cap there for usable resolution. */
 const MAX_LEAN = 0.3;
 
+/** Compact "how it ends" label + accent for the UFC method lean (matches the bout page's finish card). */
+const METHOD_LEAN_META: Record<"ko" | "submission" | "decision", { label: string; color: string }> = {
+  ko: { label: "KO/TKO", color: "#ea580c" },
+  submission: { label: "Sub", color: "#7c3aed" },
+  decision: { label: "Dec", color: "#64748b" },
+};
+
 /** How far the model leans from a coin flip, in [0,0.5] — the free proxy for "interesting" until paid EV exists. Null items sort last. */
 function leanStrength(item: SlateItem): number | null {
   const p = item.modelProb?.home;
@@ -131,7 +138,19 @@ function SlateRow({ item }: { item: SlateItem }) {
           <span className="text-xs text-muted-foreground">@</span>
           <span className="font-medium">{item.home.name}</span>
         </span>
-        {item.title ? <span className="block truncate text-[11px] text-muted-foreground">{item.title}</span> : null}
+        {item.title || item.methodLean ? (
+          <span className="block truncate text-[11px] text-muted-foreground">
+            {item.title}
+            {item.methodLean ? (
+              <>
+                {item.title ? " · " : ""}
+                <span style={{ color: METHOD_LEAN_META[item.methodLean.method].color }}>
+                  {METHOD_LEAN_META[item.methodLean.method].label} {Math.round(item.methodLean.pct * 100)}%
+                </span>
+              </>
+            ) : null}
+          </span>
+        ) : null}
       </span>
       <span className="w-24 shrink-0 text-right">
         <ModelCell item={item} />

@@ -6,6 +6,7 @@ import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { listUpcomingUfcEvents } from "./ufcEvents";
 import { getUfcMatchup } from "./ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
+import { computeFinishProjection, type FinishMethod } from "@/lib/ufc/finishMath";
 
 /**
  * The Slate: one normalized, cross-sport view of a day's card. Every sport
@@ -55,6 +56,8 @@ export interface SlateItem {
   away: SlateSide;
   /** Free model win-probability where we have one (MLB Archer today; more sports later). Null otherwise. */
   modelProb: { home: number | null; away: number | null } | null;
+  /** Compact "how it ends" lean — UFC only today (finish-math). The single most likely method + its probability. Null for sports/bouts without a finish model. */
+  methodLean?: { method: FinishMethod; pct: number } | null;
   /** PAID-EV SEAM — always null in v0. */
   ev: SlateEv | null;
 }
@@ -154,6 +157,18 @@ async function ufcItems(dateEt: string): Promise<SlateItem[]> {
       const projection = matchup ? computeUfcWinProbability(matchup) : null;
       const home = projection?.fighterAProb ?? null;
       const away = projection?.fighterBProb ?? null;
+
+      // Finish-math method lean — reuse the matchup + win prob we already have.
+      const finish =
+        matchup && home !== null ? computeFinishProjection(matchup, home, bout.titleBout ? 5 : 3) : null;
+      const methodLean = finish?.available
+        ? (() => {
+            const m = finish.method;
+            const top = (["ko", "submission", "decision"] as const).reduce((b, k) => (m[k] > m[b] ? k : b));
+            return { method: top, pct: m[top] };
+          })()
+        : null;
+
       return {
         key: `ufc:${bout.id}`,
         sport: "ufc",
@@ -164,6 +179,7 @@ async function ufcItems(dateEt: string): Promise<SlateItem[]> {
         home: { name: bout.red.name, meta: bout.red.record },
         away: { name: bout.blue.name, meta: bout.blue.record },
         modelProb: home !== null && away !== null ? { home, away } : null,
+        methodLean,
         ev: null, // SEAM: paid EV
       };
     })
