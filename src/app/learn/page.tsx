@@ -25,17 +25,18 @@ export default function LearnPage() {
         <h2 className="text-sm font-semibold text-foreground">The 60-second version</h2>
         <ol className="mt-2 space-y-1.5 text-sm text-muted-foreground">
           <li>
-            <span className="font-medium text-foreground">1. Find value.</span> Archer shops every book for
-            the same bet and flags prices that are better than the true odds — that&apos;s a{" "}
-            <span className="text-foreground">+value</span> play.
+            <span className="font-medium text-foreground">1. Find value.</span>{" "}
+            Archer shops every book for the same bet and flags prices that are better than the true odds —
+            that&apos;s a <span className="text-foreground">+value</span> play.
           </li>
           <li>
-            <span className="font-medium text-foreground">2. Read it two ways.</span> Market value compares
-            the price to the market&apos;s fair number; Model value compares it to Archer&apos;s own projection.
+            <span className="font-medium text-foreground">2. Read it two ways.</span>{" "}
+            Market value compares the price to the market&apos;s fair number; Model value compares it to
+            Archer&apos;s own projection.
           </li>
           <li>
-            <span className="font-medium text-foreground">3. Build a slip.</span> Add picks to your bet slip
-            to see combined odds and payout — research only, no real bets.
+            <span className="font-medium text-foreground">3. Build a slip.</span>{" "}
+            Add picks to your bet slip to see combined odds and payout — research only, no real bets.
           </li>
         </ol>
       </section>
