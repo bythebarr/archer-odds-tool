@@ -8,6 +8,7 @@ import { SlateBoard } from "@/components/SlateBoard";
 import { PropBoard } from "@/components/PropBoard";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { DateNav } from "@/components/DateNav";
+import { SportRail } from "@/components/SportRail";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // Fed by the daily result/schedule syncs, so the board changes day to day —
@@ -76,6 +77,11 @@ export default async function SlatePage({
           </>
         }
       />
+
+      {/* Quick-jump to any sport + the All Sports lobby */}
+      <div className="mt-5">
+        <SportRail date={date} />
+      </div>
 
       {/* Lines | Props — the two halves of the Slate under one date nav */}
       <div className="mt-5 inline-flex rounded-lg bg-muted p-0.5">

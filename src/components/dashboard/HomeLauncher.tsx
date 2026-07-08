@@ -1,15 +1,9 @@
 import Link from "next/link";
 import type { HomeData } from "@/lib/queries/dashboard";
-import type { SlateSport, SlateSide } from "@/lib/queries/slate";
+import type { SlateSide } from "@/lib/queries/slate";
+import { SPORT_META, SPORT_ORDER } from "@/lib/sports";
+import { SportCard } from "@/components/SportCard";
 import { CompetitorAvatar } from "./CompetitorAvatar";
-
-const SPORT_META: Record<SlateSport, { label: string; icon: string; href: string; accent: string }> = {
-  mlb: { label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6" },
-  ufc: { label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444" },
-  tennis: { label: "Tennis", icon: "🎾", href: "/tennis", accent: "#a3e635" },
-  soccer: { label: "Soccer", icon: "⚽", href: "/soccer", accent: "#10b981" },
-};
-const SPORT_ORDER: SlateSport[] = ["mlb", "ufc", "tennis", "soccer"];
 
 function timeLabel(startUtc: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -22,40 +16,6 @@ function timeLabel(startUtc: Date): string {
 /** Short display for a competitor — a compact code when we have one, else the full name (truncated by the row). */
 function shortLabel(side: SlateSide): string {
   return side.meta && side.meta.length <= 4 ? side.meta : side.name;
-}
-
-/* ── Sport category cards — the launcher ─────────────────────────────────── */
-
-function SportCard({ sport, count, nextStartUtc, date }: HomeData["sports"][number] & { date: string }) {
-  const meta = SPORT_META[sport];
-  const href = sport === "mlb" ? `${meta.href}?date=${date}` : meta.href;
-  const live = count > 0;
-
-  return (
-    <Link
-      href={href}
-      className={`group flex min-h-[112px] flex-col justify-between rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/50 ${
-        live ? "" : "opacity-60"
-      }`}
-    >
-      <div className="flex items-start justify-between">
-        <span
-          className="grid size-11 place-items-center rounded-xl text-xl"
-          style={{ backgroundColor: `${meta.accent}1f`, boxShadow: `inset 0 0 0 1px ${meta.accent}33` }}
-        >
-          {meta.icon}
-        </span>
-        <span className="font-mono text-sm font-bold tabular-nums text-foreground">{count}</span>
-      </div>
-      <div>
-        <div className="font-semibold tracking-tight text-foreground">{meta.label}</div>
-        <div className="text-xs text-muted-foreground">
-          {live ? `${count} today` : "No games"}
-          {live && nextStartUtc ? ` · ${timeLabel(nextStartUtc)}` : ""}
-        </div>
-      </div>
-    </Link>
-  );
 }
 
 /* ── Up next strip ───────────────────────────────────────────────────────── */

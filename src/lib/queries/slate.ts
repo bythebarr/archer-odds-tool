@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { etDayBoundsUtc } from "@/lib/dateEt";
 import { listGames } from "./games";
@@ -195,7 +196,9 @@ async function ufcItems(dateEt: string): Promise<SlateItem[]> {
  * in parallel; each is independent so one sport erroring/emptying doesn't sink
  * the others (they just contribute nothing).
  */
-export async function getSlateForDate(dateEt: string): Promise<Slate> {
+// Wrapped in React's `cache()` so multiple readers in one request (the Slate
+// page, getHomeForDate, and the SportRail's counts) share a single query.
+export const getSlateForDate = cache(async function getSlateForDate(dateEt: string): Promise<Slate> {
   const { gte, lt } = etDayBoundsUtc(dateEt);
 
   const [mlb, tennis, soccer, ufc] = await Promise.all([
@@ -214,4 +217,4 @@ export async function getSlateForDate(dateEt: string): Promise<Slate> {
     items,
     counts: { mlb: mlb.length, tennis: tennis.length, soccer: soccer.length, ufc: ufc.length },
   };
-}
+});
