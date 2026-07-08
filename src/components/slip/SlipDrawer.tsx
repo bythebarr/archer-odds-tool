@@ -76,6 +76,9 @@ export function SlipDrawer({ open, onClose }: SlipDrawerProps) {
   );
   const combinedAmerican = picks.length >= 2 ? decimalToAmerican(combinedDecimal) : null;
 
+  const evPicks = picks.filter((p) => p.ev != null);
+  const avgEv = evPicks.length > 0 ? evPicks.reduce((sum, p) => sum + (p.ev as number), 0) / evPicks.length : null;
+
   const stakeValue = Number(stake);
   const validStake = Number.isFinite(stakeValue) && stakeValue > 0;
   const payout = validStake ? stakeValue * combinedDecimal : null;
@@ -130,6 +133,21 @@ export function SlipDrawer({ open, onClose }: SlipDrawerProps) {
           <>
             <Separator />
             <div className="space-y-3 px-4 py-3">
+              {avgEv !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    Avg value ({evPicks.length}
+                    {evPicks.length !== picks.length ? ` of ${picks.length}` : ""})
+                  </span>
+                  <span
+                    className={`font-mono text-sm font-semibold ${
+                      avgEv > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+                    }`}
+                  >
+                    {formatEv(avgEv)}
+                  </span>
+                </div>
+              )}
               {combinedAmerican !== null && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Combined odds ({picks.length} picks)</span>
