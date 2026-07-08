@@ -36,7 +36,13 @@ function fighter(id: string, winMethod: string, wins: number, lossMethod: string
   return { fighterId: id, fighterSlug: id, fighterName: id, fights };
 }
 
-function rec(id: string, result: "win" | "loss", method: string, monthsAgo: number): UfcFightRecord {
+function rec(
+  id: string,
+  result: "win" | "loss",
+  method: string,
+  monthsAgo: number,
+  resultRound: number | null = null
+): UfcFightRecord {
   const eventDate = new Date(NOW.getTime() - monthsAgo * 30 * 24 * 3600 * 1000);
   return {
     boutId: `${id}-${monthsAgo}`,
@@ -47,10 +53,17 @@ function rec(id: string, result: "win" | "loss", method: string, monthsAgo: numb
     opponentImageUrl: null,
     result,
     method,
-    resultRound: null,
+    resultRound,
     myStats: null,
     opponentStats: null,
   };
+}
+
+/** A fighter whose finish-wins all land in a specific round (for round-tendency tests). */
+function roundOneFinisher(id: string): UfcFighterHistory {
+  const fights: UfcFightRecord[] = [];
+  for (let i = 0; i < 8; i++) fights.push(rec(id, "win", "KO/TKO", i + 1, 1)); // all R1 finishes
+  return { fighterId: id, fighterSlug: id, fighterName: id, fights };
 }
 
 describe("computeFinishProjection", () => {
@@ -70,6 +83,34 @@ describe("computeFinishProjection", () => {
     const roundSum = p.rounds.reduce((s, x) => s + x, 0);
     expect(roundSum).toBeCloseTo(1, 5);
     expect(p.finishProb + p.goesTheDistanceProb).toBeCloseTo(1, 5);
+  });
+
+  it("per-fighter rounds + decisions form a complete distribution over both fighters", () => {
+    const matchup: UfcMatchup = { fighterA: fighter("a", "KO/TKO", 8, "U-DEC", 2), fighterB: fighter("b", "SUB", 8, "U-DEC", 2), crossBouts: [] };
+    const p = computeFinishProjection(matchup, 0.55, 3, NOW);
+    expect(p.perFighterRounds.a).toHaveLength(3);
+    expect(p.perFighterRounds.b).toHaveLength(3);
+    const gridSum =
+      [...p.perFighterRounds.a, ...p.perFighterRounds.b].reduce((s, x) => s + x, 0) +
+      p.byFighter.a.decision +
+      p.byFighter.b.decision;
+    expect(gridSum).toBeCloseTo(1, 5);
+    // Column sums (both fighters' finishes in a round) match the aggregate rounds, decision on the last.
+    for (let r = 0; r < 3; r++) {
+      const expected = p.perFighterRounds.a[r] + p.perFighterRounds.b[r] + (r === 2 ? p.goesTheDistanceProb : 0);
+      expect(p.rounds[r]).toBeCloseTo(expected, 6);
+    }
+  });
+
+  it("an all-R1 finisher's finish mass concentrates in round 1", () => {
+    // A finishes everything in R1; B is a plain decision fighter.
+    const matchup: UfcMatchup = { fighterA: roundOneFinisher("a"), fighterB: fighter("b", "U-DEC", 8, "U-DEC", 2), crossBouts: [] };
+    const p = computeFinishProjection(matchup, 0.6, 3, NOW);
+    expect(p.perFighterRounds.a[0]).toBeGreaterThan(p.perFighterRounds.a[1]);
+    expect(p.perFighterRounds.a[0]).toBeGreaterThan(p.perFighterRounds.a[2]);
+    // Concentrated: R1 holds the large majority of A's finish mass.
+    const aFinish = p.perFighterRounds.a.reduce((s, x) => s + x, 0);
+    expect(p.perFighterRounds.a[0] / aFinish).toBeGreaterThan(0.6);
   });
 
   it("a KO fighter vs a chinny opponent skews toward KO over the base rate", () => {

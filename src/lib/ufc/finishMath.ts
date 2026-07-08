@@ -28,20 +28,32 @@ const BASE_RATE: MethodDistribution = { ko: 0.33, submission: 0.2, decision: 0.4
 
 /**
  * Finish-round weights (R1..R5) from finishes-only history (2498/1439/703/52/34)
- * — finishes skew hard to the early rounds. Truncated + renormalized to a
- * bout's scheduled length. Decisions are handled separately (they land on the
- * final round), so this profile is finishes only.
+ * — finishes skew hard to the early rounds. The league-wide anchor a fighter's
+ * OWN finish-round tendency is shrunk toward; truncated + renormalized to a
+ * bout's scheduled length at projection time. Decisions are handled separately
+ * (they land on the final round), so this profile is finishes only.
  */
 const FINISH_ROUND_WEIGHTS = [2498, 1439, 703, 52, 34];
+const GLOBAL_FINISH_ROUND = normalize(FINISH_ROUND_WEIGHTS);
 
 /** Weighted count of wins (or losses) at which a fighter's method mix is trusted fully; below it, shrunk toward the base rate. Careers are short, so this is low. */
 const METHOD_FULL_CONFIDENCE = 5;
+/** Weighted count of finish-wins at which a fighter's own round tendency is trusted; below it, shrunk toward the league curve. */
+const ROUND_FULL_CONFIDENCE = 4;
+
+/** Normalize a weight vector to sum 1 (all-zero → uniform). */
+function normalize(weights: number[]): number[] {
+  const sum = weights.reduce((s, w) => s + w, 0);
+  return sum > 0 ? weights.map((w) => w / sum) : weights.map(() => 1 / weights.length);
+}
 
 export interface FighterFinishProfile {
   /** How this fighter finishes when they WIN (shrunk ko/sub/dec shares). */
   offense: MethodDistribution;
   /** How this fighter is beaten when they LOSE — their vulnerability (shrunk ko/sub/dec shares). */
   durability: MethodDistribution;
+  /** This fighter's own finish-round tendency (R1..R5, normalized), shrunk toward the league curve — do they finish early or grind late? */
+  finishRoundProfile: number[];
   /** Decay-weighted count of wins / losses behind the two mixes (for confidence display). */
   winSample: number;
   lossSample: number;
@@ -58,6 +70,8 @@ export interface FinishProjection {
   goesTheDistanceProb: number;
   /** P(bout ends in round r), index 0 = R1 … length = scheduledRounds. Decision mass sits on the final round. */
   rounds: number[];
+  /** Per-fighter finish probability by round (index 0 = R1, length = scheduledRounds). a = red, b = blue. Excludes decisions (see byFighter.*.decision for those). */
+  perFighterRounds: { a: number[]; b: number[] };
   scheduledRounds: number;
   /** Expected round of a finish, conditional on the fight not going to decision. Null when there's effectively no finish signal. */
   expectedFinishRound: number | null;
@@ -110,8 +124,10 @@ function shrinkMix(raw: MethodDistribution, sample: number): MethodDistribution 
 export function computeFighterFinishProfile(history: UfcFighterHistory, now: Date = new Date()): FighterFinishProfile {
   const winCounts = { ko: 0, submission: 0, decision: 0 };
   const lossCounts = { ko: 0, submission: 0, decision: 0 };
+  const roundCounts = [0, 0, 0, 0, 0]; // finish-wins by round (R1..R5)
   let winSample = 0;
   let lossSample = 0;
+  let roundSample = 0;
 
   for (const fight of history.fights) {
     const cls = classifyMethod(fight.method);
@@ -120,11 +136,20 @@ export function computeFighterFinishProfile(history: UfcFighterHistory, now: Dat
     if (fight.result === "win") {
       winCounts[cls] += w;
       winSample += w;
+      // A win by finish with a known round feeds this fighter's round tendency.
+      if ((cls === "ko" || cls === "submission") && fight.resultRound && fight.resultRound >= 1 && fight.resultRound <= 5) {
+        roundCounts[fight.resultRound - 1] += w;
+        roundSample += w;
+      }
     } else if (fight.result === "loss") {
       lossCounts[cls] += w;
       lossSample += w;
     }
   }
+
+  const rawRound = roundSample > 0 ? normalize(roundCounts) : [...GLOBAL_FINISH_ROUND];
+  const roundConfidence = sampleConfidence(roundSample, ROUND_FULL_CONFIDENCE);
+  const finishRoundProfile = rawRound.map((v, i) => shrinkToward(v, GLOBAL_FINISH_ROUND[i], roundConfidence));
 
   const toShares = (counts: MethodDistribution, sample: number): MethodDistribution =>
     sample > 0
@@ -134,6 +159,7 @@ export function computeFighterFinishProfile(history: UfcFighterHistory, now: Dat
   return {
     offense: shrinkMix(toShares(winCounts, winSample), winSample),
     durability: shrinkMix(toShares(lossCounts, lossSample), lossSample),
+    finishRoundProfile,
     winSample,
     lossSample,
   };
@@ -176,6 +202,10 @@ export function computeFinishProjection(
       finishProb: 0,
       goesTheDistanceProb: 0,
       rounds: Array.from({ length: scheduledRounds }, () => 0),
+      perFighterRounds: {
+        a: Array.from({ length: scheduledRounds }, () => 0),
+        b: Array.from({ length: scheduledRounds }, () => 0),
+      },
       scheduledRounds,
       expectedFinishRound: null,
       fighterA,
@@ -201,17 +231,27 @@ export function computeFinishProjection(
   const finishProb = method.ko + method.submission;
   const goesTheDistanceProb = method.decision;
 
-  // Round distribution: finishes follow the (truncated, renormalized) early-skew
-  // profile; decision mass lands on the final scheduled round.
-  const weights = FINISH_ROUND_WEIGHTS.slice(0, scheduledRounds);
-  const weightSum = weights.reduce((s, w) => s + w, 0);
-  const roundShare = weights.map((w) => w / weightSum);
+  // Per-fighter round distribution: each fighter's total finish mass spread
+  // over the rounds by THEIR own finish-round tendency (truncated + renormalized
+  // to the scheduled length). Decisions are excluded here (see byFighter.decision).
+  const aProfile = normalize(fighterA.finishRoundProfile.slice(0, scheduledRounds));
+  const bProfile = normalize(fighterB.finishRoundProfile.slice(0, scheduledRounds));
+  const aFinishTotal = a.ko + a.submission;
+  const bFinishTotal = b.ko + b.submission;
+  const perFighterRounds = {
+    a: aProfile.map((share) => aFinishTotal * share),
+    b: bProfile.map((share) => bFinishTotal * share),
+  };
 
-  const rounds = roundShare.map((share) => finishProb * share);
+  // Aggregate per-round ending prob = both fighters' finishes that round, with
+  // the decision mass on the final round — consistent with the per-fighter grid.
+  const rounds = perFighterRounds.a.map((av, i) => av + perFighterRounds.b[i]);
   rounds[scheduledRounds - 1] += goesTheDistanceProb;
 
   const expectedFinishRound =
-    finishProb > 1e-6 ? roundShare.reduce((sum, share, i) => sum + (i + 1) * share, 0) : null;
+    finishProb > 1e-6
+      ? perFighterRounds.a.reduce((sum, av, i) => sum + (i + 1) * (av + perFighterRounds.b[i]), 0) / finishProb
+      : null;
 
   return {
     available: true,
@@ -220,6 +260,7 @@ export function computeFinishProjection(
     finishProb,
     goesTheDistanceProb,
     rounds,
+    perFighterRounds,
     scheduledRounds,
     expectedFinishRound,
     fighterA,

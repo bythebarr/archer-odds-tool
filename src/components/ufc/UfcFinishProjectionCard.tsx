@@ -20,6 +20,66 @@ const METHOD_META = {
   decision: { label: "Decision", color: "#64748b" },
 } as const;
 
+/** Corner color at a given alpha, for cell intensity shading. */
+function tint(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/**
+ * A 2-row grid (one per fighter) × (R1…Rn + Dec) of win probabilities. Every
+ * cell across both rows sums to ~1. Cell background tints in the fighter's
+ * corner color, scaled to the biggest cell, so the likeliest ending pops.
+ */
+function RoundGrid({
+  redName,
+  blueName,
+  scheduledRounds,
+  rowA,
+  rowB,
+}: {
+  redName: string;
+  blueName: string;
+  scheduledRounds: number;
+  rowA: number[];
+  rowB: number[];
+}) {
+  const maxCell = Math.max(...rowA, ...rowB, 1e-6);
+  const cols = `minmax(4.5rem, 1fr) repeat(${scheduledRounds + 1}, 2.5rem)`;
+  const headers = [...Array.from({ length: scheduledRounds }, (_, i) => `R${i + 1}`), "Dec"];
+
+  const Row = ({ name, color, row }: { name: string; color: string; row: number[] }) => (
+    <>
+      <div className="flex items-center gap-1.5 truncate py-1 pr-1 text-xs">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="truncate text-foreground">{name}</span>
+      </div>
+      {row.map((p, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-center rounded font-mono text-[11px] text-foreground"
+          style={{ backgroundColor: tint(color, 0.1 + 0.55 * (p / maxCell)) }}
+        >
+          {Math.round(p * 100)}%
+        </div>
+      ))}
+    </>
+  );
+
+  return (
+    <div className="grid min-w-[18rem] gap-1" style={{ gridTemplateColumns: cols }}>
+      <div />
+      {headers.map((h) => (
+        <div key={h} className="text-center text-[10px] font-semibold uppercase text-muted-foreground">
+          {h}
+        </div>
+      ))}
+      <Row name={redName} color={RED_CORNER} row={rowA} />
+      <Row name={blueName} color={BLUE_CORNER} row={rowB} />
+    </div>
+  );
+}
+
 function MethodBar({ method, prob }: { method: keyof typeof METHOD_META; prob: number }) {
   const { label, color } = METHOD_META[method];
   return (
@@ -54,7 +114,7 @@ export function UfcFinishProjectionCard({ redName, blueName, projection }: UfcFi
     );
   }
 
-  const { method, byFighter, goesTheDistanceProb, rounds, expectedFinishRound } = projection;
+  const { method, byFighter, goesTheDistanceProb, perFighterRounds, scheduledRounds, expectedFinishRound } = projection;
 
   // Lead with the most likely METHOD (aggregate — matches the bars below), and
   // for a finish, name whichever fighter is likelier to score it.
@@ -64,8 +124,6 @@ export function UfcFinishProjectionCard({ redName, blueName, projection }: UfcFi
   const finisher = byFighter.a[topMethod] >= byFighter.b[topMethod]
     ? { name: redName, color: RED_CORNER }
     : { name: blueName, color: BLUE_CORNER };
-
-  const maxRound = Math.max(...rounds);
 
   return (
     <Card>
@@ -99,33 +157,26 @@ export function UfcFinishProjectionCard({ redName, blueName, projection }: UfcFi
 
         <Separator className="my-4" />
 
-        {/* Round distribution */}
+        {/* Per-fighter, per-round finish grid — the deep view: who ends it, when */}
         <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <span>When it ends</span>
+          <span>How it ends — by fighter &amp; round</span>
           <span className="normal-case">
             {expectedFinishRound !== null ? `Exp. finish R${Math.round(expectedFinishRound)}` : ""}
           </span>
         </div>
-        <div className="mt-2 flex items-end gap-1.5">
-          {rounds.map((p, i) => (
-            <div key={i} className="flex flex-1 flex-col items-center gap-1">
-              <span className="font-mono text-[11px] text-foreground">{pct(p)}</span>
-              <div className="flex h-16 w-full items-end rounded bg-muted/60">
-                <div
-                  className="w-full rounded bg-foreground/80"
-                  style={{ height: maxRound > 0 ? `${Math.max((p / maxRound) * 100, 3)}%` : "3%" }}
-                />
-              </div>
-              <span className="text-[11px] text-muted-foreground">R{i + 1}</span>
-            </div>
-          ))}
+        <div className="mt-2 overflow-x-auto">
+          <RoundGrid
+            redName={redName}
+            blueName={blueName}
+            scheduledRounds={scheduledRounds}
+            rowA={[...perFighterRounds.a, byFighter.a.decision]}
+            rowB={[...perFighterRounds.b, byFighter.b.decision]}
+          />
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Goes the distance: <span className="font-medium text-foreground">{pct(goesTheDistanceProb)}</span>
-          <span className="text-muted-foreground/70">
-            {" "}
-            · the final round includes a decision ending
-          </span>
+          Each cell = chance that fighter wins in that round; the <span className="font-medium text-foreground">Dec</span>{" "}
+          column is a decision win. Goes the distance:{" "}
+          <span className="font-medium text-foreground">{pct(goesTheDistanceProb)}</span>.
         </p>
 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
