@@ -194,8 +194,14 @@ export function GameLinesView({
         sideHeader={(side) => {
           const teamAbbr = SIDE_TEAM_ABBR[side]?.(game) ?? null;
           const label = SIDE_LABELS[side]?.(game) ?? side;
+          const teamMlbId =
+            teamAbbr === game.homeTeam.abbreviation
+              ? game.homeTeam.mlbTeamId
+              : teamAbbr === game.awayTeam.abbreviation
+                ? game.awayTeam.mlbTeamId
+                : null;
           return {
-            badge: teamAbbr ? <TeamBadge abbreviation={teamAbbr} name={label} /> : null,
+            badge: teamAbbr ? <TeamBadge abbreviation={teamAbbr} name={label} mlbTeamId={teamMlbId} /> : null,
             label,
             caption: hitRateCaption(market, side, homeHitRates, awayHitRates, game),
           };

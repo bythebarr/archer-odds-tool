@@ -4,8 +4,13 @@
  * component tries each candidate in order and falls back to initials if none
  * of them exist yet, so nothing breaks before the files are added.
  */
-export function bookLogoSources(bookKey: string): string[] {
-  return [`/logos/books/${bookKey}.svg`, `/logos/books/${bookKey}.png`];
+export function bookLogoSources(_bookKey: string): string[] {
+  // No book logo files ship today (public/logos/books is empty), and every book
+  // has a distinct colored-initials badge (BOOK_INITIALS + BOOK_COLORS) that IS
+  // its identity in this UI — so return nothing rather than probing paths that
+  // only 404 and spam the console. Re-add the `/logos/books/${bookKey}.{svg,png}`
+  // candidates here if real book logo files are ever added.
+  return [];
 }
 
 export function teamLogoSources(abbreviation: string): string[] {

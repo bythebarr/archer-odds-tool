@@ -9,6 +9,7 @@ import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns } from "@/lib/archer/expectedRuns";
 import { GameLinesView } from "@/components/GameLinesView";
 import { MatchupPanel } from "@/components/MatchupPanel";
+import { WinProbBar } from "@/components/WinProbBar";
 import { PlayerPropsSection } from "@/components/PlayerPropsSection";
 import { TeamBadge } from "@/components/TeamBadge";
 import { BackLink } from "@/components/BackLink";
@@ -93,6 +94,17 @@ export default async function GamePage({
         }).format(game.scheduledStartUtc)}{" "}
         ET · {game.status}
       </p>
+
+      {archerProb?.homeProb != null && archerProb.awayProb != null && (
+        <div className="mt-4">
+          <WinProbBar
+            awayAbbr={game.awayTeam.abbreviation}
+            homeAbbr={game.homeTeam.abbreviation}
+            awayProb={archerProb.awayProb}
+            homeProb={archerProb.homeProb}
+          />
+        </div>
+      )}
 
       {matchup && archerProb && archerRuns && (
         <div className="mt-6">
