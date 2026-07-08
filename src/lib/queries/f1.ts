@@ -20,6 +20,7 @@ export interface F1DriverStanding {
 
 export interface F1ConstructorStanding {
   rank: number;
+  ergastConstructorId: string;
   name: string;
   flag: string;
   points: number;
@@ -95,7 +96,7 @@ export async function getF1Season(): Promise<F1SeasonView | null> {
     where: { race: { season } },
     include: {
       driver: { select: { ergastDriverId: true, code: true, givenName: true, familyName: true, nationality: true } },
-      constructor: { select: { name: true, nationality: true } },
+      constructor: { select: { ergastConstructorId: true, name: true, nationality: true } },
       race: { select: { round: true } },
     },
   });
@@ -157,10 +158,15 @@ export async function getF1Season(): Promise<F1SeasonView | null> {
     }));
 
   // --- Constructor standings ------------------------------------------------
-  const ctorAgg = new Map<string, { name: string; nationality: string | null; points: number; wins: number }>();
+  const ctorAgg = new Map<
+    string,
+    { ergastConstructorId: string; name: string; nationality: string | null; points: number; wins: number }
+  >();
   for (const r of rows) {
-    const key = r.constructor.name;
-    const entry = ctorAgg.get(key) ?? { name: key, nationality: r.constructor.nationality, points: 0, wins: 0 };
+    const key = r.constructor.ergastConstructorId;
+    const entry =
+      ctorAgg.get(key) ??
+      { ergastConstructorId: key, name: r.constructor.name, nationality: r.constructor.nationality, points: 0, wins: 0 };
     entry.points += r.points;
     if (r.position === 1) entry.wins += 1;
     ctorAgg.set(key, entry);
@@ -169,6 +175,7 @@ export async function getF1Season(): Promise<F1SeasonView | null> {
     .sort((a, b) => b.points - a.points || b.wins - a.wins)
     .map((c, i) => ({
       rank: i + 1,
+      ergastConstructorId: c.ergastConstructorId,
       name: c.name,
       flag: flagForNationality(c.nationality),
       points: c.points,
@@ -373,6 +380,167 @@ export async function getDriverSeason(ergastDriverId: string): Promise<F1DriverS
     bestFinish: finishes.length ? Math.min(...finishes) : null,
     starts: races.length,
     dnfs,
+    races,
+  };
+}
+
+// --- Constructor detail ---------------------------------------------------
+
+export interface F1ConstructorDriverLine {
+  ergastDriverId: string;
+  name: string;
+  code: string | null;
+  flag: string;
+  points: number;
+  wins: number;
+}
+
+export interface F1ConstructorRaceEntry {
+  driverName: string;
+  code: string | null;
+  positionText: string;
+  position: number | null;
+  points: number;
+  fastestLap: boolean;
+}
+
+export interface F1ConstructorRaceRow {
+  round: number;
+  raceName: string;
+  raceDate: Date;
+  points: number; // team total that weekend
+  entries: F1ConstructorRaceEntry[];
+}
+
+export interface F1ConstructorSeason {
+  ergastConstructorId: string;
+  name: string;
+  flag: string;
+  nationality: string | null;
+  season: number;
+  rank: number;
+  points: number;
+  wins: number;
+  podiums: number;
+  bestFinish: number | null;
+  drivers: F1ConstructorDriverLine[];
+  races: F1ConstructorRaceRow[];
+}
+
+/**
+ * One constructor's current-season card — the mirror of getDriverSeason. Rank
+ * matches the board's sort (points, then wins). Both cars count toward podiums.
+ * Race meta is fetched relation-free and merged by id to dodge the generator's
+ * mangled-Date-on-relation-join quirk (see getDriverSeason). Null for an unknown
+ * constructor or one with no results this season.
+ */
+export async function getConstructorSeason(ergastConstructorId: string): Promise<F1ConstructorSeason | null> {
+  const season = await currentSeason();
+  if (season == null) return null;
+
+  const constructor = await prisma.f1Constructor.findUnique({ where: { ergastConstructorId } });
+  if (!constructor) return null;
+
+  // Season-wide points/wins per constructor for the championship rank.
+  const all = await prisma.f1RaceResult.findMany({ where: { race: { season } } });
+  const agg = new Map<string, { points: number; wins: number }>();
+  for (const r of all) {
+    const e = agg.get(r.constructorId) ?? { points: 0, wins: 0 };
+    e.points += r.points;
+    if (r.position === 1) e.wins += 1;
+    agg.set(r.constructorId, e);
+  }
+  const ranked = [...agg.entries()].sort((a, b) => b[1].points - a[1].points || b[1].wins - a[1].wins);
+  const rank = ranked.findIndex(([id]) => id === constructor.id) + 1;
+  const self = agg.get(constructor.id) ?? { points: 0, wins: 0 };
+
+  // This constructor's car results (scalars only) + driver meta fetched
+  // separately — an `include` on F1RaceResult trips the `constructor`-name /
+  // Object.prototype clash, so we merge by driverId instead.
+  const resultRows = await prisma.f1RaceResult.findMany({
+    // Filter by the scalar FK, not the `constructor` relation — the relation key
+    // collides with Object.prototype even in a where clause on this generator.
+    where: { constructorId: constructor.id, race: { season } },
+  });
+  if (resultRows.length === 0) return null;
+
+  const [seasonRaces, driverRows] = await Promise.all([
+    prisma.f1Race.findMany({ where: { season }, select: { id: true, round: true, raceName: true, raceDate: true } }),
+    prisma.f1Driver.findMany({
+      where: { id: { in: [...new Set(resultRows.map((r) => r.driverId))] } },
+      select: { id: true, ergastDriverId: true, code: true, givenName: true, familyName: true, nationality: true },
+    }),
+  ]);
+  const raceById = new Map(seasonRaces.map((ra) => [ra.id, ra]));
+  const driverById = new Map(driverRows.map((d) => [d.id, d]));
+
+  // Per-driver contribution (tappable through to each driver's page).
+  const driverAgg = new Map<string, F1ConstructorDriverLine>();
+  for (const r of resultRows) {
+    const d = driverById.get(r.driverId);
+    if (!d) continue;
+    const line =
+      driverAgg.get(d.ergastDriverId) ??
+      {
+        ergastDriverId: d.ergastDriverId,
+        name: `${d.givenName} ${d.familyName}`,
+        code: d.code,
+        flag: flagForNationality(d.nationality),
+        points: 0,
+        wins: 0,
+      };
+    line.points += r.points;
+    if (r.position === 1) line.wins += 1;
+    driverAgg.set(d.ergastDriverId, line);
+  }
+  const drivers = [...driverAgg.values()].sort((a, b) => b.points - a.points);
+
+  // Group both cars per race weekend.
+  const byRace = new Map<string, F1ConstructorRaceRow>();
+  for (const r of resultRows) {
+    const race = raceById.get(r.raceId);
+    const d = driverById.get(r.driverId);
+    if (!race || !d) continue;
+    const row =
+      byRace.get(r.raceId) ??
+      { round: race.round, raceName: race.raceName, raceDate: race.raceDate, points: 0, entries: [] };
+    row.points += r.points;
+    row.entries.push({
+      driverName: `${d.givenName} ${d.familyName}`,
+      code: d.code,
+      positionText: r.positionText,
+      position: r.position,
+      points: r.points,
+      fastestLap: r.fastestLapRank === 1,
+    });
+    byRace.set(r.raceId, row);
+  }
+  const races = [...byRace.values()].sort((a, b) => a.round - b.round);
+  for (const row of races) {
+    // Best car first within each weekend (classified numbers, then DNFs).
+    row.entries.sort((a, b) => {
+      const an = /^\d+$/.test(a.positionText) ? Number(a.positionText) : Infinity;
+      const bn = /^\d+$/.test(b.positionText) ? Number(b.positionText) : Infinity;
+      return an - bn;
+    });
+  }
+
+  const numericFinishes = resultRows
+    .filter((r) => /^\d+$/.test(r.positionText))
+    .map((r) => Number(r.positionText));
+
+  return {
+    ergastConstructorId,
+    name: constructor.name,
+    flag: flagForNationality(constructor.nationality),
+    nationality: constructor.nationality,
+    season,
+    rank,
+    points: self.points,
+    wins: self.wins,
+    podiums: numericFinishes.filter((p) => p <= 3).length,
+    bestFinish: numericFinishes.length ? Math.min(...numericFinishes) : null,
+    drivers,
     races,
   };
 }

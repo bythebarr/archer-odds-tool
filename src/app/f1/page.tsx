@@ -81,7 +81,10 @@ function DriverRow({ d }: { d: F1DriverStanding }) {
 function ConstructorRow({ c }: { c: F1ConstructorStanding }) {
   const leader = c.rank === 1;
   return (
-    <div className="flex items-center gap-3 py-2">
+    <Link
+      href={`/f1/constructor/${c.ergastConstructorId}`}
+      className="-mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
+    >
       <span
         className={`w-5 shrink-0 text-right font-mono text-sm tabular-nums ${
           leader ? "font-bold text-primary" : "text-muted-foreground"
@@ -95,7 +98,7 @@ function ConstructorRow({ c }: { c: F1ConstructorStanding }) {
         <div className="font-mono text-sm font-semibold tabular-nums text-foreground">{pts(c.points)}</div>
         {c.wins > 0 ? <div className="text-[10px] text-muted-foreground">{c.wins} W</div> : null}
       </div>
-    </div>
+    </Link>
   );
 }
 
