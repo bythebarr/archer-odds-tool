@@ -6,6 +6,8 @@ interface WinProbBarProps {
   /** Archer model win probabilities in [0,1]; the bar splits by these. */
   awayProb: number;
   homeProb: number;
+  /** Optional confidence note (e.g. "form only — no probable pitcher yet"), shown small under the bar. */
+  note?: string | null;
 }
 
 const FALLBACK_AWAY = "#64748b"; // slate — neutral when a team has no brand color
@@ -17,7 +19,7 @@ const FALLBACK_HOME = "#2563eb"; // primary blue
  * color. Purely presentational (server-safe) — the numbers come from
  * computeArcherWinProbability upstream.
  */
-export function WinProbBar({ awayAbbr, homeAbbr, awayProb, homeProb }: WinProbBarProps) {
+export function WinProbBar({ awayAbbr, homeAbbr, awayProb, homeProb, note }: WinProbBarProps) {
   const total = awayProb + homeProb || 1;
   const awayPct = Math.round((awayProb / total) * 100);
   const homePct = 100 - awayPct;
@@ -41,6 +43,7 @@ export function WinProbBar({ awayAbbr, homeAbbr, awayProb, homeProb }: WinProbBa
         <span>{awayAbbr}</span>
         <span>{homeAbbr}</span>
       </div>
+      {note && <p className="mt-1 text-center text-[10px] italic text-muted-foreground/80">{note}</p>}
     </div>
   );
 }

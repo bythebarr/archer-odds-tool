@@ -102,6 +102,11 @@ export default async function GamePage({
             homeAbbr={game.homeTeam.abbreviation}
             awayProb={archerProb.awayProb}
             homeProb={archerProb.homeProb}
+            note={
+              !archerProb.usedPitcher.home && !archerProb.usedPitcher.away
+                ? "Form only — no probable pitcher set yet"
+                : null
+            }
           />
         </div>
       )}
