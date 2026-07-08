@@ -8,6 +8,7 @@ import {
 } from "@/lib/queries/ufcEvents";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FighterBadge } from "@/components/FighterBadge";
+import { PageShell, PageHeader } from "@/components/PageShell";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // UFC events are ingested by a daily backfill cron, so both the upcoming and
@@ -103,12 +104,11 @@ export default async function UfcPage() {
   const [upcoming, recent] = await Promise.all([listUpcomingUfcEvents(), listRecentUfcEvents()]);
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <h1 className="text-xl font-semibold text-foreground">UFC</h1>
-      <p className="text-sm text-muted-foreground">
-        Upcoming cards and recent results with archer&apos;s transparent fighter-math projections — research/discovery
-        only, no bet placement or tracking.
-      </p>
+    <PageShell width="2xl">
+      <PageHeader
+        title="UFC"
+        description="Upcoming cards and recent results with archer's transparent fighter-math projections."
+      />
 
       {upcoming.length > 0 ? (
         <section className="mt-8">
@@ -140,6 +140,6 @@ export default async function UfcPage() {
       <p className="mt-8 text-center text-xs text-muted-foreground">
         Recent list shows fully-ingested events only. Fighter data via the Cito API.
       </p>
-    </div>
+    </PageShell>
   );
 }

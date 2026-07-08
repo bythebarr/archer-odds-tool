@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export { Skeleton };
 
-/** One game-row-shaped skeleton, matching HomeGamesList/SlateLinesView's row layout. */
+/** One game-row-shaped skeleton, matching SlateLinesView's row layout. */
 export function GameRowSkeleton() {
   return (
     <div className="flex items-center justify-between py-4">

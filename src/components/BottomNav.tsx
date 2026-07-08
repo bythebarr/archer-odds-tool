@@ -2,17 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { PRIMARY_NAV_ITEMS, navHref, isNavActive } from "@/lib/nav";
 
-// The primary mobile destinations — a focused 5 (a bottom bar shouldn't scroll).
+// The primary mobile destinations — a focused 5 (a bottom bar shouldn't scroll),
+// defined once in @/lib/nav so this can't drift from the desktop SiteNav.
 // Tennis/Soccer stay one tap away via the Home dashboard's sport tiles and the
 // desktop top-nav, which keeps every sport listed.
-const TABS = [
-  { href: "/", label: "Home", icon: "🏠", carriesDate: true },
-  { href: "/slate", label: "Slate", icon: "📊", carriesDate: true },
-  { href: "/mlb", label: "MLB", icon: "⚾", carriesDate: true },
-  { href: "/ufc", label: "UFC", icon: "🥊", carriesDate: false },
-  { href: "/props", label: "Props", icon: "🎯", carriesDate: false },
-];
 
 /**
  * Fixed bottom tab bar — the mobile app shell. Hidden on `sm+` (the top
@@ -30,9 +25,9 @@ export function BottomNav() {
       aria-label="Primary"
     >
       <div className="mx-auto flex max-w-lg items-stretch justify-around">
-        {TABS.map((tab) => {
-          const isActive = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
-          const href = tab.carriesDate && date ? `${tab.href}?date=${date}` : tab.href;
+        {PRIMARY_NAV_ITEMS.map((tab) => {
+          const isActive = isNavActive(tab, pathname);
+          const href = navHref(tab, date);
           return (
             <Link
               key={tab.href}

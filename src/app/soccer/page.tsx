@@ -1,9 +1,11 @@
 import { listSoccerMatchesWithLines } from "@/lib/queries/soccerMatches";
 import type { SoccerMatchSummary } from "@/lib/queries/soccerMatches";
 import type { GameLineRow } from "@/lib/queries/games";
-import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
+import { formatAmerican } from "@/lib/odds/americanOdds";
+import { bestLinesBySide } from "@/lib/odds/bestPrice";
 import { SoccerTeamBadge } from "@/components/SoccerTeamBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
+import { PageShell, PageHeader } from "@/components/PageShell";
 
 // Same rationale as the tennis page: odds update via cron, not deploys, so
 // this must not be statically prerendered at build time.
@@ -20,33 +22,21 @@ function formatTime(date: Date): string {
 
 /** Best (highest decimal-odds) price per side — moneyline (3-way) only, soccer v1 has no other market. */
 function bestPricePreview(match: SoccerMatchSummary, lines: GameLineRow[]): MatchCardChip[] {
-  const bestBySide = new Map<string, GameLineRow>();
-  for (const line of lines) {
-    const current = bestBySide.get(line.side);
-    if (!current || americanToDecimal(line.priceAmerican) > americanToDecimal(current.priceAmerican)) {
-      bestBySide.set(line.side, line);
-    }
-  }
-
-  return ["away", "draw", "home"]
-    .map((side) => bestBySide.get(side))
-    .filter((line): line is GameLineRow => line !== undefined)
-    .map((line) => ({
-      label: line.side === "home" ? match.homeTeam.abbreviation : line.side === "away" ? match.awayTeam.abbreviation : "Draw",
-      value: formatAmerican(line.priceAmerican),
-    }));
+  return bestLinesBySide(lines, ["away", "draw", "home"]).map((line) => ({
+    label: line.side === "home" ? match.homeTeam.abbreviation : line.side === "away" ? match.awayTeam.abbreviation : "Draw",
+    value: formatAmerican(line.priceAmerican),
+  }));
 }
 
 export default async function SoccerPage() {
   const matches = await listSoccerMatchesWithLines();
 
   return (
-    <div className="mx-auto min-h-screen w-full min-w-0 max-w-2xl px-4 py-10 font-sans">
-      <h1 className="text-xl font-semibold text-foreground">World Cup Soccer</h1>
-      <p className="text-sm text-muted-foreground">
-        World Cup soccer odds line-shopping — moneyline (3-way) only, no Market EV yet.
-        Research/discovery only, no bet placement or tracking.
-      </p>
+    <PageShell width="2xl">
+      <PageHeader
+        title="World Cup Soccer"
+        description="Odds line-shopping — moneyline (3-way) only, no Market EV yet."
+      />
 
       {matches.length === 0 ? (
         <p className="mt-6 py-10 text-center text-sm text-muted-foreground">
@@ -76,6 +66,6 @@ export default async function SoccerPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -2,10 +2,12 @@ import Link from "next/link";
 import { getSlateForDate } from "@/lib/queries/slate";
 import { getOddsPoolForDate } from "@/lib/queries/oddsPool";
 import { getPropBoard } from "@/lib/props/board";
-import { todayEt, shiftEtDate, isValidEtDate, formatEtDateLabel } from "@/lib/dateEt";
+import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { OddsPoolBoard } from "@/components/OddsPoolBoard";
 import { SlateBoard } from "@/components/SlateBoard";
 import { PropBoard } from "@/components/PropBoard";
+import { PageShell, PageHeader } from "@/components/PageShell";
+import { DateNav } from "@/components/DateNav";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // Fed by the daily result/schedule syncs, so the board changes day to day —
@@ -51,27 +53,29 @@ export default async function SlatePage({
   // prev/next doesn't bounce you back to the default tab / stat view.
   const navSuffix =
     tab === "props" ? `&tab=props&view=${propBoard!.activeView}` : tab === "lines" ? "&tab=lines" : "";
-  const prevDate = shiftEtDate(date, -1);
-  const nextDate = shiftEtDate(date, 1);
 
   return (
-    <div className="mx-auto min-h-screen w-full min-w-0 max-w-3xl px-4 py-10 font-sans">
-      <div className="flex items-baseline justify-between gap-3">
-        <h1 className="text-xl font-semibold text-foreground">Slate</h1>
-        <Link
-          href={`/slate/mlb?date=${date}`}
-          className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-        >
-          Shop all MLB lines →
-        </Link>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Every priced play in one pool. Drag the odds range to your price band, then read value two ways:{" "}
-        <span className="text-foreground/70">Market</span> (best price vs the de-vigged market) or{" "}
-        <span className="text-foreground/70">Model</span> (Archer&apos;s own projection vs the price).{" "}
-        <span className="text-foreground/70">Lines</span> and <span className="text-foreground/70">Props</span> hold
-        the deeper model-lean and hit-rate views.
-      </p>
+    <PageShell width="3xl">
+      <PageHeader
+        title="Slate"
+        right={
+          <Link
+            href={`/mlb?date=${date}`}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Shop all MLB lines →
+          </Link>
+        }
+        description={
+          <>
+            Every priced play in one pool. Drag the odds range to your price band, then read value two ways:{" "}
+            <span className="text-foreground/70">Market</span> (best price vs the de-vigged market) or{" "}
+            <span className="text-foreground/70">Model</span> (Archer&apos;s own projection vs the price).{" "}
+            <span className="text-foreground/70">Lines</span> and <span className="text-foreground/70">Props</span> hold
+            the deeper model-lean and hit-rate views.
+          </>
+        }
+      />
 
       {/* Lines | Props — the two halves of the Slate under one date nav */}
       <div className="mt-5 inline-flex rounded-lg bg-muted p-0.5">
@@ -93,21 +97,7 @@ export default async function SlatePage({
         })}
       </div>
 
-      <div className="mt-6 flex items-center justify-between">
-        <Link
-          href={`/slate?date=${prevDate}${navSuffix}`}
-          className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
-        >
-          ← Prev day
-        </Link>
-        <span className="text-sm font-medium text-foreground">{formatEtDateLabel(date)}</span>
-        <Link
-          href={`/slate?date=${nextDate}${navSuffix}`}
-          className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
-        >
-          Next day →
-        </Link>
-      </div>
+      <DateNav basePath="/slate" date={date} extraQuery={navSuffix} />
 
       <div className="mt-8">
         {tab === "value" ? (
@@ -118,6 +108,6 @@ export default async function SlatePage({
           <PropBoard board={propBoard!} date={date} basePath="/slate" extraQuery="&tab=props" />
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -4,21 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { AppIconMark } from "@/lib/appIcon";
-
-// carriesDate: MLB's Games/Slate views share a browsed date across nav
-// clicks; Tennis/Soccer have no date filter (see tennisMatches.ts /
-// soccerMatches.ts), so they never carry one.
-// icon: a scannable sport glyph, DraftKings-style — makes the nav readable
-// at a glance and adds a bit of color to the "data-terminal" palette.
-const NAV_LINKS = [
-  { href: "/", label: "Home", icon: "🏠", carriesDate: true },
-  { href: "/slate", label: "Slate", icon: "📊", carriesDate: true },
-  { href: "/mlb", label: "MLB", icon: "⚾", carriesDate: true },
-  { href: "/ufc", label: "UFC", icon: "🥊", carriesDate: false },
-  { href: "/tennis", label: "Tennis", icon: "🎾", carriesDate: false },
-  { href: "/soccer", label: "Soccer", icon: "⚽", carriesDate: false },
-  { href: "/props", label: "Props", icon: "🎯", carriesDate: false },
-];
+import { NAV_ITEMS, navHref, isNavActive } from "@/lib/nav";
 
 /**
  * Carries the currently-browsed `date` across nav links so switching
@@ -43,9 +29,9 @@ export function SiteNav() {
               the fixed BottomNav carries the primary tabs instead. Horizontal
               scroll keeps the (wider) desktop list tidy if it ever overflows. */}
           <div className="hidden gap-1 overflow-x-auto [scrollbar-width:none] sm:flex [&::-webkit-scrollbar]:hidden">
-            {NAV_LINKS.map((link) => {
-              const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-              const href = link.carriesDate && date ? `${link.href}?date=${date}` : link.href;
+            {NAV_ITEMS.map((link) => {
+              const isActive = isNavActive(link, pathname);
+              const href = navHref(link, date);
               return (
                 <Link
                   key={link.href}

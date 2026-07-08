@@ -39,15 +39,15 @@ function RateCell({ result }: { result: PropHitRateResult | null | undefined }) 
 
 /**
  * `basePath`/`extraQuery` let the same board render under different routes: it
- * lives standalone at `/props/board` (the defaults) and embedded as the Slate's
+ * lives standalone at `/props` (the defaults) and embedded as the Slate's
  * Props tab at `/slate` (basePath="/slate", extraQuery="&tab=props"), so its
  * server-driven view/stat links stay on whichever surface hosts it instead of
- * jumping back to /props/board.
+ * jumping back to /props.
  */
 export function PropBoard({
   board,
   date,
-  basePath = "/props/board",
+  basePath = "/props",
   extraQuery = "",
 }: {
   board: PropBoardData;

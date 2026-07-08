@@ -1,8 +1,9 @@
 import { Skeleton } from "@/components/Skeleton";
+import { PageShell } from "@/components/PageShell";
 
-export default function SlateLoading() {
+export default function MlbLoading() {
   return (
-    <div className="mx-auto min-h-screen max-w-3xl px-4 py-10 font-sans">
+    <PageShell width="3xl">
       <Skeleton className="h-5 w-40" />
       <Skeleton className="mt-2 h-4 w-80" />
 
@@ -37,6 +38,6 @@ export default function SlateLoading() {
           ))}
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
