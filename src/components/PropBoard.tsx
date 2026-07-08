@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { InfoTip } from "@/components/InfoTip";
 import type { PropBoard as PropBoardData, PropBoardRow, PropLineCells } from "@/lib/props/boardTypes";
 import type { PropHitRateResult } from "@/lib/props/hitRate";
 
@@ -120,7 +121,9 @@ export function PropBoard({
 
       {/* Increment (alt-line) selector — the "seek across increments" tool */}
       <div className="mt-4 flex items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Line</span>
+        <InfoTip id="alt-line" className="text-xs font-medium text-muted-foreground">
+          Line
+        </InfoTip>
         <div className="flex gap-1">
           {board.lines.map((line) => {
             const active = line === activeLine;

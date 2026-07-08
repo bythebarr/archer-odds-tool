@@ -8,6 +8,7 @@ import { SlateBoard } from "@/components/SlateBoard";
 import { PropBoard } from "@/components/PropBoard";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { DateNav } from "@/components/DateNav";
+import { InfoTip } from "@/components/InfoTip";
 import { SportRail } from "@/components/SportRail";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
@@ -69,11 +70,11 @@ export default async function SlatePage({
         }
         description={
           <>
-            Every priced play in one pool. Drag the odds range to your price band, then read value two ways:{" "}
-            <span className="text-foreground/70">Market</span> (best price vs the de-vigged market) or{" "}
-            <span className="text-foreground/70">Model</span> (Archer&apos;s own projection vs the price).{" "}
-            <span className="text-foreground/70">Lines</span> and <span className="text-foreground/70">Props</span> hold
-            the deeper model-lean and hit-rate views.
+            Every priced play in one <InfoTip id="pool">pool</InfoTip>. Drag the odds range to your price band,
+            then read value two ways: <span className="text-foreground/70">Market</span> (best price vs the{" "}
+            <InfoTip id="de-vig">de-vigged</InfoTip> market) or <span className="text-foreground/70">Model</span>{" "}
+            (Archer&apos;s own projection vs the price). <span className="text-foreground/70">Lines</span> and{" "}
+            <span className="text-foreground/70">Props</span> hold the deeper model-lean and hit-rate views.
           </>
         }
       />

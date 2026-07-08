@@ -9,6 +9,7 @@ import { Logo } from "./Logo";
 import { playerLogoSources } from "@/lib/logos";
 import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatEv, evColorClass } from "@/lib/odds/format";
+import { InfoTip } from "./InfoTip";
 import { useSlip, buildSlipPickId, type SlipPick, type SlipSport } from "@/lib/slip/SlipContext";
 
 const SPORT_META: Record<SlateSport, { label: string; icon: string }> = {
@@ -243,7 +244,9 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
       {/* Odds-range slider — the core control, pinned at the top and always visible. */}
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-baseline justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Odds range</span>
+          <InfoTip id="odds-range" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Odds range
+          </InfoTip>
           <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
             {formatAmerican(decimalToAmerican(loDecimal))} <span className="text-muted-foreground">to</span>{" "}
             {formatAmerican(decimalToAmerican(hiDecimal))}
@@ -291,7 +294,9 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
           Only offered when the day has at least one modeled play (MLB moneylines). */}
       {modelCount > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-semibold uppercase tracking-wide text-muted-foreground">Value vs</span>
+          <InfoTip id="market-vs-model" className="font-semibold uppercase tracking-wide text-muted-foreground">
+            Value vs
+          </InfoTip>
           <div className="inline-flex rounded-lg bg-muted p-0.5">
             {(["market", "model"] as Lens[]).map((l) => (
               <button
@@ -308,7 +313,13 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
             ))}
           </div>
           <span className="text-muted-foreground">
-            {lens === "market" ? "Best price vs the de-vigged market" : "Archer model vs price · MLB game lines"}
+            {lens === "market" ? (
+              <>
+                Best price vs the <InfoTip id="de-vig">de-vigged</InfoTip> market
+              </>
+            ) : (
+              "Archer model vs price · MLB game lines"
+            )}
           </span>
         </div>
       )}

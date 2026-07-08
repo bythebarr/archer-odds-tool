@@ -8,6 +8,7 @@ import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { calculateEv } from "@/lib/odds/devig";
 import { computeLineEconomics, historicalProbBySide, lineKey } from "@/lib/odds/lineEconomics";
 import { SIDE_LABELS, formatEv, evColorClass, formatPoint } from "@/lib/odds/format";
+import { InfoTip } from "./InfoTip";
 import type { ExpectedRuns } from "@/lib/archer/expectedRuns";
 import { archerProbForRow } from "@/lib/archer/runProbability";
 import { PriceRangeSlider } from "./PriceRangeSlider";
@@ -183,11 +184,20 @@ export function SlateLinesView({
           </div>
 
           <p className="mt-4 text-xs text-muted-foreground">
-            Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
-            directional estimate only (small sample, no opponent/park/pitcher adjustment).
-            {market === "h2h"
-              ? " Archer EV = vs. the Archer model's pitcher+form win probability."
-              : " Archer EV = vs. the Archer model's expected-runs projection (recent runs scored/allowed + starting pitcher ERA)."}
+            <InfoTip id="market-ev">Mkt EV</InfoTip> = vs. <InfoTip id="de-vig">de-vigged</InfoTip> market
+            consensus. <InfoTip id="hist-ev">Hist EV</InfoTip> = vs. rolling hit-rate — a noisier, directional
+            estimate only (small sample, no opponent/park/pitcher adjustment).{" "}
+            {market === "h2h" ? (
+              <>
+                <InfoTip id="archer-ev">Archer EV</InfoTip> = vs. the Archer model&apos;s pitcher+form win
+                probability.
+              </>
+            ) : (
+              <>
+                <InfoTip id="archer-ev">Archer EV</InfoTip> = vs. the Archer model&apos;s expected-runs
+                projection (recent runs scored/allowed + starting pitcher ERA).
+              </>
+            )}
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-4">

@@ -6,6 +6,7 @@ import { PropsSearchBox } from "@/components/PropsSearchBox";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { DateNav } from "@/components/DateNav";
+import { InfoTip } from "@/components/InfoTip";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
 
 // Rides the daily game-log sync, so it changes day to day — render per request.
@@ -47,7 +48,7 @@ export default async function PropsPage({
     <PageShell width="3xl">
       <PageHeader
         title="Player Props"
-        right={<span className="text-xs text-muted-foreground">Hit-rate research</span>}
+        right={<InfoTip id="hit-rate" className="text-xs text-muted-foreground">Hit-rate research</InfoTip>}
       />
 
       {/* Search — the fastest path to any single player */}

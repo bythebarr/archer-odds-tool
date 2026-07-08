@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteNav } from "@/components/SiteNav";
 import { BottomNav } from "@/components/BottomNav";
@@ -77,10 +78,15 @@ export default function RootLayout({
           </Suspense>
           {children}
           <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-muted-foreground">
-            For informational and research purposes only. Not betting advice; odds, hit-rates, and EV
-            figures are not guaranteed accurate and carry no warranty. This tool does not facilitate
-            bet placement. If you or someone you know has a gambling problem, call or text the National
-            Problem Gambling Helpline at 1-800-522-4700.
+            <Link href="/learn" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
+              How to read Archer · Glossary
+            </Link>
+            <p className="mt-3">
+              For informational and research purposes only. Not betting advice; odds, hit-rates, and EV
+              figures are not guaranteed accurate and carry no warranty. This tool does not facilitate
+              bet placement. If you or someone you know has a gambling problem, call or text the National
+              Problem Gambling Helpline at 1-800-522-4700.
+            </p>
           </footer>
           <SlipButton />
           <Suspense fallback={null}>
