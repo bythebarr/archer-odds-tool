@@ -1,7 +1,7 @@
 import type { SlateSport, SlateSide } from "@/lib/queries/slate";
 import { TeamBadge } from "@/components/TeamBadge";
 import { FighterBadge } from "@/components/FighterBadge";
-import { PlayerBadge } from "@/components/PlayerBadge";
+import { TennisPlayerBadge } from "@/components/TennisPlayerBadge";
 
 /**
  * One competitor's avatar, sport-aware — the single place that maps a Slate
@@ -20,7 +20,7 @@ export function CompetitorAvatar({
   size?: number;
 }) {
   if (sport === "ufc") return <FighterBadge name={side.name} imageUrl={side.imageUrl ?? null} size={size} />;
-  if (sport === "tennis") return <PlayerBadge name={side.name} size={size} />;
+  if (sport === "tennis") return <TennisPlayerBadge name={side.name} size={size} />;
   // mlb (real crest via teamId) + soccer (color/initials fallback) both use TeamBadge.
   return <TeamBadge abbreviation={side.meta ?? side.name} name={side.name} mlbTeamId={side.teamId} size={size} />;
 }

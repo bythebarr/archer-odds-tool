@@ -7,7 +7,7 @@ import type { HitRateResult } from "@/lib/queries/hitRate";
 import { calculateEv } from "@/lib/odds/devig";
 import { h2hMarketConsensus } from "@/lib/odds/lineEconomics";
 import { formatHitRate } from "@/lib/odds/format";
-import { PlayerBadge } from "./PlayerBadge";
+import { TennisPlayerBadge } from "./TennisPlayerBadge";
 import { LinesLadder } from "./LinesLadder";
 
 const SIDE_PLAYER: Record<string, (m: MatchSummary) => PlayerSummary> = {
@@ -48,7 +48,7 @@ export function MatchLinesView({ match, lines, homeHitRate, awayHitRate }: Match
       sideHeader={(side) => {
         const player = SIDE_PLAYER[side]?.(match);
         return {
-          badge: player ? <PlayerBadge name={player.name} /> : null,
+          badge: player ? <TennisPlayerBadge name={player.name} /> : null,
           label: player?.name ?? side,
           caption:
             side === "home"

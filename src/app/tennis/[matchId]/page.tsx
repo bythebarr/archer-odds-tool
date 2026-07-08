@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getMatchWithLines } from "@/lib/queries/tennisMatches";
 import { getPlayerHitRate } from "@/lib/queries/hitRate";
 import { MatchLinesView } from "@/components/MatchLinesView";
-import { PlayerBadge } from "@/components/PlayerBadge";
+import { TennisPlayerBadge } from "@/components/TennisPlayerBadge";
 import { BackLink } from "@/components/BackLink";
 
 /** Shares getMatchWithLines's per-request cache() with the page component below — same pattern as the MLB game page. */
@@ -50,12 +50,12 @@ export default async function TennisMatchPage({
 
       <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-foreground">
         <span className="inline-flex items-center gap-2">
-          <PlayerBadge name={match.awayPlayer.name} size={24} />
+          <TennisPlayerBadge name={match.awayPlayer.name} size={24} />
           {match.awayPlayer.name}
         </span>
         <span>vs</span>
         <span className="inline-flex items-center gap-2">
-          <PlayerBadge name={match.homePlayer.name} size={24} />
+          <TennisPlayerBadge name={match.homePlayer.name} size={24} />
           {match.homePlayer.name}
         </span>
       </h1>

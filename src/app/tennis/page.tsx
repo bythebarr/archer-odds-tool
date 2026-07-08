@@ -2,7 +2,7 @@ import { listTennisMatchesWithLines } from "@/lib/queries/tennisMatches";
 import type { MatchSummary } from "@/lib/queries/tennisMatches";
 import type { GameLineRow } from "@/lib/queries/games";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
-import { PlayerBadge } from "@/components/PlayerBadge";
+import { TennisPlayerBadge } from "@/components/TennisPlayerBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
 
 // Unlike the MLB routes, this page has no searchParams/dynamic segment to
@@ -69,8 +69,8 @@ export default async function TennisPage() {
               key={match.id}
               href={`/tennis/${match.id}`}
               competitors={[
-                { badge: <PlayerBadge name={match.awayPlayer.name} size={28} />, label: match.awayPlayer.name },
-                { badge: <PlayerBadge name={match.homePlayer.name} size={28} />, label: match.homePlayer.name },
+                { badge: <TennisPlayerBadge name={match.awayPlayer.name} size={28} />, label: match.awayPlayer.name },
+                { badge: <TennisPlayerBadge name={match.homePlayer.name} size={28} />, label: match.homePlayer.name },
               ]}
               timeLabel={`${formatTime(match.scheduledStartUtc)} ET`}
               status={match.status}
