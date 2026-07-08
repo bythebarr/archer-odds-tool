@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { listSoccerMatchesWithLines } from "@/lib/queries/soccerMatches";
 import type { SoccerMatchSummary } from "@/lib/queries/soccerMatches";
 import type { GameLineRow } from "@/lib/queries/games";
@@ -6,9 +7,17 @@ import { bestLinesBySide } from "@/lib/odds/bestPrice";
 import { SoccerTeamBadge } from "@/components/SoccerTeamBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
 import { PageShell, PageHeader } from "@/components/PageShell";
+import { EmptyState } from "@/components/EmptyState";
+import { getFeedFreshness } from "@/lib/freshness";
 
 // Same rationale as the tennis page: odds update via cron, not deploys, so
 // this must not be statically prerendered at build time.
+export const metadata: Metadata = {
+  title: "World Cup Soccer — 3-way odds",
+  description:
+    "3-way moneyline odds line-shopping for World Cup soccer — compare the best price across books for home, draw, and away.",
+};
+
 export const dynamic = "force-dynamic";
 
 function formatTime(date: Date): string {
@@ -29,7 +38,7 @@ function bestPricePreview(match: SoccerMatchSummary, lines: GameLineRow[]): Matc
 }
 
 export default async function SoccerPage() {
-  const matches = await listSoccerMatchesWithLines();
+  const [matches, freshness] = await Promise.all([listSoccerMatchesWithLines(), getFeedFreshness("soccerOdds")]);
 
   return (
     <PageShell width="2xl">
@@ -39,9 +48,9 @@ export default async function SoccerPage() {
       />
 
       {matches.length === 0 ? (
-        <p className="mt-6 py-10 text-center text-sm text-muted-foreground">
-          No World Cup matches tracked right now.
-        </p>
+        <EmptyState title="No World Cup matches tracked right now" freshness={freshness} arrow="miss" supportContext="soccer-empty">
+          Between match windows there&apos;s nothing to price — odds reappear as the next fixtures approach.
+        </EmptyState>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
           {matches.map(({ match, lines }) => (

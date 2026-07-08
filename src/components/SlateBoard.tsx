@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Slate, SlateItem, SlateSport } from "@/lib/queries/slate";
+import type { FeedFreshness } from "@/lib/freshness";
+import { EmptyState } from "./EmptyState";
+import { FreshnessStamp } from "./FreshnessStamp";
 
 const SPORT_META: Record<SlateSport, { label: string; icon: string }> = {
   mlb: { label: "MLB", icon: "⚾" },
@@ -162,7 +165,7 @@ function SlateRow({ item }: { item: SlateItem }) {
   );
 }
 
-export function SlateBoard({ slate }: { slate: Slate }) {
+export function SlateBoard({ slate, freshness }: { slate: Slate; freshness?: FeedFreshness }) {
   const [sport, setSport] = useState<SlateSport | "all">("all");
   const [sort, setSort] = useState<SortKey>("time");
   // The "seek your perfect bet" controls: how hard the model must lean, and when it plays.
@@ -205,6 +208,12 @@ export function SlateBoard({ slate }: { slate: Slate }) {
 
   return (
     <div>
+      {freshness && slate.items.length > 0 ? (
+        <div className="mb-3 flex justify-end">
+          <FreshnessStamp freshness={freshness} />
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-1.5">
           {chips.map((chip) => (
@@ -299,13 +308,20 @@ export function SlateBoard({ slate }: { slate: Slate }) {
       )}
 
       {visible.length === 0 ? (
-        <p className="mt-10 text-center text-sm text-muted-foreground">
-          {slate.items.length === 0
-            ? "Nothing on the board for this date."
-            : filtersActive
-              ? "No bets match your filters."
-              : "Nothing on the board for this sport."}
-        </p>
+        slate.items.length === 0 ? (
+          <EmptyState
+            title="Nothing on the board yet"
+            freshness={freshness}
+            arrow="miss"
+            supportContext="slate-lines-empty"
+          >
+            Lines for this date haven&apos;t posted, or nothing is scheduled.
+          </EmptyState>
+        ) : (
+          <p className="mt-10 text-center text-sm text-muted-foreground">
+            {filtersActive ? "No bets match your filters." : "Nothing on the board for this sport."}
+          </p>
+        )
       ) : (
         <>
           <div className="mt-4 flex items-center gap-3 px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">

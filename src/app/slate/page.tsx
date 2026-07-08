@@ -1,8 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getSlateForDate } from "@/lib/queries/slate";
 import { getOddsPoolForDate } from "@/lib/queries/oddsPool";
 import { getPropBoard } from "@/lib/props/board";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
+import { getFeedFreshness } from "@/lib/freshness";
 import { OddsPoolBoard } from "@/components/OddsPoolBoard";
 import { SlateBoard } from "@/components/SlateBoard";
 import { PropBoard } from "@/components/PropBoard";
@@ -14,6 +16,12 @@ import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // Fed by the daily result/schedule syncs, so the board changes day to day —
 // render per request.
+export const metadata: Metadata = {
+  title: "The Slate — every priced play, one board",
+  description:
+    "Every day's priced plays in one pool. Line-shop the best price across books, filter by your odds range, and read value two ways: Market EV (best price vs the de-vigged line) or Archer's own Model projection.",
+};
+
 export const dynamic = "force-dynamic";
 
 type Tab = "value" | "lines" | "props";
@@ -50,6 +58,10 @@ export default async function SlatePage({
   const slate = tab === "lines" ? await getSlateForDate(date) : null;
   // Only MLB has prop data today; getPropBoard is sport-agnostic (see board.ts).
   const propBoard = tab === "props" ? await getPropBoard("mlb", date, view, stat) : null;
+
+  // Freshness for the active tab's dominant feed — reassures on empty boards.
+  const freshness =
+    tab === "props" ? await getFeedFreshness("props") : await getFeedFreshness("mlbOdds");
 
   // Preserve the active tab (and, on Props, its view) across day nav so
   // prev/next doesn't bounce you back to the default tab / stat view.
@@ -108,11 +120,11 @@ export default async function SlatePage({
 
       <div className="mt-8">
         {tab === "value" ? (
-          <OddsPoolBoard pool={pool!} />
+          <OddsPoolBoard pool={pool!} freshness={freshness} />
         ) : tab === "lines" ? (
-          <SlateBoard slate={slate!} />
+          <SlateBoard slate={slate!} freshness={freshness} />
         ) : (
-          <PropBoard board={propBoard!} date={date} basePath="/slate" extraQuery="&tab=props" />
+          <PropBoard board={propBoard!} date={date} basePath="/slate" extraQuery="&tab=props" freshness={freshness} />
         )}
       </div>
     </PageShell>

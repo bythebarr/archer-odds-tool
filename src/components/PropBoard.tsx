@@ -6,6 +6,9 @@ import { Logo } from "@/components/Logo";
 import { InfoTip } from "@/components/InfoTip";
 import type { PropBoard as PropBoardData, PropBoardRow, PropLineCells } from "@/lib/props/boardTypes";
 import type { PropHitRateResult } from "@/lib/props/hitRate";
+import type { FeedFreshness } from "@/lib/freshness";
+import { EmptyState } from "@/components/EmptyState";
+import { FreshnessStamp } from "@/components/FreshnessStamp";
 
 function cellsForLine(row: PropBoardRow, line: number): PropLineCells | undefined {
   return row.lines.find((l) => l.line === line);
@@ -50,11 +53,13 @@ export function PropBoard({
   date,
   basePath = "/props",
   extraQuery = "",
+  freshness,
 }: {
   board: PropBoardData;
   date: string;
   basePath?: string;
   extraQuery?: string;
+  freshness?: FeedFreshness;
 }) {
   const [activeLine, setActiveLine] = useState<number>(
     board.lines[Math.floor(board.lines.length / 2)] ?? board.lines[0] ?? 0.5
@@ -77,6 +82,12 @@ export function PropBoard({
 
   return (
     <div>
+      {freshness && rows.length > 0 ? (
+        <div className="mb-3 flex justify-end">
+          <FreshnessStamp freshness={freshness} />
+        </div>
+      ) : null}
+
       {/* View tabs (Batters / Pitchers) — navigate, resets to the view's first stat */}
       {board.views.length > 1 && (
         <div className="mb-4 inline-flex rounded-lg bg-muted p-0.5">
@@ -150,9 +161,14 @@ export function PropBoard({
 
       {/* Board */}
       {rows.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-muted-foreground">
-          No prop data for this date yet — hit rates need recent game logs for the day&apos;s players.
-        </p>
+        <EmptyState
+          title="No prop data for this date yet"
+          freshness={freshness}
+          arrow="miss"
+          supportContext="props-empty"
+        >
+          Hit rates are built from the day&apos;s player game logs.
+        </EmptyState>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[560px] border-collapse text-right">

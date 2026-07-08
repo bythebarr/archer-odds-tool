@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getPropBoard, listPropSports } from "@/lib/props/board";
 import { listMlbTeams, type MlbTeamSummary } from "@/lib/queries/games";
@@ -8,8 +9,15 @@ import { PageShell, PageHeader } from "@/components/PageShell";
 import { DateNav } from "@/components/DateNav";
 import { InfoTip } from "@/components/InfoTip";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
+import { getFeedFreshness } from "@/lib/freshness";
 
 // Rides the daily game-log sync, so it changes day to day — render per request.
+export const metadata: Metadata = {
+  title: "Player Props — hit-rate research",
+  description:
+    "Player prop hit-rates across the league — search any player, browse the board or by team, and see how often each line actually cashes over recent games. Research only.",
+};
+
 export const dynamic = "force-dynamic";
 
 function groupByDivision(teams: MlbTeamSummary[]): Map<string, MlbTeamSummary[]> {
@@ -78,7 +86,7 @@ export default async function PropsPage({
 async function BoardView({ date, view, stat }: { date: string; view?: string; stat?: string }) {
   // Only MLB has prop data today; the framework is sport-agnostic (other sports
   // register a config in board.ts and appear here with their own views/splits).
-  const board = await getPropBoard("mlb", date, view, stat);
+  const [board, freshness] = await Promise.all([getPropBoard("mlb", date, view, stat), getFeedFreshness("props")]);
   const sports = listPropSports();
 
   // Carry the active view (not the stat — it resets per view) across day nav.
@@ -105,7 +113,7 @@ async function BoardView({ date, view, stat }: { date: string; view?: string; st
       <DateNav basePath="/props" date={date} extraQuery={navSuffix} />
 
       <div className="mt-8">
-        <PropBoard board={board} date={date} basePath="/props" />
+        <PropBoard board={board} date={date} basePath="/props" freshness={freshness} />
       </div>
     </>
   );

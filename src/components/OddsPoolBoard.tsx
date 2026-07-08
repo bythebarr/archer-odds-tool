@@ -11,6 +11,9 @@ import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatEv, evColorClass } from "@/lib/odds/format";
 import { InfoTip } from "./InfoTip";
 import { useSlip, buildSlipPickId, type SlipPick, type SlipSport } from "@/lib/slip/SlipContext";
+import type { FeedFreshness } from "@/lib/freshness";
+import { EmptyState } from "./EmptyState";
+import { FreshnessStamp } from "./FreshnessStamp";
 
 const SPORT_META: Record<SlateSport, { label: string; icon: string }> = {
   mlb: { label: "MLB", icon: "⚾" },
@@ -172,7 +175,7 @@ function PlayRow({ play, value, lens }: { play: OddsPlay; value: number | null; 
   );
 }
 
-export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
+export function OddsPoolBoard({ pool, freshness }: { pool: OddsPool; freshness?: FeedFreshness }) {
   const [sport, setSport] = useState<SlateSport | "all">("all");
   const [kind, setKind] = useState<MarketKind | "all">("all");
   const [sort, setSort] = useState<SortKey>("value");
@@ -241,6 +244,12 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
 
   return (
     <div>
+      {freshness && pool.plays.length > 0 ? (
+        <div className="mb-3 flex justify-end">
+          <FreshnessStamp freshness={freshness} />
+        </div>
+      ) : null}
+
       {/* Odds-range slider — the core control, pinned at the top and always visible. */}
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-baseline justify-between">
@@ -380,9 +389,18 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
       </div>
 
       {visible.length === 0 ? (
-        <p className="mt-10 text-center text-sm text-muted-foreground">
-          {pool.plays.length === 0 ? "No priced plays on the board for this date." : "No plays match these filters."}
-        </p>
+        pool.plays.length === 0 ? (
+          <EmptyState
+            title="No priced plays on the board yet"
+            freshness={freshness}
+            arrow="miss"
+            supportContext="slate-value-empty"
+          >
+            Odds for this date haven&apos;t posted, or nothing is scheduled.
+          </EmptyState>
+        ) : (
+          <p className="mt-10 text-center text-sm text-muted-foreground">No plays match these filters.</p>
+        )
       ) : (
         <>
           <div className="mt-4 flex items-center gap-2.5 pl-2 pr-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
