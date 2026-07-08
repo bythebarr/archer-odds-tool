@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { PRIMARY_NAV_ITEMS, navHref, isNavActive } from "@/lib/nav";
 
-// The primary mobile destinations — a focused 5 (a bottom bar shouldn't scroll),
-// defined once in @/lib/nav so this can't drift from the desktop SiteNav.
-// Tennis/Soccer stay one tap away via the Home dashboard's sport tiles and the
-// desktop top-nav, which keeps every sport listed.
+// The primary mobile destinations — a focused set (a bottom bar shouldn't
+// scroll), defined once in @/lib/nav so this can't drift from the desktop
+// SiteNav. Individual sports beyond the flagship few (Tennis/Soccer/F1) live
+// behind the "Sports" hub tab, which opens the /sports lobby.
 
 /**
  * Fixed bottom tab bar — the mobile app shell. Hidden on `sm+` (the top

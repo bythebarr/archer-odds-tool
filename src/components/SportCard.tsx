@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SPORT_META, sportHref } from "@/lib/sports";
+import { NAV_SPORT_META, sportHref } from "@/lib/sports";
 import type { SportNavItem } from "@/lib/queries/sportNav";
 
 function timeLabel(startUtc: Date): string {
@@ -10,12 +10,20 @@ function timeLabel(startUtc: Date): string {
   }).format(startUtc);
 }
 
+function dateLabel(startUtc: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(startUtc);
+}
+
 /**
  * A sport category tile — accent-tinted icon, today's game count, and the next
  * start time. Shared by the Home launcher grid and the /sports lobby.
  */
 export function SportCard({ sport, count, nextStartUtc, date }: SportNavItem & { date: string }) {
-  const meta = SPORT_META[sport];
+  const meta = NAV_SPORT_META[sport];
   const live = count > 0;
 
   return (
@@ -37,8 +45,9 @@ export function SportCard({ sport, count, nextStartUtc, date }: SportNavItem & {
       <div>
         <div className="font-semibold tracking-tight text-foreground">{meta.label}</div>
         <div className="text-xs text-muted-foreground">
-          {live ? `${count} today` : "No games"}
-          {live && nextStartUtc ? ` · ${timeLabel(nextStartUtc)}` : ""}
+          {live ? `${count} today · ${nextStartUtc ? timeLabel(nextStartUtc) : "scheduled"}` : null}
+          {!live && nextStartUtc ? `Next · ${dateLabel(nextStartUtc)}` : null}
+          {!live && !nextStartUtc ? "No games" : null}
         </div>
       </div>
     </Link>
