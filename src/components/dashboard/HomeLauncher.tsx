@@ -43,7 +43,13 @@ function UpNextRow({ row }: { row: HomeData["upNext"][number] }) {
 export function HomeLauncher({ home, date }: { home: HomeData; date: string }) {
   return (
     <div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sports</h2>
+        <Link href={`/sports?date=${date}`} className="text-xs font-medium text-primary hover:underline">
+          All Sports →
+        </Link>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-3">
         {SPORT_ORDER.map((sport) => {
           const s = home.sports.find((x) => x.sport === sport)!;
           return <SportCard key={sport} {...s} date={date} />;

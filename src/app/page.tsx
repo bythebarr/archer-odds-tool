@@ -1,7 +1,6 @@
 import { getHomeForDate } from "@/lib/queries/dashboard";
 import { todayEt, isValidEtDate, formatEtDateLabel } from "@/lib/dateEt";
 import { HomeLauncher } from "@/components/dashboard/HomeLauncher";
-import { SportRail } from "@/components/SportRail";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // The board changes day to day (fed by the sport syncs) — render per request.
@@ -30,10 +29,6 @@ export default async function Home({
         Pick a sport to dive in, or jump to the{" "}
         <span className="font-medium text-foreground">full slate</span> for every play in one pool.
       </p>
-
-      <div className="mt-5">
-        <SportRail date={date} />
-      </div>
 
       <div className="mt-6">
         <HomeLauncher home={home} date={date} />
