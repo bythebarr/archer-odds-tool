@@ -252,3 +252,127 @@ export async function getNextRace(): Promise<F1NextRace | null> {
     raceDate: race.raceDate,
   };
 }
+
+// --- Driver detail --------------------------------------------------------
+
+export interface F1DriverRaceRow {
+  round: number;
+  raceName: string;
+  raceDate: Date;
+  position: number | null;
+  positionText: string;
+  points: number;
+  grid: number | null;
+  status: string;
+  fastestLap: boolean;
+  constructorName: string;
+}
+
+export interface F1DriverSeason {
+  ergastDriverId: string;
+  name: string;
+  code: string | null;
+  permanentNumber: number | null;
+  flag: string;
+  nationality: string | null;
+  season: number;
+  constructorName: string;
+  rank: number;
+  points: number;
+  wins: number;
+  podiums: number;
+  bestFinish: number | null;
+  starts: number;
+  dnfs: number;
+  races: F1DriverRaceRow[];
+}
+
+/**
+ * One driver's current-season card — the standings row made tappable. Rank is
+ * computed the same way the board sorts (points, then wins) so it always agrees
+ * with the /f1 table. Returns null for an unknown driver or one with no results
+ * this season (so the page 404s cleanly rather than rendering an empty shell).
+ */
+export async function getDriverSeason(ergastDriverId: string): Promise<F1DriverSeason | null> {
+  const season = await currentSeason();
+  if (season == null) return null;
+
+  const driver = await prisma.f1Driver.findUnique({ where: { ergastDriverId } });
+  if (!driver) return null;
+
+  // Season-wide points/wins for this driver's championship rank.
+  // Scalar rows only (no relation include) — F1RaceResult's `constructor`
+  // relation collides with Object.prototype in a select/include literal. We
+  // already hold `driver.id`, so aggregate by the scalar `driverId`.
+  const all = await prisma.f1RaceResult.findMany({ where: { race: { season } } });
+  const agg = new Map<string, { points: number; wins: number }>();
+  for (const r of all) {
+    const e = agg.get(r.driverId) ?? { points: 0, wins: 0 };
+    e.points += r.points;
+    if (r.position === 1) e.wins += 1;
+    agg.set(r.driverId, e);
+  }
+  const ranked = [...agg.entries()].sort((a, b) => b[1].points - a[1].points || b[1].wins - a[1].wins);
+  const rank = ranked.findIndex(([id]) => id === driver.id) + 1;
+  const self = agg.get(driver.id) ?? { points: 0, wins: 0 };
+
+  const resultRows = await prisma.f1RaceResult.findMany({
+    where: { driver: { ergastDriverId }, race: { season } },
+    include: { constructor: { select: { name: true } } },
+  });
+  if (resultRows.length === 0) return null;
+
+  // Fetch race meta in its OWN relation-free query. This generator mangles a
+  // DateTime that's selected alongside a nested relation (raceDate comes back a
+  // broken object with no getTime), but a scalar-only select returns a clean,
+  // same-realm Date. So we pull round/name/date here and merge by raceId.
+  const seasonRaces = await prisma.f1Race.findMany({
+    where: { season },
+    select: { id: true, round: true, raceName: true, raceDate: true },
+  });
+  const raceById = new Map(seasonRaces.map((ra) => [ra.id, ra]));
+
+  const races: F1DriverRaceRow[] = resultRows
+    .map((r) => {
+      const race = raceById.get(r.raceId)!;
+      return {
+        round: race.round,
+        raceName: race.raceName,
+        raceDate: race.raceDate,
+        position: r.position,
+        positionText: r.positionText,
+        points: r.points,
+        grid: r.grid,
+        status: r.status,
+        fastestLap: r.fastestLapRank === 1,
+        constructorName: r.constructor.name,
+      };
+    })
+    .sort((a, b) => a.round - b.round);
+
+  // A true retirement is a non-numeric positionText ("R"/"D"/"W"/…). A car that
+  // retired but completed enough laps is still *classified* with a number
+  // (e.g. Monaco P17 "R" vs. a numeric P15 that the status calls "Retired"), so
+  // count DNFs by positionText, and best-finish/podiums off numeric finishes.
+  const finishes = races.filter((r) => /^\d+$/.test(r.positionText)).map((r) => Number(r.positionText));
+  const dnfs = races.filter((r) => !/^\d+$/.test(r.positionText)).length;
+
+  return {
+    ergastDriverId,
+    name: `${driver.givenName} ${driver.familyName}`,
+    code: driver.code,
+    permanentNumber: driver.permanentNumber,
+    flag: flagForNationality(driver.nationality),
+    nationality: driver.nationality,
+    season,
+    constructorName: races[races.length - 1].constructorName, // most recent team
+    rank,
+    points: self.points,
+    wins: self.wins,
+    podiums: finishes.filter((p) => p <= 3).length,
+    bestFinish: finishes.length ? Math.min(...finishes) : null,
+    starts: races.length,
+    dnfs,
+    races,
+  };
+}

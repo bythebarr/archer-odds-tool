@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getF1Season, type F1DriverStanding, type F1ConstructorStanding, type F1ResultRow } from "@/lib/queries/f1";
 import { refreshF1OnView } from "@/lib/f1/refreshOnView";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -45,7 +46,10 @@ function pts(n: number): string {
 function DriverRow({ d }: { d: F1DriverStanding }) {
   const leader = d.rank === 1;
   return (
-    <div className="flex items-center gap-3 py-2">
+    <Link
+      href={`/f1/driver/${d.ergastDriverId}`}
+      className="-mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
+    >
       <span
         className={`w-5 shrink-0 text-right font-mono text-sm tabular-nums ${
           leader ? "font-bold text-primary" : "text-muted-foreground"
@@ -70,7 +74,7 @@ function DriverRow({ d }: { d: F1DriverStanding }) {
           {d.podiums} P
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
