@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { countryOfPlayer, flagEmoji } from "./nationality";
+import { countryOfPlayer, flagEmoji, flagForNation } from "./nationality";
 
 describe("flagEmoji", () => {
   it("converts alpha-2 codes to regional-indicator flags", () => {
@@ -26,5 +26,28 @@ describe("countryOfPlayer", () => {
   });
   it("returns null for unknown players", () => {
     expect(countryOfPlayer("Some Qualifier")).toBeNull();
+  });
+});
+
+describe("flagForNation", () => {
+  it("resolves all current World Cup teams to a flag", () => {
+    for (const nation of [
+      "Argentina", "Belgium", "Colombia", "Egypt", "England",
+      "France", "Morocco", "Norway", "Switzerland", "USA",
+    ]) {
+      expect(flagForNation(nation)).toBeTruthy();
+    }
+  });
+  it("maps countries to the right ISO flag and handles aliases", () => {
+    expect(flagForNation("France")).toBe("🇫🇷");
+    expect(flagForNation("Morocco")).toBe("🇲🇦"); // not the "MOR" abbreviation
+    expect(flagForNation("United States")).toBe("🇺🇸");
+  });
+  it("uses the subdivision flag for England (not a plain GB)", () => {
+    expect(flagForNation("England")).toBe(flagForNation("england"));
+    expect(flagForNation("England")).not.toBe("🇬🇧");
+  });
+  it("returns null for unmapped names", () => {
+    expect(flagForNation("Some FC")).toBeNull();
   });
 });

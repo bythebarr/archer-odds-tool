@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSoccerMatchWithLines } from "@/lib/queries/soccerMatches";
 import { SoccerMatchLinesView } from "@/components/SoccerMatchLinesView";
-import { TeamBadge } from "@/components/TeamBadge";
+import { SoccerTeamBadge } from "@/components/SoccerTeamBadge";
 import { BackLink } from "@/components/BackLink";
 
 /** Shares getSoccerMatchWithLines's per-request cache() with the page component below — same pattern as the MLB/tennis game pages. */
@@ -45,12 +45,12 @@ export default async function SoccerMatchPage({
 
       <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-foreground">
         <span className="inline-flex items-center gap-2">
-          <TeamBadge abbreviation={match.awayTeam.abbreviation} name={match.awayTeam.name} size={24} />
+          <SoccerTeamBadge abbreviation={match.awayTeam.abbreviation} name={match.awayTeam.name} size={24} />
           {match.awayTeam.name}
         </span>
         <span>vs</span>
         <span className="inline-flex items-center gap-2">
-          <TeamBadge abbreviation={match.homeTeam.abbreviation} name={match.homeTeam.name} size={24} />
+          <SoccerTeamBadge abbreviation={match.homeTeam.abbreviation} name={match.homeTeam.name} size={24} />
           {match.homeTeam.name}
         </span>
       </h1>

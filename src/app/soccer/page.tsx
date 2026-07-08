@@ -2,7 +2,7 @@ import { listSoccerMatchesWithLines } from "@/lib/queries/soccerMatches";
 import type { SoccerMatchSummary } from "@/lib/queries/soccerMatches";
 import type { GameLineRow } from "@/lib/queries/games";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
-import { TeamBadge } from "@/components/TeamBadge";
+import { SoccerTeamBadge } from "@/components/SoccerTeamBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
 
 // Same rationale as the tennis page: odds update via cron, not deploys, so
@@ -60,11 +60,11 @@ export default async function SoccerPage() {
               href={`/soccer/${match.id}`}
               competitors={[
                 {
-                  badge: <TeamBadge abbreviation={match.awayTeam.abbreviation} name={match.awayTeam.name} size={28} />,
+                  badge: <SoccerTeamBadge abbreviation={match.awayTeam.abbreviation} name={match.awayTeam.name} size={28} />,
                   label: match.awayTeam.name,
                 },
                 {
-                  badge: <TeamBadge abbreviation={match.homeTeam.abbreviation} name={match.homeTeam.name} size={28} />,
+                  badge: <SoccerTeamBadge abbreviation={match.homeTeam.abbreviation} name={match.homeTeam.name} size={28} />,
                   label: match.homeTeam.name,
                 },
               ]}

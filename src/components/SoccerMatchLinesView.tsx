@@ -2,7 +2,7 @@
 
 import type { SoccerMatchSummary, SoccerTeamSummary } from "@/lib/queries/soccerMatches";
 import type { GameLineRow } from "@/lib/queries/games";
-import { TeamBadge } from "./TeamBadge";
+import { SoccerTeamBadge } from "./SoccerTeamBadge";
 import { LinesLadder } from "./LinesLadder";
 
 const SIDE_TEAM: Record<string, (m: SoccerMatchSummary) => SoccerTeamSummary> = {
@@ -42,7 +42,7 @@ export function SoccerMatchLinesView({ match, lines }: SoccerMatchLinesViewProps
       sideHeader={(side) => {
         const team = SIDE_TEAM[side]?.(match);
         return {
-          badge: team ? <TeamBadge abbreviation={team.abbreviation} name={team.name} size={20} /> : null,
+          badge: team ? <SoccerTeamBadge abbreviation={team.abbreviation} name={team.name} size={20} /> : null,
           label: team?.name ?? "Draw",
         };
       }}

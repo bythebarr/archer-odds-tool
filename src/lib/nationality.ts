@@ -179,3 +179,47 @@ export function flagEmoji(alpha2: string): string {
   if (!/^[A-Z]{2}$/.test(cc)) return "";
   return String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 65)));
 }
+
+// ── National teams (soccer) ─────────────────────────────────────────────────
+// Soccer in this app is the FIFA World Cup, i.e. NATIONAL teams — a nation
+// literally is its flag, so this is a better identity than any club-crest hunt.
+
+/** Builds a subdivision (tag-sequence) flag emoji, e.g. subdivisionFlag("gbeng") → England's St George's cross. */
+function subdivisionFlag(region: string): string {
+  const tag = (s: string) => [...s].map((c) => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join("");
+  return `\u{1f3f4}${tag(region)}\u{e007f}`;
+}
+
+// England/Scotland/Wales field their own sides in soccer and have dedicated
+// flag emoji (they aren't ISO countries, so regional-indicators don't apply).
+const SUBDIVISION_FLAGS: Record<string, string> = {
+  england: subdivisionFlag("gbeng"),
+  scotland: subdivisionFlag("gbsct"),
+  wales: subdivisionFlag("gbwls"),
+};
+
+/** National-team name (lower-cased) → ISO alpha-2. Covers the realistic World Cup / qualifier pool; aliases included. */
+const NATION_CODE: Record<string, string> = {
+  argentina: "AR", belgium: "BE", colombia: "CO", egypt: "EG", france: "FR",
+  morocco: "MA", norway: "NO", switzerland: "CH", usa: "US", "united states": "US",
+  brazil: "BR", germany: "DE", spain: "ES", italy: "IT", portugal: "PT",
+  netherlands: "NL", croatia: "HR", uruguay: "UY", mexico: "MX", japan: "JP",
+  "south korea": "KR", "korea republic": "KR", australia: "AU", canada: "CA",
+  denmark: "DK", sweden: "SE", poland: "PL", serbia: "RS", senegal: "SN",
+  ghana: "GH", nigeria: "NG", cameroon: "CM", tunisia: "TN", algeria: "DZ",
+  ecuador: "EC", peru: "PE", chile: "CL", paraguay: "PY", "costa rica": "CR",
+  panama: "PA", qatar: "QA", "saudi arabia": "SA", iran: "IR", austria: "AT",
+  czechia: "CZ", "czech republic": "CZ", turkey: "TR", ukraine: "UA", greece: "GR",
+  hungary: "HU", romania: "RO", ireland: "IE", "republic of ireland": "IE",
+  slovakia: "SK", slovenia: "SI", "ivory coast": "CI", "cote d'ivoire": "CI",
+  mali: "ML", "south africa": "ZA", "new zealand": "NZ", venezuela: "VE",
+  bolivia: "BO", honduras: "HN", jamaica: "JM", scotland: "GB", wales: "GB",
+};
+
+/** Flag emoji for a national-team name (subdivision flags first, then country code), or null if unmapped. */
+export function flagForNation(name: string): string | null {
+  const key = name.trim().toLowerCase();
+  if (SUBDIVISION_FLAGS[key]) return SUBDIVISION_FLAGS[key];
+  const cc = NATION_CODE[key];
+  return cc ? flagEmoji(cc) : null;
+}
