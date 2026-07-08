@@ -91,7 +91,18 @@ function SlipToggle({ play }: { play: OddsPlay }) {
   );
 }
 
-function PlayRow({ play }: { play: OddsPlay }) {
+type Lens = "market" | "model";
+
+const VALUE_TITLE: Record<Lens, string> = {
+  market: "EV of this price vs the de-vigged market consensus",
+  model: "EV of this price vs Archer's own win probability",
+};
+const EMPTY_TITLE: Record<Lens, string> = {
+  market: "Three-way market — no fair-price value yet",
+  model: "No Archer model for this play — MLB moneylines only",
+};
+
+function PlayRow({ play, value, lens }: { play: OddsPlay; value: number | null; lens: Lens }) {
   const matchup =
     play.away.meta && play.home.meta ? `${play.away.meta} @ ${play.home.meta}` : `${play.away.name} @ ${play.home.name}`;
   return (
@@ -137,19 +148,19 @@ function PlayRow({ play }: { play: OddsPlay }) {
         </span>
 
         <span className="flex w-12 shrink-0 justify-end">
-          {play.ev !== null && play.ev > 0 ? (
+          {value !== null && value > 0 ? (
             <span
               className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-400"
-              title="EV of this price vs de-vigged consensus"
+              title={VALUE_TITLE[lens]}
             >
-              {formatEv(play.ev)}
+              {formatEv(value)}
             </span>
           ) : (
             <span
-              className={`px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums ${evColorClass(play.ev)}`}
-              title={play.ev === null ? "Three-way market — no fair-price value yet" : "EV of this price vs de-vigged consensus"}
+              className={`px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums ${evColorClass(value)}`}
+              title={value === null ? EMPTY_TITLE[lens] : VALUE_TITLE[lens]}
             >
-              {play.ev === null ? "—" : formatEv(play.ev)}
+              {value === null ? "—" : formatEv(value)}
             </span>
           )}
         </span>
@@ -164,6 +175,12 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
   const [kind, setKind] = useState<MarketKind | "all">("all");
   const [sort, setSort] = useState<SortKey>("value");
   const [posOnly, setPosOnly] = useState(false);
+  const [lens, setLens] = useState<Lens>("market");
+
+  // The active value for a play depends on the lens: market (best price vs
+  // de-vigged consensus) or model (best price vs Archer's win probability).
+  const valueOf = (p: OddsPlay): number | null => (lens === "market" ? p.ev : p.modelEv);
+  const modelCount = useMemo(() => pool.plays.filter((p) => p.modelEv !== null).length, [pool.plays]);
 
   const { minDecimal, maxDecimal } = pool.bounds ?? { minDecimal: 1.5, maxDecimal: 2.5 };
   const span = Math.max(maxDecimal - minDecimal, 0.0001);
@@ -192,13 +209,16 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
       if (sport !== "all" && p.sport !== sport) return false;
       if (kind !== "all" && p.kind !== kind) return false;
       if (p.bestDecimal < loDecimal - 1e-9 || p.bestDecimal > hiDecimal + 1e-9) return false;
-      if (posOnly && (p.ev === null || p.ev < 0)) return false;
+      const v = lens === "market" ? p.ev : p.modelEv;
+      if (posOnly && (v === null || v < 0)) return false;
       return true;
     });
     if (sort === "time") return [...filtered].sort((a, b) => a.startUtc.getTime() - b.startUtc.getTime());
     if (sort === "price") return [...filtered].sort((a, b) => b.bestDecimal - a.bestDecimal);
-    return filtered; // pool is already value-sorted
-  }, [pool.plays, sport, kind, sort, loDecimal, hiDecimal, posOnly]);
+    // Value sort must be explicit per-lens (the pool arrives pre-sorted by market EV only).
+    const val = (p: OddsPlay) => (lens === "market" ? p.ev : p.modelEv) ?? -Infinity;
+    return [...filtered].sort((a, b) => val(b) - val(a) || a.startUtc.getTime() - b.startUtc.getTime());
+  }, [pool.plays, sport, kind, sort, loDecimal, hiDecimal, posOnly, lens]);
 
   const sportChips: Array<{ key: SlateSport | "all"; label: string; count: number }> = [
     { key: "all", label: "All", count: sportCounts.all },
@@ -207,7 +227,12 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
       .filter((c) => c.count > 0),
   ];
 
-  const posCount = useMemo(() => visible.filter((p) => p.ev !== null && p.ev > 0).length, [visible]);
+  const posCount = useMemo(() => {
+    return visible.filter((p) => {
+      const v = lens === "market" ? p.ev : p.modelEv;
+      return v !== null && v > 0;
+    }).length;
+  }, [visible, lens]);
   const anyFilter = !fullRange || posOnly || sport !== "all" || kind !== "all";
   const pctLo = (lo / STEPS) * 100;
   const pctHi = (hi / STEPS) * 100;
@@ -260,6 +285,32 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
           </span>
         </div>
       </div>
+
+      {/* Value-lens toggle — market (line-shopping vs consensus) or model (Archer prob vs price).
+          Only offered when the day has at least one modeled play (MLB moneylines). */}
+      {modelCount > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold uppercase tracking-wide text-muted-foreground">Value vs</span>
+          <div className="inline-flex rounded-lg bg-muted p-0.5">
+            {(["market", "model"] as Lens[]).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLens(l)}
+                aria-pressed={lens === l}
+                className={`rounded-md px-3 py-1 font-semibold capitalize transition-colors ${
+                  lens === l ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          <span className="text-muted-foreground">
+            {lens === "market" ? "Best price vs the de-vigged market" : "Archer win prob vs price · MLB moneylines"}
+          </span>
+        </div>
+      )}
 
       {/* Market kind segmented control — scrolls horizontally if it's tight on a phone. */}
       <div className="mt-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -331,7 +382,7 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
           </div>
           <div className="mt-1 divide-y divide-border/50">
             {visible.map((play) => (
-              <PlayRow key={play.key} play={play} />
+              <PlayRow key={play.key} play={play} value={valueOf(play)} lens={lens} />
             ))}
           </div>
         </>

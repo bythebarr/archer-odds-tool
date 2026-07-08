@@ -10,6 +10,8 @@ import { formatPoint } from "@/lib/odds/format";
 import { ALLOWED_BOOK_KEYS, BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
 import { STAT_CATEGORY_LABELS } from "@/lib/props/format";
 import { mlbHeadshotUrl } from "@/lib/logos";
+import { getGameMatchupsBatch } from "./matchup";
+import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import type { StatCategory } from "@/generated/prisma/client";
 
 /**
@@ -62,8 +64,10 @@ export interface OddsPlay {
   bestBookName: string;
   bestBookInitials: string;
   booksCount: number;
-  /** EV of the best price vs de-vigged consensus, as a fraction; null for three-way soccer. */
+  /** MARKET lens: EV of the best price vs the de-vigged market consensus, as a fraction; null for three-way soccer. */
   ev: number | null;
+  /** MODEL lens: EV of the best price vs Archer's own win probability, as a fraction. Non-null only for MLB moneyline sides (the only market the model prices today); null everywhere else. */
+  modelEv: number | null;
 }
 
 export interface OddsPool {
@@ -222,6 +226,7 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
         bestBookInitials: BOOK_INITIALS[best.bookKey] ?? best.bookKey.slice(0, 3).toUpperCase(),
         booksCount: candidates.length,
         ev: fairProb !== null ? calculateEv(fairProb, best.priceAmerican) : null,
+        modelEv: null, // props have no Archer model today
       });
     }
   }
@@ -252,6 +257,18 @@ export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
 
   const allowed = new Set<string>(ALLOWED_BOOK_KEYS);
   const plays: OddsPlay[] = [];
+
+  // Archer model win-probabilities for the MLB games — the "model" value lens.
+  // Only MLB has a game-line model today; a game we can't project stays absent.
+  const mlbGameIds = games.filter((g) => g.sport === "mlb").map((g) => g.id);
+  const matchups = mlbGameIds.length > 0 ? await getGameMatchupsBatch(mlbGameIds) : {};
+  const modelProb = new Map<string, { home: number; away: number }>();
+  for (const id of mlbGameIds) {
+    const m = matchups[id];
+    if (!m) continue;
+    const p = computeArcherWinProbability(m);
+    if (p.homeProb !== null && p.awayProb !== null) modelProb.set(id, { home: p.homeProb, away: p.awayProb });
+  }
 
   for (const g of games) {
     const sides = sidesFor(g);
@@ -300,6 +317,11 @@ export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
           consensus === null ? null : side === sideA ? consensus.fairProbA : side === sideB ? consensus.fairProbB : null;
         const { selectionLabel, backed } = labelFor(market, side, point, sides);
 
+        // Model lens: MLB moneyline only — the Archer win prob for this side vs the best price.
+        const mp = g.sport === "mlb" && market === "h2h" ? modelProb.get(g.id) : undefined;
+        const modelSideProb = mp ? (side === "home" ? mp.home : side === "away" ? mp.away : null) : null;
+        const modelEv = modelSideProb !== null && modelSideProb !== undefined ? calculateEv(modelSideProb, best.priceAmerican) : null;
+
         plays.push({
           key: `${g.id}:${market}:${side}:${point ?? ""}`,
           sport: g.sport,
@@ -321,6 +343,7 @@ export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
           bestBookInitials: BOOK_INITIALS[best.bookKey] ?? best.bookKey.slice(0, 3).toUpperCase(),
           booksCount: candidates.length,
           ev: fairProb !== null ? calculateEv(fairProb, best.priceAmerican) : null,
+          modelEv,
         });
       }
     }

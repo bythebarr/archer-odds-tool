@@ -66,9 +66,11 @@ export default async function SlatePage({
         </Link>
       </div>
       <p className="text-sm text-muted-foreground">
-        Every priced play in one pool. Drag the odds range to your price band; value is the line-shopped best
-        price vs the de-vigged market. <span className="text-foreground/70">Lines</span> and{" "}
-        <span className="text-foreground/70">Props</span> hold the model lean and hit-rate views.
+        Every priced play in one pool. Drag the odds range to your price band, then read value two ways:{" "}
+        <span className="text-foreground/70">Market</span> (best price vs the de-vigged market) or{" "}
+        <span className="text-foreground/70">Model</span> (Archer&apos;s win probability vs the price).{" "}
+        <span className="text-foreground/70">Lines</span> and <span className="text-foreground/70">Props</span> hold
+        the deeper model-lean and hit-rate views.
       </p>
 
       {/* Lines | Props — the two halves of the Slate under one date nav */}
