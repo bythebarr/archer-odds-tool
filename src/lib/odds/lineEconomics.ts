@@ -54,6 +54,16 @@ export function h2hMarketConsensus(lines: GameLineRow[]): ConsensusFairProbabili
 }
 
 /**
+ * De-vigged consensus for any two-way market (h2h home/away, spreads home/away,
+ * totals over/under) at its modal point — the generalization of
+ * h2hMarketConsensus used by the odds pool to fair-price every market, not just
+ * moneylines. Main lines only (alts are a different bet per point).
+ */
+export function marketConsensus(lines: GameLineRow[], market: MarketType): ConsensusFairProbability {
+  return consensusFairProbability(buildPairs(lines.filter((l) => l.marketType === market && !l.isAlternate), market));
+}
+
+/**
  * Computes, per line row in one point-group, EV against two fair-probability
  * estimates: the de-vigged market consensus, and the team/side's historical
  * hit rate. Market EV is only computed for rows quoting the modal point
