@@ -136,13 +136,22 @@ function PlayRow({ play }: { play: OddsPlay }) {
           <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{play.bestBookInitials}</span>
         </span>
 
-        <span className="w-12 shrink-0 text-right">
-          <span
-            className={`font-mono text-xs font-semibold tabular-nums ${evColorClass(play.ev)}`}
-            title={play.ev === null ? "Three-way market — no fair-price value yet" : "EV of this price vs de-vigged consensus"}
-          >
-            {play.ev === null ? "—" : formatEv(play.ev)}
-          </span>
+        <span className="flex w-12 shrink-0 justify-end">
+          {play.ev !== null && play.ev > 0 ? (
+            <span
+              className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-400"
+              title="EV of this price vs de-vigged consensus"
+            >
+              {formatEv(play.ev)}
+            </span>
+          ) : (
+            <span
+              className={`px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums ${evColorClass(play.ev)}`}
+              title={play.ev === null ? "Three-way market — no fair-price value yet" : "EV of this price vs de-vigged consensus"}
+            >
+              {play.ev === null ? "—" : formatEv(play.ev)}
+            </span>
+          )}
         </span>
       </Link>
       <SlipToggle play={play} />
@@ -198,6 +207,7 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
       .filter((c) => c.count > 0),
   ];
 
+  const posCount = useMemo(() => visible.filter((p) => p.ev !== null && p.ev > 0).length, [visible]);
   const anyFilter = !fullRange || posOnly || sport !== "all" || kind !== "all";
   const pctLo = (lo / STEPS) * 100;
   const pctHi = (hi / STEPS) * 100;
@@ -231,6 +241,7 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
           </label>
           <span className="tabular-nums">
             {visible.length} play{visible.length === 1 ? "" : "s"}
+            {posCount > 0 && <span className="ml-1 font-semibold text-emerald-600 dark:text-emerald-400">· {posCount} +value</span>}
             {anyFilter && (
               <button
                 type="button"
