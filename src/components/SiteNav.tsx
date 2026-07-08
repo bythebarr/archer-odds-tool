@@ -39,9 +39,10 @@ export function SiteNav() {
             </span>
             archer
           </Link>
-          {/* Horizontal scroll keeps all five sports reachable on a phone
-              without wrapping the row; scrollbar is hidden for a clean edge. */}
-          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Desktop: full sport list in the top bar. On mobile it's hidden —
+              the fixed BottomNav carries the primary tabs instead. Horizontal
+              scroll keeps the (wider) desktop list tidy if it ever overflows. */}
+          <div className="hidden gap-1 overflow-x-auto [scrollbar-width:none] sm:flex [&::-webkit-scrollbar]:hidden">
             {NAV_LINKS.map((link) => {
               const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
               const href = link.carriesDate && date ? `${link.href}?date=${date}` : link.href;

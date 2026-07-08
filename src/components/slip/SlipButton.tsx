@@ -15,7 +15,7 @@ export function SlipButton() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label={`Open slip (${picks.length} picks)`}
-        className="fixed bottom-5 right-5 z-30 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-100"
+        className="fixed bottom-20 right-5 z-30 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-100 sm:bottom-5"
       >
         <svg viewBox="0 0 20 20" fill="none" className="size-4">
           <path
