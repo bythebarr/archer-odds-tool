@@ -38,11 +38,11 @@ export function BottomNav() {
               key={tab.href}
               href={href}
               aria-current={isActive ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
+              className={`flex flex-1 flex-col items-center gap-1 pt-3.5 pb-6 text-[11px] font-medium transition-colors ${
                 isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <span aria-hidden className="text-lg leading-none">
+              <span aria-hidden className="text-xl leading-none">
                 {tab.icon}
               </span>
               {tab.label}
