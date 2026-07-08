@@ -1,6 +1,6 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { isPollOddsStale, recordPollLog } from "@/lib/pollingPolicy";
-import { syncMlbSchedule, healStrandedGames } from "@/lib/mlb/syncSchedule";
+import { syncMlbSchedule, healStrandedGames, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { syncLineups } from "@/lib/mlb/syncLineups";
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
@@ -13,6 +13,7 @@ const LINEUPS_JOB_NAME = "sync-lineups";
 const POLL_ODDS_JOB_NAME = "poll-odds";
 const GAME_LOGS_JOB_NAME = "sync-player-game-logs";
 const HEAL_JOB_NAME = "heal-stranded-games";
+const PURGE_JOB_NAME = "purge-preseason-games";
 
 /**
  * Re-sync a few ET days back, not just "today". MLB games are ET-dated and
@@ -119,6 +120,23 @@ export async function POST(request: Request) {
       await recordPollLog(HEAL_JOB_NAME, `error: ${message}`);
     }
 
+    // Idempotent pre-season purge — also lives in sync-schedule (daily), but
+    // this frequent cron cleans prod within hours instead of waiting for the
+    // 09:00 UTC run. No-ops once clean.
+    let purgeSummary = null;
+    try {
+      purgeSummary = await purgePreseasonGames();
+      await recordPollLog(
+        PURGE_JOB_NAME,
+        purgeSummary.gamesPurged === 0
+          ? "ok"
+          : `ok (purged ${purgeSummary.gamesPurged} games, ${purgeSummary.logsPurged} logs)`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollLog(PURGE_JOB_NAME, `error: ${message}`);
+    }
+
     return Response.json({
       startDate,
       endDate,
@@ -128,6 +146,7 @@ export async function POST(request: Request) {
       selfHealPollOdds: selfHealSummary,
       playerGameLogs: gameLogsSummary,
       healStranded: healSummary,
+      purge: purgeSummary,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
