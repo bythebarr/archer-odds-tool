@@ -59,12 +59,24 @@ function modelFavored(item: SlateItem): { side: "home" | "away"; prob: number } 
   return home >= away ? { side: "home", prob: home } : { side: "away", prob: away };
 }
 
+/**
+ * A compact label for the model cell. A team abbreviation ("NYY") is the ideal
+ * short label, but `meta` is overloaded — for UFC it's a W-L record, which
+ * isn't an identifier — so records fall back to the name's last token (the
+ * fighter's surname). Sports with no meta (tennis) use the surname too.
+ */
+function compactLabel(side: SlateItem["home"]): string {
+  if (side.meta && !/^\d+-\d+/.test(side.meta)) return side.meta;
+  const parts = side.name.trim().split(/\s+/);
+  return parts[parts.length - 1];
+}
+
 function ModelCell({ item }: { item: SlateItem }) {
   const fav = modelFavored(item);
   if (!fav) {
     return <span className="text-xs text-muted-foreground/60">—</span>;
   }
-  const name = fav.side === "home" ? item.home.meta ?? item.home.name : item.away.meta ?? item.away.name;
+  const name = compactLabel(fav.side === "home" ? item.home : item.away);
   return (
     <span className="whitespace-nowrap font-mono text-xs text-foreground">
       {name} <span className="text-muted-foreground">{Math.round(fav.prob * 100)}%</span>

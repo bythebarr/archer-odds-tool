@@ -4,6 +4,8 @@ import { listGames } from "./games";
 import { getGameMatchupsBatch } from "./matchup";
 import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { listUpcomingUfcEvents } from "./ufcEvents";
+import { getUfcMatchup } from "./ufcMatchup";
+import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 
 /**
  * The Slate: one normalized, cross-sport view of a day's card. Every sport
@@ -133,18 +135,26 @@ async function soccerItems(gte: Date, lt: Date): Promise<SlateItem[]> {
 /**
  * UFC — event-based rather than a Game row, so it's matched by calendar date
  * (eventDate is date-only, so a plain UTC date-string compare is the right
- * granularity here). The fighter-math model is per-bout and computed on the
- * bout page; surfacing it board-level is a follow-up, hence modelProb stays
- * null for now.
+ * granularity here). Carries the free fighter-math win probability — the same
+ * model the bout page renders (getUfcMatchup + computeUfcWinProbability), now
+ * surfaced board-level. Red corner → home, blue → away, matching ufcMatchup's
+ * own convention (red = fighterA). Projections run in parallel per bout; a
+ * bout without enough stats to project stays modelProb: null, exactly like an
+ * MLB game we can't model. Empty (no queries) on days with no UFC card.
  */
 async function ufcItems(dateEt: string): Promise<SlateItem[]> {
   const events = await listUpcomingUfcEvents();
-  const items: SlateItem[] = [];
+  const bouts = events
+    .filter((event) => event.eventDate.toISOString().slice(0, 10) === dateEt)
+    .flatMap((event) => event.bouts.map((bout) => ({ event, bout })));
 
-  for (const event of events) {
-    if (event.eventDate.toISOString().slice(0, 10) !== dateEt) continue;
-    for (const bout of event.bouts) {
-      items.push({
+  return Promise.all(
+    bouts.map(async ({ event, bout }): Promise<SlateItem> => {
+      const matchup = await getUfcMatchup(bout.id);
+      const projection = matchup ? computeUfcWinProbability(matchup) : null;
+      const home = projection?.fighterAProb ?? null;
+      const away = projection?.fighterBProb ?? null;
+      return {
         key: `ufc:${bout.id}`,
         sport: "ufc",
         startUtc: event.eventDate,
@@ -153,12 +163,11 @@ async function ufcItems(dateEt: string): Promise<SlateItem[]> {
         title: event.title,
         home: { name: bout.red.name, meta: bout.red.record },
         away: { name: bout.blue.name, meta: bout.blue.record },
-        modelProb: null, // SEAM: board-level fighter-math plugs in here
+        modelProb: home !== null && away !== null ? { home, away } : null,
         ev: null, // SEAM: paid EV
-      });
-    }
-  }
-  return items;
+      };
+    })
+  );
 }
 
 /**
