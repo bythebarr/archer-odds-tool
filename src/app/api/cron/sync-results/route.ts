@@ -1,9 +1,11 @@
 import { checkCronAuth } from "@/lib/cronAuth";
-import { isPollOddsStale, recordPollLog } from "@/lib/pollingPolicy";
+import { isPollOddsStale, recordPollLog, shouldPollNow } from "@/lib/pollingPolicy";
+import { prisma } from "@/lib/prisma";
 import { syncMlbSchedule, healStrandedGames, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { syncLineups } from "@/lib/mlb/syncLineups";
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
+import { backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 import { syncRecentPlayerGameLogs } from "@/lib/props/syncGameLogs";
 import { todayEt, shiftEtDate } from "@/lib/dateEt";
 
@@ -14,6 +16,19 @@ const POLL_ODDS_JOB_NAME = "poll-odds";
 const GAME_LOGS_JOB_NAME = "sync-player-game-logs";
 const HEAL_JOB_NAME = "heal-stranded-games";
 const PURGE_JOB_NAME = "purge-preseason-games";
+const UFC_UPCOMING_JOB_NAME = "sync-ufc-upcoming";
+
+/**
+ * Self-heal cadence for the upcoming-UFC ingest routed through this cron. The
+ * daily backfill-ufc cron (09:45 UTC) is the primary path, but crons here have
+ * silently not fired (see the poll-odds self-heal above), and the *only* thing
+ * that puts scheduled cards in the DB is backfillUpcomingUfcEvents — miss it
+ * and the Slate/`/ufc` show no upcoming fights at all. So if upcoming data
+ * hasn't refreshed in >20h, this reliable every-2h cron pulls it (one cheap
+ * Cito call). Threshold sits just below 24h so it fires ~once/day when the
+ * daily cron is failing, and stays a no-op when that cron is healthy.
+ */
+const UFC_UPCOMING_STALE_MINUTES = 20 * 60;
 
 /**
  * Re-sync a few ET days back, not just "today". MLB games are ET-dated and
@@ -137,6 +152,26 @@ export async function POST(request: Request) {
       await recordPollLog(PURGE_JOB_NAME, `error: ${message}`);
     }
 
+    // Self-heal the upcoming-UFC ingest (see UFC_UPCOMING_STALE_MINUTES): the
+    // daily backfill-ufc cron is the primary path, but if it misses, scheduled
+    // cards never reach the DB and the Slate/`/ufc` show no upcoming fights.
+    // Free MLB Stats API this cron normally uses is unrelated to Cito, so this
+    // is gated purely on staleness (own try/catch — can't fail the sync).
+    let ufcUpcomingSummary = null;
+    try {
+      const log = await prisma.pollLog.findUnique({ where: { jobName: UFC_UPCOMING_JOB_NAME } });
+      if (shouldPollNow(log?.lastPolledAt ?? null, UFC_UPCOMING_STALE_MINUTES)) {
+        ufcUpcomingSummary = await backfillUpcomingUfcEvents();
+        await recordPollLog(
+          UFC_UPCOMING_JOB_NAME,
+          `ok (self-heal: ${ufcUpcomingSummary.eventsProcessed} events, ${ufcUpcomingSummary.boutsProcessed} bouts)`
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await recordPollLog(UFC_UPCOMING_JOB_NAME, `error: ${message}`);
+    }
+
     return Response.json({
       startDate,
       endDate,
@@ -147,6 +182,7 @@ export async function POST(request: Request) {
       playerGameLogs: gameLogsSummary,
       healStranded: healSummary,
       purge: purgeSummary,
+      ufcUpcoming: ufcUpcomingSummary,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
