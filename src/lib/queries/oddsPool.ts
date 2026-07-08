@@ -4,10 +4,13 @@ import type { SlateSport, SlateSide } from "./slate";
 import type { GameLineRow } from "./games";
 import type { MarketType } from "@/generated/prisma/client";
 import { marketConsensus } from "@/lib/odds/lineEconomics";
-import { calculateEv } from "@/lib/odds/devig";
+import { calculateEv, consensusFairProbability, type DevigPair } from "@/lib/odds/devig";
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { formatPoint } from "@/lib/odds/format";
 import { ALLOWED_BOOK_KEYS, BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
+import { STAT_CATEGORY_LABELS } from "@/lib/props/format";
+import { mlbHeadshotUrl } from "@/lib/logos";
+import type { StatCategory } from "@/generated/prisma/client";
 
 /**
  * The odds pool: one row per *play* — a specific bettable selection (a side of a
@@ -22,7 +25,7 @@ import { ALLOWED_BOOK_KEYS, BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
  * which the 2-way devig can't fair-price, so those plays show a price but no EV
  * (line-shopping only), the same call the rest of the app makes.
  */
-export type MarketKind = "ml" | "spread" | "total";
+export type MarketKind = "ml" | "spread" | "total" | "prop";
 
 /** Compact market kind for a stored MarketType — the pool's filter/label vocabulary. */
 const MARKET_KIND: Record<MarketType, MarketKind> = { h2h: "ml", spreads: "spread", totals: "total" };
@@ -40,15 +43,19 @@ export interface OddsPlay {
   href: string;
   home: SlateSide;
   away: SlateSide;
-  market: MarketType;
+  /** Stored game market, or null for player props (which aren't a MarketType). */
+  market: MarketType | null;
   kind: MarketKind;
   /** home | away | over | under | draw */
   side: string;
   point: number | null;
-  /** Full pick label, e.g. "Yankees", "Yankees -1.5", "Over 8.5". */
+  /** Full pick label, e.g. "Yankees", "Yankees -1.5", "Over 8.5", "Aaron Judge o1.5 Hits". */
   selectionLabel: string;
-  /** Which matchup avatar to emphasize (null for over/under/draw, which aren't a team). */
+  /** Which matchup avatar to emphasize (null for over/under/draw/props, which aren't a team). */
   backed: "home" | "away" | null;
+  /** Prop only: the player's headshot + name, for a face on the row. */
+  playerImageUrl?: string | null;
+  playerName?: string | null;
   bestPrice: number;
   bestDecimal: number;
   bestBookKey: string;
@@ -125,6 +132,100 @@ function labelFor(
   const backed = side === "home" ? "home" : "away";
   if (market === "spreads") return { selectionLabel: `${team.name}${formatPoint(point, "spreads")}`, backed };
   return { selectionLabel: team.name, backed }; // moneyline
+}
+
+type PropLineRow = {
+  bookKey: string;
+  book: { name: string };
+  side: string; // over | under
+  point: number;
+  priceAmerican: number;
+  statCategory: StatCategory;
+  mlbPlayer: { fullName: string; mlbPersonId: number };
+  game: {
+    id: string;
+    scheduledStartUtc: Date;
+    homeTeam: { name: string; abbreviation: string; mlbTeamId: number | null } | null;
+    awayTeam: { name: string; abbreviation: string; mlbTeamId: number | null } | null;
+  };
+};
+
+/** Player-prop plays — one per (player, stat, over/under) at the modal line, best-priced with over/under-devig value. MLB only today. */
+async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<OddsPlay[]> {
+  const lines = (await prisma.currentPlayerPropLine.findMany({
+    where: { game: { sport: "mlb", scheduledStartUtc: { gte, lt } } },
+    include: {
+      book: true,
+      mlbPlayer: true,
+      game: { include: { homeTeam: true, awayTeam: true } },
+    },
+  })) as unknown as (PropLineRow & { mlbPlayerId: string })[];
+
+  // Group by player + stat within a game.
+  const groups = new Map<string, (PropLineRow & { mlbPlayerId: string })[]>();
+  for (const l of lines) {
+    const key = `${l.game.id}|${l.mlbPlayerId}|${l.statCategory}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(l);
+  }
+
+  const plays: OddsPlay[] = [];
+  for (const group of groups.values()) {
+    const g = group[0].game;
+    const player = group[0].mlbPlayer;
+    const stat = group[0].statCategory;
+
+    // Devig over/under per book (same point), then consensus fair prob at the modal point.
+    const overByBook = new Map(group.filter((l) => l.side === "over").map((l) => [l.bookKey, l]));
+    const underByBook = new Map(group.filter((l) => l.side === "under").map((l) => [l.bookKey, l]));
+    const pairs: DevigPair[] = [];
+    for (const [bookKey, o] of overByBook) {
+      const u = underByBook.get(bookKey);
+      if (u && o.point === u.point) pairs.push({ bookKey, priceA: o.priceAmerican, priceB: u.priceAmerican, point: o.point });
+    }
+    const consensus = consensusFairProbability(pairs);
+    const modalPoint = consensus.modalPoint;
+
+    const home: SlateSide = { name: g.homeTeam?.name ?? "TBD", meta: g.homeTeam?.abbreviation, teamId: g.homeTeam?.mlbTeamId ?? null };
+    const away: SlateSide = { name: g.awayTeam?.name ?? "TBD", meta: g.awayTeam?.abbreviation, teamId: g.awayTeam?.mlbTeamId ?? null };
+    const statLabel = STAT_CATEGORY_LABELS[stat];
+
+    for (const side of ["over", "under"] as const) {
+      const candidates = group.filter(
+        (l) => l.side === side && allowed.has(l.bookKey) && (modalPoint === null || l.point === modalPoint)
+      );
+      if (candidates.length === 0) continue;
+      const best = candidates.reduce((b, l) =>
+        americanToDecimal(l.priceAmerican) > americanToDecimal(b.priceAmerican) ? l : b
+      );
+      const fairProb = side === "over" ? consensus.fairProbA : consensus.fairProbB;
+
+      plays.push({
+        key: `${g.id}:prop:${group[0].mlbPlayerId}:${stat}:${side}:${best.point}`,
+        sport: "mlb",
+        matchId: g.id,
+        startUtc: g.scheduledStartUtc,
+        href: `/games/${g.id}`,
+        home,
+        away,
+        market: null,
+        kind: "prop",
+        side,
+        point: best.point,
+        selectionLabel: `${player.fullName} ${side === "over" ? "o" : "u"}${best.point} ${statLabel}`,
+        backed: null,
+        playerImageUrl: mlbHeadshotUrl(player.mlbPersonId),
+        playerName: player.fullName,
+        bestPrice: best.priceAmerican,
+        bestDecimal: americanToDecimal(best.priceAmerican),
+        bestBookKey: best.bookKey,
+        bestBookName: best.book.name,
+        bestBookInitials: BOOK_INITIALS[best.bookKey] ?? best.bookKey.slice(0, 3).toUpperCase(),
+        booksCount: candidates.length,
+        ev: fairProb !== null ? calculateEv(fairProb, best.priceAmerican) : null,
+      });
+    }
+  }
+  return plays;
 }
 
 export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
@@ -224,6 +325,9 @@ export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
       }
     }
   }
+
+  // Player props fold into the same pool.
+  plays.push(...(await propPlays(gte, lt, allowed)));
 
   plays.sort((a, b) => {
     const av = a.ev ?? -Infinity;

@@ -5,6 +5,8 @@ import Link from "next/link";
 import type { OddsPool, OddsPlay, MarketKind } from "@/lib/queries/oddsPool";
 import type { SlateSport } from "@/lib/queries/slate";
 import { CompetitorAvatar } from "./dashboard/CompetitorAvatar";
+import { Logo } from "./Logo";
+import { playerLogoSources } from "@/lib/logos";
 import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatEv, evColorClass } from "@/lib/odds/format";
 
@@ -15,8 +17,14 @@ const SPORT_META: Record<SlateSport, { label: string; icon: string }> = {
   ufc: { label: "UFC", icon: "🥊" },
 };
 
-const KIND_LABEL: Record<MarketKind, string> = { ml: "ML", spread: "Spread", total: "Total" };
-const KINDS: MarketKind[] = ["ml", "spread", "total"];
+const KIND_LABEL: Record<MarketKind, string> = { ml: "ML", spread: "Spread", total: "Total", prop: "Prop" };
+const KINDS: MarketKind[] = ["ml", "spread", "total", "prop"];
+
+/** Initials for the headshot fallback badge. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
+}
 const STEPS = 200; // slider resolution across the decimal domain
 
 function timeLabel(startUtc: Date): string {
@@ -32,14 +40,25 @@ type SortKey = "value" | "price" | "time";
 function PlayRow({ play }: { play: OddsPlay }) {
   return (
     <Link href={play.href} className="flex items-center gap-2.5 rounded-md px-2 py-2.5 transition-colors hover:bg-accent/50">
-      <span className="flex shrink-0 items-center -space-x-1.5">
-        <span className={play.backed === null || play.backed === "away" ? "" : "opacity-40 grayscale"}>
-          <CompetitorAvatar sport={play.sport} side={play.away} size={20} />
+      {play.kind === "prop" ? (
+        <span className="shrink-0">
+          <Logo
+            sources={[play.playerImageUrl ?? "", ...playerLogoSources(play.playerName ?? "")].filter(Boolean)}
+            alt={play.playerName ?? play.selectionLabel}
+            fallbackText={initials(play.playerName ?? "")}
+            size={24}
+          />
         </span>
-        <span className={play.backed === null || play.backed === "home" ? "" : "opacity-40 grayscale"}>
-          <CompetitorAvatar sport={play.sport} side={play.home} size={20} />
+      ) : (
+        <span className="flex shrink-0 items-center -space-x-1.5">
+          <span className={play.backed === null || play.backed === "away" ? "" : "opacity-40 grayscale"}>
+            <CompetitorAvatar sport={play.sport} side={play.away} size={20} />
+          </span>
+          <span className={play.backed === null || play.backed === "home" ? "" : "opacity-40 grayscale"}>
+            <CompetitorAvatar sport={play.sport} side={play.home} size={20} />
+          </span>
         </span>
-      </span>
+      )}
 
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{play.selectionLabel}</span>
@@ -97,7 +116,7 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
   }, [pool.plays]);
 
   const kindCounts = useMemo(() => {
-    const c: Record<string, number> = { all: pool.plays.length, ml: 0, spread: 0, total: 0 };
+    const c: Record<string, number> = { all: pool.plays.length, ml: 0, spread: 0, total: 0, prop: 0 };
     for (const p of pool.plays) c[p.kind]++;
     return c;
   }, [pool.plays]);
@@ -174,22 +193,24 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
         </div>
       </div>
 
-      {/* Market kind segmented control */}
-      <div className="mt-3 inline-flex rounded-lg bg-muted p-0.5 text-xs">
-        {(["all", ...KINDS] as Array<MarketKind | "all">).map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setKind(k)}
-            aria-pressed={kind === k}
-            className={`rounded-md px-3 py-1 font-semibold transition-colors ${
-              kind === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {k === "all" ? "All markets" : KIND_LABEL[k]}
-            <span className="ml-1 opacity-60">{kindCounts[k]}</span>
-          </button>
-        ))}
+      {/* Market kind segmented control — scrolls horizontally if it's tight on a phone. */}
+      <div className="mt-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="inline-flex rounded-lg bg-muted p-0.5 text-xs">
+          {(["all", ...KINDS] as Array<MarketKind | "all">).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setKind(k)}
+              aria-pressed={kind === k}
+              className={`whitespace-nowrap rounded-md px-3 py-1 font-semibold transition-colors ${
+                kind === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {k === "all" ? "All" : KIND_LABEL[k]}
+              <span className="ml-1 opacity-60">{kindCounts[k]}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Sport chips + sort */}
