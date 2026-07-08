@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { getSlateForDate } from "@/lib/queries/slate";
+import { getOddsPoolForDate } from "@/lib/queries/oddsPool";
 import { getPropBoard } from "@/lib/props/board";
 import { todayEt, shiftEtDate, isValidEtDate, formatEtDateLabel } from "@/lib/dateEt";
+import { OddsPoolBoard } from "@/components/OddsPoolBoard";
 import { SlateBoard } from "@/components/SlateBoard";
 import { PropBoard } from "@/components/PropBoard";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
@@ -10,9 +12,10 @@ import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 // render per request.
 export const dynamic = "force-dynamic";
 
-type Tab = "lines" | "props";
+type Tab = "value" | "lines" | "props";
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: "value", label: "Value" },
   { key: "lines", label: "Lines" },
   { key: "props", label: "Props" },
 ];
@@ -32,26 +35,27 @@ export default async function SlatePage({
   const { date: dateParam, tab: tabParam, view, stat } = await searchParams;
   const date =
     dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam) ? dateParam : todayEt();
-  const tab: Tab = tabParam === "props" ? "props" : "lines";
+  const tab: Tab = tabParam === "lines" ? "lines" : tabParam === "props" ? "props" : "value";
 
   // Keep the upcoming-UFC feed fresh from the read side — Hobby crons are
   // unreliable, so this backfills after the response when the feed is stale.
   refreshUpcomingUfcOnView();
 
-  // Only fetch the active tab's data — the two halves are independent queries.
+  // Only fetch the active tab's data — the tabs are independent queries.
+  const pool = tab === "value" ? await getOddsPoolForDate(date) : null;
   const slate = tab === "lines" ? await getSlateForDate(date) : null;
   // Only MLB has prop data today; getPropBoard is sport-agnostic (see board.ts).
   const propBoard = tab === "props" ? await getPropBoard("mlb", date, view, stat) : null;
 
   // Preserve the active tab (and, on Props, its view) across day nav so
-  // prev/next doesn't bounce you back to Lines / the default stat view.
+  // prev/next doesn't bounce you back to the default tab / stat view.
   const navSuffix =
-    tab === "props" ? `&tab=props&view=${propBoard!.activeView}` : "";
+    tab === "props" ? `&tab=props&view=${propBoard!.activeView}` : tab === "lines" ? "&tab=lines" : "";
   const prevDate = shiftEtDate(date, -1);
   const nextDate = shiftEtDate(date, 1);
 
   return (
-    <div className="mx-auto min-h-screen max-w-3xl px-4 py-10 font-sans">
+    <div className="mx-auto min-h-screen w-full min-w-0 max-w-3xl px-4 py-10 font-sans">
       <div className="flex items-baseline justify-between gap-3">
         <h1 className="text-xl font-semibold text-foreground">Slate</h1>
         <Link
@@ -62,8 +66,9 @@ export default async function SlatePage({
         </Link>
       </div>
       <p className="text-sm text-muted-foreground">
-        The whole day&apos;s card across every sport in one place. Model lean and hit rate are the free signals;
-        live-odds EV lights up once paid odds coverage is on.
+        Every priced play in one pool. Drag the odds range to your price band; value is the line-shopped best
+        price vs the de-vigged market. <span className="text-foreground/70">Lines</span> and{" "}
+        <span className="text-foreground/70">Props</span> hold the model lean and hit-rate views.
       </p>
 
       {/* Lines | Props — the two halves of the Slate under one date nav */}
@@ -73,7 +78,7 @@ export default async function SlatePage({
           return (
             <Link
               key={t.key}
-              href={t.key === "lines" ? `/slate?date=${date}` : `/slate?date=${date}&tab=props`}
+              href={t.key === "value" ? `/slate?date=${date}` : `/slate?date=${date}&tab=${t.key}`}
               scroll={false}
               aria-current={active ? "page" : undefined}
               className={`rounded-md px-4 py-1.5 text-xs font-semibold transition-colors ${
@@ -103,7 +108,9 @@ export default async function SlatePage({
       </div>
 
       <div className="mt-8">
-        {tab === "lines" ? (
+        {tab === "value" ? (
+          <OddsPoolBoard pool={pool!} />
+        ) : tab === "lines" ? (
           <SlateBoard slate={slate!} />
         ) : (
           <PropBoard board={propBoard!} date={date} basePath="/slate" extraQuery="&tab=props" />
