@@ -6,7 +6,7 @@
     { "path": "/api/cron/sync-results", "schedule": "0 4 * * *" },
     { "path": "/api/cron/sync-results", "schedule": "0 6 * * *" },
     { "path": "/api/cron/sync-results", "schedule": "0 20 * * *" },
-    { "path": "/api/cron/poll-odds", "schedule": "5 14 * * *" },
+    { "path": "/api/cron/poll-odds", "schedule": "35 16 * * *" },
     { "path": "/api/cron/poll-odds", "schedule": "30 22 * * *" },
     { "path": "/api/cron/sync-schedule", "schedule": "0 9 * * *" },
     { "path": "/api/cron/poll-odds-tennis", "schedule": "5 9 * * *" },
