@@ -35,7 +35,7 @@ export function MatchCard({ href, competitors, timeLabel, status, isLive, score,
     <Link href={href} className="block">
       <Card className="transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/40">
         <CardContent className="flex items-center justify-between gap-4">
-          <div className="flex flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               {away.badge}
               <span className="truncate text-sm font-semibold text-foreground">{away.label}</span>

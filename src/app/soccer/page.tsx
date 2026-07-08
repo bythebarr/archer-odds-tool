@@ -41,7 +41,7 @@ export default async function SoccerPage() {
   const matches = await listSoccerMatchesWithLines();
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
+    <div className="mx-auto min-h-screen w-full min-w-0 max-w-2xl px-4 py-10 font-sans">
       <h1 className="text-xl font-semibold text-foreground">World Cup Soccer</h1>
       <p className="text-sm text-muted-foreground">
         World Cup soccer odds line-shopping — moneyline (3-way) only, no Market EV yet.

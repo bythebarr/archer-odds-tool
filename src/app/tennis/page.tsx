@@ -51,7 +51,7 @@ export default async function TennisPage() {
   const matches = await listTennisMatchesWithLines();
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
+    <div className="mx-auto min-h-screen w-full min-w-0 max-w-2xl px-4 py-10 font-sans">
       <h1 className="text-xl font-semibold text-foreground">Tennis</h1>
       <p className="text-sm text-muted-foreground">
         Tennis odds line-shopping — moneyline only, one tournament tracked at a time.
