@@ -22,6 +22,29 @@ function timeLabel(startUtc: Date): string {
   }).format(startUtc);
 }
 
+/** ET hour (0–23) of the start, for the day/night window filter. Fixed tz so SSR/CSR agree. */
+function etHour(startUtc: Date): number {
+  return Number(
+    new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      hourCycle: "h23",
+      timeZone: "America/New_York",
+    }).format(startUtc)
+  );
+}
+
+type TimeWindow = "all" | "day" | "night";
+
+/** Day games start before 5pm ET; night is 5pm ET on — the usual MLB split. */
+function inTimeWindow(item: SlateItem, window: TimeWindow): boolean {
+  if (window === "all") return true;
+  const day = etHour(item.startUtc) < 17;
+  return window === "day" ? day : !day;
+}
+
+/** Slider ceiling: model moneyline leans rarely clear ~30pp, so cap there for usable resolution. */
+const MAX_LEAN = 0.3;
+
 /** How far the model leans from a coin flip, in [0,0.5] — the free proxy for "interesting" until paid EV exists. Null items sort last. */
 function leanStrength(item: SlateItem): number | null {
   const p = item.modelProb?.home;
@@ -111,9 +134,25 @@ function SlateRow({ item }: { item: SlateItem }) {
 export function SlateBoard({ slate }: { slate: Slate }) {
   const [sport, setSport] = useState<SlateSport | "all">("all");
   const [sort, setSort] = useState<SortKey>("time");
+  // The "seek your perfect bet" controls: how hard the model must lean, and when it plays.
+  const [minLean, setMinLean] = useState(0);
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>("all");
+
+  const filtersActive = minLean > 0 || timeWindow !== "all";
+  const resetFilters = () => {
+    setMinLean(0);
+    setTimeWindow("all");
+  };
 
   const visible = useMemo(() => {
-    const filtered = sport === "all" ? slate.items : slate.items.filter((i) => i.sport === sport);
+    const filtered = slate.items.filter((i) => {
+      if (sport !== "all" && i.sport !== sport) return false;
+      // A lean floor drops rows below it — and rows with no model at all (their
+      // lean is unknown, so they can't clear a positive floor).
+      if (minLean > 0 && (leanStrength(i) ?? -1) < minLean) return false;
+      if (!inTimeWindow(i, timeWindow)) return false;
+      return true;
+    });
     if (sort === "time") return filtered; // slate is already time-sorted
     // "lean": strongest model lean first, null-model items after (stable within).
     return [...filtered].sort((a, b) => {
@@ -124,7 +163,7 @@ export function SlateBoard({ slate }: { slate: Slate }) {
       if (lb === null) return -1;
       return lb - la;
     });
-  }, [slate.items, sport, sort]);
+  }, [slate.items, sport, sort, minLean, timeWindow]);
 
   const chips: Array<{ key: SlateSport | "all"; label: string; count: number }> = [
     { key: "all", label: "All", count: slate.items.length },
@@ -171,8 +210,71 @@ export function SlateBoard({ slate }: { slate: Slate }) {
         </div>
       </div>
 
+      {/* Filter machinery — seek YOUR perfect bet: model-lean floor + time window */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="whitespace-nowrap font-medium">
+            Model lean ≥ <span className="tabular-nums text-foreground">{Math.round(minLean * 100)}%</span>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={MAX_LEAN}
+            step={0.01}
+            value={minLean}
+            onChange={(e) => setMinLean(Number(e.target.value))}
+            aria-label="Minimum model lean"
+            className="h-1.5 w-28 cursor-pointer accent-foreground sm:w-36"
+          />
+        </label>
+
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="font-medium">When</span>
+          {(["all", "day", "night"] as TimeWindow[]).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => setTimeWindow(w)}
+              aria-pressed={timeWindow === w}
+              className={`rounded px-2 py-1 font-medium capitalize transition-colors ${
+                timeWindow === w ? "bg-accent text-foreground" : "hover:text-foreground"
+              }`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="tabular-nums">
+            {visible.length} bet{visible.length === 1 ? "" : "s"}
+          </span>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded px-2 py-1 font-medium text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {minLean > 0 && (
+        <p className="mt-2 px-1 text-[11px] text-muted-foreground/70">
+          A model-lean floor hides sports without a win-probability model yet (their lean is unknown).
+        </p>
+      )}
+
       {visible.length === 0 ? (
-        <p className="mt-10 text-center text-sm text-muted-foreground">Nothing on the board for this date.</p>
+        <p className="mt-10 text-center text-sm text-muted-foreground">
+          {slate.items.length === 0
+            ? "Nothing on the board for this date."
+            : filtersActive
+              ? "No bets match your filters."
+              : "Nothing on the board for this sport."}
+        </p>
       ) : (
         <>
           <div className="mt-4 flex items-center gap-3 px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
