@@ -80,7 +80,7 @@ const HREF: Record<Exclude<SlateSport, "ufc">, (id: string) => string> = {
 
 type LineRow = {
   bookKey: string;
-  book: { name: string };
+  book: { displayName: string };
   marketType: MarketType;
   side: string;
   point: number | null;
@@ -136,7 +136,7 @@ function labelFor(
 
 type PropLineRow = {
   bookKey: string;
-  book: { name: string };
+  book: { displayName: string };
   side: string; // over | under
   point: number;
   priceAmerican: number;
@@ -218,7 +218,7 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
         bestPrice: best.priceAmerican,
         bestDecimal: americanToDecimal(best.priceAmerican),
         bestBookKey: best.bookKey,
-        bestBookName: best.book.name,
+        bestBookName: best.book.displayName,
         bestBookInitials: BOOK_INITIALS[best.bookKey] ?? best.bookKey.slice(0, 3).toUpperCase(),
         booksCount: candidates.length,
         ev: fairProb !== null ? calculateEv(fairProb, best.priceAmerican) : null,
@@ -265,7 +265,7 @@ export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
 
       const rows: GameLineRow[] = mlines.map((l) => ({
         bookKey: l.bookKey,
-        bookName: l.book.name,
+        bookName: l.book.displayName,
         marketType: market,
         side: l.side,
         point: norm(l),
@@ -317,7 +317,7 @@ export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
           bestPrice: best.priceAmerican,
           bestDecimal: americanToDecimal(best.priceAmerican),
           bestBookKey: best.bookKey,
-          bestBookName: best.book.name,
+          bestBookName: best.book.displayName,
           bestBookInitials: BOOK_INITIALS[best.bookKey] ?? best.bookKey.slice(0, 3).toUpperCase(),
           booksCount: candidates.length,
           ev: fairProb !== null ? calculateEv(fairProb, best.priceAmerican) : null,

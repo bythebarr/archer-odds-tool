@@ -69,7 +69,7 @@ export default async function PropsHubPage() {
                     href={`/props/team/${team.id}`}
                     className="flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium text-foreground hover:bg-accent/50 hover:text-primary"
                   >
-                    <TeamBadge abbreviation={team.abbreviation} name={team.name} size={26} />
+                    <TeamBadge abbreviation={team.abbreviation} name={team.name} mlbTeamId={team.mlbTeamId} size={26} />
                     {team.name}
                   </Link>
                 </li>

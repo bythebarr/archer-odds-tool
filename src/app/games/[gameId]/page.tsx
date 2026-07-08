@@ -67,7 +67,7 @@ export default async function GamePage({
 
       <div className="mt-3 flex items-center justify-center gap-4 rounded-xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:gap-8">
         <div className="flex flex-1 flex-col items-center gap-2 text-center">
-          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} size={48} />
+          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} mlbTeamId={game.awayTeam.mlbTeamId} size={48} />
           <span className="text-sm font-semibold text-foreground">{game.awayTeam.name}</span>
           {game.awayScore !== null && (
             <span className="font-mono text-2xl font-bold text-foreground">{game.awayScore}</span>
@@ -75,7 +75,7 @@ export default async function GamePage({
         </div>
         <span className="text-sm font-medium text-muted-foreground">@</span>
         <div className="flex flex-1 flex-col items-center gap-2 text-center">
-          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} size={48} />
+          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} mlbTeamId={game.homeTeam.mlbTeamId} size={48} />
           <span className="text-sm font-semibold text-foreground">{game.homeTeam.name}</span>
           {game.homeScore !== null && (
             <span className="font-mono text-2xl font-bold text-foreground">{game.homeScore}</span>

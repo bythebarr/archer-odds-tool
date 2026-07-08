@@ -102,7 +102,7 @@ export function MatchupPanel({ game, matchup, archerProb, archerRuns, marketProb
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div>
             <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} />
+              <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} mlbTeamId={game.awayTeam.mlbTeamId} />
               {game.awayTeam.abbreviation}
             </h3>
             <div className="mt-2 space-y-2">
@@ -117,7 +117,7 @@ export function MatchupPanel({ game, matchup, archerProb, archerRuns, marketProb
 
           <div>
             <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} />
+              <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} mlbTeamId={game.homeTeam.mlbTeamId} />
               {game.homeTeam.abbreviation}
             </h3>
             <div className="mt-2 space-y-2">

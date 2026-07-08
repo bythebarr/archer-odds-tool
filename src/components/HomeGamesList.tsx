@@ -88,12 +88,12 @@ export function HomeGamesList({ gamesWithLines }: HomeGamesListProps) {
                   <CardContent className="flex items-center justify-between gap-4">
                     <div className="flex flex-1 items-center gap-3">
                       <div className="flex flex-col items-center gap-1">
-                        <TeamBadge abbreviation={g.awayTeam.abbreviation} name={g.awayTeam.name} size={36} />
+                        <TeamBadge abbreviation={g.awayTeam.abbreviation} name={g.awayTeam.name} mlbTeamId={g.awayTeam.mlbTeamId} size={36} />
                         <span className="text-xs font-semibold text-foreground">{g.awayTeam.abbreviation}</span>
                       </div>
                       <span className="text-xs font-medium text-muted-foreground">@</span>
                       <div className="flex flex-col items-center gap-1">
-                        <TeamBadge abbreviation={g.homeTeam.abbreviation} name={g.homeTeam.name} size={36} />
+                        <TeamBadge abbreviation={g.homeTeam.abbreviation} name={g.homeTeam.name} mlbTeamId={g.homeTeam.mlbTeamId} size={36} />
                         <span className="text-xs font-semibold text-foreground">{g.homeTeam.abbreviation}</span>
                       </div>
                     </div>

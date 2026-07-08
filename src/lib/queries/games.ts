@@ -71,6 +71,7 @@ export interface MlbTeamSummary {
   abbreviation: string;
   league: string;
   division: string;
+  mlbTeamId: number | null;
 }
 
 /** Every MLB team (excludes tennis's Player-based rows and soccer's Team rows, which have no mlbTeamId). */
@@ -78,14 +79,14 @@ export async function listMlbTeams(): Promise<MlbTeamSummary[]> {
   return prisma.team.findMany({
     where: { mlbTeamId: { not: null } },
     orderBy: [{ league: "asc" }, { division: "asc" }, { name: "asc" }],
-    select: { id: true, name: true, abbreviation: true, league: true, division: true },
+    select: { id: true, name: true, abbreviation: true, league: true, division: true, mlbTeamId: true },
   });
 }
 
 export async function getMlbTeamById(teamId: string): Promise<MlbTeamSummary | null> {
   return prisma.team.findFirst({
     where: { id: teamId, mlbTeamId: { not: null } },
-    select: { id: true, name: true, abbreviation: true, league: true, division: true },
+    select: { id: true, name: true, abbreviation: true, league: true, division: true, mlbTeamId: true },
   });
 }
 
