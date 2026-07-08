@@ -57,7 +57,7 @@ export default async function GamePage({
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <BackLink fallbackHref="/" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
+      <BackLink fallbackHref="/mlb" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
         ← Back
       </BackLink>
 

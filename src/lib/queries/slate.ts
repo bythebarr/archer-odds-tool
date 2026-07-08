@@ -29,6 +29,10 @@ export interface SlateSide {
   name: string;
   /** Compact secondary label — abbreviation, record, seed, etc. */
   meta?: string | null;
+  /** MLB club id → team crest (see mlbTeamLogoUrl). Null for non-MLB sides. */
+  teamId?: number | null;
+  /** Headshot URL where we have one (UFC fighters today). Null otherwise. */
+  imageUrl?: string | null;
 }
 
 /**
@@ -85,8 +89,8 @@ async function mlbItems(dateEt: string): Promise<SlateItem[]> {
       status: g.status,
       href: `/games/${g.id}`,
       title: null,
-      home: { name: g.homeTeam.name, meta: g.homeTeam.abbreviation },
-      away: { name: g.awayTeam.name, meta: g.awayTeam.abbreviation },
+      home: { name: g.homeTeam.name, meta: g.homeTeam.abbreviation, teamId: g.homeTeam.mlbTeamId },
+      away: { name: g.awayTeam.name, meta: g.awayTeam.abbreviation, teamId: g.awayTeam.mlbTeamId },
       modelProb: prob ? { home: prob.homeProb, away: prob.awayProb } : null,
       ev: null, // SEAM: paid EV
     };
@@ -176,8 +180,8 @@ async function ufcItems(dateEt: string): Promise<SlateItem[]> {
         status: "scheduled",
         href: `/ufc/${bout.id}`,
         title: event.title,
-        home: { name: bout.red.name, meta: bout.red.record },
-        away: { name: bout.blue.name, meta: bout.blue.record },
+        home: { name: bout.red.name, meta: bout.red.record, imageUrl: bout.red.imageUrl },
+        away: { name: bout.blue.name, meta: bout.blue.record, imageUrl: bout.blue.imageUrl },
         modelProb: home !== null && away !== null ? { home, away } : null,
         methodLean,
         ev: null, // SEAM: paid EV

@@ -11,11 +11,12 @@ import { AppIconMark } from "@/lib/appIcon";
 // icon: a scannable sport glyph, DraftKings-style — makes the nav readable
 // at a glance and adds a bit of color to the "data-terminal" palette.
 const NAV_LINKS = [
-  { href: "/", label: "Games", icon: "⚾", carriesDate: true },
+  { href: "/", label: "Home", icon: "🏠", carriesDate: true },
   { href: "/slate", label: "Slate", icon: "📊", carriesDate: true },
+  { href: "/mlb", label: "MLB", icon: "⚾", carriesDate: true },
+  { href: "/ufc", label: "UFC", icon: "🥊", carriesDate: false },
   { href: "/tennis", label: "Tennis", icon: "🎾", carriesDate: false },
   { href: "/soccer", label: "Soccer", icon: "⚽", carriesDate: false },
-  { href: "/ufc", label: "UFC", icon: "🥊", carriesDate: false },
   { href: "/props", label: "Props", icon: "🎯", carriesDate: false },
 ];
 

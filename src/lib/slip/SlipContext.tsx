@@ -83,8 +83,12 @@ function subscribe(callback: () => void): () => void {
   };
 }
 
+// Stable reference — useSyncExternalStore requires getServerSnapshot to return
+// the same value across calls (a fresh [] each time triggers React's
+// "getServerSnapshot should be cached to avoid an infinite loop" warning).
+const EMPTY_PICKS: SlipPick[] = [];
 function getServerSnapshot(): SlipPick[] {
-  return [];
+  return EMPTY_PICKS;
 }
 
 interface SlipContextValue {

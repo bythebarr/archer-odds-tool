@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 interface LogoProps {
   /** Candidate image paths, tried in order; falls back to initials if all fail. */
@@ -11,10 +11,6 @@ interface LogoProps {
   color?: string;
   size?: number;
   className?: string;
-}
-
-function noopSubscribe() {
-  return () => {};
 }
 
 /** Picks readable text color (near-white or near-black) for a given hex background. */
@@ -41,12 +37,11 @@ export function Logo({ sources, alt, fallbackText, color, size = 20, className =
   const [index, setIndex] = useState(0);
   // Local 404s can fire the img's error event before React finishes hydrating
   // and attaches its listener, so the <img> itself is only rendered once
-  // mounted client-side — the fallback badge is otherwise what SSR sends.
-  const mounted = useSyncExternalStore(
-    noopSubscribe,
-    () => true,
-    () => false
-  );
+  // mounted client-side — the fallback badge is otherwise what SSR sends. SSR
+  // and the first client render both see mounted=false (no hydration mismatch);
+  // the effect flips it after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   if (!mounted || index >= sources.length) {
     const background = color ?? "#71717a";

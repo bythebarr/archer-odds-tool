@@ -7,6 +7,8 @@ export interface TeamSummary {
   id: string;
   name: string;
   abbreviation: string;
+  /** MLB club id — drives the team-crest CDN (null for non-MLB teams reusing this model, e.g. soccer). */
+  mlbTeamId: number | null;
 }
 
 export interface GameSummary {
@@ -35,8 +37,8 @@ function toGameSummary(g: {
   status: string;
   homeScore: number | null;
   awayScore: number | null;
-  homeTeam: { id: string; name: string; abbreviation: string } | null;
-  awayTeam: { id: string; name: string; abbreviation: string } | null;
+  homeTeam: { id: string; name: string; abbreviation: string; mlbTeamId: number | null } | null;
+  awayTeam: { id: string; name: string; abbreviation: string; mlbTeamId: number | null } | null;
 }): GameSummary {
   return {
     id: g.id,

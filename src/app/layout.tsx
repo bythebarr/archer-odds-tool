@@ -17,11 +17,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const SITE_DESCRIPTION = "MLB odds line-shopping, hit-rates, and EV — research/discovery only.";
+const SITE_DESCRIPTION = "Every sport, one board — model leans, hit-rates, and EV across MLB, UFC, tennis & soccer. Research/discovery only.";
 
 export const metadata: Metadata = {
   title: {
-    default: "archer — MLB odds, hit-rates & EV",
+    default: "archer — every-sport odds, model leans & EV",
     template: "%s · archer",
   },
   description: SITE_DESCRIPTION,
@@ -31,13 +31,13 @@ export const metadata: Metadata = {
   },
   openGraph: {
     siteName: "archer",
-    title: "archer — MLB odds, hit-rates & EV",
+    title: "archer — every-sport odds, model leans & EV",
     description: SITE_DESCRIPTION,
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "archer — MLB odds, hit-rates & EV",
+    title: "archer — every-sport odds, model leans & EV",
     description: SITE_DESCRIPTION,
   },
 };

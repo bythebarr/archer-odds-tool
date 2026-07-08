@@ -34,3 +34,13 @@ export function playerLogoSources(name: string): string[] {
 export function mlbHeadshotUrl(mlbPersonId: number): string {
   return `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_100/v1/people/${mlbPersonId}/headshot/67/current`;
 }
+
+/**
+ * MLB's public team-logo CDN, keyed by the same mlbTeamId we already store on
+ * Team — the counterpart to mlbHeadshotUrl for clubs. Same hotlinking rationale
+ * (a public data CDN MLB.com itself serves from); falls back to the local
+ * /logos/teams file, then the colored initials badge, via the Logo source chain.
+ */
+export function mlbTeamLogoUrl(mlbTeamId: number): string {
+  return `https://www.mlbstatic.com/team-logos/${mlbTeamId}.svg`;
+}
