@@ -4,6 +4,7 @@ import { getPropBoard } from "@/lib/props/board";
 import { todayEt, shiftEtDate, isValidEtDate, formatEtDateLabel } from "@/lib/dateEt";
 import { SlateBoard } from "@/components/SlateBoard";
 import { PropBoard } from "@/components/PropBoard";
+import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // Fed by the daily result/schedule syncs, so the board changes day to day —
 // render per request.
@@ -32,6 +33,10 @@ export default async function SlatePage({
   const date =
     dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam) ? dateParam : todayEt();
   const tab: Tab = tabParam === "props" ? "props" : "lines";
+
+  // Keep the upcoming-UFC feed fresh from the read side — Hobby crons are
+  // unreliable, so this backfills after the response when the feed is stale.
+  refreshUpcomingUfcOnView();
 
   // Only fetch the active tab's data — the two halves are independent queries.
   const slate = tab === "lines" ? await getSlateForDate(date) : null;

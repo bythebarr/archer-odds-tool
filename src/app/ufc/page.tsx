@@ -8,6 +8,7 @@ import {
 } from "@/lib/queries/ufcEvents";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FighterBadge } from "@/components/FighterBadge";
+import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // UFC events are ingested by a daily backfill cron, so both the upcoming and
 // recent lists change day to day — render per request rather than statically.
@@ -96,6 +97,9 @@ function EventCard({ event, upcoming = false }: { event: UfcEventSummary; upcomi
 }
 
 export default async function UfcPage() {
+  // Read-side self-heal for the upcoming feed (Hobby crons fire unreliably) —
+  // backfills after the response when stale. See refreshUpcomingUfcOnView.
+  refreshUpcomingUfcOnView();
   const [upcoming, recent] = await Promise.all([listUpcomingUfcEvents(), listRecentUfcEvents()]);
 
   return (
