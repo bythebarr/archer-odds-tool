@@ -37,7 +37,24 @@ function RateCell({ result }: { result: PropHitRateResult | null | undefined }) 
   );
 }
 
-export function PropBoard({ board, date }: { board: PropBoardData; date: string }) {
+/**
+ * `basePath`/`extraQuery` let the same board render under different routes: it
+ * lives standalone at `/props/board` (the defaults) and embedded as the Slate's
+ * Props tab at `/slate` (basePath="/slate", extraQuery="&tab=props"), so its
+ * server-driven view/stat links stay on whichever surface hosts it instead of
+ * jumping back to /props/board.
+ */
+export function PropBoard({
+  board,
+  date,
+  basePath = "/props/board",
+  extraQuery = "",
+}: {
+  board: PropBoardData;
+  date: string;
+  basePath?: string;
+  extraQuery?: string;
+}) {
   const [activeLine, setActiveLine] = useState<number>(
     board.lines[Math.floor(board.lines.length / 2)] ?? board.lines[0] ?? 0.5
   );
@@ -67,7 +84,7 @@ export function PropBoard({ board, date }: { board: PropBoardData; date: string 
             return (
               <Link
                 key={v.key}
-                href={`/props/board?date=${date}&view=${v.key}`}
+                href={`${basePath}?date=${date}&view=${v.key}${extraQuery}`}
                 scroll={false}
                 className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                   active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -87,7 +104,7 @@ export function PropBoard({ board, date }: { board: PropBoardData; date: string 
           return (
             <Link
               key={s.key}
-              href={`/props/board?date=${date}&view=${board.activeView}&stat=${s.key}`}
+              href={`${basePath}?date=${date}&view=${board.activeView}&stat=${s.key}${extraQuery}`}
               scroll={false}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 active
