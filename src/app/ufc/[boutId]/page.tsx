@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { getUfcBoutHeader, type UfcFighterBio } from "@/lib/queries/ufcEvents";
 import { getUfcMatchup } from "@/lib/queries/ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
+import { computeFinishProjection } from "@/lib/ufc/finishMath";
 import { BackLink } from "@/components/BackLink";
 import { FighterBadge } from "@/components/FighterBadge";
 import { UfcWinProbabilityCard, RED_CORNER, BLUE_CORNER } from "@/components/ufc/UfcWinProbabilityCard";
+import { UfcFinishProjectionCard } from "@/components/ufc/UfcFinishProjectionCard";
 import { UfcFightHistory } from "@/components/ufc/UfcFightHistory";
 
 export async function generateMetadata({ params }: { params: Promise<{ boutId: string }> }): Promise<Metadata> {
@@ -45,6 +47,12 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
   if (!header) notFound();
 
   const projection = matchup ? computeUfcWinProbability(matchup) : null;
+  // Title bouts (and 5-round main events) go 5; everything else 3. We only have
+  // a reliable title flag today, so non-title 5-round main events read as 3 —
+  // a known v1 approximation until a scheduled-rounds field is ingested.
+  const scheduledRounds = header.titleBout ? 5 : 3;
+  const finishProjection =
+    matchup && projection ? computeFinishProjection(matchup, projection.fighterAProb, scheduledRounds) : null;
 
   const winner =
     header.winnerFighterId === header.red.id
@@ -105,6 +113,12 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
       {projection ? (
         <div className="mt-4">
           <UfcWinProbabilityCard redName={header.red.name} blueName={header.blue.name} projection={projection} />
+        </div>
+      ) : null}
+
+      {finishProjection ? (
+        <div className="mt-4">
+          <UfcFinishProjectionCard redName={header.red.name} blueName={header.blue.name} projection={finishProjection} />
         </div>
       ) : null}
 
