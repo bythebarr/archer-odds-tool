@@ -24,7 +24,9 @@ function PickRow({ pick, onRemove }: { pick: SlipPick; onRemove: () => void }) {
         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
           <BookBadge bookKey={pick.bookKey} bookName={pick.bookName} size={14} />
           {pick.bookName}
-          {pick.point !== null && <span>· {formatPoint(pick.point, pick.marketType)}</span>}
+          {pick.point !== null && pick.marketType !== "prop" && (
+            <span>· {formatPoint(pick.point, pick.marketType)}</span>
+          )}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">

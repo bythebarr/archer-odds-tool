@@ -11,9 +11,10 @@ export interface SlipPick {
   matchId: string;
   /** e.g. "NYY @ BOS" or "Alcaraz vs. Sinner" */
   matchLabel: string;
-  /** e.g. "Yankees ML", "Over 8.5", "Alcaraz" */
+  /** e.g. "Yankees ML", "Over 8.5", "Alcaraz", "Aaron Judge o1.5 Hits" */
   selectionLabel: string;
-  marketType: MarketType;
+  /** Game market, or "prop" for a player prop (which isn't a MarketType). */
+  marketType: MarketType | "prop";
   point: number | null;
   bookKey: string;
   bookName: string;
@@ -25,7 +26,7 @@ export interface SlipPick {
 export function buildSlipPickId(params: {
   sport: SlipSport;
   matchId: string;
-  marketType: MarketType;
+  marketType: MarketType | "prop";
   side: string;
   point: number | null;
   bookKey: string;

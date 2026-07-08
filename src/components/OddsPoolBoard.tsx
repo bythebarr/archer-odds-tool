@@ -9,6 +9,7 @@ import { Logo } from "./Logo";
 import { playerLogoSources } from "@/lib/logos";
 import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatEv, evColorClass } from "@/lib/odds/format";
+import { useSlip, buildSlipPickId, type SlipPick, type SlipSport } from "@/lib/slip/SlipContext";
 
 const SPORT_META: Record<SlateSport, { label: string; icon: string }> = {
   mlb: { label: "MLB", icon: "⚾" },
@@ -37,10 +38,66 @@ function timeLabel(startUtc: Date): string {
 
 type SortKey = "value" | "price" | "time";
 
-function PlayRow({ play }: { play: OddsPlay }) {
+/** Maps a pool play to a slip pick — props carry marketType "prop" and drop the point (it's already in the label). */
+function toSlipPick(play: OddsPlay): SlipPick {
+  const marketType = play.market ?? "prop";
+  const sport = play.sport as SlipSport;
+  const point = play.kind === "prop" ? null : play.point;
+  return {
+    id: buildSlipPickId({ sport, matchId: play.matchId, marketType, side: play.side, point, bookKey: play.bestBookKey }),
+    sport,
+    matchId: play.matchId,
+    matchLabel: `${play.away.name} @ ${play.home.name}`,
+    selectionLabel: play.selectionLabel,
+    marketType,
+    point,
+    bookKey: play.bestBookKey,
+    bookName: play.bestBookName,
+    priceAmerican: play.bestPrice,
+    addedAt: 0,
+  };
+}
+
+/** The +/✓ control that adds or removes a play from the personal slip without navigating. */
+function SlipToggle({ play }: { play: OddsPlay }) {
+  const { addPick, removePick, isInSlip } = useSlip();
+  const pick = toSlipPick(play);
+  const inSlip = isInSlip(pick.id);
   return (
-    <Link href={play.href} className="flex items-center gap-2.5 rounded-md px-2 py-2.5 transition-colors hover:bg-accent/50">
-      {play.kind === "prop" ? (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (inSlip) removePick(pick.id);
+        else addPick({ ...pick, addedAt: Date.now() });
+      }}
+      aria-pressed={inSlip}
+      aria-label={inSlip ? `Remove ${play.selectionLabel} from slip` : `Add ${play.selectionLabel} to slip`}
+      className={`flex size-7 shrink-0 items-center justify-center rounded-full border transition-colors ${
+        inSlip
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border text-muted-foreground hover:border-primary hover:text-foreground"
+      }`}
+    >
+      <svg viewBox="0 0 16 16" fill="none" className="size-3.5">
+        {inSlip ? (
+          <path d="M3.5 8.5l3 3 6-6.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        ) : (
+          <path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        )}
+      </svg>
+    </button>
+  );
+}
+
+function PlayRow({ play }: { play: OddsPlay }) {
+  const matchup =
+    play.away.meta && play.home.meta ? `${play.away.meta} @ ${play.home.meta}` : `${play.away.name} @ ${play.home.name}`;
+  return (
+    <div className="group flex items-center gap-2.5 rounded-md pl-2 pr-1 transition-colors hover:bg-accent/50">
+      <Link href={play.href} className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5">
+        {play.kind === "prop" ? (
         <span className="shrink-0">
           <Logo
             sources={[play.playerImageUrl ?? "", ...playerLogoSources(play.playerName ?? "")].filter(Boolean)}
@@ -60,36 +117,36 @@ function PlayRow({ play }: { play: OddsPlay }) {
         </span>
       )}
 
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-foreground">{play.selectionLabel}</span>
-        <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-          <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-semibold uppercase tracking-wide">
-            {KIND_LABEL[play.kind]}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">{play.selectionLabel}</span>
+          <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+            <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-semibold uppercase tracking-wide">
+              {KIND_LABEL[play.kind]}
+            </span>
+            <span className="truncate">
+              {matchup} · {timeLabel(play.startUtc)}
+            </span>
           </span>
-          <span className="truncate">
-            {play.away.name} @ {play.home.name}
+        </span>
+
+        <span className="w-14 shrink-0 text-right">
+          <span className="block font-mono text-sm font-semibold tabular-nums text-foreground">
+            {formatAmerican(play.bestPrice)}
+          </span>
+          <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{play.bestBookInitials}</span>
+        </span>
+
+        <span className="w-12 shrink-0 text-right">
+          <span
+            className={`font-mono text-xs font-semibold tabular-nums ${evColorClass(play.ev)}`}
+            title={play.ev === null ? "Three-way market — no fair-price value yet" : "EV of this price vs de-vigged consensus"}
+          >
+            {play.ev === null ? "—" : formatEv(play.ev)}
           </span>
         </span>
-      </span>
-
-      <span className="w-10 shrink-0 text-right font-mono text-[10px] text-muted-foreground">{timeLabel(play.startUtc)}</span>
-
-      <span className="w-14 shrink-0 text-right">
-        <span className="block font-mono text-sm font-semibold tabular-nums text-foreground">
-          {formatAmerican(play.bestPrice)}
-        </span>
-        <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{play.bestBookInitials}</span>
-      </span>
-
-      <span className="w-12 shrink-0 text-right">
-        <span
-          className={`font-mono text-xs font-semibold tabular-nums ${evColorClass(play.ev)}`}
-          title={play.ev === null ? "Three-way market — no fair-price value yet" : "EV of this price vs de-vigged consensus"}
-        >
-          {play.ev === null ? "—" : formatEv(play.ev)}
-        </span>
-      </span>
-    </Link>
+      </Link>
+      <SlipToggle play={play} />
+    </div>
   );
 }
 
@@ -254,12 +311,12 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
         </p>
       ) : (
         <>
-          <div className="mt-4 flex items-center gap-2.5 px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+          <div className="mt-4 flex items-center gap-2.5 pl-2 pr-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
             <span className="w-[34px]" />
             <span className="flex-1">Play</span>
-            <span className="w-10 text-right">Time</span>
             <span className="w-14 text-right">Best</span>
             <span className="w-12 text-right">Value</span>
+            <span className="w-7" />
           </div>
           <div className="mt-1 divide-y divide-border/50">
             {visible.map((play) => (
