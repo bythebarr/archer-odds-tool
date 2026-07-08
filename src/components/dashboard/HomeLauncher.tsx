@@ -90,6 +90,28 @@ export function HomeLauncher({ home, date }: { home: HomeData; date: string }) {
         })}
       </div>
 
+      <Link
+        href={`/slate?date=${date}`}
+        className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 transition-colors hover:bg-emerald-500/15"
+      >
+        <span className="text-lg" aria-hidden="true">🎯</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-foreground">
+            {home.edges > 0 ? (
+              <>
+                {home.edges} +value play{home.edges === 1 ? "" : "s"} on the board
+              </>
+            ) : (
+              "Shop the full slate"
+            )}
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            {home.edges > 0 ? "Best price vs the market, sortable by your odds range" : "Every priced play in one pool, by price"}
+          </span>
+        </span>
+        <span className="shrink-0 text-sm font-medium text-primary">→</span>
+      </Link>
+
       <section className="mt-7">
         <div className="flex items-baseline justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Up next</h2>

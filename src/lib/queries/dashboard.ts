@@ -1,4 +1,5 @@
 import { getSlateForDate, type SlateSport, type SlateSide } from "./slate";
+import { getOddsPoolForDate } from "./oddsPool";
 
 /**
  * The home screen: a category launcher, not a leaderboard. It answers "what's
@@ -26,6 +27,8 @@ export interface HomeUpNext {
 export interface HomeData {
   date: string;
   total: number;
+  /** Count of +value plays on the odds pool today (market lens) — the home's hook into the flagship value board. */
+  edges: number;
   sports: HomeSport[];
   upNext: HomeUpNext[];
 }
@@ -33,7 +36,8 @@ export interface HomeData {
 const SPORT_ORDER: SlateSport[] = ["mlb", "ufc", "tennis", "soccer"];
 
 export async function getHomeForDate(dateEt: string, upNextSize = 5): Promise<HomeData> {
-  const slate = await getSlateForDate(dateEt);
+  const [slate, oddsPool] = await Promise.all([getSlateForDate(dateEt), getOddsPoolForDate(dateEt)]);
+  const edges = oddsPool.plays.filter((p) => p.ev != null && p.ev > 0).length;
 
   const byStart = [...slate.items].sort((a, b) => a.startUtc.getTime() - b.startUtc.getTime());
   const now = Date.now();
@@ -55,5 +59,5 @@ export async function getHomeForDate(dateEt: string, upNextSize = 5): Promise<Ho
     away: i.away,
   }));
 
-  return { date: dateEt, total: slate.items.length, sports, upNext };
+  return { date: dateEt, total: slate.items.length, edges, sports, upNext };
 }
