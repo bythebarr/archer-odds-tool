@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteNav } from "@/components/SiteNav";
 import { BottomNav } from "@/components/BottomNav";
+import { LaunchIntro } from "@/components/LaunchIntro";
 import { SlipProvider } from "@/lib/slip/SlipContext";
 import { SlipButton } from "@/components/slip/SlipButton";
 import { THEME_COLORS } from "@/lib/theme";
@@ -69,6 +70,7 @@ export default function RootLayout({
       </head>
       {/* pb-16 clears the fixed mobile BottomNav; sm+ has no bottom bar. */}
       <body className="min-h-full flex flex-col pb-16 sm:pb-0">
+        <LaunchIntro />
         <SlipProvider>
           <Suspense fallback={<div className="h-[57px] border-b border-border" />}>
             <SiteNav />

@@ -1,42 +1,59 @@
-import { getSlateForDate, type Slate, type SlateItem } from "./slate";
+import { getSlateForDate, type SlateSport, type SlateSide } from "./slate";
 
 /**
- * The home dashboard: a cross-sport "command center" derived from the same
- * normalized slate every sport already feeds. Surfaces the day's shape (counts
- * per sport) plus the highest-conviction plays — a single "play of the day" and
- * a rail of the next-strongest model leans — so the app opens on what's hot
- * everywhere, not on one sport.
+ * The home screen: a category launcher, not a leaderboard. It answers "what's
+ * on today and where do I go" — a count per sport plus the next few events —
+ * so the app opens as a springboard into each sport rather than a wall of
+ * picks. The deep signal (leans, EV, the odds pool) lives on the sport pages
+ * and the Slate; home just routes you there.
  */
-export interface Dashboard {
+export interface HomeSport {
+  sport: SlateSport;
+  count: number;
+  /** Earliest (upcoming, else earliest overall) start for this sport today; null if none. */
+  nextStartUtc: Date | null;
+}
+
+export interface HomeUpNext {
+  key: string;
+  sport: SlateSport;
+  startUtc: Date;
+  href: string;
+  home: SlateSide;
+  away: SlateSide;
+}
+
+export interface HomeData {
   date: string;
-  counts: Slate["counts"];
   total: number;
-  /** Highest model lean of the day (null if nothing modelable is on the board). */
-  playOfTheDay: SlateItem | null;
-  /** The next-strongest leans after the play of the day. */
-  topLeans: SlateItem[];
+  sports: HomeSport[];
+  upNext: HomeUpNext[];
 }
 
-/** How far the model leans from a coin flip, in [0,0.5]; null when there's no model (tennis/soccer today). */
-export function leanStrength(item: SlateItem): number | null {
-  const p = item.modelProb?.home;
-  return p === null || p === undefined ? null : Math.abs(p - 0.5);
-}
+const SPORT_ORDER: SlateSport[] = ["mlb", "ufc", "tennis", "soccer"];
 
-export async function getDashboardForDate(dateEt: string, railSize = 6): Promise<Dashboard> {
+export async function getHomeForDate(dateEt: string, upNextSize = 5): Promise<HomeData> {
   const slate = await getSlateForDate(dateEt);
 
-  const ranked = slate.items
-    .map((item) => ({ item, lean: leanStrength(item) }))
-    .filter((x): x is { item: SlateItem; lean: number } => x.lean !== null)
-    .sort((a, b) => b.lean - a.lean)
-    .map((x) => x.item);
+  const byStart = [...slate.items].sort((a, b) => a.startUtc.getTime() - b.startUtc.getTime());
+  const now = Date.now();
+  const upcoming = byStart.filter((i) => i.startUtc.getTime() >= now);
+  const pool = upcoming.length ? upcoming : byStart; // late-night fallback: show the day's card
 
-  return {
-    date: dateEt,
-    counts: slate.counts,
-    total: slate.items.length,
-    playOfTheDay: ranked[0] ?? null,
-    topLeans: ranked.slice(1, 1 + railSize),
-  };
+  const sports: HomeSport[] = SPORT_ORDER.map((sport) => ({
+    sport,
+    count: slate.counts[sport],
+    nextStartUtc: (upcoming.find((i) => i.sport === sport) ?? byStart.find((i) => i.sport === sport))?.startUtc ?? null,
+  }));
+
+  const upNext: HomeUpNext[] = pool.slice(0, upNextSize).map((i) => ({
+    key: i.key,
+    sport: i.sport,
+    startUtc: i.startUtc,
+    href: i.href,
+    home: i.home,
+    away: i.away,
+  }));
+
+  return { date: dateEt, total: slate.items.length, sports, upNext };
 }

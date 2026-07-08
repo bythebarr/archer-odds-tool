@@ -1,6 +1,6 @@
-import { getDashboardForDate } from "@/lib/queries/dashboard";
+import { getHomeForDate } from "@/lib/queries/dashboard";
 import { todayEt, isValidEtDate, formatEtDateLabel } from "@/lib/dateEt";
-import { DashboardHome } from "@/components/dashboard/DashboardHome";
+import { HomeLauncher } from "@/components/dashboard/HomeLauncher";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 
 // The board changes day to day (fed by the sport syncs) — render per request.
@@ -15,25 +15,23 @@ export default async function Home({
   const date =
     dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam) ? dateParam : todayEt();
 
-  // The home board surfaces UFC leans, so keep the upcoming feed fresh on view.
+  // The home surfaces the UFC card, so keep the upcoming feed fresh on view.
   refreshUpcomingUfcOnView();
-  const dashboard = await getDashboardForDate(date);
+  const home = await getHomeForDate(date);
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-8 font-sans">
+    <div className="mx-auto min-h-screen max-w-2xl px-4 py-7 font-sans">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {formatEtDateLabel(date)}
       </p>
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">Today&apos;s board</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Today on archer</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">
-          {dashboard.total} play{dashboard.total === 1 ? "" : "s"}
-        </span>{" "}
-        across every sport — model leans are free signals; live-odds EV lights up once paid coverage is on.
+        Pick a sport to dive in, or jump to the{" "}
+        <span className="font-medium text-foreground">full slate</span> for every play in one pool.
       </p>
 
       <div className="mt-6">
-        <DashboardHome dashboard={dashboard} date={date} />
+        <HomeLauncher home={home} date={date} />
       </div>
     </div>
   );
