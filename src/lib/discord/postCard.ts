@@ -41,9 +41,42 @@ function tagFor(p: OddsPlay): string {
   return `${SPORT_LABEL[p.sport] ?? p.sport.toUpperCase()} ${KIND_LABEL[p.kind] ?? ""}`.trim();
 }
 
-/** e.g. `MLB ML` **Yankees** +118 · FanDuel · +3.2% EV */
+/**
+ * Stake in units, scaled by edge — the "units not dollars" discipline every
+ * credible picks room runs on (and the compliance-safe way to size a play:
+ * never a dollar amount). Capped at 2u so nothing ever reads as reckless.
+ */
+export function unitsFor(ev: number): number {
+  if (ev >= 0.08) return 2;
+  if (ev >= 0.05) return 1.5;
+  return 1; // anything from MIN_EV up to +5%
+}
+
+/** e.g. `MLB ML` **Yankees** +118 · FanDuel · +3.2% EV · 1u */
 function playLine(p: OddsPlay): string {
-  return `\`${tagFor(p)}\` **${p.selectionLabel}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.ev)} EV`;
+  const units = p.ev !== null ? ` · ${unitsFor(p.ev)}u` : "";
+  return `\`${tagFor(p)}\` **${p.selectionLabel}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.ev)} EV${units}`;
+}
+
+/**
+ * Join play lines into a Discord embed description, staying under the 4096-char
+ * embed limit (headroom at 3800). If the card is too long, show what fits and
+ * point the rest to the site rather than letting the webhook 400 on us.
+ */
+function buildDescription(picks: OddsPlay[]): string {
+  if (!picks.length) {
+    return "_No plays cleared the +EV threshold today. Discipline > forcing action._";
+  }
+  const lines = picks.map(playLine);
+  let out = "";
+  let shown = 0;
+  for (const line of lines) {
+    if (out.length + line.length + 1 > 3800) break;
+    out += (out ? "\n" : "") + line;
+    shown++;
+  }
+  if (shown < lines.length) out += `\n_…+${lines.length - shown} more on the board._`;
+  return out;
 }
 
 /** YYYY-MM-DD → "Jul 9" (avoids Date parsing/tz drift on a plain ET date string). */
@@ -73,10 +106,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   // Pool is already sorted by EV desc; take the qualifying head.
   const picks = plays.filter((p) => p.ev !== null && p.ev >= MIN_EV).slice(0, MAX_PLAYS);
   const label = prettyDate(dateEt);
-
-  const description = picks.length
-    ? picks.map(playLine).join("\n")
-    : "_No plays cleared the +EV threshold today. Discipline > forcing action._";
+  const description = buildDescription(picks);
 
   await postWebhook(premiumUrl, {
     username: "Archer",
