@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 interface LogoProps {
   /** Candidate image paths, tried in order; falls back to initials if all fail. */
@@ -23,6 +23,20 @@ function textColorFor(hex: string): string {
   return luminance > 0.6 ? "#18181b" : "#fafafa";
 }
 
+/**
+ * True only after the component has mounted on the client (false during SSR and
+ * the hydrating first render). Uses useSyncExternalStore rather than a
+ * setState-in-effect flag: the server snapshot is `false`, the client snapshot
+ * is `true`, and React swaps them post-hydration without a cascading re-render.
+ */
+function useMounted(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+}
+
 /** Darkens a hex color by `amount` (0-1) — the gradient's second stop, for a bit of depth on the fallback badge instead of a flat fill. */
 function darken(hex: string, amount: number): string {
   const clean = hex.replace("#", "");
@@ -39,9 +53,8 @@ export function Logo({ sources, alt, fallbackText, color, size = 20, className =
   // and attaches its listener, so the <img> itself is only rendered once
   // mounted client-side — the fallback badge is otherwise what SSR sends. SSR
   // and the first client render both see mounted=false (no hydration mismatch);
-  // the effect flips it after mount.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // useMounted flips it to true after mount.
+  const mounted = useMounted();
 
   if (!mounted || index >= sources.length) {
     const background = color ?? "#71717a";
