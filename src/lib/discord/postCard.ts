@@ -3,6 +3,8 @@ import { todayEt } from "@/lib/dateEt";
 import { formatEv } from "@/lib/odds/format";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { SITE_URL } from "@/lib/siteUrl";
+import { prisma } from "@/lib/prisma";
+import type { Sport, MarketType } from "@/generated/prisma/client";
 
 /**
  * Auto-post the day's card to a paid Discord. Reads the exact same priced-play
@@ -86,6 +88,40 @@ function prettyDate(dateEt: string): string {
   return `${months[m - 1]} ${d}`;
 }
 
+/**
+ * Persist the plays we just posted so #results can grade them tomorrow (see
+ * postResults.ts). Upsert keyed on (date, playKey): a re-post of the same day
+ * leaves the original row (and its grade) untouched. Best-effort — the caller
+ * swallows failures so a DB hiccup never blocks the Discord post itself.
+ */
+async function recordPostedPlays(dateEt: string, picks: OddsPlay[]): Promise<void> {
+  await Promise.all(
+    picks.map((p) =>
+      prisma.postedPlay.upsert({
+        where: { postedForDate_playKey: { postedForDate: dateEt, playKey: p.key } },
+        update: {},
+        create: {
+          postedForDate: dateEt,
+          playKey: p.key,
+          sport: p.sport as Sport,
+          matchId: p.matchId,
+          market: (p.market as MarketType | null) ?? null,
+          kind: p.kind,
+          side: p.side,
+          point: p.point,
+          selectionLabel: p.selectionLabel,
+          bestPrice: p.bestPrice,
+          bestBookName: p.bestBookName,
+          ev: p.ev,
+          units: p.ev !== null ? unitsFor(p.ev) : 1,
+          mlbPlayerId: p.mlbPlayerId ?? null,
+          statCategory: p.statCategory ?? null,
+        },
+      })
+    )
+  );
+}
+
 async function postWebhook(url: string, body: unknown): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
@@ -120,6 +156,14 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
       },
     ],
   });
+
+  // Record what we posted so #results can grade it tomorrow. Best-effort: a DB
+  // failure must not fail the post that already went out.
+  try {
+    await recordPostedPlays(dateEt, picks);
+  } catch (err) {
+    console.error("recordPostedPlays failed (card was still posted):", err);
+  }
 
   // Free channel: a single lean as the funnel tease — selection only, no EV,
   // no best book. The value (the number + where to get it) stays behind the paywall.

@@ -18,7 +18,7 @@ type StatColumn =
   | "outsRecorded";
 
 /** Maps a prop's stat category to the PlayerGameLog column it lives in. */
-const STAT_COLUMN: Record<StatCategory, StatColumn> = {
+export const STAT_COLUMN: Record<StatCategory, StatColumn> = {
   hits: "hits",
   totalBases: "totalBases",
   homeRuns: "homeRuns",
