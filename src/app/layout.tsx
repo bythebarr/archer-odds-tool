@@ -26,6 +26,9 @@ const SITE_DESCRIPTION = "Every sport, one board — model leans, hit-rates, and
 export const metadata: Metadata = {
   // Absolute base so social crawlers resolve the share card to a real image URL.
   metadataBase: new URL(SITE_URL),
+  // Private edge: the tool feeds the Discord, it isn't a public site — keep it
+  // out of search results (paired with robots.ts disallow + the proxy gate).
+  robots: { index: false, follow: false },
   title: {
     default: "ARCHR Edge — every-sport odds, model leans & EV",
     template: "%s · ARCHR Edge",

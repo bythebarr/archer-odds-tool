@@ -1,15 +1,14 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL } from "@/lib/siteUrl";
 
-// Crawlers get the public product; the API surface (odds polling, crons,
-// internal JSON) has no SEO value and shouldn't be indexed.
+// Private-edge posture: the tool is not a public site anymore (it feeds the
+// Discord), so tell every crawler to stay out entirely. The Basic Auth gate in
+// proxy.ts already blocks bots at the door once SITE_ACCESS_PASSWORD is set;
+// this is the belt-and-suspenders signal for the window before/around that.
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: "/",
-      disallow: "/api/",
+      disallow: "/",
     },
-    sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }
