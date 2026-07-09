@@ -26,6 +26,37 @@ function tint(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
+/** One fighter's row in the grid: a name cell + a tinted cell per round/decision. */
+function GridRow({
+  name,
+  color,
+  row,
+  maxCell,
+}: {
+  name: string;
+  color: string;
+  row: number[];
+  maxCell: number;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-1.5 truncate py-1 pr-1 text-xs">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="truncate text-foreground">{name}</span>
+      </div>
+      {row.map((p, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-center rounded font-mono text-[11px] text-foreground"
+          style={{ backgroundColor: tint(color, 0.1 + 0.55 * (p / maxCell)) }}
+        >
+          {Math.round(p * 100)}%
+        </div>
+      ))}
+    </>
+  );
+}
+
 /**
  * A 2-row grid (one per fighter) × (R1…Rn + Dec) of win probabilities. Every
  * cell across both rows sums to ~1. Cell background tints in the fighter's
@@ -48,24 +79,6 @@ function RoundGrid({
   const cols = `minmax(4.5rem, 1fr) repeat(${scheduledRounds + 1}, 2.5rem)`;
   const headers = [...Array.from({ length: scheduledRounds }, (_, i) => `R${i + 1}`), "Dec"];
 
-  const Row = ({ name, color, row }: { name: string; color: string; row: number[] }) => (
-    <>
-      <div className="flex items-center gap-1.5 truncate py-1 pr-1 text-xs">
-        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="truncate text-foreground">{name}</span>
-      </div>
-      {row.map((p, i) => (
-        <div
-          key={i}
-          className="flex items-center justify-center rounded font-mono text-[11px] text-foreground"
-          style={{ backgroundColor: tint(color, 0.1 + 0.55 * (p / maxCell)) }}
-        >
-          {Math.round(p * 100)}%
-        </div>
-      ))}
-    </>
-  );
-
   return (
     <div className="grid min-w-[18rem] gap-1" style={{ gridTemplateColumns: cols }}>
       <div />
@@ -74,8 +87,8 @@ function RoundGrid({
           {h}
         </div>
       ))}
-      <Row name={redName} color={RED_CORNER} row={rowA} />
-      <Row name={blueName} color={BLUE_CORNER} row={rowB} />
+      <GridRow name={redName} color={RED_CORNER} row={rowA} maxCell={maxCell} />
+      <GridRow name={blueName} color={BLUE_CORNER} row={rowB} maxCell={maxCell} />
     </div>
   );
 }
