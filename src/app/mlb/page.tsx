@@ -5,7 +5,7 @@ import { getGameMatchupsBatch } from "@/lib/queries/matchup";
 import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns, type ExpectedRuns } from "@/lib/archer/expectedRuns";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
-import { SlateLinesView } from "@/components/SlateLinesView";
+import { MlbBoard } from "@/components/MlbBoard";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { DateNav } from "@/components/DateNav";
 import { EmptyState } from "@/components/EmptyState";
@@ -59,7 +59,7 @@ export default async function MlbPage({
     <PageShell width="3xl">
       <PageHeader
         title="MLB"
-        description="Every book's line across the day's games, filterable by price — with Archer's model lean."
+        description="The day's games at their best price — tap in to shop every book. Or flip to All lines to scan the whole slate."
       />
 
       <DateNav basePath="/mlb" date={date} />
@@ -78,7 +78,7 @@ export default async function MlbPage({
           <div className="mb-3 flex justify-end">
             <FreshnessStamp freshness={freshness} />
           </div>
-          <SlateLinesView
+          <MlbBoard
             gamesWithLines={gamesWithLines}
             hitRatesByTeam={hitRatesByTeam}
             archerProbByGame={archerProbByGame}
