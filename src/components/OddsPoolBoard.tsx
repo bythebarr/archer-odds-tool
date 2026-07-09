@@ -6,6 +6,7 @@ import type { OddsPool, OddsPlay, MarketKind } from "@/lib/queries/oddsPool";
 import type { SlateSport } from "@/lib/queries/slate";
 import { CompetitorAvatar } from "./dashboard/CompetitorAvatar";
 import { Logo } from "./Logo";
+import { BookBadge } from "./BookBadge";
 import { playerLogoSources } from "@/lib/logos";
 import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatEv, evColorClass } from "@/lib/odds/format";
@@ -142,11 +143,14 @@ function PlayRow({ play, value, lens }: { play: OddsPlay; value: number | null; 
           </span>
         </span>
 
-        <span className="w-14 shrink-0 text-right">
-          <span className="block font-mono text-sm font-semibold tabular-nums text-foreground">
-            {formatAmerican(play.bestPrice)}
+        <span className="w-[84px] shrink-0 text-right" title={`Best price — ${play.bestBookName}${play.booksCount > 1 ? ` (best of ${play.booksCount} books)` : ""}`}>
+          <span className="flex items-center justify-end gap-1">
+            <BookBadge bookKey={play.bestBookKey} bookName={play.bestBookName} size={14} />
+            <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
+              {formatAmerican(play.bestPrice)}
+            </span>
           </span>
-          <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{play.bestBookInitials}</span>
+          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{play.bestBookName}</span>
         </span>
 
         <span className="flex w-12 shrink-0 justify-end">
@@ -388,7 +392,7 @@ export function OddsPoolBoard({ pool }: { pool: OddsPool }) {
           <div className="mt-4 flex items-center gap-2.5 pl-2 pr-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
             <span className="w-[34px]" />
             <span className="flex-1">Play</span>
-            <span className="w-14 text-right">Best</span>
+            <span className="w-[84px] text-right">Best price</span>
             <span className="w-12 text-right">Value</span>
             <span className="w-7" />
           </div>
