@@ -10,7 +10,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
  * navigations, so its effect runs once per hard load. Tap to skip; respects
  * prefers-reduced-motion.
  */
-const TOTAL_MS = 1650;
+const TOTAL_MS = 2000;
 
 export function LaunchIntro() {
   // Already played this session? Read via an external store so the check is
@@ -66,7 +66,9 @@ export function LaunchIntro() {
           </g>
         </svg>
       </div>
-      <div className="ai-word mt-6 font-mono text-2xl font-bold tracking-[0.15em] text-foreground">ARCHR</div>
+      <div className="ai-word mt-6 font-mono text-2xl font-bold tracking-[0.15em] text-foreground">
+        ARCHR<span className="ai-edge ml-2 font-normal tracking-normal text-muted-foreground">Edge</span>
+      </div>
 
       <style>{`
         @keyframes ai-fly {
@@ -86,11 +88,15 @@ export function LaunchIntro() {
           100% { transform: scale(3.4); opacity: 0; }
         }
         @keyframes ai-word {
-          0%, 42% { opacity: 0; transform: translateY(6px); }
-          62%, 100% { opacity: 1; transform: translateY(0); }
+          0%, 38% { opacity: 0; transform: translateY(6px); }
+          52%, 100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes ai-edge {
+          0%, 56% { opacity: 0; transform: translateX(-9px); }
+          70%, 100% { opacity: 1; transform: translateX(0); }
         }
         @keyframes ai-out {
-          0%, 82% { opacity: 1; }
+          0%, 88% { opacity: 1; }
           100% { opacity: 0; }
         }
         .archer-intro { animation: ai-out ${TOTAL_MS}ms ease-in forwards; }
@@ -98,8 +104,9 @@ export function LaunchIntro() {
         .ai-target { animation: ai-hit ${TOTAL_MS}ms ease-out forwards; }
         .ai-shock  { animation: ai-shock ${TOTAL_MS}ms ease-out forwards; }
         .ai-word   { animation: ai-word ${TOTAL_MS}ms ease-out forwards; }
+        .ai-edge   { display: inline-block; animation: ai-edge ${TOTAL_MS}ms ease-out forwards; }
         @media (prefers-reduced-motion: reduce) {
-          .archer-intro, .ai-arrow, .ai-target, .ai-shock, .ai-word { animation: none; }
+          .archer-intro, .ai-arrow, .ai-target, .ai-shock, .ai-word, .ai-edge { animation: none; }
           .ai-arrow, .ai-shock { opacity: 0; }
         }
       `}</style>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSportNav } from "@/lib/queries/sportNav";
-import { SPORT_META, sportHref } from "@/lib/sports";
+import { NAV_SPORT_META, sportHref } from "@/lib/sports";
 
 /**
  * The books-style quick-jump rail: in-season sports first (with a live count),
@@ -16,7 +16,7 @@ export async function SportRail({ date }: { date: string }) {
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {sorted.map(({ sport, count }) => {
-        const meta = SPORT_META[sport];
+        const meta = NAV_SPORT_META[sport];
         const live = count > 0;
         return (
           <Link

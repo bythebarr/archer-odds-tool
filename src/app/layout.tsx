@@ -8,6 +8,7 @@ import { LaunchIntro } from "@/components/LaunchIntro";
 import { SlipProvider } from "@/lib/slip/SlipContext";
 import { SlipButton } from "@/components/slip/SlipButton";
 import { THEME_COLORS } from "@/lib/theme";
+import { SITE_URL } from "@/lib/siteUrl";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,9 +21,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const SITE_DESCRIPTION = "Every sport, one board — model leans, hit-rates, and EV across MLB, UFC, tennis & soccer. Research/discovery only.";
+const SITE_DESCRIPTION = "Every sport, one board — model leans, hit-rates, and EV across MLB, UFC, F1, tennis & soccer. Research/discovery only.";
 
 export const metadata: Metadata = {
+  // Absolute base so social crawlers resolve the share card to a real image URL.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "ARCHR Edge — every-sport odds, model leans & EV",
     template: "%s · ARCHR Edge",
@@ -39,7 +42,7 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "ARCHR Edge — every-sport odds, model leans & EV",
     description: SITE_DESCRIPTION,
   },
@@ -78,9 +81,14 @@ export default function RootLayout({
           </Suspense>
           {children}
           <footer className="mx-auto w-full max-w-2xl px-4 py-6 text-center text-xs text-muted-foreground">
-            <Link href="/learn" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
-              How to read ARCHR · Glossary
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+              <Link href="/learn" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
+                How to read ARCHR · Glossary
+              </Link>
+              <Link href="/support" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
+                Support &amp; feedback
+              </Link>
+            </div>
             <p className="mt-3">
               For informational and research purposes only. Not betting advice; odds, hit-rates, and EV
               figures are not guaranteed accurate and carry no warranty. This tool does not facilitate

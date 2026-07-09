@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { HomeData } from "@/lib/queries/dashboard";
 import type { SlateSide } from "@/lib/queries/slate";
-import { SPORT_META, SPORT_ORDER } from "@/lib/sports";
+import { SPORT_META, NAV_SPORT_ORDER } from "@/lib/sports";
 import { SportCard } from "@/components/SportCard";
 import { CompetitorAvatar } from "./CompetitorAvatar";
 
@@ -50,9 +50,9 @@ export function HomeLauncher({ home, date }: { home: HomeData; date: string }) {
         </Link>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-3">
-        {SPORT_ORDER.map((sport) => {
-          const s = home.sports.find((x) => x.sport === sport)!;
-          return <SportCard key={sport} {...s} date={date} />;
+        {NAV_SPORT_ORDER.map((sport) => {
+          const s = home.sports.find((x) => x.sport === sport);
+          return s ? <SportCard key={sport} {...s} date={date} /> : null;
         })}
       </div>
 
@@ -87,7 +87,9 @@ export function HomeLauncher({ home, date }: { home: HomeData; date: string }) {
         </div>
         <div className="mt-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
           {home.upNext.length === 0 ? (
-            <div className="px-3 py-5 text-center text-sm text-muted-foreground">That&apos;s a wrap for today.</div>
+            <div className="px-3 py-5 text-center text-sm text-muted-foreground">
+              That&apos;s a wrap for today — tomorrow&apos;s board fills in as odds post through the morning.
+            </div>
           ) : (
             home.upNext.map((row) => <UpNextRow key={row.key} row={row} />)
           )}

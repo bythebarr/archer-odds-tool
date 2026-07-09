@@ -8,6 +8,9 @@ import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { MlbBoard } from "@/components/MlbBoard";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { DateNav } from "@/components/DateNav";
+import { EmptyState } from "@/components/EmptyState";
+import { FreshnessStamp } from "@/components/FreshnessStamp";
+import { getFeedFreshness } from "@/lib/freshness";
 
 export const metadata: Metadata = {
   title: "MLB",
@@ -26,7 +29,10 @@ export default async function MlbPage({
   const date =
     dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam) ? dateParam : todayEt();
 
-  const gamesWithLines = await listGamesWithLinesForDate(date);
+  const [gamesWithLines, freshness] = await Promise.all([
+    listGamesWithLinesForDate(date),
+    getFeedFreshness("mlbOdds"),
+  ]);
 
   const teamIds = new Set<string>();
   for (const { game } of gamesWithLines) {
@@ -59,9 +65,19 @@ export default async function MlbPage({
       <DateNav basePath="/mlb" date={date} />
 
       {gamesWithLines.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-muted-foreground">No games scheduled for this date.</p>
+        <EmptyState
+          title="No MLB lines to show yet"
+          freshness={freshness}
+          arrow="miss"
+          supportContext="mlb-empty"
+        >
+          Odds for this date haven&apos;t posted, or there are no games scheduled.
+        </EmptyState>
       ) : (
         <div className="mt-8">
+          <div className="mb-3 flex justify-end">
+            <FreshnessStamp freshness={freshness} />
+          </div>
           <MlbBoard
             gamesWithLines={gamesWithLines}
             hitRatesByTeam={hitRatesByTeam}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 import { AppIconMark } from "@/lib/appIcon";
-import { NAV_ITEMS, navHref, isNavActive } from "@/lib/nav";
+import { DESKTOP_NAV_ITEMS, navHref, isNavActive } from "@/lib/nav";
 
 /**
  * Carries the currently-browsed `date` across nav links so switching
@@ -31,7 +31,7 @@ export function SiteNav() {
               the fixed BottomNav carries the primary tabs instead. Horizontal
               scroll keeps the (wider) desktop list tidy if it ever overflows. */}
           <div className="hidden gap-1 overflow-x-auto [scrollbar-width:none] sm:flex [&::-webkit-scrollbar]:hidden">
-            {NAV_ITEMS.map((link) => {
+            {DESKTOP_NAV_ITEMS.map((link) => {
               const isActive = isNavActive(link, pathname);
               const href = navHref(link, date);
               return (

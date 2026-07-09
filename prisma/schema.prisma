@@ -730,3 +730,23 @@ model F1RaceResult {
   @@index([driverId])
   @@index([constructorId])
 }
+
+/// User-submitted support/feedback, written by the /support form via
+/// /api/feedback. Self-contained (no email/Discord dependency): submissions
+/// land here and are read from the token-gated inbox at /support/inbox. A
+/// future notification hook (email, Discord webhook) can layer on top without
+/// schema changes. `context` records where the report came from (e.g. an empty
+/// board's supportContext) so a "dashboard's blank" report is actionable.
+model Feedback {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  category  String // "bug" | "data" | "billing" | "feature" | "account" | "other"
+  message   String
+  email     String? // optional reply-to the user provides
+  context   String? // originating surface, e.g. "props-empty", "mlb-empty"
+  userAgent String?
+  resolved  Boolean  @default(false)
+
+  @@index([createdAt])
+  @@index([resolved])
+}

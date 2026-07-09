@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { listTennisMatchesWithLines } from "@/lib/queries/tennisMatches";
 import type { MatchSummary } from "@/lib/queries/tennisMatches";
 import type { GameLineRow } from "@/lib/queries/games";
@@ -6,6 +7,8 @@ import { bestLinesBySide } from "@/lib/odds/bestPrice";
 import { TennisPlayerBadge } from "@/components/TennisPlayerBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
 import { PageShell, PageHeader } from "@/components/PageShell";
+import { EmptyState } from "@/components/EmptyState";
+import { getFeedFreshness } from "@/lib/freshness";
 
 // Unlike the MLB routes, this page has no searchParams/dynamic segment to
 // signal Next.js that it needs per-request rendering — without this it gets
@@ -13,6 +16,12 @@ import { PageShell, PageHeader } from "@/components/PageShell";
 // DB during CI and failed). Odds here update via cron, not deploys; a
 // statically-cached build would show stale build-time prices until the next
 // deploy, not the current polled data.
+export const metadata: Metadata = {
+  title: "Tennis — moneyline line-shopping",
+  description:
+    "Moneyline odds line-shopping for the tracked tennis tournament — the best price across books, one match at a time.",
+};
+
 export const dynamic = "force-dynamic";
 
 function formatTime(date: Date): string {
@@ -39,7 +48,7 @@ function bestPricePreview(match: MatchSummary, lines: GameLineRow[]): MatchCardC
 }
 
 export default async function TennisPage() {
-  const matches = await listTennisMatchesWithLines();
+  const [matches, freshness] = await Promise.all([listTennisMatchesWithLines(), getFeedFreshness("tennisOdds")]);
 
   return (
     <PageShell width="2xl">
@@ -49,9 +58,9 @@ export default async function TennisPage() {
       />
 
       {matches.length === 0 ? (
-        <p className="mt-6 py-10 text-center text-sm text-muted-foreground">
-          No tennis matches tracked right now.
-        </p>
+        <EmptyState title="No tennis matches tracked right now" freshness={freshness} arrow="miss" supportContext="tennis-empty">
+          Tennis coverage follows one tournament at a time — between events, there&apos;s nothing to price.
+        </EmptyState>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
           {matches.map(({ match, lines }) => (

@@ -8,8 +8,15 @@ import type { SlateSport } from "@/lib/queries/slate";
  * carriesDate: MLB's board is date-scoped, so its link carries the browsed
  * date; the others have no date filter.
  */
+/**
+ * Nav-level sport set. A superset of SlateSport: it adds sports that have a
+ * page but no betting slate (F1 is results-only, no odds), so they can appear
+ * in the rail/lobby without polluting the odds-driven SlateSport type.
+ */
+export type NavSport = SlateSport | "f1";
+
 export type SportMeta = {
-  sport: SlateSport;
+  sport: NavSport;
   label: string;
   icon: string;
   href: string;
@@ -26,8 +33,25 @@ export const SPORT_META: Record<SlateSport, SportMeta> = {
 
 export const SPORT_ORDER: SlateSport[] = ["mlb", "ufc", "tennis", "soccer"];
 
+/**
+ * Non-slate sports (a page, but no odds). Kept out of SPORT_META so anything
+ * iterating the slate map stays odds-only; the nav map below folds them in.
+ */
+export const F1_META: SportMeta = {
+  sport: "f1",
+  label: "F1",
+  icon: "🏁",
+  href: "/f1",
+  accent: "#e10600",
+  carriesDate: false,
+};
+
+/** Every sport with a page — slate sports plus results-only ones. */
+export const NAV_SPORT_META: Record<NavSport, SportMeta> = { ...SPORT_META, f1: F1_META };
+export const NAV_SPORT_ORDER: NavSport[] = [...SPORT_ORDER, "f1"];
+
 /** A sport's route, carrying the browsed date when the sport is date-scoped. */
-export function sportHref(sport: SlateSport, date: string): string {
-  const meta = SPORT_META[sport];
+export function sportHref(sport: NavSport, date: string): string {
+  const meta = NAV_SPORT_META[sport];
   return meta.carriesDate ? `${meta.href}?date=${date}` : meta.href;
 }

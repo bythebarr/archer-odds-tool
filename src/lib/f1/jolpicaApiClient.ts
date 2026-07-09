@@ -119,3 +119,28 @@ export async function fetchSeasonResults(season: number): Promise<ErgastRace[]> 
 
   return [...byRound.values()].sort((a, b) => Number(a.round) - Number(b.round));
 }
+
+/**
+ * The full race *calendar* for a season — every round with its date/time and
+ * circuit, but no Results (that's `/{season}/results`). This is what powers the
+ * "next race" card: scheduled-but-unrun rounds only exist here, since the
+ * results endpoint omits a race until it's been run. A season has ~24 rounds,
+ * comfortably under one 100-row page, but we page defensively all the same.
+ */
+export async function fetchSeasonSchedule(season: number): Promise<ErgastRace[]> {
+  const PAGE_LIMIT = 100;
+  const byRound = new Map<string, ErgastRace>();
+  let offset = 0;
+  let total = Infinity;
+
+  while (offset < total) {
+    const { MRData } = await jolpicaFetch(`/${season}/races/`, { limit: PAGE_LIMIT, offset });
+    total = Number(MRData.total);
+    const races = MRData.RaceTable?.Races ?? [];
+    for (const race of races) byRound.set(race.round, race);
+    offset += PAGE_LIMIT;
+    if (races.length === 0) break;
+  }
+
+  return [...byRound.values()].sort((a, b) => Number(a.round) - Number(b.round));
+}

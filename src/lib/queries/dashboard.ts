@@ -1,5 +1,7 @@
 import { getSlateForDate, type SlateSport, type SlateSide } from "./slate";
 import { getOddsPoolForDate } from "./oddsPool";
+import { getNextRace } from "./f1";
+import type { NavSport } from "@/lib/sports";
 
 /**
  * The home screen: a category launcher, not a leaderboard. It answers "what's
@@ -9,7 +11,7 @@ import { getOddsPoolForDate } from "./oddsPool";
  * and the Slate; home just routes you there.
  */
 export interface HomeSport {
-  sport: SlateSport;
+  sport: NavSport;
   count: number;
   /** Earliest (upcoming, else earliest overall) start for this sport today; null if none. */
   nextStartUtc: Date | null;
@@ -34,9 +36,15 @@ export interface HomeData {
 }
 
 const SPORT_ORDER: SlateSport[] = ["mlb", "ufc", "tennis", "soccer"];
+// F1 has no daily slate; it's "on deck" (count 1) only inside race week.
+const F1_ON_DECK_MS = 8 * 24 * 60 * 60 * 1000;
 
 export async function getHomeForDate(dateEt: string, upNextSize = 5): Promise<HomeData> {
-  const [slate, oddsPool] = await Promise.all([getSlateForDate(dateEt), getOddsPoolForDate(dateEt)]);
+  const [slate, oddsPool, nextRace] = await Promise.all([
+    getSlateForDate(dateEt),
+    getOddsPoolForDate(dateEt),
+    getNextRace(),
+  ]);
   const edges = oddsPool.plays.filter((p) => p.ev != null && p.ev > 0).length;
 
   const byStart = [...slate.items].sort((a, b) => a.startUtc.getTime() - b.startUtc.getTime());
@@ -49,6 +57,11 @@ export async function getHomeForDate(dateEt: string, upNextSize = 5): Promise<Ho
     count: slate.counts[sport],
     nextStartUtc: (upcoming.find((i) => i.sport === sport) ?? byStart.find((i) => i.sport === sport))?.startUtc ?? null,
   }));
+  sports.push({
+    sport: "f1",
+    count: nextRace != null && nextRace.raceDate.getTime() - now <= F1_ON_DECK_MS ? 1 : 0,
+    nextStartUtc: nextRace?.raceDate ?? null,
+  });
 
   const upNext: HomeUpNext[] = pool.slice(0, upNextSize).map((i) => ({
     key: i.key,
