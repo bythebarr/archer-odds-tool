@@ -192,6 +192,16 @@ async function ufcItems(dateEt: string): Promise<SlateItem[]> {
 }
 
 /**
+ * UFC bouts for the date as SlateItems (model win-prob + method lean; UFC has
+ * no book prices, so it never appears in the priced odds pool). Exposed so the
+ * Slate can show a compact UFC strip alongside the priced Value board — keeping
+ * the sport on the flagship surface even though it can't be a priced row.
+ */
+export function getUfcSlateItems(dateEt: string): Promise<SlateItem[]> {
+  return ufcItems(dateEt);
+}
+
+/**
  * The whole day's card across every sport, sorted by start time. Adapters run
  * in parallel; each is independent so one sport erroring/emptying doesn't sink
  * the others (they just contribute nothing).
