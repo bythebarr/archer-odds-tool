@@ -68,6 +68,13 @@ export async function getUfcFightHistory(fighterId: string): Promise<UfcFighterH
   const bouts = await prisma.ufcBout.findMany({
     where: {
       status: "completed",
+      // Cito ships a duplicate of some real bouts under an event whose
+      // eventDate is off by +1yr (see schema caveat on UfcEvent.eventDate) —
+      // always with hasStats=false. Without this guard that future-dated dup
+      // sorts to the top of the history (wrong date + wrong opponent) and
+      // double-counts into the fighter-math projections. Matches the same
+      // filter listRecentUfcEvents/mapEventSummary rely on in ufcEvents.ts.
+      event: { hasStats: true },
       OR: [{ redCornerFighterId: fighterId }, { blueCornerFighterId: fighterId }],
     },
     include: {
@@ -117,6 +124,9 @@ export async function getCrossBouts(groupOne: string[], groupTwo: string[]): Pro
   const bouts = await prisma.ufcBout.findMany({
     where: {
       status: "completed",
+      // Same +1yr mis-dated-duplicate guard as getUfcFightHistory above —
+      // keeps the common-opponent chain math off the corrupt dup rows.
+      event: { hasStats: true },
       OR: [
         { redCornerFighterId: { in: groupOne }, blueCornerFighterId: { in: groupTwo } },
         { redCornerFighterId: { in: groupTwo }, blueCornerFighterId: { in: groupOne } },
