@@ -16,6 +16,7 @@
     { "path": "/api/cron/poll-odds-soccer", "schedule": "0 12 * * *" },
     { "path": "/api/cron/poll-odds-soccer", "schedule": "0 18 * * *" },
     { "path": "/api/cron/backfill-player-game-logs", "schedule": "20 9 * * *" },
-    { "path": "/api/cron/backfill-ufc", "schedule": "45 9 * * *" }
+    { "path": "/api/cron/backfill-ufc", "schedule": "45 9 * * *" },
+    { "path": "/api/cron/backfill-f1", "schedule": "50 9 * * *" }
   ]
 }

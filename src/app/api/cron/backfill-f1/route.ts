@@ -16,8 +16,10 @@ export async function GET(request: Request) {
  * pollers). Idempotent, so the daily tick also syncs the current season's
  * newly-run races going forward, not just a one-time catch-up.
  *
- * Not yet wired into vercel.json — this stays dormant until F1 gets a UI, the
- * same staged rollout the UFC pipeline used. Kick it manually to seed data.
+ * Wired into vercel.json as a daily backstop (50 9 UTC). Steady-state F1
+ * freshness is really carried by the read-side self-heal (refreshF1OnView on
+ * the /f1 page); this cron is belt-and-suspenders for days the page isn't
+ * viewed. Zero-credit (free Jolpica) and idempotent, so a daily tick is free.
  */
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
