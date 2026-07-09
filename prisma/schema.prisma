@@ -424,6 +424,46 @@ model GameOutcome {
   @@index([playerId, marketType])
 }
 
+/// A specific play the Discord auto-poster put on the daily card — the record
+/// of what was *actually posted*, so #results can grade it the next day and
+/// keep a running unit ledger. Stateless posting can't do this; this table is
+/// the memory. Deliberately no Game relation (kept as a plain matchId) to keep
+/// the migration a single additive table with no alter to Game.
+///
+/// Grading states: gradedAt null = pending; gradedAt set + voided = no result
+/// possible (soccer/tennis game lines, or a prop with a missing stat line — a
+/// DNP is never a loss); gradedAt set + result = settled (hit/miss/push).
+model PostedPlay {
+  id             String        @id @default(cuid())
+  /// ET card date (YYYY-MM-DD) this play was posted for.
+  postedForDate  String
+  /// OddsPlay.key — dedupes a play within a date across re-posts.
+  playKey        String
+  sport          Sport
+  matchId        String
+  market         MarketType?   // null for props
+  kind           String        // ml | spread | total | prop
+  side           String        // home | away | over | under | draw
+  point          Float?
+  selectionLabel String
+  bestPrice      Int
+  bestBookName   String
+  ev             Float?
+  units          Float
+  // Prop grading inputs (null for game lines).
+  mlbPlayerId    String?
+  statCategory   StatCategory?
+  // Grading output.
+  result         OutcomeResult? // hit | miss | push; null while pending or when voided
+  voided         Boolean        @default(false)
+  gradedAt       DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@unique([postedForDate, playKey])
+  @@index([postedForDate])
+  @@index([gradedAt])
+}
+
 /// Drives the tiered polling throttle — last successful poll timestamp per job.
 model PollLog {
   jobName          String   @id

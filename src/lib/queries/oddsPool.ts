@@ -60,6 +60,9 @@ export interface OddsPlay {
   /** Prop only: the player's headshot + name, for a face on the row. */
   playerImageUrl?: string | null;
   playerName?: string | null;
+  /** Prop only: grading inputs — the player id + stat this prop settles on. */
+  mlbPlayerId?: string | null;
+  statCategory?: StatCategory | null;
   bestPrice: number;
   bestDecimal: number;
   bestBookKey: string;
@@ -221,6 +224,8 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
         backed: null,
         playerImageUrl: mlbHeadshotUrl(player.mlbPersonId),
         playerName: player.fullName,
+        mlbPlayerId: group[0].mlbPlayerId,
+        statCategory: stat,
         bestPrice: best.priceAmerican,
         bestDecimal: americanToDecimal(best.priceAmerican),
         bestBookKey: best.bookKey,
