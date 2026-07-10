@@ -45,6 +45,25 @@ export function gradeGameLine(
   return "void";
 }
 
+/**
+ * Grade a UFC moneyline pick (a red/blue corner) against the bout's winner.
+ * A completed bout with no winnerFighterId is a draw or no-contest — the
+ * moneyline is voided at the book (stake back), so that's a "push" here, never
+ * a loss. Mirrors gradeGameLine's h2h shape but keyed on corner → fighter id
+ * rather than home/away → score.
+ */
+export function gradeUfcMoneyline(
+  side: string,
+  redFighterId: string,
+  blueFighterId: string,
+  winnerFighterId: string | null
+): PlayResult {
+  if (side !== "red" && side !== "blue") return "void";
+  if (winnerFighterId === null) return "push"; // draw / no-contest — ML voided, stake returned
+  const pickedFighterId = side === "red" ? redFighterId : blueFighterId;
+  return winnerFighterId === pickedFighterId ? "hit" : "miss";
+}
+
 /** Grade an MLB player prop (over/under a stat) against the actual stat value. */
 export function gradeProp(side: string, point: number, actualValue: number | null): PlayResult {
   if (actualValue === null) return "void"; // DNP / stat not recorded — not a loss

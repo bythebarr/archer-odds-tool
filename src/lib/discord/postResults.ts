@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { todayEt } from "@/lib/dateEt";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { STAT_COLUMN } from "@/lib/props/hitRate";
-import { gradeGameLine, gradeProp, tallyLedger, type PlayResult } from "./gradePlay";
+import { gradeGameLine, gradeProp, gradeUfcMoneyline, tallyLedger, type PlayResult } from "./gradePlay";
 import type { PostedPlay } from "@/generated/prisma/client";
 
 /**
@@ -11,11 +11,14 @@ import type { PostedPlay } from "@/generated/prisma/client";
  * + unit P/L, every result shown (wins AND losses), plus the running all-time
  * ledger. This is the trust spine of a paid room; it never hides a loss.
  *
- * Correctness posture (matches the grader): only MLB is graded (game lines vs
- * final score, props vs the actual stat line). Non-MLB plays and true no-action
- * are voided out of the record. A prop whose game is final but whose game log
- * hasn't synced yet is left PENDING (not voided) so a later pass can settle it —
- * we never turn a sync lag into a fake loss or a premature void.
+ * Correctness posture (matches the grader): MLB (game lines vs final score,
+ * props vs the actual stat line) and UFC (moneyline vs the bout winner) are
+ * graded; other sports and true no-action are voided out of the record. A play
+ * whose event isn't final yet — an MLB game mid-play, a UFC bout not yet fought,
+ * a prop whose game log hasn't synced — is left PENDING (not voided) so a later
+ * pass settles it; we never turn a sync lag into a fake loss or a premature void.
+ * UFC plays also settle out-of-band via settlePendingUfcPlays (called from the
+ * UFC sync cron), since fight cards finish late and may miss the morning recap.
  *
  * Dormant until DISCORD_RESULTS_WEBHOOK_URL is set.
  */
@@ -65,6 +68,35 @@ async function settlePlay(id: string, result: PlayResult): Promise<void> {
   });
 }
 
+/** Settle one UFC moneyline play against its bout, or null if the fight isn't final yet (leave pending). */
+async function gradeUfcPlay(play: PostedPlay): Promise<PlayResult | null> {
+  const bout = await prisma.ufcBout.findUnique({
+    where: { id: play.matchId },
+    select: { status: true, winnerFighterId: true, redCornerFighterId: true, blueCornerFighterId: true },
+  });
+  if (!bout) return "void";
+  if (bout.status !== "completed") return null; // not fought yet — leave pending for a later pass
+  return gradeUfcMoneyline(play.side, bout.redCornerFighterId, bout.blueCornerFighterId, bout.winnerFighterId);
+}
+
+/**
+ * Settle every still-pending UFC play whose bout is now final — called from the
+ * UFC sync cron (backfill-ufc) so late fight-night results grade promptly,
+ * independent of the morning recap's single-date pass. Returns the count newly
+ * settled. The all-time ledger stays correct regardless of which pass grades a play.
+ */
+export async function settlePendingUfcPlays(): Promise<number> {
+  const pending = await prisma.postedPlay.findMany({ where: { sport: "ufc", gradedAt: null } });
+  let settled = 0;
+  for (const play of pending) {
+    const result = await gradeUfcPlay(play);
+    if (result === null) continue;
+    await settlePlay(play.id, result);
+    settled++;
+  }
+  return settled;
+}
+
 /** Settle every still-pending play for a date against final results. */
 async function gradePending(dateEt: string): Promise<number> {
   const pending = await prisma.postedPlay.findMany({
@@ -73,7 +105,15 @@ async function gradePending(dateEt: string): Promise<number> {
 
   let graded = 0;
   for (const play of pending) {
-    // Only MLB is gradeable today; everything else is no-action.
+    // UFC: settle against the bout winner (stays pending until the fight is final).
+    if (play.sport === "ufc") {
+      const result = await gradeUfcPlay(play);
+      if (result === null) continue; // not fought yet — leave pending
+      await settlePlay(play.id, result);
+      graded++;
+      continue;
+    }
+    // MLB is the only other gradeable sport; everything else is no-action.
     if (play.sport !== "mlb") {
       await settlePlay(play.id, "void");
       graded++;

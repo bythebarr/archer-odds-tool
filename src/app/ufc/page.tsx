@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FighterBadge } from "@/components/FighterBadge";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
+import { refreshUfcOddsOnView } from "@/lib/ufc/refreshOddsOnView";
+import { formatAmerican } from "@/lib/odds/americanOdds";
 
 // UFC events are ingested by a daily backfill cron, so both the upcoming and
 // recent lists change day to day — render per request rather than statically.
@@ -50,11 +52,17 @@ function BoutRow({ bout, upcoming = false }: { bout: UfcBoutSummary; upcoming?: 
           <span className="inline-flex items-center gap-1.5">
             <FighterBadge name={bout.red.name} imageUrl={bout.red.imageUrl} size={22} />
             <span className={redClass}>{bout.red.name}</span>
+            {bout.red.moneyline !== null ? (
+              <span className="font-mono text-xs text-muted-foreground">{formatAmerican(bout.red.moneyline)}</span>
+            ) : null}
           </span>
           <span className="text-xs text-muted-foreground">vs</span>
           <span className="inline-flex items-center gap-1.5">
             <FighterBadge name={bout.blue.name} imageUrl={bout.blue.imageUrl} size={22} />
             <span className={blueClass}>{bout.blue.name}</span>
+            {bout.blue.moneyline !== null ? (
+              <span className="font-mono text-xs text-muted-foreground">{formatAmerican(bout.blue.moneyline)}</span>
+            ) : null}
           </span>
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
@@ -101,6 +109,8 @@ export default async function UfcPage() {
   // Read-side self-heal for the upcoming feed (Hobby crons fire unreliably) —
   // backfills after the response when stale. See refreshUpcomingUfcOnView.
   refreshUpcomingUfcOnView();
+  // Same on-view refresh for the moneyline feed, so the list rows show live lines.
+  refreshUfcOddsOnView();
   const [upcoming, recent] = await Promise.all([listUpcomingUfcEvents(), listRecentUfcEvents()]);
 
   return (

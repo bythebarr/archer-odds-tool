@@ -5,37 +5,57 @@ const bout = {
   id: "b1",
   weightClass: "Lightweight",
   titleBout: false,
+  redId: "red-id",
   redName: "Red Fighter",
+  blueId: "blue-id",
   blueName: "Blue Fighter",
 };
 
-describe("pickFromBout", () => {
-  it("favors the higher-prob corner and reports its confidence", () => {
-    const play = pickFromBout(bout, 0.68, 0.32);
+describe("pickFromBout (Archer EV selection)", () => {
+  it("backs the higher-EV (value) side and reports its price/EV", () => {
+    // red 52.5% @ +100 → EV +5%; blue 47.5% @ -110 → EV ~-9.3%. Red is the value side.
+    const play = pickFromBout(bout, 0.525, 0.475, { priceAmerican: 100, bookKey: "draftkings" }, { priceAmerican: -110, bookKey: "fanduel" });
     expect(play).not.toBeNull();
+    expect(play!.side).toBe("red");
     expect(play!.pickName).toBe("Red Fighter");
+    expect(play!.pickFighterId).toBe("red-id");
     expect(play!.opponentName).toBe("Blue Fighter");
-    expect(play!.prob).toBe(0.68);
+    expect(play!.bestPrice).toBe(100);
+    expect(play!.bestBookName).toBe("draftkings");
+    expect(play!.archerEv).toBeCloseTo(0.05, 3);
   });
 
-  it("picks the blue corner when it's favored", () => {
-    const play = pickFromBout(bout, 0.35, 0.65);
+  it("backs the underdog when the model rates it above the market", () => {
+    // blue 52% @ +110 → EV ~+9.2% (the value); red 48% @ -140 → EV negative.
+    const play = pickFromBout(bout, 0.48, 0.52, { priceAmerican: -140, bookKey: "betmgm" }, { priceAmerican: 110, bookKey: "draftkings" });
+    expect(play!.side).toBe("blue");
     expect(play!.pickName).toBe("Blue Fighter");
-    expect(play!.prob).toBe(0.65);
+    expect(play!.bestPrice).toBe(110);
+    expect(play!.archerEv).toBeCloseTo(0.092, 2);
   });
 
-  it("drops coin flips below the confidence floor", () => {
-    expect(pickFromBout(bout, 0.55, 0.45)).toBeNull(); // 55% < default 0.60 floor
-    expect(pickFromBout(bout, 0.6, 0.4)).not.toBeNull(); // exactly at the floor qualifies
+  it("drops plays below the EV floor (no real edge)", () => {
+    // best side ~+1% EV, under the 3% floor.
+    expect(pickFromBout(bout, 0.505, 0.495, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" })).toBeNull();
   });
 
-  it("respects a custom confidence floor", () => {
-    expect(pickFromBout(bout, 0.68, 0.32, 0.7)).toBeNull();
-    expect(pickFromBout(bout, 0.72, 0.28, 0.7)).not.toBeNull();
+  it("drops plays above the miscalibration ceiling (+20%)", () => {
+    // red 70% @ +100 → EV +40%, almost certainly a model/data artifact.
+    expect(pickFromBout(bout, 0.7, 0.3, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" })).toBeNull();
   });
 
-  it("drops a bout the model couldn't price (null prob = thin history)", () => {
-    expect(pickFromBout(bout, null, null)).toBeNull();
-    expect(pickFromBout(bout, 0.7, null)).toBeNull();
+  it("prices the only side that has a line", () => {
+    const play = pickFromBout(bout, 0.525, 0.475, { priceAmerican: 100, bookKey: "dk" }, null);
+    expect(play!.side).toBe("red");
+    const play2 = pickFromBout(bout, 0.475, 0.525, null, { priceAmerican: 100, bookKey: "fd" });
+    expect(play2!.side).toBe("blue");
+  });
+
+  it("returns null when neither corner has a line (can't price it)", () => {
+    expect(pickFromBout(bout, 0.6, 0.4, null, null)).toBeNull();
+  });
+
+  it("returns null when the model couldn't price the bout (thin history)", () => {
+    expect(pickFromBout(bout, null, null, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" })).toBeNull();
   });
 });

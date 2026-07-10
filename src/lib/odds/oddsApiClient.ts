@@ -109,6 +109,20 @@ export async function fetchMlbOdds(
   return fetchOdds(MLB_SPORT_KEY, markets, ["us", "us2"]);
 }
 
+const UFC_SPORT_KEY = "mma_mixed_martial_arts";
+
+/**
+ * Fetches current UFC/MMA moneyline (h2h) odds across US regions. us2 is
+ * required for espnbet, same as MLB (see fetchMlbOdds). The Odds API only
+ * exposes h2h + totals for MMA — method-of-victory / round / distance props
+ * are rejected with INVALID_MARKET (confirmed live) — so phase 1 requests
+ * h2h only. The MMA feed mixes promotions (UFC + regional cards); callers
+ * match events to our ingested UFC bouts and drop the rest.
+ */
+export async function fetchUfcOdds(): Promise<FetchOddsResult> {
+  return fetchOdds(UFC_SPORT_KEY, ["h2h"], ["us", "us2"]);
+}
+
 export interface OddsApiSport {
   key: string;
   group: string;

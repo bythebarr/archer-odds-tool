@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { getBestLinesForBouts } from "./ufcOdds";
 
 /**
  * Read layer for the UFC UI. The fighter-math projection itself lives in
@@ -29,6 +30,8 @@ export interface UfcBoutCorner {
   name: string;
   record: string | null;
   imageUrl: string | null;
+  /** Best available moneyline (American) across allowlisted books — attached for upcoming lists only; null when no odds ingested yet. */
+  moneyline: number | null;
 }
 
 export interface UfcBoutSummary {
@@ -129,12 +132,14 @@ function mapEventSummary(event: SummaryEvent): UfcEventSummary {
         name: b.redCornerFighter.fullName,
         record: formatFighterRecord(b.redCornerFighter.recordWins, b.redCornerFighter.recordLosses, b.redCornerFighter.recordDraws),
         imageUrl: b.redCornerFighter.imageUrl,
+        moneyline: null,
       },
       blue: {
         id: b.blueCornerFighter.id,
         name: b.blueCornerFighter.fullName,
         record: formatFighterRecord(b.blueCornerFighter.recordWins, b.blueCornerFighter.recordLosses, b.blueCornerFighter.recordDraws),
         imageUrl: b.blueCornerFighter.imageUrl,
+        moneyline: null,
       },
     });
   }
@@ -210,7 +215,23 @@ export const listUpcomingUfcEvents = cache(async (limit = 8): Promise<UfcEventSu
     },
   });
 
-  return events.map(mapEventSummary);
+  const summaries = events.map(mapEventSummary);
+
+  // Attach best available moneyline per corner (one query for all bouts). Odds
+  // are ingested on-view (see refreshUfcOddsOnView) and may not exist yet — the
+  // rows stay null until the first poll matches this card.
+  const boutIds = summaries.flatMap((e) => e.bouts.map((b) => b.id));
+  const lines = await getBestLinesForBouts(boutIds);
+  for (const event of summaries) {
+    for (const bout of event.bouts) {
+      const line = lines.get(bout.id);
+      if (!line) continue;
+      bout.red.moneyline = line.red?.priceAmerican ?? null;
+      bout.blue.moneyline = line.blue?.priceAmerican ?? null;
+    }
+  }
+
+  return summaries;
 });
 
 export interface UfcFighterBio {

@@ -26,6 +26,21 @@ const STRENGTH_SENSITIVITY = 4;
 const PROB_CEILING = 0.8;
 const PROB_FLOOR = 1 - PROB_CEILING;
 
+/**
+ * Empirical calibration: shrink the combined logit toward 0 (a coin flip)
+ * before converting to a probability. The uncalibrated model is systematically
+ * OVERCONFIDENT — a lookahead-safe backtest over ~730 historical bouts had it
+ * predicting favorites at ~68% who actually won ~61%. A logit shrink of 0.5,
+ * fit on an older-fights train split and validated on a held-out newer split,
+ * closes that gap (calibrated ~59.5% vs 61.2% actual on the test set) so
+ * "Archer says 60%" means ~60% — the honesty the whole EV/#results product
+ * rests on. It removes overconfidence, not the (thin) underlying edge; retune
+ * as the model and sample grow — re-run `npm run backtest:ufc`
+ * (scripts/backtest-ufc-calibration.ts) and adjust if the re-fit shrink drifts
+ * from 1.0.
+ */
+const CALIBRATION_SHRINK = 0.5;
+
 function logistic(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
@@ -78,7 +93,10 @@ export function computeUfcWinProbability(matchup: UfcMatchup, now: Date = new Da
     commonOpponentAdjustment.logitShift +
     styleAdjustment.logitShift;
 
-  const rawProb = logistic(logit);
+  // Apply the empirical overconfidence calibration before the logistic (see
+  // CALIBRATION_SHRINK). An even matchup (logit 0) stays 0.5; everything else
+  // pulls toward the base rate.
+  const rawProb = logistic(logit * CALIBRATION_SHRINK);
   const fighterAProb = Math.min(Math.max(rawProb, PROB_FLOOR), PROB_CEILING);
 
   return {
