@@ -7,20 +7,44 @@ import { normalCdf } from "@/lib/stats/normal";
  * given total or spread line, so it can feed calculateEv the same way the
  * moneyline's Archer win probability already does.
  *
- * Each team's runs are treated as roughly Poisson (mean = variance); the
- * total is their sum and the spread margin is their difference, both
- * approximated as Normal rather than an exact Poisson-sum/Skellam
- * calculation — simpler and consistent with this project's "transparent
- * heuristic, not a fitted model" approach elsewhere in archer/, at the cost
- * of some tail-probability precision.
+ * The projected total (sum of the two teams' expected runs) and margin
+ * (their difference) are each modeled as Normal around that mean. The
+ * ORIGINAL v1 set the variance to the mean (a Poisson assumption). A
+ * lookahead-safe backtest over 1,206 games showed that is badly wrong: actual
+ * game totals scatter around the projection with a std of ~4.5 runs, not the
+ * ~1.7 that variance=mean implies — MLB scoring is heavily over-dispersed vs
+ * Poisson (big innings, blowouts, bullpen collapses), so the Poisson version
+ * was wildly overconfident on P(over) (it said 75% where reality was 66%).
+ * Swapping in the empirical variances below (validated on the same backtest:
+ * the 65%+ over bucket went from 9pt overconfident to spot-on, 70.9% predicted
+ * vs 71.0% actual) makes the total/spread probabilities honest. Held constant
+ * rather than scaled with the projected mean because the measured dispersion
+ * dwarfs any realistic mean and barely moves with it; revisit if a park/
+ * weather-aware runs model ever gives the mean real spread. Still a Normal
+ * approximation to a discrete, right-skewed outcome — some tail imprecision
+ * remains, consistent with archer/'s "transparent heuristic" approach.
  */
+
+/**
+ * Empirical variance of the actual game total around the Archer Runs
+ * projection (std ~4.53 runs), measured lookahead-safe over 1,206 games. See
+ * the file header — replaces the original Poisson variance=mean, which was
+ * ~2.6x too tight and made totals wildly overconfident.
+ */
+const TOTAL_RUNS_VARIANCE = 20.5;
+
+/**
+ * Empirical variance of the actual run margin around the projected margin
+ * (std ~4.64 runs), measured the same way. Replaces the original
+ * variance=projected-total for the spread's margin distribution.
+ */
+const MARGIN_RUNS_VARIANCE = 21.5;
 
 /** P(actual combined score > point). */
 export function archerTotalOverProb(point: number, runs: ExpectedRuns): number | null {
   if (runs.home === null || runs.away === null) return null;
   const mean = runs.home + runs.away;
-  const variance = mean;
-  return 1 - normalCdf(point, mean, variance);
+  return 1 - normalCdf(point, mean, TOTAL_RUNS_VARIANCE);
 }
 
 /** P(actual combined score < point) — the complement of archerTotalOverProb (a push at the line is essentially impossible since MLB totals are always X.5). */
@@ -44,10 +68,9 @@ export function archerSpreadCoverProb(
 ): number | null {
   if (runs.home === null || runs.away === null) return null;
   const mean = runs.home - runs.away;
-  const variance = runs.home + runs.away;
 
-  if (side === "home") return 1 - normalCdf(-point, mean, variance);
-  return normalCdf(point, mean, variance);
+  if (side === "home") return 1 - normalCdf(-point, mean, MARGIN_RUNS_VARIANCE);
+  return normalCdf(point, mean, MARGIN_RUNS_VARIANCE);
 }
 
 export interface ArcherWinProb {
