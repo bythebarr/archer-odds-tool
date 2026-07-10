@@ -1,0 +1,162 @@
+/**
+ * Erects the ARCHR Discord from serverPlan.ts — roles, categories, channels,
+ * permission locks, and pinned rules/disclaimer/welcome — in one pass against
+ * the Discord API. Idempotent: matches everything by name and creates only what
+ * is missing, so re-running after editing the plan just fills the gaps.
+ *
+ *   # inspect the plan, no token needed:
+ *   npx tsx scripts/discord/provision-server.ts --plan
+ *
+ *   # dry run against the real server (reads only, shows the diff):
+ *   DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... npx tsx scripts/discord/provision-server.ts
+ *
+ *   # actually build it:
+ *   DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... npx tsx scripts/discord/provision-server.ts --apply
+ *
+ * The bot must be in the server with Manage Roles + Manage Channels (Administrator
+ * is simplest). Role/channel names are the idempotency key — don't rename in the
+ * plan and expect a rename; it'll create a second one.
+ */
+
+import { SERVER_PLAN, overwritesFor, type ChannelPlan } from "./serverPlan";
+
+const TOKEN = process.env.DISCORD_BOT_TOKEN;
+const GUILD = process.env.DISCORD_GUILD_ID;
+const MODE = process.argv.includes("--apply") ? "apply" : process.argv.includes("--plan") ? "plan" : "dry";
+
+const CHANNEL_TEXT = 0;
+const CHANNEL_CATEGORY = 4;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface DiscordRole { id: string; name: string; }
+interface DiscordChannel { id: string; name: string; type: number; parent_id: string | null; }
+
+async function api<T = unknown>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const res = await fetch(`https://discord.com/api/v10${path}`, {
+    method,
+    headers: { Authorization: `Bot ${TOKEN}`, "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 429) {
+    const { retry_after } = (await res.json()) as { retry_after: number };
+    await sleep(retry_after * 1000 + 250);
+    return api(path, method, body);
+  }
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${await res.text()}`);
+  await sleep(350); // gentle global pacing under Discord's rate limits
+  return (res.status === 204 ? null : await res.json()) as T;
+}
+
+function printPlan() {
+  console.log("\nARCHR server plan\n=================\n");
+  console.log("ROLES:");
+  for (const r of SERVER_PLAN.roles) {
+    console.log(`  @${r.name.padEnd(14)} ${r.hoist ? "hoisted" : "       "}  #${r.color.toString(16).padStart(6, "0")}  — ${r.note}`);
+  }
+  for (const cat of SERVER_PLAN.categories) {
+    console.log(`\n${cat.name}   [${cat.visibility}]`);
+    for (const ch of cat.channels) {
+      const flags = [ch.readOnly ? "read-only" : "", ch.pinned ? `pins ${ch.pinned.length}` : ""].filter(Boolean).join(", ");
+      console.log(`  #${ch.name.padEnd(20)} ${flags}`);
+    }
+  }
+  const chCount = SERVER_PLAN.categories.reduce((n, c) => n + c.channels.length, 0);
+  console.log(`\n→ ${SERVER_PLAN.roles.length} roles, ${SERVER_PLAN.categories.length} categories, ${chCount} channels.\n`);
+}
+
+async function main() {
+  if (MODE === "plan") {
+    printPlan();
+    return;
+  }
+  if (!TOKEN || !GUILD) throw new Error("Set DISCORD_BOT_TOKEN and DISCORD_GUILD_ID (or use --plan).");
+
+  const apply = MODE === "apply";
+  console.log(`\nARCHR provisioner — ${apply ? "APPLY (writing)" : "DRY RUN (reads only)"}\n`);
+
+  // Existing state (idempotency keys are names).
+  const existingRoles = await api<DiscordRole[]>(`/guilds/${GUILD}/roles`);
+  const existingChannels = await api<DiscordChannel[]>(`/guilds/${GUILD}/channels`);
+  const roleByName = new Map(existingRoles.map((r) => [r.name, r]));
+  const chanByName = new Map(existingChannels.map((c) => [`${c.type}:${c.name}`, c]));
+
+  // 1) Roles.
+  for (const r of SERVER_PLAN.roles) {
+    if (roleByName.has(r.name)) {
+      console.log(`  role @${r.name} — exists`);
+      continue;
+    }
+    if (!apply) {
+      console.log(`  role @${r.name} — WOULD CREATE`);
+      continue;
+    }
+    const created = await api<DiscordRole>(`/guilds/${GUILD}/roles`, "POST", {
+      name: r.name,
+      color: r.color,
+      hoist: r.hoist,
+      permissions: "0",
+    });
+    roleByName.set(r.name, created);
+    console.log(`  role @${r.name} — created`);
+  }
+
+  const roleId = (name: string) => roleByName.get(name)?.id ?? GUILD; // fall back to @everyone (=guild id)
+  const everyoneId = GUILD;
+
+  // 2) Categories + their channels.
+  for (const cat of SERVER_PLAN.categories) {
+    let parent = chanByName.get(`${CHANNEL_CATEGORY}:${cat.name}`);
+    if (!parent) {
+      if (!apply) {
+        console.log(`\n  category ${cat.name} — WOULD CREATE`);
+      } else {
+        parent = await api<DiscordChannel>(`/guilds/${GUILD}/channels`, "POST", {
+          name: cat.name,
+          type: CHANNEL_CATEGORY,
+          permission_overwrites: overwritesFor(cat.visibility, false, everyoneId, roleId),
+        });
+        chanByName.set(`${CHANNEL_CATEGORY}:${cat.name}`, parent);
+        console.log(`\n  category ${cat.name} — created`);
+      }
+    } else {
+      console.log(`\n  category ${cat.name} — exists`);
+    }
+
+    for (const ch of cat.channels) {
+      if (chanByName.has(`${CHANNEL_TEXT}:${ch.name}`)) {
+        console.log(`    #${ch.name} — exists`);
+        continue;
+      }
+      if (!apply) {
+        console.log(`    #${ch.name} — WOULD CREATE${ch.readOnly ? " (read-only)" : ""}${ch.pinned ? " + pin" : ""}`);
+        continue;
+      }
+      const created = await api<DiscordChannel>(`/guilds/${GUILD}/channels`, "POST", {
+        name: ch.name,
+        type: CHANNEL_TEXT,
+        topic: ch.topic,
+        parent_id: parent!.id,
+        permission_overwrites: overwritesFor(cat.visibility, Boolean(ch.readOnly), everyoneId, roleId),
+      });
+      chanByName.set(`${CHANNEL_TEXT}:${ch.name}`, created);
+      console.log(`    #${ch.name} — created`);
+      await postPins(created.id, ch);
+    }
+  }
+
+  console.log(`\n${apply ? "✓ Provisioning complete." : "Dry run complete — re-run with --apply to build."}\n`);
+}
+
+async function postPins(channelId: string, ch: ChannelPlan) {
+  for (const content of ch.pinned ?? []) {
+    const msg = await api<{ id: string }>(`/channels/${channelId}/messages`, "POST", { content });
+    await api(`/channels/${channelId}/pins/${msg.id}`, "PUT");
+    console.log(`      pinned a message in #${ch.name}`);
+  }
+}
+
+main().catch((err) => {
+  console.error("\n✗", err instanceof Error ? err.message : err, "\n");
+  process.exit(1);
+});
