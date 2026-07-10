@@ -4,6 +4,7 @@ import { formatEv } from "@/lib/odds/format";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
+import { getUfcBestPlays, type UfcBestPlay, type UfcCard } from "./ufcBestPlays";
 import type { Sport, MarketType } from "@/generated/prisma/client";
 
 /**
@@ -48,12 +49,15 @@ const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
 /** ARCHR accent green (matches the app's --accent), as a Discord embed color int. */
 const ARCHR_GREEN = 0x06996b;
+/** UFC fight-night red — visually separates the fighter-math section from the +EV card. */
+const UFC_RED = 0xd20a0a;
 
 export interface DiscordPostResult {
   posted: boolean;
   reason?: string;
   premiumCount?: number;
   freePosted?: boolean;
+  ufcCount?: number;
 }
 
 function tagFor(p: OddsPlay): string {
@@ -96,6 +100,36 @@ function buildDescription(picks: OddsPlay[]): string {
   }
   if (shown < lines.length) out += `\n_…+${lines.length - shown} more on the board._`;
   return out;
+}
+
+/** e.g. 🏆 **Islam Makhachev** over Arman Tsarukyan · 68% fighter-math */
+function ufcPlayLine(p: UfcBestPlay): string {
+  const marker = p.titleBout ? "🏆 " : "";
+  return `${marker}**${p.pickName}** over ${p.opponentName} · ${Math.round(p.prob * 100)}% fighter-math`;
+}
+
+/** UFC event date → "Sat Jul 12" in ET (mirrors the /ufc list's formatter). */
+function prettyEventDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(date);
+}
+
+/**
+ * The fight-night embed: fighter-math's best leans on the next card. A model
+ * lens with a confidence %, not +EV (UFC has no odds) — see ufcBestPlays.ts.
+ */
+function buildUfcEmbed(card: UfcCard) {
+  return {
+    title: `🥊 Fight Night — ${card.eventTitle} · ${prettyEventDate(card.eventDate)}`,
+    url: `${SITE_URL}/ufc`,
+    description: card.plays.map(ufcPlayLine).join("\n"),
+    color: UFC_RED,
+    footer: { text: RESEARCH_FOOTER },
+  };
 }
 
 /** YYYY-MM-DD → "Jul 9" (avoids Date parsing/tz drift on a plain ET date string). */
@@ -178,6 +212,16 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   const label = prettyDate(dateEt);
   const description = buildDescription(picks);
 
+  // Fight-night leans from the fighter-math model — a second embed, only when a
+  // UFC card is imminent (getUfcBestPlays returns null otherwise). Best-effort:
+  // a UFC-side failure must not block the MLB card that's ready to post.
+  let ufcCard: UfcCard | null = null;
+  try {
+    ufcCard = await getUfcBestPlays();
+  } catch (err) {
+    console.error("getUfcBestPlays failed (posting MLB card without it):", err);
+  }
+
   await postWebhook(premiumUrl, {
     username: "Archer",
     embeds: [
@@ -188,6 +232,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
         color: ARCHR_GREEN,
         footer: { text: RESEARCH_FOOTER },
       },
+      ...(ufcCard ? [buildUfcEmbed(ufcCard)] : []),
     ],
   });
 
@@ -200,19 +245,25 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   }
 
   // Free channel: a single lean as the funnel tease — selection only, no EV,
-  // no best book. The value (the number + where to get it) stays behind the paywall.
+  // no best book. The value (the number + where to get it) stays behind the
+  // paywall. Prefer the top MLB play; on an MLB-dry fight day, tease the top
+  // UFC lean instead so the funnel still fires when there's a card to sell.
   let freePosted = false;
   const freeUrl = process.env.DISCORD_FREE_WEBHOOK_URL;
-  if (freeUrl && picks.length) {
-    const top = picks[0];
+  const freeMlb = picks[0];
+  const freeUfc = ufcCard?.plays[0];
+  if (freeUrl && (freeMlb || freeUfc)) {
+    const lean = freeMlb
+      ? `\`${tagFor(freeMlb)}\` **${freeMlb.selectionLabel}**`
+      : `\`UFC\` **${freeUfc!.pickName}** over ${freeUfc!.opponentName}`;
     await postWebhook(freeUrl, {
       username: "Archer",
       embeds: [
         {
           title: `Free lean · ${label}`,
           description:
-            `\`${tagFor(top)}\` **${top.selectionLabel}**\n\n` +
-            "The full card — every +EV play with the number and best book — is in premium. 🔒",
+            `${lean}\n\n` +
+            "The full card — every play with the number and best book — is in premium. 🔒",
           color: ARCHR_GREEN,
           footer: { text: RESEARCH_FOOTER },
         },
@@ -221,5 +272,5 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
     freePosted = true;
   }
 
-  return { posted: true, premiumCount: picks.length, freePosted };
+  return { posted: true, premiumCount: picks.length, freePosted, ufcCount: ufcCard?.plays.length ?? 0 };
 }
