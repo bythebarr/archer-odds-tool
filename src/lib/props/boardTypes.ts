@@ -1,4 +1,5 @@
 import type { PropDirection, PropHitRateResult } from "./hitRate";
+import type { PropProjection } from "./projection";
 
 /**
  * Sport-agnostic prop-board contract. Every sport plugs in a SportPropConfig
@@ -41,6 +42,13 @@ export interface PropLineCells {
   line: number;
   /** columnKey -> hit rate (null = no sample for that window/split). */
   cells: Record<string, PropHitRateResult | null>;
+  /**
+   * Archer Prop Projection: the calibrated next-game P(clears the line) for
+   * this line (see props/projection.ts), the honest counterweight to the raw
+   * trailing hit-rate cells. Null when there's no season sample to project
+   * from, or when the sport's builder doesn't compute one yet.
+   */
+  projection?: PropProjection | null;
 }
 
 /** One board row = one entity's prop for the active stat, across all its lines. */
