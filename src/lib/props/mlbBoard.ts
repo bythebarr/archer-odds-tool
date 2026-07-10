@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { etDayBoundsUtc } from "@/lib/dateEt";
 import { getRecentTeamPlayersBatch } from "@/lib/queries/props";
 import { tallyPropHits, type PropHitRateResult } from "./hitRate";
+import { projectPropHit, pooledBaseRate } from "./projection";
 import type { PropBoardColumnDef, PropBoardRow, PropLineCells, PropStatDef, PropView, SportPropConfig } from "./boardTypes";
 
 /** A stat with the PlayerGameLog column it reads. */
@@ -128,10 +129,49 @@ async function seasonLogsByPlayer(playerIds: string[]): Promise<Map<string, Game
   return byPlayer;
 }
 
-/** Best available season hit rate for a row, used for the server's default ordering. */
+/**
+ * Attach the Archer Prop Projection to every line cell, IN PLACE. Needs the
+ * whole population at once (not one entity at a time) because the projection
+ * regresses each player toward the field's base rate at that exact line — so we
+ * pool every row's season sample for line index i, then project each row's
+ * line[i] against it. The board's lines all share the stat's standardLines, so
+ * line index i means the same number across every row. (See props/projection.ts
+ * for why the raw trailing rate needed this in the first place.)
+ */
+function attachProjections(rows: PropBoardRow[], lineCount: number): void {
+  for (let i = 0; i < lineCount; i++) {
+    const pool = rows
+      .map((r) => r.lines[i]?.cells.season)
+      .filter((s): s is NonNullable<typeof s> => !!s)
+      .map((s) => ({ seasonHits: s.hits, seasonSample: s.sampleSize }));
+    const base = pooledBaseRate(pool);
+    for (const row of rows) {
+      const cell = row.lines[i];
+      if (!cell) continue;
+      const season = cell.cells.season;
+      cell.projection = season
+        ? projectPropHit({
+            seasonHits: season.hits,
+            seasonSample: season.sampleSize,
+            // L10 is the recency window the projection was fit on; every MLB view
+            // exposes it. Fall back to null (no tilt) if a view ever drops it.
+            recentRate: cell.cells.l10?.hitRate ?? null,
+            baseRate: base,
+          })
+        : null;
+    }
+  }
+}
+
+/**
+ * Server's default ordering: the Archer Prop Projection at the mid line — the
+ * honest, backtested number, NOT the raw season/L10 rate (which the backtest
+ * showed overstates hot players). Falls back to the raw season rate only if no
+ * projection exists (no sample).
+ */
 function defaultRank(row: PropBoardRow): number {
   const mid = row.lines[Math.floor(row.lines.length / 2)] ?? row.lines[0];
-  return mid?.cells.season?.hitRate ?? -1;
+  return mid?.projection?.probability ?? mid?.cells.season?.hitRate ?? -1;
 }
 
 interface Candidate {
@@ -168,6 +208,7 @@ function buildRows(
       ev: null,
     });
   }
+  attachProjections(rows, stat.standardLines.length);
   rows.sort((a, b) => defaultRank(b) - defaultRank(a));
   return rows;
 }

@@ -6,6 +6,7 @@ import { Logo } from "@/components/Logo";
 import { InfoTip } from "@/components/InfoTip";
 import type { PropBoard as PropBoardData, PropBoardRow, PropLineCells } from "@/lib/props/boardTypes";
 import type { PropHitRateResult } from "@/lib/props/hitRate";
+import type { PropProjection } from "@/lib/props/projection";
 import type { FeedFreshness } from "@/lib/freshness";
 import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
@@ -41,6 +42,34 @@ function RateCell({ result }: { result: PropHitRateResult | null | undefined }) 
   );
 }
 
+/** Color the projection by EDGE over the field — that's the signal, not the raw %. */
+function projClass(edge: number | null): string {
+  if (edge === null) return "text-muted-foreground/50";
+  if (edge >= 0.08) return "text-emerald-600 dark:text-emerald-400 font-semibold";
+  if (edge >= 0.03) return "text-foreground font-medium";
+  if (edge <= -0.03) return "text-rose-500/80 dark:text-rose-400/80";
+  return "text-muted-foreground";
+}
+
+/** The Archer Prop Projection cell: calibrated next-game probability + edge vs the field. */
+function ProjCell({ projection }: { projection: PropProjection | null | undefined }) {
+  if (!projection) {
+    return <span className="tabular-nums text-muted-foreground/50">—</span>;
+  }
+  const edge = projection.edgeVsBase;
+  return (
+    <span className="inline-flex flex-col items-end leading-tight">
+      <span className={`tabular-nums text-sm ${projClass(edge)}`}>{Math.round(projection.probability * 100)}%</span>
+      <span className="tabular-nums text-[10px] text-muted-foreground/70">
+        {edge >= 0 ? "+" : ""}
+        {Math.round(edge * 100)} vs field
+      </span>
+    </span>
+  );
+}
+
+const PROJ_SORT_KEY = "__proj";
+
 /**
  * `basePath`/`extraQuery` let the same board render under different routes: it
  * lives standalone at `/props` (the defaults) and embedded as the Slate's
@@ -64,13 +93,18 @@ export function PropBoard({
   const [activeLine, setActiveLine] = useState<number>(
     board.lines[Math.floor(board.lines.length / 2)] ?? board.lines[0] ?? 0.5
   );
-  const [sortCol, setSortCol] = useState<string>("l10");
+  // Default to the honest number (Archer Projection), not raw L10 — the whole
+  // point of the projection is that trailing hit-rate overstates hot players.
+  const [sortCol, setSortCol] = useState<string>(PROJ_SORT_KEY);
 
   const rows = useMemo(() => {
-    const withCells = board.rows.map((row) => ({ row, cells: cellsForLine(row, activeLine)?.cells }));
+    const withCells = board.rows.map((row) => {
+      const line = cellsForLine(row, activeLine);
+      return { row, cells: line?.cells, projection: line?.projection ?? null };
+    });
     return withCells.sort((a, b) => {
-      const av = pct(a.cells?.[sortCol]);
-      const bv = pct(b.cells?.[sortCol]);
+      const av = sortCol === PROJ_SORT_KEY ? a.projection?.probability ?? null : pct(a.cells?.[sortCol]);
+      const bv = sortCol === PROJ_SORT_KEY ? b.projection?.probability ?? null : pct(b.cells?.[sortCol]);
       if (av === null && bv === null) return 0;
       if (av === null) return 1;
       if (bv === null) return -1;
@@ -175,6 +209,18 @@ export function PropBoard({
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="py-2 pr-2 text-left font-medium">Player</th>
+                <th
+                  className="px-2 py-2 font-semibold text-foreground"
+                  title="Archer Projection: calibrated next-game hit probability (regresses hot/cold streaks toward true form) + edge vs the field. The honest number — backtested, unlike raw recent hit-rate."
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSortCol(PROJ_SORT_KEY)}
+                    className={`hover:text-foreground ${sortCol === PROJ_SORT_KEY ? "text-foreground underline decoration-dotted underline-offset-4" : ""}`}
+                  >
+                    Proj
+                  </button>
+                </th>
                 {board.columns.map((c) => (
                   <th key={c.key} className="px-2 py-2 font-medium">
                     <button
@@ -192,7 +238,7 @@ export function PropBoard({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ row, cells }, i) => (
+              {rows.map(({ row, cells, projection }, i) => (
                 <tr key={row.id} className="border-b border-border/40 hover:bg-accent/40">
                   <td className="py-2 pr-2 text-left">
                     <div className="flex items-center gap-2.5">
@@ -208,6 +254,9 @@ export function PropBoard({
                         {row.meta && <span className="text-[11px] text-muted-foreground">{row.meta}</span>}
                       </span>
                     </div>
+                  </td>
+                  <td className="px-2 py-2">
+                    <ProjCell projection={projection} />
                   </td>
                   {board.columns.map((c) => (
                     <td key={c.key} className="px-2 py-2">
