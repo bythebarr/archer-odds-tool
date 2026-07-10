@@ -1,5 +1,5 @@
 import { verifyKey, InteractionType, InteractionResponseType } from "discord-interactions";
-import { runBetCheck } from "@/lib/discord/betCheck";
+import { runBetCheck, type Market, type TotalSide } from "@/lib/discord/betCheck";
 
 /**
  * Discord interactions endpoint — the bot's request target (set as the app's
@@ -47,12 +47,19 @@ export async function POST(request: Request) {
     interaction.data?.name === "betcheck"
   ) {
     const options: Array<{ name: string; value: string }> = interaction.data.options ?? [];
-    const team = options.find((o) => o.name === "team")?.value ?? "";
-    const price = options.find((o) => o.name === "price")?.value ?? "";
+    const opt = (name: string) => options.find((o) => o.name === name)?.value;
+    const market = (opt("market") as Market | undefined) ?? "ml";
+    const side = opt("side") as TotalSide | undefined;
 
     let content: string;
     try {
-      const result = await runBetCheck(team, price);
+      const result = await runBetCheck({
+        market,
+        team: opt("team") ?? "",
+        price: opt("price") ?? "",
+        side,
+        line: opt("line"),
+      });
       content = result.message;
     } catch (err) {
       console.error("betcheck failed:", err);
