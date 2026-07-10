@@ -1,9 +1,9 @@
 import { listGamesWithLinesForDate, type GameWithLines } from "@/lib/queries/games";
 import { marketConsensus } from "@/lib/odds/lineEconomics";
-import { calculateEv } from "@/lib/odds/devig";
+import { calculateEv, type ConsensusFairProbability } from "@/lib/odds/devig";
 import { todayEt } from "@/lib/dateEt";
 import { decimalToAmerican, formatAmerican, americanToImpliedProbability } from "@/lib/odds/americanOdds";
-import { formatEv } from "@/lib/odds/format";
+import { formatEv, formatPoint } from "@/lib/odds/format";
 
 /**
  * "Bet Check" — grade a member's own moneyline bet against Archer's fair-value
@@ -16,8 +16,9 @@ import { formatEv } from "@/lib/odds/format";
  * clause (grade value, don't shop prices), and the interaction reply is
  * ephemeral (asker-only), so it never becomes a public odds board.
  *
- * v1 scope: MLB moneyline. Spreads/totals need a line param + point matching —
- * a clean follow-up (the consensus math already generalizes via marketConsensus).
+ * Covers MLB moneyline, spread (runline), and totals — all graded at the game's
+ * main (modal) line. An explicit alt-line point is noted but still graded at the
+ * main line for now (exact alt grading is a follow-up).
  */
 
 export type BetVerdict = "sharp" | "fair" | "poor";
@@ -101,57 +102,131 @@ const VERDICT_LINE: Record<BetVerdict, string> = {
   poor: "⚠️ **Poor value** — you're paying over the model's fair price.",
 };
 
+export type Market = "ml" | "spread" | "total";
+export type TotalSide = "over" | "under";
+
+/** Our command markets → the odds MarketType marketConsensus expects. */
+const MARKET_TYPE = { ml: "h2h", spread: "spreads", total: "totals" } as const;
+
+export interface BetCheckParams {
+  market: Market;
+  /** Team you're betting — identifies the game (and the side, for ml/spread). */
+  team: string;
+  /** American odds you're getting, as typed ("-120", "+105"). */
+  price: string;
+  /** over/under — required for totals, ignored otherwise. */
+  side?: TotalSide;
+  /** The point you took (spread/total), optional — informational only in v1. */
+  line?: string;
+}
+
 /**
- * Grade a moneyline bet. Pure over the fair probability so the verdict/format is
- * testable without a DB; runBetCheck does the fetch+match then calls this.
+ * Grade a bet against its fair probability. Pure over `fairProb` + a display
+ * `selection`, so every market shares one verdict/format and it's testable
+ * without a DB. `note` carries any caveat (e.g. graded at the main line).
  */
-export function gradeMoneyline(teamName: string, price: number, fairProb: number): BetCheckResult {
+export function gradeBet(selection: string, price: number, fairProb: number, note = ""): BetCheckResult {
   const ev = calculateEv(fairProb, price);
   const verdict = verdictFor(ev);
   const fairPrice = decimalToAmerican(1 / fairProb);
   const impliedPct = (americanToImpliedProbability(price) * 100).toFixed(1);
   const fairPct = (fairProb * 100).toFixed(1);
   const message =
-    `🧮 **Bet Check** — ${teamName} ML @ ${formatAmerican(price)}\n\n` +
+    `🧮 **Bet Check** — ${selection} @ ${formatAmerican(price)}\n\n` +
     `${VERDICT_LINE[verdict]}\n` +
-    `• Archer fair price: ~${formatAmerican(fairPrice)} (${fairPct}% to win)\n` +
+    `• Archer fair price: ~${formatAmerican(fairPrice)} (${fairPct}% to hit)\n` +
     `• Your price: ${formatAmerican(price)} (${impliedPct}% implied)\n` +
     `• Edge: **${formatEv(ev)} EV**` +
+    (note ? `\n${note}` : "") +
     FOOTER;
   return { ok: true, message };
 }
 
+/** True when the user's typed point is (magnitude-wise) the game's main line. */
+function isMainLine(input: string | undefined, modalPoint: number | null): boolean {
+  if (input == null || modalPoint === null) return true; // nothing to compare = treat as main
+  const n = Number(input.replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) && Math.abs(n - Math.abs(modalPoint)) < 1e-9;
+}
+
+function altNote(mainLabel: string): string {
+  return `_Graded at the main line (${mainLabel}) — if you took a different number, read this as a reference; exact alt-line grading is coming._`;
+}
+
+export interface Resolved {
+  fairProb: number | null;
+  selection: string;
+  note: string;
+}
+
+/**
+ * Resolve a market's fair probability + display label from a game's consensus.
+ * Pure (fake a consensus to test it): SIDE_A is home/over, SIDE_B is away/under,
+ * and a spread's point flips sign for the away side. Returns an `error` string
+ * for a missing totals side.
+ */
+export function resolveSelection(
+  params: Pick<BetCheckParams, "market" | "side" | "line">,
+  matchSide: "home" | "away",
+  teamName: string,
+  gameLabel: string,
+  consensus: Pick<ConsensusFairProbability, "fairProbA" | "fairProbB" | "modalPoint">
+): Resolved | { error: string } {
+  const { fairProbA, fairProbB, modalPoint } = consensus;
+
+  if (params.market === "total") {
+    if (!params.side) return { error: "For a total, choose **over** or **under**." };
+    const fairProb = params.side === "over" ? fairProbA : fairProbB;
+    const label = `${params.side === "over" ? "Over" : "Under"}${modalPoint !== null ? ` ${modalPoint}` : ""} (${gameLabel})`;
+    const note = isMainLine(params.line, modalPoint) ? "" : altNote(modalPoint !== null ? String(modalPoint) : "the posted total");
+    return { fairProb, selection: label, note };
+  }
+
+  if (params.market === "spread") {
+    const fairProb = matchSide === "home" ? fairProbA : fairProbB;
+    const teamPoint = modalPoint === null ? null : matchSide === "home" ? modalPoint : -modalPoint;
+    const label = `${teamName}${formatPoint(teamPoint, "spreads")}`;
+    const note = isMainLine(params.line, teamPoint) ? "" : altNote(teamPoint !== null ? formatPoint(teamPoint, "spreads").trim() : "the posted line");
+    return { fairProb, selection: label, note };
+  }
+
+  // moneyline
+  const fairProb = matchSide === "home" ? fairProbA : fairProbB;
+  return { fairProb, selection: `${teamName} ML`, note: "" };
+}
+
 /**
  * Full Bet Check for a slash command: parse, find today's MLB game for the team,
- * fair-price the moneyline, return a member-facing verdict string. Any failure
- * comes back as a friendly `ok:false` message (never throws at the caller).
+ * fair-price the chosen market, return a member-facing verdict string. Any
+ * failure comes back as a friendly `ok:false` message (never throws).
  */
-export async function runBetCheck(
-  teamInput: string,
-  priceInput: string,
-  dateEt: string = todayEt()
-): Promise<BetCheckResult> {
-  const price = parseAmericanPrice(priceInput);
+export async function runBetCheck(params: BetCheckParams, dateEt: string = todayEt()): Promise<BetCheckResult> {
+  const price = parseAmericanPrice(params.price);
   if (price === null) {
-    return { ok: false, message: `"${priceInput}" isn't a valid American price. Try something like -120 or +105.` };
+    return { ok: false, message: `"${params.price}" isn't a valid American price. Try something like -120 or +105.` };
   }
 
   const games = await listGamesWithLinesForDate(dateEt);
-  const result = matchGame(games, teamInput);
+  const result = matchGame(games, params.team);
   if ("error" in result) {
     const msg =
       result.error === "none"
-        ? `No MLB game found today for "${teamInput}". Check the spelling or try the team's city (e.g. "Yankees" or "NYY").`
-        : `"${teamInput}" matched more than one game today — be more specific (use the team name or abbreviation).`;
+        ? `No MLB game found today for "${params.team}". Check the spelling or try the team's city (e.g. "Yankees" or "NYY").`
+        : `"${params.team}" matched more than one game today — be more specific (use the team name or abbreviation).`;
     return { ok: false, message: msg };
   }
 
   const { match } = result;
-  const consensus = marketConsensus(match.game.lines, "h2h");
-  const fairProb = match.side === "home" ? consensus.fairProbA : consensus.fairProbB;
-  if (fairProb === null) {
-    return { ok: false, message: `Not enough book coverage to fair-price ${match.teamName} yet — check back closer to game time.` };
+  const g = match.game.game;
+  const gameLabel = `${g.awayTeam.abbreviation}/${g.homeTeam.abbreviation}`;
+  const consensus = marketConsensus(match.game.lines, MARKET_TYPE[params.market]);
+
+  const resolved = resolveSelection(params, match.side, match.teamName, gameLabel, consensus);
+  if ("error" in resolved) return { ok: false, message: resolved.error };
+  if (resolved.fairProb === null) {
+    const marketName = params.market === "ml" ? "moneyline" : params.market;
+    return { ok: false, message: `Not enough book coverage to fair-price that ${marketName} yet — check back closer to game time.` };
   }
 
-  return gradeMoneyline(match.teamName, price, fairProb);
+  return gradeBet(resolved.selection, price, resolved.fairProb, resolved.note);
 }

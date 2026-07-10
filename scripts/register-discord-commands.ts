@@ -19,8 +19,9 @@ const STRING_OPTION = 3;
 const commands = [
   {
     name: "betcheck",
-    description: "Grade a bet's value vs Archer's fair-value model (MLB moneyline)",
+    description: "Grade a bet's value vs Archer's fair-value model (MLB)",
     type: 1, // CHAT_INPUT
+    // Discord requires all `required` options before optional ones.
     options: [
       {
         type: STRING_OPTION,
@@ -33,6 +34,33 @@ const commands = [
         name: "price",
         description: "American odds you're getting (e.g. -120 or +105)",
         required: true,
+      },
+      {
+        type: STRING_OPTION,
+        name: "market",
+        description: "Moneyline (default), spread, or total",
+        required: false,
+        choices: [
+          { name: "Moneyline", value: "ml" },
+          { name: "Spread (runline)", value: "spread" },
+          { name: "Total (over/under)", value: "total" },
+        ],
+      },
+      {
+        type: STRING_OPTION,
+        name: "side",
+        description: "For totals: over or under",
+        required: false,
+        choices: [
+          { name: "Over", value: "over" },
+          { name: "Under", value: "under" },
+        ],
+      },
+      {
+        type: STRING_OPTION,
+        name: "line",
+        description: "The point you took (spread/total), e.g. -1.5 or 8.5",
+        required: false,
       },
     ],
   },
