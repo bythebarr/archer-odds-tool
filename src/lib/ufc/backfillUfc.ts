@@ -192,20 +192,6 @@ async function ingestEvent(
         statsFetchedAt: boutHasStats ? new Date() : null,
       },
       update: {
-        // Corners + card placement are mutable on an upcoming card: a fighter
-        // can withdraw and be replaced, a bout can be re-slotted or promoted to
-        // a title fight — all under the SAME citoBoutId. These were create-only,
-        // which froze the original matchup and left stale fighters on the card
-        // ("some fighters don't line up"). Re-assert them from the latest
-        // payload every sync; for settled/historical bouts they never change,
-        // so this is a no-op there. (winnerFighterId already recomputes from the
-        // current corners below, so refreshing the corners keeps them coherent.)
-        redCornerFighterId: redFighterId,
-        blueCornerFighterId: blueFighterId,
-        weightClass: citoBout.weightClass,
-        titleBout: citoBout.titleBout,
-        cardSection: citoBout.cardSection,
-        boutOrder: citoBout.boutOrder,
         status: citoBout.status,
         winnerFighterId,
         method: citoBout.method,
