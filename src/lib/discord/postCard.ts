@@ -225,6 +225,55 @@ async function recordUfcPostedPlays(card: UfcCard): Promise<void> {
   );
 }
 
+export interface DailyCardPreview {
+  label: string;
+  /** Rendered premium-embed body — exactly what would post to DISCORD_WEBHOOK_URL. */
+  premium: string;
+  /** Rendered fight-night embed body, or null when no UFC card is imminent. */
+  ufc: string | null;
+  ufcTitle: string | null;
+  premiumCount: number;
+  ufcCount: number;
+  /** Plays the model liked but withheld as above-ceiling (likely miscalibration). */
+  withheldCount: number;
+}
+
+/**
+ * Assemble the daily card EXACTLY as postDailyCardToDiscord would — same pool,
+ * same MODEL-lens selection, same believability band, same formatters — but
+ * post nothing and record nothing. The dry-run behind a "show me what it'd
+ * post" preview (and a handy test/debug hook), so the card can be inspected
+ * before a webhook is ever wired.
+ */
+export async function previewDailyCard(dateEt: string = todayEt()): Promise<DailyCardPreview> {
+  const { plays } = await getOddsPoolForDate(dateEt);
+  const modelPlays = plays.filter((p): p is OddsPlay & { modelEv: number } => p.modelEv !== null);
+  const withheld = modelPlays.filter((p) => p.modelEv > MAX_ARCHER_EV);
+  const picks = modelPlays
+    .filter((p) => p.modelEv >= MIN_ARCHER_EV && p.modelEv <= MAX_ARCHER_EV)
+    .sort((a, b) => b.modelEv - a.modelEv)
+    .slice(0, MAX_PLAYS);
+
+  let ufcCard: UfcCard | null = null;
+  try {
+    await ensureUfcOddsFresh();
+    ufcCard = await getUfcBestPlays();
+  } catch {
+    // Best-effort, mirrors the poster: a UFC-side failure just drops that embed.
+  }
+  const ufcEmbed = ufcCard ? buildUfcEmbed(ufcCard) : null;
+
+  return {
+    label: prettyDate(dateEt),
+    premium: buildDescription(picks),
+    ufc: ufcEmbed?.description ?? null,
+    ufcTitle: ufcEmbed?.title ?? null,
+    premiumCount: picks.length,
+    ufcCount: ufcCard?.plays.length ?? 0,
+    withheldCount: withheld.length,
+  };
+}
+
 async function postWebhook(url: string, body: unknown): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
