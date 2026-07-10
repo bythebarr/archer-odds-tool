@@ -14,7 +14,8 @@
     "sync:pitchers": "tsx scripts/sync-pitchers.ts",
     "poll:odds": "tsx scripts/poll-odds.ts",
     "poll:odds:tennis": "tsx scripts/poll-odds-tennis.ts",
-    "poll:odds:soccer": "tsx scripts/poll-odds-soccer.ts"
+    "poll:odds:soccer": "tsx scripts/poll-odds-soccer.ts",
+    "backtest:ufc": "tsx scripts/backtest-ufc-calibration.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -61,7 +61,10 @@ function inferResult(winnerFighterId: string | null, fighterId: string, method: 
  * fighter's takedown defense is derived from what opponents landed against
  * them, not from the fighter's own row).
  */
-export async function getUfcFightHistory(fighterId: string): Promise<UfcFighterHistory | null> {
+export async function getUfcFightHistory(
+  fighterId: string,
+  asOf?: Date
+): Promise<UfcFighterHistory | null> {
   const fighter = await prisma.ufcFighter.findUnique({ where: { id: fighterId } });
   if (!fighter) return null;
 
@@ -74,7 +77,11 @@ export async function getUfcFightHistory(fighterId: string): Promise<UfcFighterH
       // sorts to the top of the history (wrong date + wrong opponent) and
       // double-counts into the fighter-math projections. Matches the same
       // filter listRecentUfcEvents/mapEventSummary rely on in ufcEvents.ts.
-      event: { hasStats: true },
+      //
+      // asOf (backtesting only): restrict to bouts BEFORE a target date so a
+      // historical projection uses only data that existed pre-fight — no
+      // lookahead leakage. Omitted in production (full history).
+      event: { hasStats: true, ...(asOf ? { eventDate: { lt: asOf } } : {}) },
       OR: [{ redCornerFighterId: fighterId }, { blueCornerFighterId: fighterId }],
     },
     include: {
@@ -118,15 +125,20 @@ export async function getUfcFightHistory(fighterId: string): Promise<UfcFighterH
  * also fought Z, who B fought") without pulling full fight histories for
  * every tangential fighter.
  */
-export async function getCrossBouts(groupOne: string[], groupTwo: string[]): Promise<CrossBout[]> {
+export async function getCrossBouts(
+  groupOne: string[],
+  groupTwo: string[],
+  asOf?: Date
+): Promise<CrossBout[]> {
   if (groupOne.length === 0 || groupTwo.length === 0) return [];
 
   const bouts = await prisma.ufcBout.findMany({
     where: {
       status: "completed",
       // Same +1yr mis-dated-duplicate guard as getUfcFightHistory above —
-      // keeps the common-opponent chain math off the corrupt dup rows.
-      event: { hasStats: true },
+      // keeps the common-opponent chain math off the corrupt dup rows. asOf
+      // (backtesting) restricts to pre-fight bouts, matching getUfcFightHistory.
+      event: { hasStats: true, ...(asOf ? { eventDate: { lt: asOf } } : {}) },
       OR: [
         { redCornerFighterId: { in: groupOne }, blueCornerFighterId: { in: groupTwo } },
         { redCornerFighterId: { in: groupTwo }, blueCornerFighterId: { in: groupOne } },
@@ -144,12 +156,36 @@ export async function getCrossBouts(groupOne: string[], groupTwo: string[]): Pro
   }));
 }
 
-async function buildMatchup(fighterA: UfcFighterHistory, fighterB: UfcFighterHistory): Promise<UfcMatchup> {
+async function buildMatchup(
+  fighterA: UfcFighterHistory,
+  fighterB: UfcFighterHistory,
+  asOf?: Date
+): Promise<UfcMatchup> {
   const crossBouts = await getCrossBouts(
     fighterA.fights.map((f) => f.opponentId),
-    fighterB.fights.map((f) => f.opponentId)
+    fighterB.fights.map((f) => f.opponentId),
+    asOf
   );
   return { fighterA, fighterB, crossBouts };
+}
+
+/**
+ * Lookahead-safe matchup for a pair of fighters "as of" a date — every history
+ * and cross-bout is restricted to before `asOf`. For backtesting the model
+ * against historical fights (what would it have predicted pre-fight?) without
+ * leaking the result of that fight or any later one into the projection.
+ */
+export async function getUfcMatchupAsOf(
+  redFighterId: string,
+  blueFighterId: string,
+  asOf: Date
+): Promise<UfcMatchup | null> {
+  const [fighterA, fighterB] = await Promise.all([
+    getUfcFightHistory(redFighterId, asOf),
+    getUfcFightHistory(blueFighterId, asOf),
+  ]);
+  if (!fighterA || !fighterB) return null;
+  return buildMatchup(fighterA, fighterB, asOf);
 }
 
 /**
