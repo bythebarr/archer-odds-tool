@@ -37,6 +37,31 @@ const HOME_FIELD_LOGIT = Math.log(0.54 / 0.46);
 /** Scales the (roughly -0.3..0.3) strength differential into logit space. */
 const STRENGTH_SENSITIVITY = 6;
 
+/**
+ * Empirical overconfidence calibration for the strength differential — the
+ * same technique baked into UFC fighter-math (see CALIBRATION_SHRINK there),
+ * applied here after a lookahead-safe backtest exposed how far off the
+ * uncalibrated model was. Reconstructing each historical game's actual
+ * starter (from pitcher game-logs) and its as-of ERA + team form, the raw
+ * model (k=1) scored a Brier of 0.277 over 1,281 games — WORSE than a constant
+ * home-base-rate guess (0.250) — because it was wildly overconfident: its
+ * 70–85% bucket won only ~56%. Discrimination is real but faint (AUC ~0.548),
+ * so the fix is to shrink the differential, not discard it. A shrink of 0.2,
+ * fit on the older 70% of games and validated on the newer 30% (test Brier
+ * 0.250 vs the raw model's 0.277, matching the base rate), keeps the model's
+ * (thin) ability to rank games while collapsing the dangerous overconfidence:
+ * the most confident pick drops from the 0.85 cap to ~0.69. This deliberately
+ * only shrinks the strength/form differential, NOT HOME_FIELD_LOGIT — home
+ * edge is a genuine ~54% base rate that shouldn't be calibrated away.
+ *
+ * The honest consequence for the flagship: post-calibration, few MLB moneyline
+ * plays clear the +EV believability band — correct, since the model barely
+ * beats a coin flip on side. Re-fit as the model gains real features (park,
+ * bullpen, lineup) and the sample grows; the form component in particular is
+ * near-anti-predictive alone (mean-reversion) and is the first thing to rework.
+ */
+const STRENGTH_CALIBRATION_SHRINK = 0.2;
+
 /** Ceiling/floor on the final win probability. A single 9-inning game stays inherently volatile even when pitcher and form all point the same way, and real markets essentially never price a lone game beyond this — so the model shouldn't either, regardless of how strongly its inputs agree. */
 const PROB_CEILING = 0.85;
 const PROB_FLOOR = 1 - PROB_CEILING;
@@ -95,7 +120,9 @@ export function computeArcherWinProbability(matchup: GameMatchup): ArcherWinProb
     return { homeProb: null, awayProb: null, homeStrength, awayStrength, usedPitcher };
   }
 
-  const rawHomeProb = logistic((homeStrength - awayStrength) * STRENGTH_SENSITIVITY + HOME_FIELD_LOGIT);
+  const rawHomeProb = logistic(
+    (homeStrength - awayStrength) * STRENGTH_SENSITIVITY * STRENGTH_CALIBRATION_SHRINK + HOME_FIELD_LOGIT
+  );
   const homeProb = Math.min(Math.max(rawHomeProb, PROB_FLOOR), PROB_CEILING);
   return { homeProb, awayProb: 1 - homeProb, homeStrength, awayStrength, usedPitcher };
 }
