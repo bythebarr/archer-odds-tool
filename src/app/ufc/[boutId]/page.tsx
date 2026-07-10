@@ -2,13 +2,20 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getUfcBoutHeader, type UfcFighterBio } from "@/lib/queries/ufcEvents";
 import { getUfcMatchup } from "@/lib/queries/ufcMatchup";
+import { getUfcBoutOdds } from "@/lib/queries/ufcOdds";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { computeFinishProjection } from "@/lib/ufc/finishMath";
+import { refreshUfcOddsOnView } from "@/lib/ufc/refreshOddsOnView";
 import { BackLink } from "@/components/BackLink";
 import { FighterBadge } from "@/components/FighterBadge";
 import { UfcWinProbabilityCard, RED_CORNER, BLUE_CORNER } from "@/components/ufc/UfcWinProbabilityCard";
+import { UfcOddsEvCard } from "@/components/ufc/UfcOddsEvCard";
 import { UfcFinishProjectionCard } from "@/components/ufc/UfcFinishProjectionCard";
 import { UfcFightHistory } from "@/components/ufc/UfcFightHistory";
+
+// Odds refresh after the response (see refreshUfcOddsOnView) needs a live
+// request, and the moneyline should reflect current lines — render per request.
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ boutId: string }> }): Promise<Metadata> {
   const { boutId } = await params;
@@ -43,7 +50,14 @@ function FighterColumn({ fighter, color }: { fighter: UfcFighterBio; color: stri
 
 export default async function UfcBoutPage({ params }: { params: Promise<{ boutId: string }> }) {
   const { boutId } = await params;
-  const [header, matchup] = await Promise.all([getUfcBoutHeader(boutId), getUfcMatchup(boutId)]);
+  // Read-side self-heal for the odds feed (Hobby crons fire unreliably) —
+  // refreshes all UFC moneylines after the response when stale. See refreshUfcOddsOnView.
+  refreshUfcOddsOnView();
+  const [header, matchup, odds] = await Promise.all([
+    getUfcBoutHeader(boutId),
+    getUfcMatchup(boutId),
+    getUfcBoutOdds(boutId),
+  ]);
   if (!header) notFound();
 
   const projection = matchup ? computeUfcWinProbability(matchup) : null;
@@ -113,6 +127,18 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
       {projection ? (
         <div className="mt-4">
           <UfcWinProbabilityCard redName={header.red.name} blueName={header.blue.name} projection={projection} />
+        </div>
+      ) : null}
+
+      {projection && projection.fighterAProb !== null && projection.fighterBProb !== null && odds ? (
+        <div className="mt-4">
+          <UfcOddsEvCard
+            redName={header.red.name}
+            blueName={header.blue.name}
+            redProb={projection.fighterAProb}
+            blueProb={projection.fighterBProb}
+            odds={odds}
+          />
         </div>
       ) : null}
 

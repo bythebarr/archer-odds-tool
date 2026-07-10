@@ -293,6 +293,7 @@ model Sportsbook {
   currentLines           CurrentOddsLine[]
   playerPropSnapshots    PlayerPropSnapshot[]
   currentPlayerPropLines CurrentPlayerPropLine[]
+  ufcBoutOdds            UfcBoutOdds[]
 }
 
 /// Append-only fact table: every polled price, forever. Source of truth for
@@ -560,6 +561,11 @@ model UfcBout {
   eventId    String
   event      UfcEvent @relation(fields: [eventId], references: [id])
 
+  // The Odds API event id this bout was matched to, cached on the first
+  // successful odds match so later polls skip the fuzzy name-pair lookup
+  // (mirrors Game.oddsApiEventId).
+  oddsApiEventId String? @unique
+
   weightClass String
   titleBout   Boolean @default(false)
   cardSection String?
@@ -586,11 +592,35 @@ model UfcBout {
 
   fighterStats UfcBoutFighterStats[]
   roundStats   UfcBoutRoundStats[]
+  boutOdds     UfcBoutOdds[]
 
   @@index([eventId])
   @@index([redCornerFighterId])
   @@index([blueCornerFighterId])
   @@index([statsFetchedAt])
+}
+
+/// UFC moneyline (h2h) odds — one upsert-latest row per bout × book × corner.
+/// Mirrors CurrentOddsLine, but moneyline-only, so there's no market/point
+/// column: UFC h2h is always a 2-way red-vs-blue market, and The Odds API
+/// exposes no method/round/distance props for MMA (confirmed live via
+/// INVALID_MARKET). Feeds best-line shopping and the fighter-math EV card.
+/// Line-movement history (an append-only OddsSnapshot analog) is deferred to
+/// phase 2 — this table alone answers "what's the price right now".
+model UfcBoutOdds {
+  id            String     @id @default(cuid())
+  boutId        String
+  bout          UfcBout    @relation(fields: [boutId], references: [id])
+  bookKey       String
+  book          Sportsbook @relation(fields: [bookKey], references: [key])
+  corner        String // "red" | "blue" — which corner this price is for
+  priceAmerican Int
+
+  polledAt         DateTime
+  sourceLastUpdate DateTime // the book's own last-update time from the Odds API payload
+
+  @@unique([boutId, bookKey, corner])
+  @@index([boutId])
 }
 
 /// Bout-level aggregate stats, one row per fighter per bout — mirrors
