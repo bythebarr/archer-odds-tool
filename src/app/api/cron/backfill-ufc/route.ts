@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
+import { settlePendingUfcPlays } from "@/lib/discord/postResults";
 
 const JOB_NAME = "backfill-ufc";
 
@@ -29,14 +30,25 @@ export async function POST(request: Request) {
     // re-upserts its bouts as completed with real results.
     const recent = await syncRecentUfcEvents();
     const upcoming = await backfillUpcomingUfcEvents();
+    // Now that results are freshly synced, settle any posted UFC plays whose
+    // bout just went final — so #results reflects fight night without waiting
+    // on the morning recap's single-date pass. Best-effort: a grading hiccup
+    // must not fail the sync itself.
+    let ufcPlaysSettled = 0;
+    try {
+      ufcPlaysSettled = await settlePendingUfcPlays();
+    } catch (err) {
+      console.error("settlePendingUfcPlays failed (sync still succeeded):", err);
+    }
 
     await recordPollLog(
       JOB_NAME,
       `ok (recent events: ${recent.eventsProcessed}, upcoming events: ${upcoming.eventsProcessed}, ` +
         `bouts: ${recent.boutsProcessed + upcoming.boutsProcessed}, ` +
-        `skipped: ${recent.skippedBouts.length + upcoming.skippedBouts.length})`
+        `skipped: ${recent.skippedBouts.length + upcoming.skippedBouts.length}, ` +
+        `ufc plays settled: ${ufcPlaysSettled})`
     );
-    return Response.json({ recent, upcoming });
+    return Response.json({ recent, upcoming, ufcPlaysSettled });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await recordPollLog(JOB_NAME, `error: ${message}`);

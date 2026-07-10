@@ -41,6 +41,7 @@ enum Sport {
   mlb
   tennis
   soccer
+  ufc // graded Discord plays only (fighter-math moneyline) — UFC never uses the Game table
 }
 
 /// mlbTeamId is MLB-only (nullable so soccer rows can omit it); soccer teams

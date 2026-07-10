@@ -5,6 +5,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
 import { getUfcBestPlays, type UfcBestPlay, type UfcCard } from "./ufcBestPlays";
+import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
 import type { Sport, MarketType } from "@/generated/prisma/client";
 
 /**
@@ -102,10 +103,13 @@ function buildDescription(picks: OddsPlay[]): string {
   return out;
 }
 
-/** e.g. 🏆 **Islam Makhachev** over Arman Tsarukyan · 68% fighter-math */
+/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Archer EV · 1.5u · over Ode' Osbourne (58% model) */
 function ufcPlayLine(p: UfcBestPlay): string {
   const marker = p.titleBout ? "🏆 " : "";
-  return `${marker}**${p.pickName}** over ${p.opponentName} · ${Math.round(p.prob * 100)}% fighter-math`;
+  return (
+    `${marker}**${p.pickName}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ` +
+    `${formatEv(p.archerEv)} Archer EV · ${unitsFor(p.archerEv)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)`
+  );
 }
 
 /** UFC event date → "Sat Jul 12" in ET (mirrors the /ufc list's formatter). */
@@ -175,6 +179,52 @@ async function recordPostedPlays(dateEt: string, picks: OddsPlay[]): Promise<voi
   );
 }
 
+/** ET calendar date (YYYY-MM-DD) for a Date — en-CA formats as YYYY-MM-DD. */
+function etDateString(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/**
+ * Persist UFC Archer EV plays so #results grades them after fight night. Unlike
+ * the MLB card (posted for today, settled tomorrow), a UFC play is recorded
+ * under its FIGHT'S ET date, so it settles the day after the bout no matter how
+ * many days early we teased the card — and daily re-posts across the week dedupe
+ * to one row per (fight-date, bout, side). Best-effort, like recordPostedPlays.
+ */
+async function recordUfcPostedPlays(card: UfcCard): Promise<void> {
+  const postedForDate = etDateString(card.eventDate);
+  await Promise.all(
+    card.plays.map((p) =>
+      prisma.postedPlay.upsert({
+        where: { postedForDate_playKey: { postedForDate, playKey: `ufc:${p.boutId}:${p.side}` } },
+        update: {},
+        create: {
+          postedForDate,
+          playKey: `ufc:${p.boutId}:${p.side}`,
+          sport: "ufc",
+          matchId: p.boutId,
+          market: "h2h",
+          kind: "ml",
+          side: p.side,
+          point: null,
+          selectionLabel: p.pickName,
+          bestPrice: p.bestPrice,
+          bestBookName: p.bestBookName,
+          ev: p.archerEv,
+          units: unitsFor(p.archerEv),
+          mlbPlayerId: null,
+          statCategory: null,
+        },
+      })
+    )
+  );
+}
+
 async function postWebhook(url: string, body: unknown): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
@@ -217,6 +267,9 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   // a UFC-side failure must not block the MLB card that's ready to post.
   let ufcCard: UfcCard | null = null;
   try {
+    // Price the fight-night card against current lines (gated poll — no-op if
+    // fresh). Best-effort: a UFC-side failure must not block the MLB card.
+    await ensureUfcOddsFresh();
     ufcCard = await getUfcBestPlays();
   } catch (err) {
     console.error("getUfcBestPlays failed (posting MLB card without it):", err);
@@ -236,10 +289,12 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
     ],
   });
 
-  // Record what we posted so #results can grade it tomorrow. Best-effort: a DB
-  // failure must not fail the post that already went out.
+  // Record what we posted so #results can grade it. Best-effort: a DB failure
+  // must not fail the post that already went out. UFC plays are recorded under
+  // their fight date (settled the day after the bout), MLB under today's card date.
   try {
     await recordPostedPlays(dateEt, picks);
+    if (ufcCard) await recordUfcPostedPlays(ufcCard);
   } catch (err) {
     console.error("recordPostedPlays failed (card was still posted):", err);
   }

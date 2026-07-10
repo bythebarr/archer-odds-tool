@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gradeGameLine, gradeProp, unitsProfit, tallyLedger } from "./gradePlay";
+import { gradeGameLine, gradeProp, gradeUfcMoneyline, unitsProfit, tallyLedger } from "./gradePlay";
 
 describe("gradeGameLine", () => {
   it("moneyline: backs the winner, no push", () => {
@@ -27,6 +27,27 @@ describe("gradeGameLine", () => {
     expect(gradeGameLine("totals", "over", 9, 5, 4)).toBe("push"); // exactly 9
     expect(gradeGameLine("totals", "under", 9, 5, 4)).toBe("push");
     expect(gradeGameLine("totals", "over", 10, 5, 4)).toBe("miss"); // 9 < 10
+  });
+});
+
+describe("gradeUfcMoneyline", () => {
+  it("hits when the backed corner's fighter won", () => {
+    expect(gradeUfcMoneyline("red", "rf", "bf", "rf")).toBe("hit");
+    expect(gradeUfcMoneyline("blue", "rf", "bf", "bf")).toBe("hit");
+  });
+
+  it("misses when the other fighter won", () => {
+    expect(gradeUfcMoneyline("red", "rf", "bf", "bf")).toBe("miss");
+    expect(gradeUfcMoneyline("blue", "rf", "bf", "rf")).toBe("miss");
+  });
+
+  it("pushes a draw / no-contest (no winner — moneyline voided, stake back)", () => {
+    expect(gradeUfcMoneyline("red", "rf", "bf", null)).toBe("push");
+    expect(gradeUfcMoneyline("blue", "rf", "bf", null)).toBe("push");
+  });
+
+  it("voids an unrecognized side", () => {
+    expect(gradeUfcMoneyline("home", "rf", "bf", "rf")).toBe("void");
   });
 });
 
