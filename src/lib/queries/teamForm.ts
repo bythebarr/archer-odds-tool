@@ -77,13 +77,18 @@ function formForTeam(teamId: string, games: FinishedGame[]): TeamForm {
 export async function getTeamFormForGame(
   homeTeamId: string,
   awayTeamId: string,
-  season: number
+  season: number,
+  before?: Date
 ): Promise<{ home: TeamForm; away: TeamForm }> {
   const games = await prisma.game.findMany({
     where: {
       sport: "mlb",
       season,
       status: "final",
+      // before (backtesting only): form as it stood ahead of a target game —
+      // only games that had already finished before it, so a historical
+      // projection can't see the results of that game or any later one.
+      ...(before ? { scheduledStartUtc: { lt: before } } : {}),
       OR: [{ homeTeamId: { in: [homeTeamId, awayTeamId] } }, { awayTeamId: { in: [homeTeamId, awayTeamId] } }],
     },
     orderBy: { scheduledStartUtc: "desc" },

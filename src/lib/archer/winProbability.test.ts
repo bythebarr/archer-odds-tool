@@ -74,7 +74,7 @@ describe("computeArcherWinProbability", () => {
     expect(fewStarts.homeProb!).toBeLessThan(fullSample.homeProb!);
   });
 
-  it("caps win probability even when every input points the same direction", () => {
+  it("holds confidence well under the hard cap even when every input agrees, because the overconfidence calibration binds first", () => {
     const result = computeArcherWinProbability(
       matchup({
         homePitcher: pitcher(0.5),
@@ -83,8 +83,12 @@ describe("computeArcherWinProbability", () => {
         awayForm: form({ awayRecord: record(1, 9), last10: record(1, 9), last5: record(0, 5) }),
       })
     );
-    expect(result.homeProb!).toBeCloseTo(0.85, 10);
-    expect(result.awayProb!).toBeCloseTo(0.15, 10);
+    // Pre-calibration this pinned to the 0.85 ceiling; the empirical strength
+    // shrink (see STRENGTH_CALIBRATION_SHRINK) now caps a maximally-lopsided
+    // matchup around ~0.77 — strongly favored, but honestly short of certainty.
+    expect(result.homeProb!).toBeGreaterThan(0.7);
+    expect(result.homeProb!).toBeLessThan(0.85);
+    expect(result.homeProb! + result.awayProb!).toBeCloseTo(1, 10);
   });
 
   it("falls back to form alone when a probable pitcher isn't set yet", () => {
