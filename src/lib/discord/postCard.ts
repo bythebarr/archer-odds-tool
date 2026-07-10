@@ -7,10 +7,16 @@ import { prisma } from "@/lib/prisma";
 import type { Sport, MarketType } from "@/generated/prisma/client";
 
 /**
- * Auto-post the day's card to a paid Discord. Reads the exact same priced-play
- * pool that powers the Slate Value board (getOddsPoolForDate) — one source of
- * truth, so what members see matches the site — and posts:
- *   • the full qualifying +EV card → the PREMIUM channel (DISCORD_WEBHOOK_URL)
+ * Auto-post Archer's Best Plays to a paid Discord — the capper product, not a
+ * line-shopping feed. Reads the same priced-play pool that powers the Slate
+ * (getOddsPoolForDate) but selects on the MODEL lens (`modelEv` — Archer's own
+ * probability vs the price), NOT the market/consensus lens (`ev`). The model
+ * lens is the differentiator: "my model found these," not "here's every book's
+ * price." It's MLB game-lines only today (props/UFC/F1/tennis/soccer have no
+ * game-line model yet — UFC fighter-math is a separate feed, wired later).
+ *
+ * Posts:
+ *   • the curated Best Plays card → the PREMIUM channel (DISCORD_WEBHOOK_URL)
  *   • one "free lean" (selection only, no EV/book) → the FREE channel funnel
  *     (DISCORD_FREE_WEBHOOK_URL), if that webhook is set.
  *
@@ -22,10 +28,21 @@ import type { Sport, MarketType } from "@/generated/prisma/client";
 const SPORT_LABEL: Record<string, string> = { mlb: "MLB", tennis: "TEN", soccer: "SOC", ufc: "UFC" };
 const KIND_LABEL: Record<string, string> = { ml: "ML", spread: "SPR", total: "TOT", prop: "PROP" };
 
-/** Only plays at or above this MARKET EV clear onto the card. Tune to taste. */
-const MIN_EV = 0.03;
-/** Cap the premium card so it stays scannable. Pool is pre-sorted by EV desc. */
-const MAX_PLAYS = 10;
+/**
+ * A play must beat the price by at least this on Archer's MODEL to make the card
+ * (the believability floor). Tune against the paper-log record.
+ */
+const MIN_ARCHER_EV = 0.03;
+/**
+ * Believability CEILING. Model edges above this are almost always miscalibration
+ * — a data gap (unconfirmed pitcher, stale line), not free money. A capper who
+ * posts "+57% EV locks" and goes 3-7 is done. So these are DROPPED from the card
+ * (and logged, not silently hidden), never posted. Tune once the paper-log shows
+ * where real edges top out. See the Best Plays selection in postDailyCardToDiscord.
+ */
+const MAX_ARCHER_EV = 0.2;
+/** Cap the premium card so it stays a curated capper card, not a dump. */
+const MAX_PLAYS = 8;
 /** Stamped on every post — keeps the compliance line in front of members daily. */
 const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
@@ -51,13 +68,13 @@ function tagFor(p: OddsPlay): string {
 export function unitsFor(ev: number): number {
   if (ev >= 0.08) return 2;
   if (ev >= 0.05) return 1.5;
-  return 1; // anything from MIN_EV up to +5%
+  return 1; // anything from MIN_ARCHER_EV up to +5%
 }
 
-/** e.g. `MLB ML` **Yankees** +118 · FanDuel · +3.2% EV · 1u */
+/** e.g. `MLB ML` **Yankees** +118 · FanDuel · +6.2% Archer EV · 1.5u */
 function playLine(p: OddsPlay): string {
-  const units = p.ev !== null ? ` · ${unitsFor(p.ev)}u` : "";
-  return `\`${tagFor(p)}\` **${p.selectionLabel}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.ev)} EV${units}`;
+  const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv)}u` : "";
+  return `\`${tagFor(p)}\` **${p.selectionLabel}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Archer EV${units}`;
 }
 
 /**
@@ -67,7 +84,7 @@ function playLine(p: OddsPlay): string {
  */
 function buildDescription(picks: OddsPlay[]): string {
   if (!picks.length) {
-    return "_No plays cleared the +EV threshold today. Discipline > forcing action._";
+    return "_No plays cleared Archer's model today. No card is a card — we don't force action._";
   }
   const lines = picks.map(playLine);
   let out = "";
@@ -112,8 +129,10 @@ async function recordPostedPlays(dateEt: string, picks: OddsPlay[]): Promise<voi
           selectionLabel: p.selectionLabel,
           bestPrice: p.bestPrice,
           bestBookName: p.bestBookName,
-          ev: p.ev,
-          units: p.ev !== null ? unitsFor(p.ev) : 1,
+          // Store the Archer (model) EV we actually posted on — units derive from
+          // it, and #results grades on units/price/result, not this field.
+          ev: p.modelEv,
+          units: p.modelEv !== null ? unitsFor(p.modelEv) : 1,
           mlbPlayerId: p.mlbPlayerId ?? null,
           statCategory: p.statCategory ?? null,
         },
@@ -139,8 +158,23 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   if (!premiumUrl) return { posted: false, reason: "dormant: DISCORD_WEBHOOK_URL not set" };
 
   const { plays } = await getOddsPoolForDate(dateEt);
-  // Pool is already sorted by EV desc; take the qualifying head.
-  const picks = plays.filter((p) => p.ev !== null && p.ev >= MIN_EV).slice(0, MAX_PLAYS);
+  // Select on the MODEL lens (Archer EV), inside the believability band, then
+  // sort by it — the pool arrives sorted by MARKET ev, so it MUST be re-sorted
+  // by modelEv for a capper card. Plays above the ceiling are model artifacts:
+  // dropped (and logged below), never posted.
+  const modelPlays = plays.filter((p): p is OddsPlay & { modelEv: number } => p.modelEv !== null);
+  const dropped = modelPlays.filter((p) => p.modelEv > MAX_ARCHER_EV);
+  const picks = modelPlays
+    .filter((p) => p.modelEv >= MIN_ARCHER_EV && p.modelEv <= MAX_ARCHER_EV)
+    .sort((a, b) => b.modelEv - a.modelEv)
+    .slice(0, MAX_PLAYS);
+  if (dropped.length) {
+    // No silent caps: surface what we withheld so a systematically-miscalibrated
+    // day is visible in the logs, not mistaken for "the model liked nothing."
+    console.warn(
+      `postCard: withheld ${dropped.length} play(s) above +${Math.round(MAX_ARCHER_EV * 100)}% Archer EV as likely miscalibration (not posted).`
+    );
+  }
   const label = prettyDate(dateEt);
   const description = buildDescription(picks);
 
@@ -148,7 +182,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
     username: "Archer",
     embeds: [
       {
-        title: `🎯 ARCHR — Today's Card · ${label}`,
+        title: `🎯 Archer's Best Plays · ${label}`,
         url: `${SITE_URL}/slate`,
         description,
         color: ARCHR_GREEN,
