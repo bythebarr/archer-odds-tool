@@ -13,9 +13,9 @@ import { calculateEv } from "@/lib/odds/devig";
  * The play is the VALUE side: for each bout we compute Archer EV on BOTH
  * corners (our model probability vs the best book price) and back whichever has
  * the higher edge — which is often the underdog the market overrates our man's
- * opponent against, NOT simply the model favorite. Selection is gated by the
- * same believability band as MLB (drop sub-floor coin-flips and above-ceiling
- * plays that are almost always model miscalibration, not free money).
+ * opponent against, NOT simply the model favorite. Selection rule matches the
+ * MLB card: if the value side has ANY positive edge, it posts. No floor, no
+ * ceiling, no count cap — the #results record is the only judge (product call).
  *
  * These ARE recorded as PostedPlay and graded into #results (see postCard.ts /
  * postResults.ts): a bout without a matched line can't be priced and is skipped.
@@ -97,16 +97,6 @@ export interface UfcCard {
  * repost every day for a week. Tune against how early you want to tease a card.
  */
 const LOOKAHEAD_DAYS = 3;
-/** Keep the fight-night section a curated card, not the full 13-bout slate. */
-const MAX_UFC_PLAYS = 6;
-/**
- * Believability band on Archer EV, shared with the MLB card's philosophy: below
- * the floor there's no real edge; above the ceiling it's almost always model
- * miscalibration (thin fight history, a stale line), not a genuine lock — a
- * capper who posts "+57% EV" plays and goes 3-7 is done. Tune against #results.
- */
-const MIN_ARCHER_EV = 0.03;
-const MAX_ARCHER_EV = 0.2;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -121,21 +111,19 @@ interface BoutMeta {
 }
 
 /**
- * Pure: choose the value side of a bout by Archer EV and gate on the
- * believability band. Computes EV for each corner that has a line, backs the
- * higher-EV side, and returns null for a coin-flip-ish/no-edge play, a play
- * above the miscalibration ceiling, a bout with no line, or one the model
- * couldn't price (null prob). Separated from the fetch so the selection rule is
- * unit-testable without a DB.
+ * Pure: choose the value side of a bout by Archer EV. Computes EV for each
+ * corner that has a line, backs the higher-EV side, and returns null only when
+ * there's no real play — no positive edge on either side, a bout with no line,
+ * or one the model couldn't price (null prob). No floor/ceiling: any positive
+ * edge posts (matches the MLB card). Separated from the fetch so the selection
+ * rule is unit-testable without a DB.
  */
 export function pickFromBout(
   bout: BoutMeta,
   redProb: number | null,
   blueProb: number | null,
   redLine: UfcCornerBestLine | null,
-  blueLine: UfcCornerBestLine | null,
-  minEv = MIN_ARCHER_EV,
-  maxEv = MAX_ARCHER_EV
+  blueLine: UfcCornerBestLine | null
 ): UfcBestPlay | null {
   if (redProb === null || blueProb === null) return null;
 
@@ -149,7 +137,7 @@ export function pickFromBout(
   else return null; // neither corner has a line — can't price it
 
   const ev = side === "red" ? redEv! : blueEv!;
-  if (ev < minEv || ev > maxEv) return null; // outside the believability band
+  if (ev <= 0) return null; // no edge — nothing to post
 
   const line = side === "red" ? redLine! : blueLine!;
   return {
@@ -170,7 +158,7 @@ export function pickFromBout(
 /**
  * The fighter-math Archer EV plays for the next upcoming UFC event, if it's
  * within the lookahead window and priced. Returns null when there's no imminent
- * card or no bout clears the band — the poster then omits the UFC section.
+ * card or no bout has a positive edge — the poster then omits the UFC section.
  * Assumes odds are already fresh (the poster calls ensureUfcOddsFresh first).
  */
 export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard | null> {
@@ -221,9 +209,9 @@ export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard |
 
   const plays = candidates
     .filter((p): p is UfcBestPlay => p !== null)
-    // Highest edge first; title bouts break ties (they're the headline).
-    .sort((a, b) => b.archerEv - a.archerEv || Number(b.titleBout) - Number(a.titleBout))
-    .slice(0, MAX_UFC_PLAYS);
+    // Highest edge first; title bouts break ties (they're the headline). Every
+    // positive-edge bout posts — no count cap (product call, matches the MLB card).
+    .sort((a, b) => b.archerEv - a.archerEv || Number(b.titleBout) - Number(a.titleBout));
 
   if (!plays.length) return null;
   return { eventTitle: event.title, eventDate: event.eventDate, plays };

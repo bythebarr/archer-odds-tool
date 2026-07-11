@@ -69,7 +69,7 @@ function tagFor(p: OddsPlay): string {
 export function unitsFor(ev: number): number {
   if (ev >= 0.08) return 2;
   if (ev >= 0.05) return 1.5;
-  return 1; // anything from MIN_ARCHER_EV up to +5%
+  return 1; // anything positive up to +5%
 }
 
 /** away @ home, using book abbreviations when available (e.g. "NYY @ BOS"). */
@@ -87,10 +87,21 @@ export function selectionDisplay(p: OddsPlay): string {
   return needsMatchup ? `${matchupLabel(p)} ${p.selectionLabel}` : p.selectionLabel;
 }
 
-/** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Edge · 1.5u */
+/** A play's first pitch / start as a compact ET stamp, e.g. "7:05p". */
+function startTimeLabel(d: Date): string {
+  const s = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  }).format(d);
+  return s.replace(/\s?AM$/, "a").replace(/\s?PM$/, "p");
+}
+
+/** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Edge · 1.5u · 7:05p ET */
 export function playLine(p: OddsPlay): string {
   const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv)}u` : "";
-  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}`;
+  const start = p.startUtc ? ` · ${startTimeLabel(p.startUtc)} ET` : "";
+  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}${start}`;
 }
 
 const EMPTY_CARD =
