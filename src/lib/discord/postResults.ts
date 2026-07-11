@@ -217,7 +217,7 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
     : `${header}\n\n_No settled plays for ${label}._`;
 
   await postWebhook(url, {
-    username: "Archer",
+    username: "Moses, Leader of Many",
     embeds: [{ title: `📊 Results · ${label}`, description: body, color: ARCHR_GREEN, footer: { text: RESEARCH_FOOTER } }],
   });
 
