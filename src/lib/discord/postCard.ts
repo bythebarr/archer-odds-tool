@@ -31,20 +31,15 @@ const SPORT_LABEL: Record<string, string> = { mlb: "MLB", tennis: "TEN", soccer:
 const KIND_LABEL: Record<string, string> = { ml: "ML", spread: "SPR", total: "TOT", prop: "PROP" };
 
 /**
- * A play must beat the price by at least this on Archer's MODEL to make the card
- * (the believability floor). Tune against the paper-log record.
+ * The premium card posts EVERY positive-Archer-EV play — no edge floor, no
+ * ceiling, no count cap (product decision: paid members get the full model
+ * board, they judge for themselves). The only governor is sizing: unitsFor
+ * caps every play at 2u, so even a +40% model edge posts at 2u, never as a
+ * "lock". NB: the UFC fight-night leans keep their own believability band in
+ * ufcBestPlays.ts, because that model isn't market-calibrated yet.
  */
-const MIN_ARCHER_EV = 0.03;
-/**
- * Believability CEILING. Model edges above this are almost always miscalibration
- * — a data gap (unconfirmed pitcher, stale line), not free money. A capper who
- * posts "+57% EV locks" and goes 3-7 is done. So these are DROPPED from the card
- * (and logged, not silently hidden), never posted. Tune once the paper-log shows
- * where real edges top out. See the Best Plays selection in postDailyCardToDiscord.
- */
-const MAX_ARCHER_EV = 0.2;
-/** Cap the premium card so it stays a curated capper card, not a dump. */
-const MAX_PLAYS = 8;
+/** Leave 1 of Discord's 10-embed limit for the UFC embed. */
+const MAX_PREMIUM_EMBEDS = 9;
 /** Stamped on every post — keeps the compliance line in front of members daily. */
 const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
@@ -76,31 +71,57 @@ export function unitsFor(ev: number): number {
   return 1; // anything from MIN_ARCHER_EV up to +5%
 }
 
-/** e.g. `MLB ML` **Yankees** +118 · FanDuel · +6.2% Archer EV · 1.5u */
-function playLine(p: OddsPlay): string {
-  const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv)}u` : "";
-  return `\`${tagFor(p)}\` **${p.selectionLabel}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Archer EV${units}`;
+/** away @ home, using book abbreviations when available (e.g. "NYY @ BOS"). */
+function matchupLabel(p: OddsPlay): string {
+  return `${p.away.meta ?? p.away.name} @ ${p.home.meta ?? p.home.name}`;
 }
 
 /**
- * Join play lines into a Discord embed description, staying under the 4096-char
- * embed limit (headroom at 3800). If the card is too long, show what fits and
- * point the rest to the site rather than letting the webhook 400 on us.
+ * The member-facing selection. Moneyline/spread name a team so they're self-
+ * identifying, but a total ("Over 8.5") or draw names no game — so prefix the
+ * matchup, else members see a line with no idea WHICH game it's on.
+ */
+export function selectionDisplay(p: OddsPlay): string {
+  const needsMatchup = p.side === "over" || p.side === "under" || p.side === "draw";
+  return needsMatchup ? `${matchupLabel(p)} ${p.selectionLabel}` : p.selectionLabel;
+}
+
+/** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Archer EV · 1.5u */
+export function playLine(p: OddsPlay): string {
+  const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv)}u` : "";
+  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Archer EV${units}`;
+}
+
+const EMPTY_CARD =
+  "_No plays cleared Archer's model today. No card is a card — we don't force action._";
+
+/**
+ * The full premium body as one string (all lines, newline-joined) — used by the
+ * on-demand preview page, a scrolling web view with no length limit.
  */
 function buildDescription(picks: OddsPlay[]): string {
-  if (!picks.length) {
-    return "_No plays cleared Archer's model today. No card is a card — we don't force action._";
+  if (!picks.length) return EMPTY_CARD;
+  return picks.map(playLine).join("\n");
+}
+
+/**
+ * Discord embed descriptions cap at 4096 chars, and we now post EVERY positive
+ * play, so a big slate can exceed one embed. Pack the lines into as many ≤4000-
+ * char chunks as needed — each becomes its own embed — so nothing is truncated.
+ */
+function packDescriptions(picks: OddsPlay[], limit = 4000): string[] {
+  if (!picks.length) return [EMPTY_CARD];
+  const chunks: string[] = [];
+  let cur = "";
+  for (const line of picks.map(playLine)) {
+    if (cur && cur.length + line.length + 1 > limit) {
+      chunks.push(cur);
+      cur = "";
+    }
+    cur += (cur ? "\n" : "") + line;
   }
-  const lines = picks.map(playLine);
-  let out = "";
-  let shown = 0;
-  for (const line of lines) {
-    if (out.length + line.length + 1 > 3800) break;
-    out += (out ? "\n" : "") + line;
-    shown++;
-  }
-  if (shown < lines.length) out += `\n_…+${lines.length - shown} more on the board._`;
-  return out;
+  if (cur) chunks.push(cur);
+  return chunks;
 }
 
 const FINISH_METHOD_LABEL: Record<string, string> = { ko: "KO/TKO", submission: "submission", decision: "decision" };
@@ -265,11 +286,7 @@ export interface DailyCardPreview {
 export async function previewDailyCard(dateEt: string = todayEt()): Promise<DailyCardPreview> {
   const { plays } = await getOddsPoolForDate(dateEt);
   const modelPlays = plays.filter((p): p is OddsPlay & { modelEv: number } => p.modelEv !== null);
-  const withheld = modelPlays.filter((p) => p.modelEv > MAX_ARCHER_EV);
-  const picks = modelPlays
-    .filter((p) => p.modelEv >= MIN_ARCHER_EV && p.modelEv <= MAX_ARCHER_EV)
-    .sort((a, b) => b.modelEv - a.modelEv)
-    .slice(0, MAX_PLAYS);
+  const picks = modelPlays.filter((p) => p.modelEv > 0).sort((a, b) => b.modelEv - a.modelEv);
 
   let ufcCard: UfcCard | null = null;
   try {
@@ -287,7 +304,7 @@ export async function previewDailyCard(dateEt: string = todayEt()): Promise<Dail
     ufcTitle: ufcEmbed?.title ?? null,
     premiumCount: picks.length,
     ufcCount: ufcCard?.plays.length ?? 0,
-    withheldCount: withheld.length,
+    withheldCount: 0, // nothing is withheld now — every positive play posts
   };
 }
 
@@ -308,25 +325,19 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   if (!premiumUrl) return { posted: false, reason: "dormant: DISCORD_WEBHOOK_URL not set" };
 
   const { plays } = await getOddsPoolForDate(dateEt);
-  // Select on the MODEL lens (Archer EV), inside the believability band, then
-  // sort by it — the pool arrives sorted by MARKET ev, so it MUST be re-sorted
-  // by modelEv for a capper card. Plays above the ceiling are model artifacts:
-  // dropped (and logged below), never posted.
+  // EVERY positive-model-EV play, sorted by edge. The pool arrives sorted by
+  // MARKET ev, so it MUST be re-sorted by modelEv for a capper card. No floor,
+  // no ceiling, no count cap — 2u sizing is the only governor (see unitsFor).
   const modelPlays = plays.filter((p): p is OddsPlay & { modelEv: number } => p.modelEv !== null);
-  const dropped = modelPlays.filter((p) => p.modelEv > MAX_ARCHER_EV);
-  const picks = modelPlays
-    .filter((p) => p.modelEv >= MIN_ARCHER_EV && p.modelEv <= MAX_ARCHER_EV)
-    .sort((a, b) => b.modelEv - a.modelEv)
-    .slice(0, MAX_PLAYS);
-  if (dropped.length) {
-    // No silent caps: surface what we withheld so a systematically-miscalibrated
-    // day is visible in the logs, not mistaken for "the model liked nothing."
+  const picks = modelPlays.filter((p) => p.modelEv > 0).sort((a, b) => b.modelEv - a.modelEv);
+  const label = prettyDate(dateEt);
+  const premiumChunks = packDescriptions(picks);
+  if (premiumChunks.length > MAX_PREMIUM_EMBEDS) {
+    // No silent caps: a card this big (~360+ plays) means something's off upstream.
     console.warn(
-      `postCard: withheld ${dropped.length} play(s) above +${Math.round(MAX_ARCHER_EV * 100)}% Archer EV as likely miscalibration (not posted).`
+      `postCard: ${premiumChunks.length} premium chunks exceeds ${MAX_PREMIUM_EMBEDS}; posting the first ${MAX_PREMIUM_EMBEDS}.`
     );
   }
-  const label = prettyDate(dateEt);
-  const description = buildDescription(picks);
 
   // Fight-night leans from the fighter-math model — a second embed, only when a
   // UFC card is imminent (getUfcBestPlays returns null otherwise). Best-effort:
@@ -341,18 +352,17 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
     console.error("getUfcBestPlays failed (posting MLB card without it):", err);
   }
 
+  // One embed per description chunk — title/link on the first, footer on the
+  // last — then the UFC fight-night embed. Discord allows up to 10 embeds/message.
+  const premiumEmbeds = premiumChunks.slice(0, MAX_PREMIUM_EMBEDS).map((desc, i, arr) => ({
+    ...(i === 0 ? { title: `🎯 Archer's Best Plays · ${label}`, url: `${SITE_URL}/slate` } : {}),
+    description: desc,
+    color: ARCHR_GREEN,
+    ...(i === arr.length - 1 ? { footer: { text: RESEARCH_FOOTER } } : {}),
+  }));
   await postWebhook(premiumUrl, {
     username: "Archer",
-    embeds: [
-      {
-        title: `🎯 Archer's Best Plays · ${label}`,
-        url: `${SITE_URL}/slate`,
-        description,
-        color: ARCHR_GREEN,
-        footer: { text: RESEARCH_FOOTER },
-      },
-      ...(ufcCard ? [buildUfcEmbed(ufcCard)] : []),
-    ],
+    embeds: [...premiumEmbeds, ...(ufcCard ? [buildUfcEmbed(ufcCard)] : [])],
   });
 
   // Record what we posted so #results can grade it. Best-effort: a DB failure
@@ -375,7 +385,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   const freeUfc = ufcCard?.plays[0];
   if (freeUrl && (freeMlb || freeUfc)) {
     const lean = freeMlb
-      ? `\`${tagFor(freeMlb)}\` **${freeMlb.selectionLabel}**`
+      ? `\`${tagFor(freeMlb)}\` **${selectionDisplay(freeMlb)}**`
       : `\`UFC\` **${freeUfc!.pickName}** over ${freeUfc!.opponentName}`;
     await postWebhook(freeUrl, {
       username: "Archer",
