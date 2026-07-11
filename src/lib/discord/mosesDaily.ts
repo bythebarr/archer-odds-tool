@@ -1,9 +1,11 @@
 import { getOddsPoolForDate } from "@/lib/queries/oddsPool";
-import { getUfcBestPlays, type UfcCard } from "./ufcBestPlays";
-import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
+import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { GLOSSARY, type GlossaryEntry } from "@/lib/glossary";
 import { todayEt } from "@/lib/dateEt";
 import { postWebhook } from "./postCard";
+
+/** How far out a UFC card still counts as "fight week" for the morning flag. */
+const FIGHT_WEEK_DAYS = 8;
 
 /**
  * Moses's daily rhythm — the posts that keep the room alive AROUND the 1pm Card
@@ -73,11 +75,16 @@ export interface MorningData {
   /** Earliest / latest first pitch today, or null on an empty board. */
   firstPitch: Date | null;
   lastPitch: Date | null;
-  /** Imminent UFC card (within the fighter-math lookahead), or null. */
-  ufc: UfcCard | null;
+  /** Imminent UFC card within FIGHT_WEEK_DAYS (title + date only), or null. */
+  ufc: { title: string; eventDate: Date } | null;
 }
 
-/** Pull the free inputs for the morning drop — distinct MLB games + UFC fight-week flag. */
+/**
+ * Pull the free inputs for the morning drop — distinct MLB games + a UFC
+ * fight-week flag. The UFC side reads the cached upcoming-events query (title +
+ * date only), NOT getUfcBestPlays/ensureUfcOddsFresh: the flag shows no odds, so
+ * it must never trigger a UFC odds poll (that would burn Odds API credits).
+ */
 export async function getMorningData(dateEt: string = todayEt()): Promise<MorningData> {
   const { plays } = await getOddsPoolForDate(dateEt);
   const mlb = plays.filter((p) => p.sport === "mlb");
@@ -85,10 +92,13 @@ export async function getMorningData(dateEt: string = todayEt()): Promise<Mornin
   for (const p of mlb) byGame.set(p.matchId, p.startUtc);
   const starts = [...byGame.values()].sort((a, b) => a.getTime() - b.getTime());
 
-  let ufc: UfcCard | null = null;
+  let ufc: { title: string; eventDate: Date } | null = null;
   try {
-    await ensureUfcOddsFresh();
-    ufc = await getUfcBestPlays();
+    const [next] = await listUpcomingUfcEvents(1);
+    if (next) {
+      const daysOut = (next.eventDate.getTime() - Date.parse(`${dateEt}T12:00:00Z`)) / 86_400_000;
+      if (daysOut <= FIGHT_WEEK_DAYS) ufc = { title: next.title, eventDate: next.eventDate };
+    }
   } catch {
     // Best-effort — a UFC-side failure just drops the fight-week line.
   }
@@ -106,7 +116,7 @@ export async function getMorningData(dateEt: string = todayEt()): Promise<Mornin
 export function renderMorningDrop(data: MorningData): DiscordEmbed {
   const label = prettyDate(data.dateEt);
   const fightWeek = data.ufc
-    ? `\n🥊 **Fight week:** ${data.ufc.eventTitle} · ${prettyEventDate(data.ufc.eventDate)}`
+    ? `\n🥊 **Fight week:** ${data.ufc.title} · ${prettyEventDate(data.ufc.eventDate)}`
     : "";
 
   let body: string;
