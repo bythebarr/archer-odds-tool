@@ -25,6 +25,7 @@ function play(over: Partial<OddsPlay>): OddsPlay {
     bestBookName: "FanDuel",
     modelEv: 0.062,
     kind: "ml",
+    startUtc: new Date("2026-07-11T23:05:00Z"), // 7:05 PM ET (July, UTC-4)
     ...over,
   } as OddsPlay;
 }
@@ -59,5 +60,6 @@ describe("playLine", () => {
     expect(line).toContain("+102");
     expect(line).toContain("Edge");
     expect(line).toContain("1.5u"); // 0.062 EV → 1.5u
+    expect(line).toContain("7:05p ET"); // per-line start time
   });
 });

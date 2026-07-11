@@ -55,14 +55,23 @@ describe("pickFromBout (Archer EV selection)", () => {
     expect(play!.archerEv).toBeCloseTo(0.092, 2);
   });
 
-  it("drops plays below the EV floor (no real edge)", () => {
-    // best side ~+1% EV, under the 3% floor.
-    expect(pickFromBout(bout, 0.505, 0.495, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" })).toBeNull();
+  it("posts any positive edge — no floor (a thin +1% still plays)", () => {
+    // red 50.5% @ +100 → EV +1%. No floor now: it's an edge, it posts.
+    const play = pickFromBout(bout, 0.505, 0.495, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" });
+    expect(play!.side).toBe("red");
+    expect(play!.archerEv).toBeCloseTo(0.01, 3);
   });
 
-  it("drops plays above the miscalibration ceiling (+20%)", () => {
-    // red 70% @ +100 → EV +40%, almost certainly a model/data artifact.
-    expect(pickFromBout(bout, 0.7, 0.3, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" })).toBeNull();
+  it("posts big edges too — no ceiling (the record is the judge)", () => {
+    // red 70% @ +100 → EV +40%. No ceiling now: it posts.
+    const play = pickFromBout(bout, 0.7, 0.3, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" });
+    expect(play!.side).toBe("red");
+    expect(play!.archerEv).toBeCloseTo(0.4, 3);
+  });
+
+  it("still drops a non-positive edge (nothing to post)", () => {
+    // red 45% @ -110 / blue 55% @ -140: best side's EV is <= 0.
+    expect(pickFromBout(bout, 0.45, 0.55, { priceAmerican: -110, bookKey: "dk" }, { priceAmerican: -140, bookKey: "fd" })).toBeNull();
   });
 
   it("prices the only side that has a line", () => {
