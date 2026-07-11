@@ -3,6 +3,7 @@ import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { GLOSSARY, type GlossaryEntry } from "@/lib/glossary";
 import { todayEt } from "@/lib/dateEt";
 import { postWebhook } from "./postCard";
+import { mosesAuthor } from "./brand";
 
 /** How far out a UFC card still counts as "fight week" for the morning flag. */
 const FIGHT_WEEK_DAYS = 8;
@@ -34,6 +35,7 @@ export interface MosesPostResult {
 }
 
 interface DiscordEmbed {
+  author: { name: string; url: string; icon_url: string };
   title: string;
   description: string;
   color: number;
@@ -139,6 +141,7 @@ export function renderMorningDrop(data: MorningData): DiscordEmbed {
   }
 
   return {
+    author: mosesAuthor(),
     title: `☀️ Good morning — ${label}`,
     description: body,
     color: ARCHR_GREEN,
@@ -177,6 +180,7 @@ export function lessonForDate(dateEt: string): GlossaryEntry {
 export function renderTeachingDrop(entry: GlossaryEntry): DiscordEmbed {
   const long = entry.long ? `\n\n${entry.long}` : "";
   return {
+    author: mosesAuthor(),
     title: `📚 Moses 101 — ${entry.term}`,
     description: `${entry.short}${long}\n\n_A new lesson every morning. Questions? Drop 'em in chat._ 🏹`,
     color: ARCHR_GREEN,

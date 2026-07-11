@@ -5,6 +5,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
 import { getUfcBestPlays, type UfcBestPlay, type UfcCard, type UfcFinishLean } from "./ufcBestPlays";
+import { mosesAuthor } from "./brand";
 import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
 import type { Sport, MarketType } from "@/generated/prisma/client";
 
@@ -166,6 +167,7 @@ function prettyEventDate(date: Date): string {
  */
 function buildUfcEmbed(card: UfcCard) {
   return {
+    author: mosesAuthor(),
     title: `🥊 Fight Night — ${card.eventTitle} · ${prettyEventDate(card.eventDate)}`,
     url: `${SITE_URL}/ufc`,
     description: card.plays.map(ufcPlayLine).join("\n"),
@@ -352,7 +354,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   // One embed per description chunk — title/link on the first, footer on the
   // last — then the UFC fight-night embed. Discord allows up to 10 embeds/message.
   const premiumEmbeds = premiumChunks.slice(0, MAX_PREMIUM_EMBEDS).map((desc, i, arr) => ({
-    ...(i === 0 ? { title: `🎯 ARCHR Edge · Best Plays · ${label}`, url: `${SITE_URL}/slate` } : {}),
+    ...(i === 0 ? { author: mosesAuthor(), title: `🎯 ARCHR Edge · Best Plays · ${label}`, url: `${SITE_URL}/slate` } : {}),
     description: desc,
     color: ARCHR_GREEN,
     ...(i === arr.length - 1 ? { footer: { text: RESEARCH_FOOTER } } : {}),
@@ -388,6 +390,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
       username: "Moses, Leader of Many",
       embeds: [
         {
+          author: mosesAuthor(),
           title: `Free lean · ${label}`,
           description:
             `${lean}\n\n` +
