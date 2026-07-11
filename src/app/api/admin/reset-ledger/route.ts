@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
 
+// Run on every request — never statically cache an admin action.
+export const dynamic = "force-dynamic";
+
 /**
  * Admin: wipe the #results ledger — every recorded PostedPlay (day cards + all-
  * time record + streaks). One-shot reset for when the record needs to start

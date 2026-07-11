@@ -1,6 +1,9 @@
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
 import { postDailyCardToDiscord } from "@/lib/discord/postCard";
 
+// Run on every request — never statically cache an admin action.
+export const dynamic = "force-dynamic";
+
 /**
  * Admin: refresh MLB odds and post today's +EV card RIGHT NOW. For the day the
  * 10:30am cron gets skipped (e.g. a schedule change landing after 10:30, or a
