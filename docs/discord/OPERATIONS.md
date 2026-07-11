@@ -6,19 +6,26 @@ the knobs to tune, and the manual steps left before opening. Companion to
 
 ## What's live
 
+All posts sign as **Moses, Leader of Many** (the webhook username). Moses's day, in order:
+
 | Piece | Where | Trigger |
 | --- | --- | --- |
+| **☀️ Morning slate drop** (today's board + fight-week flag) | `src/lib/discord/mosesDaily.ts` `postMorningDrop` | `post-morning` cron, 13:00 UTC / 9am ET |
+| **📚 Moses 101** (rotating glossary lesson) | `src/lib/discord/mosesDaily.ts` `postTeachingDrop` | `post-teaching` cron, 15:30 UTC / 11:30am ET |
+| **#results grader** (recap + streak/last-10) | `src/lib/discord/postResults.ts` → `#results` | `post-results` cron, 15:00 UTC / 11am ET |
 | **Archer's Best Plays** (MLB model +EV card) | `src/lib/discord/postCard.ts` → `#full-card` (currently `#paper-log`) | `post-discord` cron, 17:00 UTC / 1pm ET |
 | **Free lean** (funnel tease) | same poster → `#todays-lean` | same cron (needs `DISCORD_FREE_WEBHOOK_URL`) |
 | **UFC fighter-math leans** | `src/lib/discord/ufcBestPlays.ts` → `#fight-night` | same poster, on fight weeks (3-day lookahead) |
-| **#results grader** | `src/lib/discord/postResults.ts` → `#results` | `post-results` cron, 15:00 UTC / 11am ET |
 | **/betcheck** (ML · spread · total value grader) | `src/app/api/discord/interactions/route.ts` | slash command in the server |
+
+Preview the whole daily cadence (no posting) at **`/preview/discord`** — behind the site password.
 
 ## Env vars
 
 **Production (Vercel, `archr2` scope):**
 - `DISCORD_WEBHOOK_URL` — the premium card channel (today: `#paper-log`; repoint to `#full-card` at launch).
 - `DISCORD_RESULTS_WEBHOOK_URL` — the results recap channel.
+- `DISCORD_MOSES_WEBHOOK_URL` — Moses's daily rhythm (morning drop + Moses 101). **Unset = both dormant.** Point it at the room's main channel to light them up. Crons are already scheduled; they no-op until this is set.
 - `DISCORD_FREE_WEBHOOK_URL` — optional free-lean channel.
 - `DISCORD_PUBLIC_KEY` — verifies `/betcheck` interaction signatures. Unset = command endpoint returns 503 (dormant).
 - `SITE_ACCESS_PASSWORD` — Basic Auth gate on the whole site (`/api/*` is exempt so Discord + crons work).
