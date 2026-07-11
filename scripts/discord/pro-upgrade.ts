@@ -65,6 +65,8 @@ async function main() {
   const { json: chList } = await api("GET", `/guilds/${GUILD}/channels`);
   const channels = chList as Array<{ id: string; name: string; type: number }>;
   const byName = (n: string) => channels.find((c) => c.name === n)?.id;
+  const { json: roleList } = await api("GET", `/guilds/${GUILD}/roles`);
+  const verified = (roleList as Array<{ id: string; name: string }>).find((r) => r.name === "Verified")?.id;
   const rules = byName("rules")!;
   const updates = byName("mod-log")!;
   const community = channels.find((c) => c.type === 4 && c.name.includes("COMMUNITY"))?.id;
@@ -123,15 +125,34 @@ async function main() {
     return status === 200 || status === 201 ? "created" : "unchanged";
   });
 
-  await step("Onboarding", async () => {
+  await step("Onboarding + verify gate", async () => {
     const default_channel_ids = PUBLIC_CHANNELS.map(byName).filter(Boolean) as string[];
-    const { status } = await api("PUT", `/guilds/${GUILD}/onboarding`, {
-      enabled: true,
-      mode: 0,
-      default_channel_ids,
-      prompts: [],
-    });
-    return status === 200 ? "enabled" : "unchanged";
+    // A required onboarding prompt that grants @Verified — the native 21+/rules
+    // gate, replacing the flaky Carl-bot reaction-role approach.
+    const prompts = verified
+      ? [
+          {
+            id: "1",
+            type: 0,
+            title: "One step to unlock the room 🔓",
+            single_select: true,
+            required: true,
+            in_onboarding: true,
+            options: [
+              {
+                id: "11",
+                title: "I'm 21+ and I agree to the rules",
+                description: "Confirms your age and unlocks the chat + community.",
+                emoji: { name: "✅" },
+                role_ids: [verified],
+                channel_ids: [],
+              },
+            ],
+          },
+        ]
+      : [];
+    const { status } = await api("PUT", `/guilds/${GUILD}/onboarding`, { enabled: true, mode: 0, default_channel_ids, prompts });
+    return status === 200 ? "enabled (verify gate on)" : "unchanged";
   });
 
   console.log("— pro-upgrade complete —");
