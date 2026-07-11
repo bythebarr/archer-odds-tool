@@ -2,6 +2,7 @@ import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { getUfcMatchup } from "@/lib/queries/ufcMatchup";
 import { getBestLinesForBouts, type UfcCornerBestLine } from "@/lib/queries/ufcOdds";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
+import { computeFinishProjection, scheduledRoundsForBout, type FinishMethod, type FinishProjection } from "@/lib/ufc/finishMath";
 import { calculateEv } from "@/lib/odds/devig";
 
 /**
@@ -20,6 +21,22 @@ import { calculateEv } from "@/lib/odds/devig";
  * postResults.ts): a bout without a matched line can't be priced and is skipped.
  */
 
+/**
+ * The finish-math lean for a pick — HOW Archer sees the backed fighter winning,
+ * from computeFinishProjection (method × round). The card's analyst voice on top
+ * of the raw EV: "sees KO/TKO ~R2", not just a number.
+ */
+export interface UfcFinishLean {
+  /** The backed fighter's most likely winning method (conditional on him winning). */
+  method: FinishMethod;
+  /** Most likely finish round for the pick; null for a decision lean. */
+  round: number | null;
+  /** P(the fight ends inside the distance), 0..1 — the "finish %" behind a KO/sub lean. */
+  finishProb: number;
+  /** P(the fight goes to a decision), 0..1 — the number behind a decision lean. */
+  distanceProb: number;
+}
+
 export interface UfcBestPlay {
   boutId: string;
   /** Corner backed — drives grading (winner === this corner's fighter). */
@@ -37,6 +54,35 @@ export interface UfcBestPlay {
   archerEv: number;
   titleBout: boolean;
   weightClass: string;
+  /** Fighter-math method/round lean for the backed fighter (null if unprojectable). */
+  finishLean?: UfcFinishLean | null;
+}
+
+/**
+ * Derive the backed fighter's finish lean from the full fight's finish
+ * projection: normalize his own method mix (ko/sub/dec, which sums to his win
+ * prob) to "given he wins, how," pick the dominant path, and for a finish read
+ * the most likely round off his per-round curve. Pure over the projection.
+ */
+export function deriveFinishLean(finish: FinishProjection, side: "red" | "blue"): UfcFinishLean | null {
+  if (!finish.available) return null;
+  const byFighter = side === "red" ? finish.byFighter.a : finish.byFighter.b;
+  const perRound = side === "red" ? finish.perFighterRounds.a : finish.perFighterRounds.b;
+  const winMass = byFighter.ko + byFighter.submission + byFighter.decision;
+  if (winMass <= 1e-9) return null;
+
+  let method: FinishMethod;
+  if (byFighter.decision >= byFighter.ko && byFighter.decision >= byFighter.submission) method = "decision";
+  else method = byFighter.ko >= byFighter.submission ? "ko" : "submission";
+
+  let round: number | null = null;
+  if (method !== "decision") {
+    let best = 0;
+    for (let i = 1; i < perRound.length; i++) if (perRound[i] > perRound[best]) best = i;
+    round = best + 1;
+  }
+
+  return { method, round, finishProb: finish.finishProb, distanceProb: finish.goesTheDistanceProb };
 }
 
 export interface UfcCard {
@@ -143,7 +189,7 @@ export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard |
       const proj = computeUfcWinProbability(matchup, now);
       const line = lines.get(bout.id);
       // fighterA = red corner, fighterB = blue corner (see getUfcMatchup).
-      return pickFromBout(
+      const play = pickFromBout(
         {
           id: bout.id,
           weightClass: bout.weightClass,
@@ -158,6 +204,18 @@ export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard |
         line?.red ?? null,
         line?.blue ?? null
       );
+      if (!play) return null;
+
+      // Attach the finish/round lean for the backed corner. Scheduled rounds
+      // honor the main-event/title 5-round rule (upcoming bout: no resultRound).
+      const scheduledRounds = scheduledRoundsForBout({
+        titleBout: bout.titleBout,
+        isMainEvent: bout.isMainEvent,
+        resultRound: null,
+      });
+      const finish = computeFinishProjection(matchup, proj.fighterAProb, scheduledRounds, now);
+      play.finishLean = deriveFinishLean(finish, play.side);
+      return play;
     })
   );
 

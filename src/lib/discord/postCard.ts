@@ -4,7 +4,7 @@ import { formatEv } from "@/lib/odds/format";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
-import { getUfcBestPlays, type UfcBestPlay, type UfcCard } from "./ufcBestPlays";
+import { getUfcBestPlays, type UfcBestPlay, type UfcCard, type UfcFinishLean } from "./ufcBestPlays";
 import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
 import type { Sport, MarketType } from "@/generated/prisma/client";
 
@@ -103,12 +103,29 @@ function buildDescription(picks: OddsPlay[]): string {
   return out;
 }
 
-/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Archer EV · 1.5u · over Ode' Osbourne (58% model) */
+const FINISH_METHOD_LABEL: Record<string, string> = { ko: "KO/TKO", submission: "submission", decision: "decision" };
+
+/**
+ * The fighter-math finish lean, in the card's analyst voice — "sees KO/TKO ~R2
+ * (61% finish)" for a stoppage read, "sees a decision (55% to distance)" for a
+ * points read. Turns the raw EV into a breakdown a capper would actually write.
+ */
+function finishLeanLabel(lean: UfcFinishLean): string {
+  if (lean.method === "decision") {
+    return `sees a decision (${Math.round(lean.distanceProb * 100)}% to distance)`;
+  }
+  const method = FINISH_METHOD_LABEL[lean.method];
+  const round = lean.round ? ` ~R${lean.round}` : "";
+  return `sees ${method}${round} (${Math.round(lean.finishProb * 100)}% finish)`;
+}
+
+/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Archer EV · 1.5u · over Ode' Osbourne (58% model) · sees KO/TKO ~R2 (61% finish) */
 function ufcPlayLine(p: UfcBestPlay): string {
   const marker = p.titleBout ? "🏆 " : "";
+  const lean = p.finishLean ? ` · ${finishLeanLabel(p.finishLean)}` : "";
   return (
     `${marker}**${p.pickName}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ` +
-    `${formatEv(p.archerEv)} Archer EV · ${unitsFor(p.archerEv)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)`
+    `${formatEv(p.archerEv)} Archer EV · ${unitsFor(p.archerEv)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
   );
 }
 
