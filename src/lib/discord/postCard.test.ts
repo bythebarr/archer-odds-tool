@@ -2,14 +2,29 @@ import { describe, it, expect } from "vitest";
 import { unitsFor, selectionDisplay, playLine } from "./postCard";
 import type { OddsPlay } from "@/lib/queries/oddsPool";
 
-describe("unitsFor", () => {
-  it("stakes by edge tier, capped at 2u", () => {
-    expect(unitsFor(0.005)).toBe(1); // a thin-but-positive play (no edge floor now)
-    expect(unitsFor(0.049)).toBe(1); // just under the 1.5u tier
-    expect(unitsFor(0.05)).toBe(1.5); // 1.5u tier boundary
-    expect(unitsFor(0.079)).toBe(1.5);
-    expect(unitsFor(0.08)).toBe(2); // 2u tier boundary
-    expect(unitsFor(0.45)).toBe(2); // cap holds on a big edge (no ceiling now)
+describe("unitsFor (Kelly sizing)", () => {
+  it("sizes up with the edge", () => {
+    // +100 (b=1): quarter Kelly / 2%-unit → 12.5 × edge.
+    expect(unitsFor(0.1, 100)).toBe(1.25);
+    expect(unitsFor(0.2, 100)).toBe(2.5);
+  });
+
+  it("stakes MORE on a favorite than a dog for the SAME edge (odds-aware)", () => {
+    // 10% edge at -200 (b=0.5) sizes bigger than 10% at +100 (b=1): the win is likelier.
+    expect(unitsFor(0.1, -200)).toBe(2.5);
+    expect(unitsFor(0.1, -200)).toBeGreaterThan(unitsFor(0.1, 100));
+  });
+
+  it("caps at 3u on a monster edge and floors at 0.25u on a sliver", () => {
+    expect(unitsFor(0.4, 100)).toBe(3); // would be 5u uncapped
+    expect(unitsFor(0.005, 100)).toBe(0.25); // tiny edge → token play
+  });
+
+  it("always lands on a clean 0.25u increment", () => {
+    for (const [ev, price] of [[0.03, 120], [0.07, -130], [0.15, 150], [0.25, -110]] as const) {
+      const u = unitsFor(ev, price);
+      expect(u * 4).toBe(Math.round(u * 4));
+    }
   });
 });
 
@@ -59,7 +74,7 @@ describe("playLine", () => {
     expect(line).toContain("**NYY @ BOS Over 8.5**");
     expect(line).toContain("+102");
     expect(line).toContain("Edge");
-    expect(line).toContain("1.5u"); // 0.062 EV → 1.5u
+    expect(line).toContain("0.75u"); // Kelly: 6.2% edge @ +102 → 0.75u
     expect(line).toContain("7:05p ET"); // per-line start time
   });
 });

@@ -1,7 +1,7 @@
 import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
 import { todayEt } from "@/lib/dateEt";
 import { formatEv } from "@/lib/odds/format";
-import { formatAmerican } from "@/lib/odds/americanOdds";
+import { formatAmerican, americanToDecimal } from "@/lib/odds/americanOdds";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
 import { getUfcBestPlays, type UfcBestPlay, type UfcCard, type UfcFinishLean } from "./ufcBestPlays";
@@ -34,10 +34,10 @@ const KIND_LABEL: Record<string, string> = { ml: "ML", spread: "SPR", total: "TO
 /**
  * The premium card posts EVERY positive-Archer-EV play — no edge floor, no
  * ceiling, no count cap (product decision: paid members get the full model
- * board, they judge for themselves). The only governor is sizing: unitsFor
- * caps every play at 2u, so even a +40% model edge posts at 2u, never as a
- * "lock". NB: the UFC fight-night leans keep their own believability band in
- * ufcBestPlays.ts, because that model isn't market-calibrated yet.
+ * board, they judge for themselves). Conviction shows in the STAKE, not a
+ * filter: unitsFor sizes every play by Kelly (edge × odds), clamped to 0.25–3u,
+ * so a monster edge sizes up and a thin one barely registers — but nothing ever
+ * posts as a reckless "lock". The UFC leans size the same way (see ufcBestPlays.ts).
  */
 /** Leave 1 of Discord's 10-embed limit for the UFC embed. */
 const MAX_PREMIUM_EMBEDS = 9;
@@ -62,14 +62,38 @@ function tagFor(p: OddsPlay): string {
 }
 
 /**
- * Stake in units, scaled by edge — the "units not dollars" discipline every
- * credible picks room runs on (and the compliance-safe way to size a play:
- * never a dollar amount). Capped at 2u so nothing ever reads as reckless.
+ * Quarter Kelly, the fraction of full Kelly we actually stake. Full Kelly is the
+ * theoretically optimal stake but famously too swingy for real bankrolls; a
+ * quarter keeps the by-edge shape while taming variance.
  */
-export function unitsFor(ev: number): number {
-  if (ev >= 0.08) return 2;
-  if (ev >= 0.05) return 1.5;
-  return 1; // anything positive up to +5%
+const KELLY_FRACTION = 0.25;
+/**
+ * How much bankroll one printed "unit" represents. Kelly outputs a bankroll
+ * fraction; dividing by this converts it to units. 2% (rather than the textbook
+ * 1%) is a labeling choice that lands typical plays in a clean 0.25–3u range.
+ */
+const UNIT_BANKROLL = 0.02;
+/** Never smaller than a token play, never larger than 3u — nothing reads reckless. */
+const MIN_UNITS = 0.25;
+const MAX_UNITS = 3;
+
+/**
+ * Stake in units, sized by the **Kelly Criterion** — the bettor's-math answer to
+ * "size by the odds and the edge, not flat." Kelly stakes a bankroll fraction of
+ * `edge / (decimalOdds − 1)`: a big model edge at plus-money sizes up hard, a
+ * thin edge at heavy juice barely registers, and — for the SAME edge — a favorite
+ * (short price) is staked bigger than a dog, because the win is likelier. All of
+ * it falls out of the price + our EV, exactly the "if he's plus and our model has
+ * him minus, that's a big one" instinct. Quarter Kelly, clamped to [0.25, 3]u and
+ * rounded to a clean 0.25u. (units-not-dollars = the compliance-safe way to size.)
+ */
+export function unitsFor(ev: number, americanPrice: number): number {
+  if (ev <= 0) return MIN_UNITS; // not an edge — never size a non-play up
+  const b = americanToDecimal(americanPrice) - 1; // net decimal odds
+  const fullKelly = ev / b; // optimal bankroll fraction
+  const units = (KELLY_FRACTION * fullKelly) / UNIT_BANKROLL;
+  const clamped = Math.max(MIN_UNITS, Math.min(MAX_UNITS, units));
+  return Math.round(clamped * 4) / 4; // nearest 0.25u
 }
 
 /** away @ home, using book abbreviations when available (e.g. "NYY @ BOS"). */
@@ -99,7 +123,7 @@ function startTimeLabel(d: Date): string {
 
 /** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Edge · 1.5u · 7:05p ET */
 export function playLine(p: OddsPlay): string {
-  const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv)}u` : "";
+  const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv, p.bestPrice)}u` : "";
   const start = p.startUtc ? ` · ${startTimeLabel(p.startUtc)} ET` : "";
   return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}${start}`;
 }
@@ -158,7 +182,7 @@ function ufcPlayLine(p: UfcBestPlay): string {
   const lean = p.finishLean ? ` · ${finishLeanLabel(p.finishLean)}` : "";
   return (
     `${marker}**${p.pickName}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ` +
-    `${formatEv(p.archerEv)} Edge · ${unitsFor(p.archerEv)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
+    `${formatEv(p.archerEv)} Edge · ${unitsFor(p.archerEv, p.bestPrice)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
   );
 }
 
@@ -225,7 +249,7 @@ async function recordPostedPlays(dateEt: string, picks: OddsPlay[]): Promise<voi
           // Store the Archer (model) EV we actually posted on — units derive from
           // it, and #results grades on units/price/result, not this field.
           ev: p.modelEv,
-          units: p.modelEv !== null ? unitsFor(p.modelEv) : 1,
+          units: p.modelEv !== null ? unitsFor(p.modelEv, p.bestPrice) : 1,
           mlbPlayerId: p.mlbPlayerId ?? null,
           statCategory: p.statCategory ?? null,
         },
@@ -271,7 +295,7 @@ async function recordUfcPostedPlays(card: UfcCard): Promise<void> {
           bestPrice: p.bestPrice,
           bestBookName: p.bestBookName,
           ev: p.archerEv,
-          units: unitsFor(p.archerEv),
+          units: unitsFor(p.archerEv, p.bestPrice),
           mlbPlayerId: null,
           statCategory: null,
         },
@@ -341,7 +365,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   const { plays } = await getOddsPoolForDate(dateEt);
   // EVERY positive-model-EV play, sorted by edge. The pool arrives sorted by
   // MARKET ev, so it MUST be re-sorted by modelEv for a capper card. No floor,
-  // no ceiling, no count cap — 2u sizing is the only governor (see unitsFor).
+  // no ceiling, no count cap — Kelly sizing is the governor (see unitsFor).
   const modelPlays = plays.filter((p): p is OddsPlay & { modelEv: number } => p.modelEv !== null);
   const picks = modelPlays.filter((p) => p.modelEv > 0).sort((a, b) => b.modelEv - a.modelEv);
   const label = prettyDate(dateEt);
