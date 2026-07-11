@@ -35,9 +35,10 @@ const KIND_LABEL: Record<string, string> = { ml: "ML", spread: "SPR", total: "TO
  * The premium card posts EVERY positive-Archer-EV play — no edge floor, no
  * ceiling, no count cap (product decision: paid members get the full model
  * board, they judge for themselves). Conviction shows in the STAKE, not a
- * filter: unitsFor sizes every play by Kelly (edge × odds), clamped to 0.25–3u,
- * so a monster edge sizes up and a thin one barely registers — but nothing ever
- * posts as a reckless "lock". The UFC leans size the same way (see ufcBestPlays.ts).
+ * filter: unitsFor sizes every play by Kelly (edge × odds), then hard-caps the
+ * stake by price so long-priced dogs never get fat — a monster edge on a favorite
+ * sizes up, the same edge on a +250 dog stays small. The UFC leans size the same
+ * way (see ufcBestPlays.ts).
  */
 /** Leave 1 of Discord's 10-embed limit for the UFC embed. */
 const MAX_PREMIUM_EMBEDS = 9;
@@ -73,27 +74,38 @@ const KELLY_FRACTION = 0.25;
  * 1%) is a labeling choice that lands typical plays in a clean 0.25–3u range.
  */
 const UNIT_BANKROLL = 0.02;
-/** Never smaller than a token play, never larger than 3u — nothing reads reckless. */
+/** Never smaller than a token play — nothing reads reckless, tiny edges still show. */
 const MIN_UNITS = 0.25;
-const MAX_UNITS = 3;
 
 /**
- * Stake in units, sized by the **Kelly Criterion** — the bettor's-math answer to
- * "size by the odds and the edge, not flat." Kelly stakes a bankroll fraction of
- * `edge / (decimalOdds − 1)`: a big model edge at plus-money sizes up hard, a
- * thin edge at heavy juice barely registers, and — for the SAME edge — a favorite
- * (short price) is staked bigger than a dog, because the win is likelier. All of
- * it falls out of the price + our EV, exactly the "if he's plus and our model has
- * him minus, that's a big one" instinct. Quarter Kelly, clamped to [0.25, 3]u and
- * rounded to a clean 0.25u. (units-not-dollars = the compliance-safe way to size.)
+ * Per-price stake ceiling — the longer the odds, the smaller the biggest bet we
+ * allow, NO MATTER how juicy the edge. Long-priced "monster edges" are exactly
+ * where the model is least trustworthy, so we refuse to fire fat numbers at them:
+ * favorites & short dogs (≤ +150) can run the full 3u, but +200+ is clamped hard.
+ * These four numbers are pure product preference — tune to taste.
+ */
+function maxUnitsForPrice(americanPrice: number): number {
+  if (americanPrice <= 150) return 3; // negatives through +150 — heavy allowed
+  if (americanPrice <= 175) return 1.5;
+  if (americanPrice <= 350) return 0.75;
+  return 0.5;
+}
+
+/**
+ * Stake in units, sized by the **Kelly Criterion** then capped by price. Kelly
+ * stakes `edge / (decimalOdds − 1)`: a big model edge sizes up hard, a thin one
+ * barely registers, and for the SAME edge a favorite is staked bigger than a dog
+ * (the win is likelier) — the "he's plus but our model has him minus = big one"
+ * instinct. On top of that, maxUnitsForPrice hard-ceilings long-priced plays so a
+ * +200 dog never gets a fat stake even on a huge (likely miscalibrated) edge.
+ * Quarter Kelly, floored at 0.25u, rounded to a clean 0.25u. (units-not-dollars.)
  */
 export function unitsFor(ev: number, americanPrice: number): number {
   if (ev <= 0) return MIN_UNITS; // not an edge — never size a non-play up
   const b = americanToDecimal(americanPrice) - 1; // net decimal odds
-  const fullKelly = ev / b; // optimal bankroll fraction
-  const units = (KELLY_FRACTION * fullKelly) / UNIT_BANKROLL;
-  const clamped = Math.max(MIN_UNITS, Math.min(MAX_UNITS, units));
-  return Math.round(clamped * 4) / 4; // nearest 0.25u
+  const kellyUnits = (KELLY_FRACTION * (ev / b)) / UNIT_BANKROLL;
+  const units = Math.min(kellyUnits, maxUnitsForPrice(americanPrice));
+  return Math.round(Math.max(MIN_UNITS, units) * 4) / 4; // nearest 0.25u
 }
 
 /** away @ home, using book abbreviations when available (e.g. "NYY @ BOS"). */
