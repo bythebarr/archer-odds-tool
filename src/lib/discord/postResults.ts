@@ -3,6 +3,7 @@ import { todayEt } from "@/lib/dateEt";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { STAT_COLUMN } from "@/lib/props/hitRate";
 import { gradeGameLine, gradeProp, gradeUfcMoneyline, tallyLedger, currentStreak, type PlayResult } from "./gradePlay";
+import { mosesAuthor } from "./brand";
 import type { PostedPlay } from "@/generated/prisma/client";
 
 /**
@@ -231,7 +232,7 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
 
   await postWebhook(url, {
     username: "Moses, Leader of Many",
-    embeds: [{ title: `📊 Results · ${label}`, description: body, color: ARCHR_GREEN, footer: { text: RESEARCH_FOOTER } }],
+    embeds: [{ author: mosesAuthor(), title: `📊 Results · ${label}`, description: body, color: ARCHR_GREEN, footer: { text: RESEARCH_FOOTER } }],
   });
 
   return { posted: true, dayRecord: dayLedger.record, dayUnits: dayLedger.netUnits, graded };
