@@ -17,6 +17,18 @@ import { decayWeight } from "./fighterStrength";
 
 export type FinishMethod = "ko" | "submission" | "decision";
 
+/**
+ * Scheduled rounds for a bout. Every UFC MAIN EVENT is 5 rounds — has been
+ * since 2011, whether or not a belt is on the line — as is every title fight
+ * (including a co-main title bout). Everything else is 3. Callers pass the two
+ * flags; isMainEvent is derived from card position (lowest boutOrder in the
+ * event) in the query layer. This replaces the old `titleBout ? 5 : 3`, which
+ * wrongly scored non-title main events (e.g. a Fight Night headliner) as 3.
+ */
+export function scheduledRoundsForBout(bout: { titleBout: boolean; isMainEvent: boolean }): number {
+  return bout.titleBout || bout.isMainEvent ? 5 : 3;
+}
+
 export interface MethodDistribution {
   ko: number;
   submission: number;

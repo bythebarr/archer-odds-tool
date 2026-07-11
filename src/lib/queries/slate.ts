@@ -7,7 +7,7 @@ import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { listUpcomingUfcEvents } from "./ufcEvents";
 import { getUfcMatchup } from "./ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
-import { computeFinishProjection, type FinishMethod } from "@/lib/ufc/finishMath";
+import { computeFinishProjection, scheduledRoundsForBout, type FinishMethod } from "@/lib/ufc/finishMath";
 
 /**
  * The Slate: one normalized, cross-sport view of a day's card. Every sport
@@ -164,8 +164,11 @@ async function ufcItems(dateEt: string): Promise<SlateItem[]> {
       const away = projection?.fighterBProb ?? null;
 
       // Finish-math method lean — reuse the matchup + win prob we already have.
+      // 5 rounds for title fights and main events alike (see scheduledRoundsForBout).
       const finish =
-        matchup && home !== null ? computeFinishProjection(matchup, home, bout.titleBout ? 5 : 3) : null;
+        matchup && home !== null
+          ? computeFinishProjection(matchup, home, scheduledRoundsForBout(bout))
+          : null;
       const methodLean = finish?.available
         ? (() => {
             const m = finish.method;
