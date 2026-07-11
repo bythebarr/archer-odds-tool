@@ -49,6 +49,10 @@ DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-ser
 # Seed welcome/how-to content into the bare channels (skips any with pins):
 DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/seed-content.ts
 
+# Elevate to a Community server — icon, Community mode, Welcome Screen, Onboarding,
+# :archr: emoji, Hall of Cashes forum, Fight Night event (idempotent, safe to re-run):
+DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/pro-upgrade.ts
+
 # Register (or update) the /betcheck slash command to the server:
 DISCORD_APP_ID=… DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/register-discord-commands.ts
 ```
