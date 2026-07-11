@@ -15,9 +15,17 @@ describe("unitsFor (Kelly sizing)", () => {
     expect(unitsFor(0.1, -200)).toBeGreaterThan(unitsFor(0.1, 100));
   });
 
-  it("caps at 3u on a monster edge and floors at 0.25u on a sliver", () => {
+  it("caps at 3u on a monster edge (short price) and floors at 0.25u on a sliver", () => {
     expect(unitsFor(0.4, 100)).toBe(3); // would be 5u uncapped
     expect(unitsFor(0.005, 100)).toBe(0.25); // tiny edge → token play
+  });
+
+  it("clamps long-priced dogs hard, no matter how big the edge", () => {
+    // A huge +60% edge is capped purely by price: <=+150 heavy, +200+ small.
+    expect(unitsFor(0.6, 140)).toBe(3); // short dog → still heavy
+    expect(unitsFor(0.6, 175)).toBe(1.5); // mid dog
+    expect(unitsFor(0.6, 250)).toBe(0.75); // longshot → small despite the edge
+    expect(unitsFor(0.6, 400)).toBe(0.5); // deep longshot → smallest
   });
 
   it("always lands on a clean 0.25u increment", () => {
