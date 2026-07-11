@@ -90,6 +90,33 @@ export interface Ledger {
   record: string;
 }
 
+/**
+ * The current W or L streak over chronologically-ordered settled plays — the
+ * "hot hand" (or cold snap) for the recap. Reads from the most recent play
+ * backward, counting the trailing run of the same decisive result; pushes and
+ * voids are non-decisive and skipped (they neither extend nor break a streak).
+ * Returns null when there's no decisive result to speak of.
+ */
+export function currentStreak(
+  results: PlayResult[]
+): { result: "hit" | "miss"; length: number } | null {
+  let kind: "hit" | "miss" | null = null;
+  let length = 0;
+  for (let i = results.length - 1; i >= 0; i--) {
+    const r = results[i];
+    if (r === "push" || r === "void") continue; // non-decisive — doesn't touch the streak
+    if (kind === null) {
+      kind = r;
+      length = 1;
+    } else if (r === kind) {
+      length++;
+    } else {
+      break; // streak broken by the opposite result
+    }
+  }
+  return kind ? { result: kind, length } : null;
+}
+
 /** Aggregate a set of graded plays into a W-L-P record + net-unit ledger. */
 export function tallyLedger(
   plays: { result: PlayResult; units: number; bestPrice: number }[]

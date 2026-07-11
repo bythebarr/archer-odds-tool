@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { todayEt } from "@/lib/dateEt";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { STAT_COLUMN } from "@/lib/props/hitRate";
-import { gradeGameLine, gradeProp, gradeUfcMoneyline, tallyLedger, type PlayResult } from "./gradePlay";
+import { gradeGameLine, gradeProp, gradeUfcMoneyline, tallyLedger, currentStreak, type PlayResult } from "./gradePlay";
 import type { PostedPlay } from "@/generated/prisma/client";
 
 /**
@@ -189,14 +189,24 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
   });
   const dayLedger = tallyLedger(dayPlays.map(ledgerInput));
 
-  // Running all-time ledger over every settled (non-void) play.
+  // Running all-time ledger over every settled (non-void) play, in chronological
+  // order so the streak + last-10 read from the most recent plays.
   const allSettled = await prisma.postedPlay.findMany({
     where: { gradedAt: { not: null }, voided: false },
+    orderBy: [{ postedForDate: "asc" }, { gradedAt: "asc" }],
   });
   const allLedger = tallyLedger(allSettled.map(ledgerInput));
+  const last10 = tallyLedger(allSettled.slice(-10).map(ledgerInput));
+  const streak = currentStreak(allSettled.map((p) => ledgerInput(p).result));
 
   const label = prettyDate(dateEt);
   const arrow = dayLedger.netUnits >= 0 ? "▲" : "▼";
+  // The "hot hand": only surface a run of 3+ (a real heater or cold snap, not
+  // noise). A cold streak is shown too — the record never hides a skid.
+  const streakTag =
+    streak && streak.length >= 3
+      ? `   ${streak.result === "hit" ? "🔥" : "🧊"} ${streak.result === "hit" ? "W" : "L"}${streak.length}`
+      : "";
 
   // Per-play result lines, length-guarded under Discord's 4096 embed cap.
   let lines = "";
@@ -211,7 +221,10 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
 
   const header =
     `**${label} card:** ${dayLedger.record}  ${arrow} ${fmtUnits(dayLedger.netUnits)}` +
-    `\n**All-time:** ${allLedger.record}  ·  ${fmtUnits(allLedger.netUnits)}`;
+    `\n**All-time:** ${allLedger.record}  ·  ${fmtUnits(allLedger.netUnits)}${streakTag}` +
+    // Last-10 only once there's more history than the window itself (else it's
+    // just the all-time line again).
+    (allSettled.length > 10 ? `\n**Last 10:** ${last10.record}  ·  ${fmtUnits(last10.netUnits)}` : "");
   const body = dayPlays.length
     ? `${header}\n\n${lines}`
     : `${header}\n\n_No settled plays for ${label}._`;

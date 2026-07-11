@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gradeGameLine, gradeProp, gradeUfcMoneyline, unitsProfit, tallyLedger } from "./gradePlay";
+import { gradeGameLine, gradeProp, gradeUfcMoneyline, unitsProfit, tallyLedger, currentStreak } from "./gradePlay";
 
 describe("gradeGameLine", () => {
   it("moneyline: backs the winner, no push", () => {
@@ -103,5 +103,25 @@ describe("tallyLedger", () => {
       { result: "miss", units: 1, bestPrice: 100 },
     ]);
     expect(l.record).toBe("1-1");
+  });
+});
+
+describe("currentStreak", () => {
+  it("returns null with no decisive results", () => {
+    expect(currentStreak([])).toBeNull();
+    expect(currentStreak(["push", "void"])).toBeNull();
+  });
+
+  it("counts the trailing run of the most recent decisive result", () => {
+    expect(currentStreak(["miss", "hit", "hit", "hit"])).toEqual({ result: "hit", length: 3 });
+    expect(currentStreak(["hit", "hit", "miss", "miss"])).toEqual({ result: "miss", length: 2 });
+  });
+
+  it("skips pushes and voids without breaking the streak", () => {
+    expect(currentStreak(["hit", "push", "hit", "void"])).toEqual({ result: "hit", length: 2 });
+  });
+
+  it("breaks on the first opposite decisive result", () => {
+    expect(currentStreak(["hit", "hit", "miss", "hit"])).toEqual({ result: "hit", length: 1 });
   });
 });
