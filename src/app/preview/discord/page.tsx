@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { previewDailyCard } from "@/lib/discord/postCard";
+import {
+  getMorningData,
+  renderMorningDrop,
+  lessonForDate,
+  renderTeachingDrop,
+} from "@/lib/discord/mosesDaily";
+import { todayEt } from "@/lib/dateEt";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
@@ -77,50 +84,60 @@ function EmbedPreview({
   );
 }
 
+/** A muted timeline label above each post (its slot in Moses's day). */
+function Slot({ label }: { label: string }) {
+  return <div className="mb-1 mt-6 text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>;
+}
+
 export default async function DiscordPreviewPage() {
-  const card = await previewDailyCard();
+  const today = todayEt();
+  const [card, morningData] = await Promise.all([previewDailyCard(), getMorningData(today)]);
+  const morning = renderMorningDrop(morningData);
+  const lesson = renderTeachingDrop(lessonForDate(today));
 
   return (
     <PageShell>
       <PageHeader
-        title="Discord card preview"
-        description={`Exactly what the daily card would post right now for ${card.label} — dry-run, nothing is posted or recorded. Refresh to re-pull.`}
+        title="Moses's day — Discord preview"
+        description={`Every post Moses would drop today (${card.label}), in order — dry-run, nothing is posted or recorded. Refresh to re-pull.`}
       />
 
       <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
         <span className="rounded bg-muted px-2 py-1">
-          {card.premiumCount} premium play{card.premiumCount === 1 ? "" : "s"}
+          {card.premiumCount} card play{card.premiumCount === 1 ? "" : "s"}
         </span>
         <span className="rounded bg-muted px-2 py-1">
           {card.ufcCount} UFC lean{card.ufcCount === 1 ? "" : "s"}
         </span>
-        {card.withheldCount > 0 && (
-          <span className="rounded bg-muted px-2 py-1">
-            {card.withheldCount} withheld (above-ceiling / likely miscalibration)
-          </span>
-        )}
+        <span className="rounded bg-muted px-2 py-1">
+          {morningData.mlbGames} MLB game{morningData.mlbGames === 1 ? "" : "s"}
+        </span>
       </div>
 
-      <div className="mt-6 space-y-4">
-        <EmbedPreview
-          title={`🎯 Archer's Best Plays · ${card.label}`}
-          body={card.premium}
-          accent="#06996b"
-        />
-        {card.ufc && card.ufcTitle && (
+      <Slot label="~9:00 AM ET · Morning slate drop" />
+      <EmbedPreview title={morning.title} body={morning.description} accent="#06996b" />
+
+      <Slot label="~11:30 AM ET · Moses 101" />
+      <EmbedPreview title={lesson.title} body={lesson.description} accent="#06996b" />
+
+      <Slot label="1:00 PM ET · Card of the Day" />
+      <EmbedPreview title={`🎯 Archer's Best Plays · ${card.label}`} body={card.premium} accent="#06996b" />
+      {card.ufc && card.ufcTitle && (
+        <div className="mt-4">
           <EmbedPreview title={card.ufcTitle} body={card.ufc} accent="#d20a0a" />
-        )}
-      </div>
+        </div>
+      )}
 
-      <Card className="mt-6">
-        <CardHeader className="pb-2 text-sm font-medium text-foreground">
-          What this is
-        </CardHeader>
+      <Card className="mt-8">
+        <CardHeader className="pb-2 text-sm font-medium text-foreground">What this is</CardHeader>
         <CardContent className="text-xs text-muted-foreground">
-          A non-posting dry-run of the <code className="font-mono">post-discord</code> cron. It
-          runs the same pool, model-EV selection, believability band, and fighter-math finish leans
-          the real poster uses — but posts nothing to Discord and writes no grading rows. Open it
-          anytime to see the current card without waiting for the daily fire.
+          A non-posting dry-run of Moses&apos;s daily Discord posts — the morning drop
+          (<code className="font-mono">post-morning</code>), Moses 101
+          (<code className="font-mono">post-teaching</code>), and the Card of the Day
+          (<code className="font-mono">post-discord</code>). It runs the exact same free-data
+          pipelines the real posters use, but posts nothing and writes no grading rows. The daily
+          posts stay dormant until <code className="font-mono">DISCORD_MOSES_WEBHOOK_URL</code> is
+          set — this page is how you review them first.
         </CardContent>
       </Card>
     </PageShell>

@@ -308,7 +308,7 @@ export async function previewDailyCard(dateEt: string = todayEt()): Promise<Dail
   };
 }
 
-async function postWebhook(url: string, body: unknown): Promise<void> {
+export async function postWebhook(url: string, body: unknown): Promise<void> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
