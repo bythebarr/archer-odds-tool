@@ -1,5 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { pickFromBout } from "./ufcBestPlays";
+import { pickFromBout, deriveFinishLean } from "./ufcBestPlays";
+import type { FinishProjection } from "@/lib/ufc/finishMath";
+
+/** Minimal FinishProjection fixture — only the fields deriveFinishLean reads matter. */
+function finishFixture(over: Partial<FinishProjection> = {}): FinishProjection {
+  return {
+    available: true,
+    method: { ko: 0.4, submission: 0.1, decision: 0.5 },
+    byFighter: { a: { ko: 0.4, submission: 0.1, decision: 0.1 }, b: { ko: 0, submission: 0, decision: 0.4 } },
+    finishProb: 0.5,
+    goesTheDistanceProb: 0.5,
+    rounds: [0.25, 0.15, 0.1, 0, 0],
+    perFighterRounds: { a: [0.3, 0.08, 0.02, 0, 0], b: [0, 0, 0, 0, 0] },
+    scheduledRounds: 5,
+    expectedFinishRound: 1.5,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fighterA: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fighterB: {} as any,
+    ...over,
+  };
+}
 
 const bout = {
   id: "b1",
@@ -57,5 +78,35 @@ describe("pickFromBout (Archer EV selection)", () => {
 
   it("returns null when the model couldn't price the bout (thin history)", () => {
     expect(pickFromBout(bout, null, null, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" })).toBeNull();
+  });
+});
+
+describe("deriveFinishLean", () => {
+  it("reads a KO/TKO lean with the pick's most likely finish round", () => {
+    // Fighter A (red): ko 0.4 dominates his win mass; per-round curve peaks R1.
+    const lean = deriveFinishLean(finishFixture(), "red");
+    expect(lean).not.toBeNull();
+    expect(lean!.method).toBe("ko");
+    expect(lean!.round).toBe(1);
+    expect(lean!.finishProb).toBeCloseTo(0.5, 6);
+  });
+
+  it("reads a decision lean (no round) when the pick mostly wins on points", () => {
+    // Fighter B (blue): only decision mass.
+    const lean = deriveFinishLean(finishFixture(), "blue");
+    expect(lean!.method).toBe("decision");
+    expect(lean!.round).toBeNull();
+    expect(lean!.distanceProb).toBeCloseTo(0.5, 6);
+  });
+
+  it("returns null when the projection isn't available or the side has no win mass", () => {
+    expect(deriveFinishLean(finishFixture({ available: false }), "red")).toBeNull();
+    const noMass = finishFixture({ byFighter: { a: { ko: 0, submission: 0, decision: 0 }, b: { ko: 0.5, submission: 0, decision: 0.5 } } });
+    expect(deriveFinishLean(noMass, "red")).toBeNull();
+  });
+
+  it("picks the finish round from the pick's own per-round curve, not R1 by default", () => {
+    const lateFinisher = finishFixture({ perFighterRounds: { a: [0.05, 0.05, 0.3, 0, 0], b: [0, 0, 0, 0, 0] } });
+    expect(deriveFinishLean(lateFinisher, "red")!.round).toBe(3);
   });
 });
