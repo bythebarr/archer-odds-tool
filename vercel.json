@@ -6,7 +6,7 @@
     { "path": "/api/cron/sync-results", "schedule": "0 4 * * *" },
     { "path": "/api/cron/sync-results", "schedule": "0 6 * * *" },
     { "path": "/api/cron/sync-results", "schedule": "0 20 * * *" },
-    { "path": "/api/cron/poll-odds", "schedule": "35 16 * * *" },
+    { "path": "/api/cron/poll-odds", "schedule": "30 13 * * *" },
     { "path": "/api/cron/poll-odds", "schedule": "30 22 * * *" },
     { "path": "/api/cron/sync-schedule", "schedule": "0 9 * * *" },
     { "path": "/api/cron/poll-odds-tennis", "schedule": "5 9 * * *" },
@@ -20,7 +20,7 @@
     { "path": "/api/cron/backfill-f1", "schedule": "50 9 * * *" },
     { "path": "/api/cron/post-morning", "schedule": "0 13 * * *" },
     { "path": "/api/cron/post-teaching", "schedule": "30 15 * * *" },
-    { "path": "/api/cron/post-discord", "schedule": "0 17 * * *" },
+    { "path": "/api/cron/post-discord", "schedule": "30 14 * * *" },
     { "path": "/api/cron/post-results", "schedule": "0 15 * * *" }
   ]
 }

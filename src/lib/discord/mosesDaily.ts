@@ -28,6 +28,13 @@ const FIGHT_WEEK_DAYS = 8;
 const ARCHR_GREEN = 0x06996b;
 const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
+/**
+ * When the full +EV card drops — MUST track the post-discord cron in vercel.json
+ * (currently `30 14 * * *` = 10:30 AM ET). Kept early on purpose: the card has to
+ * land before first pitch, and MLB day games can start ~11 AM ET. Change both
+ * together or the morning drop will promise a time the card doesn't keep.
+ */
+const CARD_DROP_LABEL = "10:30 AM ET";
 
 export interface MosesPostResult {
   posted: boolean;
@@ -137,7 +144,7 @@ export function renderMorningDrop(data: MorningData): DiscordEmbed {
     body =
       `Moses is up. **${data.mlbGames} MLB game${data.mlbGames === 1 ? "" : "s"}** on the board today. ${window}`.trim() +
       fightWeek +
-      "\n\nThe full card — every play with the number — drops at **1 PM ET**. Let's eat. 🏹";
+      `\n\nThe full card — every play with the number — drops at **${CARD_DROP_LABEL}**. Let's eat. 🏹`;
   }
 
   return {
