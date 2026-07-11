@@ -20,13 +20,28 @@ export type FinishMethod = "ko" | "submission" | "decision";
 /**
  * Scheduled rounds for a bout. Every UFC MAIN EVENT is 5 rounds — has been
  * since 2011, whether or not a belt is on the line — as is every title fight
- * (including a co-main title bout). Everything else is 3. Callers pass the two
- * flags; isMainEvent is derived from card position (lowest boutOrder in the
- * event) in the query layer. This replaces the old `titleBout ? 5 : 3`, which
- * wrongly scored non-title main events (e.g. a Fight Night headliner) as 3.
+ * (including a co-main title bout). Everything else is 3.
+ *
+ * `isMainEvent` is derived from card position (lowest boutOrder in the event)
+ * in the query layer. But boutOrder + titleBout were only backfilled for
+ * recently-ingested events — across the deep historical roster both are unset
+ * (boutOrder null, titleBout false), so those two flags alone would score old
+ * 5-round main events and title fights as 3. `resultRound` is the backstop for
+ * COMPLETED bouts: a fight that reached round 4 or 5 was necessarily scheduled
+ * for 5, so a finished bout with resultRound >= 4 is 5 regardless of the missing
+ * metadata. (It can't recover a 5-round fight that ended early — that needs the
+ * historical boutOrder/titleBout backfill — but it fixes every fight that
+ * visibly went the distance.) Upcoming bouts have resultRound null, so this
+ * never interferes there; they rely on boutOrder, which they do have.
  */
-export function scheduledRoundsForBout(bout: { titleBout: boolean; isMainEvent: boolean }): number {
-  return bout.titleBout || bout.isMainEvent ? 5 : 3;
+export function scheduledRoundsForBout(bout: {
+  titleBout: boolean;
+  isMainEvent: boolean;
+  resultRound?: number | null;
+}): number {
+  if (bout.titleBout || bout.isMainEvent) return 5;
+  if (bout.resultRound != null && bout.resultRound >= 4) return 5;
+  return 3;
 }
 
 export interface MethodDistribution {

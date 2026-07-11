@@ -17,6 +17,16 @@ describe("scheduledRoundsForBout", () => {
   it("gives an ordinary undercard bout 3 rounds", () => {
     expect(scheduledRoundsForBout({ titleBout: false, isMainEvent: false })).toBe(3);
   });
+
+  it("recovers 5 rounds for a completed fight that reached round 4 or 5 (historical backfill gap)", () => {
+    // boutOrder + titleBout unset on old events, but ending in R5 proves it was scheduled for 5.
+    expect(scheduledRoundsForBout({ titleBout: false, isMainEvent: false, resultRound: 5 })).toBe(5);
+    expect(scheduledRoundsForBout({ titleBout: false, isMainEvent: false, resultRound: 4 })).toBe(5);
+  });
+
+  it("does not stretch a 3-round fight just because it went the distance (R3)", () => {
+    expect(scheduledRoundsForBout({ titleBout: false, isMainEvent: false, resultRound: 3 })).toBe(3);
+  });
 });
 
 describe("classifyMethod", () => {
