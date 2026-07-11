@@ -15,6 +15,11 @@ import type { NextRequest } from "next/server";
  * would break the pollers and the Discord poster.
  */
 export function proxy(request: NextRequest) {
+  // Legal pages stay public even when the rest of the site is gated — Discord
+  // app verification, Whop, and members all need to reach them.
+  const path = request.nextUrl.pathname;
+  if (path === "/terms" || path === "/privacy") return NextResponse.next();
+
   const password = process.env.SITE_ACCESS_PASSWORD;
   if (!password) return NextResponse.next(); // gate dormant until the env var is set
 
