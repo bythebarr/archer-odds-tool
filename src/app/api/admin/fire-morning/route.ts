@@ -1,5 +1,8 @@
 import { postMorningDrop } from "@/lib/discord/mosesDaily";
 
+// Run on every request — never statically cache an admin action.
+export const dynamic = "force-dynamic";
+
 /**
  * Admin diagnostic: fire the morning slate drop RIGHT NOW, on demand, so we can
  * see whether DISCORD_MOSES_WEBHOOK_URL is wired to a live channel — instead of
