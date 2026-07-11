@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { getBestLinesForBouts } from "./ufcOdds";
+import { identifyMainEventBoutId } from "@/lib/ufc/mainEvent";
 
 /**
  * Read layer for the UFC UI. The fighter-math projection itself lives in
@@ -74,6 +75,7 @@ function pairKey(redId: string, blueId: string): string {
 const summaryFighterSelect = {
   id: true,
   fullName: true,
+  nickname: true,
   imageUrl: true,
   recordWins: true,
   recordLosses: true,
@@ -86,6 +88,7 @@ const summaryFighterSelect = {
 interface SummaryFighter {
   id: string;
   fullName: string;
+  nickname: string | null;
   imageUrl: string | null;
   recordWins: number | null;
   recordLosses: number | null;
@@ -95,6 +98,7 @@ interface SummaryBout {
   id: string;
   weightClass: string;
   titleBout: boolean;
+  boutOrder: number | null;
   cardSection: string | null;
   method: string | null;
   resultRound: number | null;
@@ -115,6 +119,21 @@ interface SummaryEvent {
 
 /** Shared event → summary shaping (dedupe the occasional duplicate fighter-pair row; strip the "Bout" suffix; format records). */
 function mapEventSummary(event: SummaryEvent): UfcEventSummary {
+  // Headliner by boutOrder when present, else by the event title's "A vs. B"
+  // pairing — robust to the historical roster where boutOrder is unset (see
+  // identifyMainEventBoutId). Drives 5-round scheduling for the main event.
+  const mainEventId = identifyMainEventBoutId(
+    event.bouts.map((b) => ({
+      id: b.id,
+      boutOrder: b.boutOrder,
+      redName: b.redCornerFighter.fullName,
+      blueName: b.blueCornerFighter.fullName,
+      redNickname: b.redCornerFighter.nickname,
+      blueNickname: b.blueCornerFighter.nickname,
+    })),
+    event.title
+  );
+
   const seen = new Set<string>();
   const bouts: UfcBoutSummary[] = [];
   for (const b of event.bouts) {
@@ -125,9 +144,7 @@ function mapEventSummary(event: SummaryEvent): UfcEventSummary {
       id: b.id,
       weightClass: b.weightClass.replace(/\s+Bout$/i, ""),
       titleBout: b.titleBout,
-      // Callers order bouts by boutOrder asc (main card first, lowest = headliner),
-      // so the first bout kept is the main event — 5 rounds even without a belt.
-      isMainEvent: bouts.length === 0,
+      isMainEvent: b.id === mainEventId,
       cardSection: b.cardSection,
       method: b.method,
       resultRound: b.resultRound,
@@ -299,14 +316,30 @@ export const getUfcBoutHeader = cache(async (boutId: string): Promise<UfcBoutHea
   });
   if (!bout) return null;
 
-  // The event's headliner = its lowest-boutOrder bout (main card, position 1).
+  // The event's headliner — by lowest boutOrder when the card has it, else by
+  // matching the event title's "A vs. B" pairing (see identifyMainEventBoutId).
   // Fetched separately because the single-bout query above has no event context;
   // 5-round scheduling turns on this even for a non-title main event.
-  const headliner = await prisma.ufcBout.findFirst({
-    where: { eventId: bout.eventId, boutOrder: { not: null } },
-    orderBy: { boutOrder: "asc" },
-    select: { id: true },
+  const eventBouts = await prisma.ufcBout.findMany({
+    where: { eventId: bout.eventId },
+    select: {
+      id: true,
+      boutOrder: true,
+      redCornerFighter: { select: { fullName: true, nickname: true } },
+      blueCornerFighter: { select: { fullName: true, nickname: true } },
+    },
   });
+  const mainEventId = identifyMainEventBoutId(
+    eventBouts.map((b) => ({
+      id: b.id,
+      boutOrder: b.boutOrder,
+      redName: b.redCornerFighter.fullName,
+      blueName: b.blueCornerFighter.fullName,
+      redNickname: b.redCornerFighter.nickname,
+      blueNickname: b.blueCornerFighter.nickname,
+    })),
+    bout.event.title
+  );
 
   return {
     boutId: bout.id,
@@ -315,7 +348,7 @@ export const getUfcBoutHeader = cache(async (boutId: string): Promise<UfcBoutHea
     location: locationOf(bout.event.city, bout.event.country),
     weightClass: bout.weightClass.replace(/\s+Bout$/i, ""),
     titleBout: bout.titleBout,
-    isMainEvent: headliner?.id === bout.id,
+    isMainEvent: mainEventId === bout.id,
     status: bout.status,
     method: bout.method,
     methodDetails: bout.methodDetails,
