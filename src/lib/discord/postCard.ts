@@ -361,7 +361,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
     ...(i === arr.length - 1 ? { footer: { text: RESEARCH_FOOTER } } : {}),
   }));
   await postWebhook(premiumUrl, {
-    username: "Archer",
+    username: "Moses, Leader of Many",
     embeds: [...premiumEmbeds, ...(ufcCard ? [buildUfcEmbed(ufcCard)] : [])],
   });
 
@@ -388,7 +388,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
       ? `\`${tagFor(freeMlb)}\` **${selectionDisplay(freeMlb)}**`
       : `\`UFC\` **${freeUfc!.pickName}** over ${freeUfc!.opponentName}`;
     await postWebhook(freeUrl, {
-      username: "Archer",
+      username: "Moses, Leader of Many",
       embeds: [
         {
           title: `Free lean · ${label}`,
