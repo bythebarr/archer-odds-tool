@@ -28,7 +28,7 @@ describe("renderMorningDrop", () => {
     expect(e.description).toContain("**12 MLB games**");
     expect(e.description).toContain("First pitch **1:05 PM**");
     expect(e.description).toContain("last one **10:10 PM**");
-    expect(e.description).toContain("drops at **1 PM ET**");
+    expect(e.description).toContain("drops at **10:30 AM ET**");
   });
 
   it("singularizes one game and collapses the window when first === last", () => {
@@ -43,7 +43,7 @@ describe("renderMorningDrop", () => {
     const e = renderMorningDrop(morning({ mlbGames: 0, firstPitch: null, lastPitch: null }));
     expect(e.description).toContain("Light board today");
     expect(e.description).not.toContain("First pitch"); // no invented pitch window
-    expect(e.description).not.toContain("1 PM ET"); // no card promise on a dead board
+    expect(e.description).not.toContain("10:30 AM ET"); // no card promise on a dead board
   });
 
   it("adds the fight-week line when a UFC card is imminent — even on an empty MLB board", () => {

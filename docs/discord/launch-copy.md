@@ -120,9 +120,10 @@ to taste before pasting.
 The tool posts the card itself — you don't copy/paste plays daily:
 - Create a **webhook** on your `#full-card` channel → set it as `DISCORD_WEBHOOK_URL`.
 - (Optional) a webhook on `#todays-lean` → `DISCORD_FREE_WEBHOOK_URL`.
-- The `post-discord` cron fires daily (17:00 UTC / 1pm ET, right after the midday
-  odds poll) and posts the qualifying +EV card to premium and one free lean to
-  the public channel. No webhook set = nothing posts.
+- The `post-discord` cron fires daily (14:30 UTC / 10:30am ET, right after the
+  morning odds poll) and posts the qualifying +EV card to premium and one free
+  lean to the public channel — early enough to land before first pitch on day
+  slates. No webhook set = nothing posts.
 
 ---
 
