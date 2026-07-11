@@ -27,13 +27,15 @@ export async function generateMetadata({ params }: { params: Promise<{ boutId: s
   return { title, description, openGraph: { title, description }, twitter: { title, description } };
 }
 
+// eventDate is a Cito date-only value stored at UTC midnight — format in UTC so
+// it doesn't roll back to the previous evening in ET ("Jul 11" → "Jul 10").
 function formatEventDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric",
-    timeZone: "America/New_York",
+    timeZone: "UTC",
   }).format(date);
 }
 
