@@ -7,7 +7,6 @@ import {
   TEACHABLE,
   type MorningData,
 } from "./mosesDaily";
-import type { UfcCard } from "./ufcBestPlays";
 
 const NO_UFC = null;
 
@@ -48,7 +47,7 @@ describe("renderMorningDrop", () => {
   });
 
   it("adds the fight-week line when a UFC card is imminent — even on an empty MLB board", () => {
-    const ufc = { eventTitle: "UFC 330", eventDate: new Date("2026-07-18T23:00:00Z"), plays: [] } as UfcCard;
+    const ufc = { title: "UFC 330", eventDate: new Date("2026-07-18T23:00:00Z") };
     expect(renderMorningDrop(morning({ ufc })).description).toContain("🥊 **Fight week:** UFC 330");
     expect(renderMorningDrop(morning({ mlbGames: 0, firstPitch: null, lastPitch: null, ufc })).description).toContain(
       "🥊 **Fight week:** UFC 330"
