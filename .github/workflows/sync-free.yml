@@ -2,8 +2,12 @@ name: Sync scores & grade outcomes (free)
 
 on:
   schedule:
-    # Every 15 minutes. Both steps hit only the free MLB Stats API / read
-    # already-stored odds history — no Odds API credits are ever spent here.
+    # Every 15 minutes. The first two steps hit only the free MLB Stats API /
+    # read already-stored odds history — no Odds API credits are ever spent.
+    # The third step (MLB odds refresh) is DORMANT: it runs only once the repo
+    # variable ODDS_FRESH_ENABLED is set to "true", which should happen only
+    # AFTER upgrading the Odds API to a paid tier. When enabled, the poller's
+    # own tier policy self-throttles the real cadence around game time.
     - cron: "*/15 * * * *"
   workflow_dispatch:
 
@@ -19,4 +23,14 @@ jobs:
       - name: Grade newly-final games (free)
         run: |
           curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      # ── Paid-tier freshness (DORMANT) ──────────────────────────────────────
+      # Turn on 15-minute MLB odds refresh by setting repo variable
+      # ODDS_FRESH_ENABLED=true (Settings → Secrets and variables → Actions →
+      # Variables). Costs Odds API credits every run — enable only on a paid tier.
+      - name: Refresh MLB odds (15-min cadence — paid tier only)
+        if: ${{ vars.ODDS_FRESH_ENABLED == 'true' }}
+        run: |
+          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
