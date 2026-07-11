@@ -113,6 +113,7 @@ export default async function DiscordPreviewPage() {
           {morningData.mlbGames} MLB game{morningData.mlbGames === 1 ? "" : "s"}
         </span>
       </div>
+      {/* withheld badge removed — no EV ceiling now, nothing is ever withheld */}
 
       <Slot label="~9:00 AM ET · Morning slate drop" />
       <EmbedPreview title={morning.title} body={morning.description} accent="#06996b" />

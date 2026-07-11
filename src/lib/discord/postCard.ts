@@ -272,8 +272,6 @@ export interface DailyCardPreview {
   ufcTitle: string | null;
   premiumCount: number;
   ufcCount: number;
-  /** Plays the model liked but withheld as above-ceiling (likely miscalibration). */
-  withheldCount: number;
 }
 
 /**
@@ -304,7 +302,6 @@ export async function previewDailyCard(dateEt: string = todayEt()): Promise<Dail
     ufcTitle: ufcEmbed?.title ?? null,
     premiumCount: picks.length,
     ufcCount: ufcCard?.plays.length ?? 0,
-    withheldCount: 0, // nothing is withheld now — every positive play posts
   };
 }
 
