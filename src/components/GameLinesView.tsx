@@ -216,7 +216,7 @@ export function GameLinesView({
             valueFor: (row) => economics.get(lineKey(row.bookKey, row.side, row.point))?.historicalEv ?? null,
           },
           {
-            label: "Archer EV",
+            label: "ARCHR Edge",
             valueFor: (row) => archerEvForSide(row.side, row.point, row.priceAmerican),
           },
         ]}
@@ -227,8 +227,8 @@ export function GameLinesView({
             Mkt EV = vs. de-vigged market consensus. Hist EV = vs. rolling hit-rate — a noisier,
             directional estimate only (small sample, no opponent/park/pitcher adjustment).
             {market === "h2h"
-              ? " Archer EV = vs. the Archer model's pitcher+form win probability (see Matchup panel above)."
-              : " Archer EV = vs. the Archer model's expected-runs projection (recent runs scored/allowed + starting pitcher ERA)."}
+              ? " ARCHR Edge = vs. the ARCHR Edge model's pitcher+form win probability (see Matchup panel above)."
+              : " ARCHR Edge = vs. the ARCHR Edge model's expected-runs projection (recent runs scored/allowed + starting pitcher ERA)."}
           </>
         }
       />

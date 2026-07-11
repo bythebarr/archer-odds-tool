@@ -23,7 +23,7 @@ export const GLOSSARY_CATEGORIES: { key: GlossaryCategory; label: string; blurb:
   { key: "odds", label: "Odds & prices", blurb: "Reading the numbers the books put up." },
   { key: "bets", label: "Bet types", blurb: "The kinds of bets you can shop." },
   { key: "form", label: "Hit rates & form", blurb: "What a player or team has been doing lately." },
-  { key: "model", label: "Archer's models", blurb: "Archer's own projections, and how far to trust them." },
+  { key: "model", label: "The ARCHR Edge model", blurb: "ARCHR Edge's own projections, and how far to trust them." },
   { key: "getting-around", label: "Getting around", blurb: "The words for the app's own screens." },
 ];
 
@@ -50,8 +50,8 @@ export const GLOSSARY: GlossaryEntry[] = [
   },
   {
     id: "archer-ev",
-    term: "Archer EV",
-    short: "How a price compares to Archer's own model projection for the game, rather than to the market.",
+    term: "ARCHR Edge",
+    short: "How a price compares to the ARCHR Edge model's own projection for the game, rather than to the market.",
     category: "value",
   },
   {
@@ -70,7 +70,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: "edge",
     term: "Edge (pt)",
-    short: "The gap between Archer's estimated chance and the market's, in percentage points — e.g. '+5.0pt' means Archer likes the side 5 points more than the market does.",
+    short: "The gap between ARCHR Edge's estimated chance and the market's, in percentage points — e.g. '+5.0pt' means ARCHR Edge likes the side 5 points more than the market does.",
     category: "value",
   },
 
@@ -174,31 +174,31 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: "model-lean",
     term: "Model lean",
-    short: "How far Archer's model tips away from a coin flip toward one side — a bigger lean means a stronger model opinion.",
+    short: "How far the ARCHR Edge model tips away from a coin flip toward one side — a bigger lean means a stronger model opinion.",
     category: "model",
   },
   {
     id: "market-vs-model",
     term: "Market vs Model",
-    short: "Two ways to read value: Market compares the best price to the market's fair price; Model compares it to Archer's own projection.",
+    short: "Two ways to read value: Market compares the best price to the market's fair price; Model compares it to ARCHR Edge's own projection.",
     category: "model",
   },
   {
     id: "win-probability",
     term: "Win probability",
-    short: "Archer's estimated chance each side wins, from its model (recent form, pitching, and so on) — an estimate, not a guarantee.",
+    short: "The ARCHR Edge model's estimated chance each side wins (recent form, pitching, and so on) — an estimate, not a guarantee.",
     category: "model",
   },
   {
     id: "expected-runs",
     term: "Expected runs",
-    short: "Archer's projected runs per team and game total — a directional heuristic from pitching and form, not a precise forecast.",
+    short: "ARCHR Edge's projected runs per team and game total — a directional heuristic from pitching and form, not a precise forecast.",
     category: "model",
   },
   {
     id: "fighter-math",
     term: "Fighter math",
-    short: "Archer's transparent, hand-tuned way to estimate a fight from career form, shared opponents, and style edges — directional, not a backtested betting model.",
+    short: "ARCHR Edge's transparent, hand-tuned way to estimate a fight from career form, shared opponents, and style edges — directional, not a backtested betting model.",
     category: "model",
   },
   {

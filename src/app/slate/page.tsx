@@ -19,7 +19,7 @@ import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 export const metadata: Metadata = {
   title: "The Slate — every priced play, one board",
   description:
-    "Every day's priced plays in one pool. Line-shop the best price across books, filter by your odds range, and read value two ways: Market EV (best price vs the de-vigged line) or Archer's own Model projection.",
+    "Every day's priced plays in one pool. Line-shop the best price across books, filter by your odds range, and read value two ways: Market EV (best price vs the de-vigged line) or ARCHR Edge's own Model projection.",
 };
 
 export const dynamic = "force-dynamic";
