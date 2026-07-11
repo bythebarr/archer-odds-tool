@@ -57,7 +57,7 @@ describe("playLine", () => {
     const line = playLine(play({ side: "over", selectionLabel: "Over 8.5", kind: "total" }));
     expect(line).toContain("**NYY @ BOS Over 8.5**");
     expect(line).toContain("+102");
-    expect(line).toContain("Archer EV");
+    expect(line).toContain("Edge");
     expect(line).toContain("1.5u"); // 0.062 EV → 1.5u
   });
 });

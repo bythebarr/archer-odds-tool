@@ -86,14 +86,14 @@ export function selectionDisplay(p: OddsPlay): string {
   return needsMatchup ? `${matchupLabel(p)} ${p.selectionLabel}` : p.selectionLabel;
 }
 
-/** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Archer EV · 1.5u */
+/** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Edge · 1.5u */
 export function playLine(p: OddsPlay): string {
   const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv)}u` : "";
-  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Archer EV${units}`;
+  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}`;
 }
 
 const EMPTY_CARD =
-  "_No plays cleared Archer's model today. No card is a card — we don't force action._";
+  "_No plays cleared ARCHR Edge today. No card is a card — we don't force action._";
 
 /**
  * The full premium body as one string (all lines, newline-joined) — used by the
@@ -140,13 +140,13 @@ function finishLeanLabel(lean: UfcFinishLean): string {
   return `sees ${method}${round} (${Math.round(lean.finishProb * 100)}% finish)`;
 }
 
-/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Archer EV · 1.5u · over Ode' Osbourne (58% model) · sees KO/TKO ~R2 (61% finish) */
+/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Edge · 1.5u · over Ode' Osbourne (58% model) · sees KO/TKO ~R2 (61% finish) */
 function ufcPlayLine(p: UfcBestPlay): string {
   const marker = p.titleBout ? "🏆 " : "";
   const lean = p.finishLean ? ` · ${finishLeanLabel(p.finishLean)}` : "";
   return (
     `${marker}**${p.pickName}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ` +
-    `${formatEv(p.archerEv)} Archer EV · ${unitsFor(p.archerEv)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
+    `${formatEv(p.archerEv)} Edge · ${unitsFor(p.archerEv)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
   );
 }
 
@@ -352,7 +352,7 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   // One embed per description chunk — title/link on the first, footer on the
   // last — then the UFC fight-night embed. Discord allows up to 10 embeds/message.
   const premiumEmbeds = premiumChunks.slice(0, MAX_PREMIUM_EMBEDS).map((desc, i, arr) => ({
-    ...(i === 0 ? { title: `🎯 Archer's Best Plays · ${label}`, url: `${SITE_URL}/slate` } : {}),
+    ...(i === 0 ? { title: `🎯 ARCHR Edge · Best Plays · ${label}`, url: `${SITE_URL}/slate` } : {}),
     description: desc,
     color: ARCHR_GREEN,
     ...(i === arr.length - 1 ? { footer: { text: RESEARCH_FOOTER } } : {}),
