@@ -4,7 +4,7 @@ import { getUfcBoutHeader, type UfcFighterBio } from "@/lib/queries/ufcEvents";
 import { getUfcMatchup } from "@/lib/queries/ufcMatchup";
 import { getUfcBoutOdds } from "@/lib/queries/ufcOdds";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
-import { computeFinishProjection } from "@/lib/ufc/finishMath";
+import { computeFinishProjection, scheduledRoundsForBout } from "@/lib/ufc/finishMath";
 import { refreshUfcOddsOnView } from "@/lib/ufc/refreshOddsOnView";
 import { BackLink } from "@/components/BackLink";
 import { FighterBadge } from "@/components/FighterBadge";
@@ -61,10 +61,9 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
   if (!header) notFound();
 
   const projection = matchup ? computeUfcWinProbability(matchup) : null;
-  // Title bouts (and 5-round main events) go 5; everything else 3. We only have
-  // a reliable title flag today, so non-title 5-round main events read as 3 —
-  // a known v1 approximation until a scheduled-rounds field is ingested.
-  const scheduledRounds = header.titleBout ? 5 : 3;
+  // 5 rounds for title fights AND main events (every UFC headliner goes 5,
+  // belt or not), 3 otherwise — see scheduledRoundsForBout.
+  const scheduledRounds = scheduledRoundsForBout(header);
   const finishProjection =
     matchup && projection ? computeFinishProjection(matchup, projection.fighterAProb, scheduledRounds) : null;
 
@@ -90,7 +89,14 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
           <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
             Title bout
           </span>
+        ) : header.isMainEvent ? (
+          <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-secondary-foreground">
+            Main event
+          </span>
         ) : null}
+        <span className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+          {scheduledRounds} rounds
+        </span>
       </div>
 
       <p className="mt-2 text-xs text-muted-foreground">

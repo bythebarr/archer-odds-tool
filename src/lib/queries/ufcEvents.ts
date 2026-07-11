@@ -38,6 +38,8 @@ export interface UfcBoutSummary {
   id: string;
   weightClass: string;
   titleBout: boolean;
+  /** The card's headliner — the lowest-boutOrder bout in the event. 5 rounds regardless of title (see scheduledRoundsForBout). */
+  isMainEvent: boolean;
   cardSection: string | null;
   method: string | null;
   resultRound: number | null;
@@ -123,6 +125,9 @@ function mapEventSummary(event: SummaryEvent): UfcEventSummary {
       id: b.id,
       weightClass: b.weightClass.replace(/\s+Bout$/i, ""),
       titleBout: b.titleBout,
+      // Callers order bouts by boutOrder asc (main card first, lowest = headliner),
+      // so the first bout kept is the main event — 5 rounds even without a belt.
+      isMainEvent: bouts.length === 0,
       cardSection: b.cardSection,
       method: b.method,
       resultRound: b.resultRound,
@@ -250,6 +255,8 @@ export interface UfcBoutHeader {
   location: string | null;
   weightClass: string;
   titleBout: boolean;
+  /** Card headliner (lowest boutOrder in the event) — 5 rounds regardless of title (see scheduledRoundsForBout). */
+  isMainEvent: boolean;
   status: string;
   method: string | null;
   methodDetails: string | null;
@@ -292,6 +299,15 @@ export const getUfcBoutHeader = cache(async (boutId: string): Promise<UfcBoutHea
   });
   if (!bout) return null;
 
+  // The event's headliner = its lowest-boutOrder bout (main card, position 1).
+  // Fetched separately because the single-bout query above has no event context;
+  // 5-round scheduling turns on this even for a non-title main event.
+  const headliner = await prisma.ufcBout.findFirst({
+    where: { eventId: bout.eventId, boutOrder: { not: null } },
+    orderBy: { boutOrder: "asc" },
+    select: { id: true },
+  });
+
   return {
     boutId: bout.id,
     eventTitle: bout.event.title,
@@ -299,6 +315,7 @@ export const getUfcBoutHeader = cache(async (boutId: string): Promise<UfcBoutHea
     location: locationOf(bout.event.city, bout.event.country),
     weightClass: bout.weightClass.replace(/\s+Bout$/i, ""),
     titleBout: bout.titleBout,
+    isMainEvent: headliner?.id === bout.id,
     status: bout.status,
     method: bout.method,
     methodDetails: bout.methodDetails,

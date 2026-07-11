@@ -1,8 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { classifyMethod, computeFinishProjection } from "./finishMath";
+import { classifyMethod, computeFinishProjection, scheduledRoundsForBout } from "./finishMath";
 import type { UfcMatchup, UfcFighterHistory, UfcFightRecord } from "@/lib/queries/ufcMatchup";
 
 const NOW = new Date("2026-07-01T00:00:00Z");
+
+describe("scheduledRoundsForBout", () => {
+  it("gives every main event 5 rounds, title or not", () => {
+    expect(scheduledRoundsForBout({ titleBout: false, isMainEvent: true })).toBe(5); // Fight Night headliner
+    expect(scheduledRoundsForBout({ titleBout: true, isMainEvent: true })).toBe(5); // numbered-card title main
+  });
+
+  it("gives title fights 5 rounds even off the main event (co-main title bout)", () => {
+    expect(scheduledRoundsForBout({ titleBout: true, isMainEvent: false })).toBe(5);
+  });
+
+  it("gives an ordinary undercard bout 3 rounds", () => {
+    expect(scheduledRoundsForBout({ titleBout: false, isMainEvent: false })).toBe(3);
+  });
+});
 
 describe("classifyMethod", () => {
   it("buckets the real Cito vocabulary", () => {
