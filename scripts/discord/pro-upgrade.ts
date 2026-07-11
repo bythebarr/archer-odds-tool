@@ -159,3 +159,5 @@ async function main() {
 }
 
 main();
+
+export {}; // module scope — keeps top-level helpers out of the global namespace
