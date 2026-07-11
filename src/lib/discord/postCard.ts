@@ -162,13 +162,17 @@ function ufcPlayLine(p: UfcBestPlay): string {
   );
 }
 
-/** UFC event date → "Sat Jul 12" in ET (mirrors the /ufc list's formatter). */
+/**
+ * UFC event date → "Sat Jul 12" (mirrors the /ufc list's formatter). eventDate
+ * is a Cito date-only value stored at UTC midnight, so it MUST be formatted in
+ * UTC — formatting in ET rolls it back to the previous evening ("Jul 11" → "Jul 10").
+ */
 function prettyEventDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
-    timeZone: "America/New_York",
+    timeZone: "UTC",
   }).format(date);
 }
 

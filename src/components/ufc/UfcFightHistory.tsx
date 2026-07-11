@@ -16,7 +16,9 @@ interface UfcFightHistoryProps {
 }
 
 function formatFightDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "America/New_York" }).format(date);
+  // eventDate is a Cito date-only value at UTC midnight — format in UTC so an
+  // event on the 1st doesn't roll back to the prior month in ET.
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(date);
 }
 
 /** Compact recent-fights list for one fighter — the raw history the fighter-math strength layer is computed from. */

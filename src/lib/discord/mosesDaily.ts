@@ -65,13 +65,16 @@ function prettyTime(d: Date): string {
   }).format(d);
 }
 
-/** UFC event Date → "Sat Jul 12" in ET. */
+/**
+ * UFC event Date → "Sat Jul 12". eventDate is a Cito date-only value at UTC
+ * midnight, so format in UTC — ET would roll it to the previous evening.
+ */
 function prettyEventDate(d: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
-    timeZone: "America/New_York",
+    timeZone: "UTC",
   }).format(d);
 }
 
