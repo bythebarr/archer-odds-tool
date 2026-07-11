@@ -14,7 +14,7 @@ import { getFeedFreshness } from "@/lib/freshness";
 
 export const metadata: Metadata = {
   title: "MLB",
-  description: "MLB odds line-shopping across every book, with Archer's model lean.",
+  description: "MLB odds line-shopping across every book, with the ARCHR Edge model lean.",
 };
 
 // The one canonical MLB board — every book's line per game, filterable by price,

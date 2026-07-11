@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const SORT_OPTIONS = [
   { key: "marketEv", label: "Best Mkt EV" },
   { key: "historicalEv", label: "Best Hist EV" },
-  { key: "archerEv", label: "Best Archer EV" },
+  { key: "archerEv", label: "Best ARCHR Edge" },
   { key: "priceBest", label: "Best price" },
   { key: "priceWorst", label: "Worst price" },
 ] as const;
@@ -189,12 +189,12 @@ export function SlateLinesView({
             estimate only (small sample, no opponent/park/pitcher adjustment).{" "}
             {market === "h2h" ? (
               <>
-                <InfoTip id="archer-ev">Archer EV</InfoTip> = vs. the Archer model&apos;s pitcher+form win
+                <InfoTip id="archer-ev">ARCHR Edge</InfoTip> = vs. the ARCHR Edge model&apos;s pitcher+form win
                 probability.
               </>
             ) : (
               <>
-                <InfoTip id="archer-ev">Archer EV</InfoTip> = vs. the Archer model&apos;s expected-runs
+                <InfoTip id="archer-ev">ARCHR Edge</InfoTip> = vs. the ARCHR Edge model&apos;s expected-runs
                 projection (recent runs scored/allowed + starting pitcher ERA).
               </>
             )}
@@ -283,7 +283,7 @@ export function SlateLinesView({
                     Hist EV: {formatEv(row.historicalEv)}
                   </span>
                   <span className={evColorClass(row.archerEv)}>
-                    Archer EV: {formatEv(row.archerEv)}
+                    ARCHR Edge: {formatEv(row.archerEv)}
                   </span>
                 </div>
               </li>

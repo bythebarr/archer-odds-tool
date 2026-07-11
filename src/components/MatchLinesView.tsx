@@ -60,7 +60,7 @@ export function MatchLinesView({ match, lines, homeHitRate, awayHitRate }: Match
       }}
       evColumns={[{ label: "Mkt EV", valueFor: marketEvFor }]}
       emptyMessage="No odds polled for this match yet."
-      disclaimer="Mkt EV = vs. de-vigged market consensus. Tennis v1 is moneyline-only — no historical hit-rate or Archer model yet."
+      disclaimer="Mkt EV = vs. de-vigged market consensus. Tennis v1 is moneyline-only — no historical hit-rate or ARCHR Edge model yet."
     />
   );
 }

@@ -172,8 +172,8 @@ export function MatchupPanel({ game, matchup, archerProb, archerRuns, marketProb
         )}
 
         <p className="mt-3 text-xs text-muted-foreground">
-          Archer probability/runs are a v1 heuristic from pitcher ERA + recent form only — directional,
-          not a rigorous projection. They power the Archer EV column on every tab below (win probability
+          ARCHR Edge probability/runs are a v1 heuristic from pitcher ERA + recent form only — directional,
+          not a rigorous projection. They power the ARCHR Edge column on every tab below (win probability
           for Moneyline, expected-runs-derived cover probability for Spread/Total).
         </p>
       </CardContent>
