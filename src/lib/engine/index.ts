@@ -14,3 +14,4 @@ export type {
   PropSpec,
 } from "./types";
 export { SPORTS, sportByKey, getAdapter } from "./registry";
+export { mlbAdapter } from "./adapters/mlb";

@@ -3,12 +3,15 @@
  * board, and grading dispatch all derive from this (Phase 3). Adapters land here
  * in later phases — MLB (Phase 1), UFC (Phase 2), then the rest.
  *
- * Phase 0: intentionally empty. The shape exists with no behavior wired, so
- * nothing changes at runtime yet.
+ * Phase 1: MLB is registered. The adapter is built and self-contained, but no
+ * live path routes through the registry yet — the board, grader, and nav still
+ * call the MLB machinery directly. Registration + the parity test prove the
+ * contract fits before anything is rewired (Phase 3).
  */
 import type { SportAdapter } from "./types";
+import { mlbAdapter } from "./adapters/mlb";
 
-export const SPORTS: SportAdapter[] = [];
+export const SPORTS: SportAdapter[] = [mlbAdapter];
 
 export const sportByKey: Map<string, SportAdapter> = new Map(
   SPORTS.map((a) => [a.key, a])
