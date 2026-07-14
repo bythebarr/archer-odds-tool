@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { todayEt } from "@/lib/dateEt";
 import { formatAmerican } from "@/lib/odds/americanOdds";
-import { STAT_COLUMN } from "@/lib/props/hitRate";
-import { gradeGameLine, gradeProp, gradeUfcMoneyline, tallyLedger, currentStreak, type PlayResult } from "./gradePlay";
+import { getAdapter, postedPlayToPlay } from "@/lib/engine";
+import { gradeUfcMoneyline, tallyLedger, currentStreak, type PlayResult } from "./gradePlay";
 import { mosesAuthor } from "./brand";
 import type { PostedPlay } from "@/generated/prisma/client";
 
@@ -98,7 +98,15 @@ export async function settlePendingUfcPlays(): Promise<number> {
   return settled;
 }
 
-/** Settle every still-pending play for a date against final results. */
+/**
+ * Settle every still-pending play for a date against final results. Dispatch runs
+ * through the sport engine's registry: each play is rehydrated into a `Play` and
+ * handed to its adapter's `grade`. A sport with no registered adapter is
+ * no-action (voided out of the record, as tennis/soccer always were); an adapter
+ * that returns `"pending"` leaves the row unsettled for a later pass (event not
+ * final, a prop's game log not yet synced) — never a fake loss or premature void.
+ * The per-sport grading rules now live inside the adapters (src/lib/engine).
+ */
 async function gradePending(dateEt: string): Promise<number> {
   const pending = await prisma.postedPlay.findMany({
     where: { postedForDate: dateEt, gradedAt: null },
@@ -106,56 +114,15 @@ async function gradePending(dateEt: string): Promise<number> {
 
   let graded = 0;
   for (const play of pending) {
-    // UFC: settle against the bout winner (stays pending until the fight is final).
-    if (play.sport === "ufc") {
-      const result = await gradeUfcPlay(play);
-      if (result === null) continue; // not fought yet — leave pending
-      await settlePlay(play.id, result);
+    const adapter = getAdapter(play.sport);
+    if (!adapter) {
+      await settlePlay(play.id, "void"); // unknown sport — no-action
       graded++;
       continue;
     }
-    // MLB is the only other gradeable sport; everything else is no-action.
-    if (play.sport !== "mlb") {
-      await settlePlay(play.id, "void");
-      graded++;
-      continue;
-    }
-
-    const game = await prisma.game.findUnique({ where: { id: play.matchId } });
-    if (!game || game.status !== "final" || game.homeScore === null || game.awayScore === null) {
-      continue; // not final yet — leave pending for a later pass
-    }
-
-    if (play.kind === "prop") {
-      if (!play.mlbPlayerId || !play.statCategory || play.point === null) {
-        await settlePlay(play.id, "void");
-        graded++;
-        continue;
-      }
-      const log = await prisma.playerGameLog.findUnique({
-        where: { mlbPlayerId_gameId: { mlbPlayerId: play.mlbPlayerId, gameId: game.id } },
-      });
-      if (!log) continue; // log not synced yet (or DNP) — stay pending, never a fake loss
-      const value = (log as unknown as Record<string, number | null>)[STAT_COLUMN[play.statCategory]] ?? null;
-      await settlePlay(play.id, gradeProp(play.side, play.point, value));
-      graded++;
-      continue;
-    }
-
-    if (play.market) {
-      await settlePlay(
-        play.id,
-        gradeGameLine(
-          play.market as "h2h" | "spreads" | "totals",
-          play.side,
-          play.point,
-          game.homeScore,
-          game.awayScore
-        )
-      );
-    } else {
-      await settlePlay(play.id, "void");
-    }
+    const result = await adapter.grade(postedPlayToPlay(play));
+    if (result === "pending") continue; // not settleable yet — leave for a later pass
+    await settlePlay(play.id, result);
     graded++;
   }
   return graded;

@@ -16,7 +16,6 @@ import { etDateOf } from "@/lib/dateEt";
 import { getUfcBestPlays, type UfcBestPlay } from "@/lib/discord/ufcBestPlays";
 import { unitsFor } from "@/lib/betting/kelly";
 import { gradeUfcMoneyline } from "@/lib/discord/gradePlay";
-import { settlePendingUfcPlays } from "@/lib/discord/postResults";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 import { SPORT_META } from "@/lib/sports";
 import type {
@@ -112,28 +111,22 @@ async function grade(play: Play): Promise<PlayGrade> {
 }
 
 /**
- * Pull UFC's own data — Cito recent (settled) + upcoming events, then settle any
- * bouts now final. Mirrors the backfill-ufc cron exactly (settlement is
- * best-effort there and here). UFC ingest is whole-feed incremental, so `dateEt`
- * is unused; odds are refreshed on-view (ensureUfcOddsFresh), outside this path.
- * Takes no date param (whole-feed incremental) but satisfies `ingest(dateEt)`.
+ * Pull UFC's own data — Cito recent (settled) + upcoming events. Ingest is data
+ * pull only; settling finished fights is the grader's job (routed through the
+ * registry now), so the batch settle the backfill-ufc cron also runs stays a
+ * separate step — keeping the engine free of any dependency on the Discord/grader
+ * layer. UFC ingest is whole-feed incremental, so `dateEt` is unused (the impl
+ * takes no param but satisfies `ingest(dateEt)`); odds refresh on-view.
  */
 async function ingest(): Promise<IngestSummary> {
   const recent = await syncRecentUfcEvents();
   const upcoming = await backfillUpcomingUfcEvents();
-  let settled = 0;
-  try {
-    settled = await settlePendingUfcPlays();
-  } catch {
-    // Best-effort, mirrors the cron: a settle failure can't fail the sync.
-  }
   return {
     sportKey: "ufc",
     ok: true,
-    detail: `${recent.eventsProcessed + upcoming.eventsProcessed} events, ${settled} settled`,
+    detail: `${recent.eventsProcessed + upcoming.eventsProcessed} events`,
     recent,
     upcoming,
-    settled,
   };
 }
 
