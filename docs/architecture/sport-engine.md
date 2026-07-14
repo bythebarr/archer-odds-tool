@@ -1,8 +1,12 @@
 # ARCHR Sport Engine — Design Doc
 
-> **Status:** proposed (2026-07-14). The governing architecture for ARCHR's full,
-> every-sport deployment. Nothing here ships until the two-adapter migration
-> (MLB + UFC) proves the contract holds.
+> **Status:** in progress (2026-07-14). The governing architecture for ARCHR's
+> full, every-sport deployment. Phases 0–2 are **done**: the contract exists and
+> both proving adapters (MLB odds-model + UFC fighter-math) are built, registered,
+> and parity-tested. One contract fits both the most-different sports — the
+> "prove before expand" bar is met. No live path routes through the registry yet
+> (Phase 3), which is where behavior first changes and where the open decisions
+> below must be resolved.
 
 ## Why this exists
 
@@ -148,14 +152,22 @@ adapter, push it into `SPORTS`.
 
 ## Migration plan (prove-then-expand, no big bang)
 
-- **Phase 0 — Interfaces + registry, zero behavior change.** Define `Play`,
-  `SportAdapter`, `SPORTS`. Nothing wired yet. Safe, reviewable, no runtime effect.
-- **Phase 1 — MLB adapter.** Wrap the existing model + odds pool + grading behind the
-  contract. Acceptance: the card output is byte-for-byte what it is today.
-- **Phase 2 — UFC adapter.** Wrap fighter-math + Cito ingest + UFC grading. Retire the
-  separate embed-append; UFC now flows through the generic board.
-- **Phase 3 — Collapse the registries.** Nav/slate/board all derive from `SPORTS`.
-  Delete the parallel literal lists.
+- **Phase 0 — Interfaces + registry, zero behavior change. ✅ done.** `Play`,
+  `SportAdapter`, `SPORTS` defined. Nothing wired; no runtime effect.
+- **Phase 1 — MLB adapter. ✅ done.** Wraps the model + odds pool + Kelly sizing +
+  grading behind the contract (`src/lib/engine/adapters/mlb.ts`). `unitsFor`
+  extracted to a pure `src/lib/betting/kelly` so the engine doesn't import the
+  Discord card. Parity test: `selectBoardPlays`+`toPlay` reproduce postCard's
+  selection verbatim. Registered; not yet wired to any live path.
+- **Phase 2 — UFC adapter. ✅ done.** Wraps fighter-math + moneyline pricing + Cito
+  ingest + UFC grading (`src/lib/engine/adapters/ufc.ts`). Parity test locks the
+  field mapping incl. the fight-date `postedForDate`. Registered; the separate
+  embed-append is NOT retired yet — that happens in Phase 3 when the board is
+  rewired to `SPORTS.flatMap(listPlays)`.
+- **Phase 3 — Collapse the registries + wire the board. ⏳ next (first live change).**
+  Nav/slate/board all derive from `SPORTS`; delete the parallel literal lists;
+  route the board/grader through the registry (retiring the UFC embed seam). This
+  is where the open decisions below must be answered — especially the `Sport` enum.
 - **Phase 4 — Existing sports as adapters.** Tennis/soccer/F1 become adapters
   (market-only where there's no model). Generalize devig to n-way for soccer.
 - **Phase 5 — New sports are pure adds.** Ship the "How to add a sport" checklist.
