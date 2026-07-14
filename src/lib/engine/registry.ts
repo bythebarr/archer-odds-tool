@@ -3,15 +3,18 @@
  * board, and grading dispatch all derive from this (Phase 3). Adapters land here
  * in later phases — MLB (Phase 1), UFC (Phase 2), then the rest.
  *
- * Phase 1: MLB is registered. The adapter is built and self-contained, but no
- * live path routes through the registry yet — the board, grader, and nav still
- * call the MLB machinery directly. Registration + the parity test prove the
- * contract fits before anything is rewired (Phase 3).
+ * Phases 1–2: MLB + UFC are registered — the two most different sports (odds
+ * model vs. fighter-math, shared Game table vs. its own UfcBout family, same-day
+ * vs. late out-of-band settlement). Both self-contained; no live path routes
+ * through the registry yet (board, grader, and nav still call each sport's
+ * machinery directly). Registration + parity tests prove one contract fits both
+ * before anything is rewired (Phase 3).
  */
 import type { SportAdapter } from "./types";
 import { mlbAdapter } from "./adapters/mlb";
+import { ufcAdapter } from "./adapters/ufc";
 
-export const SPORTS: SportAdapter[] = [mlbAdapter];
+export const SPORTS: SportAdapter[] = [mlbAdapter, ufcAdapter];
 
 export const sportByKey: Map<string, SportAdapter> = new Map(
   SPORTS.map((a) => [a.key, a])

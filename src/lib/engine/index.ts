@@ -15,3 +15,4 @@ export type {
 } from "./types";
 export { SPORTS, sportByKey, getAdapter } from "./registry";
 export { mlbAdapter } from "./adapters/mlb";
+export { ufcAdapter } from "./adapters/ufc";
