@@ -441,7 +441,11 @@ model PostedPlay {
   postedForDate  String
   /// OddsPlay.key — dedupes a play within a date across re-posts.
   playKey        String
-  sport          Sport
+  /// Registry key of the producing adapter ("mlb", "ufc", ...) — a plain string,
+  /// NOT the `Sport` enum, so a new sport flows through the ledger/grader without
+  /// a DB enum migration (sport-engine Phase 3). Grading dispatches on this via
+  /// getAdapter(sport). The enum survives only on `Game.sport`, a typed relation.
+  sport          String
   matchId        String
   market         MarketType?   // null for props
   kind           String        // ml | spread | total | prop

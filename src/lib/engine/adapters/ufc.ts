@@ -15,7 +15,9 @@ import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { getUfcBestPlays, type UfcBestPlay } from "@/lib/discord/ufcBestPlays";
 import { unitsFor } from "@/lib/betting/kelly";
+import { ufcPlayLine, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
 import { gradeUfcMoneyline } from "@/lib/discord/gradePlay";
+import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 import { SPORT_META } from "@/lib/sports";
 import type {
@@ -43,12 +45,12 @@ const UFC_MODEL: SportModel = {
  * fight's ET date. Kept exported so the parity test can assert it field-for-field.
  *
  * UFC carries NO market-lens EV — the model prob vs the moneyline IS the edge —
- * so `marketEv` is null. The fighter-math extras (prob, finishLean, weightClass)
- * are analyst-voice display that the fixed PlayDisplay doesn't yet carry; the UFC
- * embed still renders them directly until the board rewrite (Phase 3) decides how
- * PlayDisplay carries sport-specific extras.
+ * so `marketEv` is null. The fighter-math extras (finish lean, title marker) ride
+ * on `display.line` (pre-rendered in the fighter-math voice), and the event title
+ * + date on `display.sectionLabel`, so the board keeps UFC's red Fight-Night
+ * section without a UFC branch (sport-engine Phase 3, board rewrite).
  */
-export function ufcToPlay(p: UfcBestPlay, eventDate: Date): Play {
+export function ufcToPlay(p: UfcBestPlay, eventDate: Date, eventTitle: string): Play {
   return {
     sportKey: "ufc",
     // Recorded under the FIGHT'S ET date, so it settles the day after the bout no
@@ -63,7 +65,17 @@ export function ufcToPlay(p: UfcBestPlay, eventDate: Date): Play {
     marketEv: null, // UFC has no market-devig lens — the model vs the price is the edge
     modelEv: p.archerEv,
     suggestedUnits: unitsFor(p.archerEv, p.bestPrice),
-    display: { href: "/ufc", backed: null, playerName: p.pickName },
+    display: {
+      href: "/ufc",
+      backed: null,
+      playerName: p.pickName,
+      // The fighter-math voice (finish lean, title marker) rides on the line, so
+      // the board keeps UFC's red Fight-Night section with no UFC branch. The
+      // section title's dynamic half is the event + date.
+      line: ufcPlayLine(p),
+      freeLean: ufcFreeLean(p),
+      sectionLabel: `${eventTitle} · ${prettyEventDate(eventDate)}`,
+    },
   };
 }
 
@@ -81,7 +93,17 @@ export function ufcToPlay(p: UfcBestPlay, eventDate: Date): Play {
 async function listPlays(): Promise<Play[]> {
   const card = await getUfcBestPlays();
   if (!card) return [];
-  return card.plays.map((p) => ufcToPlay(p, card.eventDate));
+  return card.plays.map((p) => ufcToPlay(p, card.eventDate, card.eventTitle));
+}
+
+/**
+ * Poke the gated UFC odds poll before the board lists plays — moved here from the
+ * poster so the board's freshness step is registry-driven (no UFC branch). Gated
+ * by a shared PollLog window, so it stays ~2 credits per staleness window no
+ * matter how many callers fire it; failures are the board's to swallow.
+ */
+async function refresh(): Promise<void> {
+  await ensureUfcOddsFresh();
 }
 
 /**
@@ -136,6 +158,7 @@ export const ufcAdapter: SportAdapter = {
   model: UFC_MODEL,
   markets: UFC_MARKETS,
   ingest,
+  refresh,
   listPlays,
   grade,
 };

@@ -1,12 +1,14 @@
 # ARCHR Sport Engine — Design Doc
 
-> **Status:** in progress (2026-07-14). The governing architecture for ARCHR's
+> **Status:** in progress (2026-07-15). The governing architecture for ARCHR's
 > full, every-sport deployment. Phases 0–2 are **done**: the contract exists and
 > both proving adapters (MLB odds-model + UFC fighter-math) are built, registered,
-> and parity-tested. One contract fits both the most-different sports — the
-> "prove before expand" bar is met. No live path routes through the registry yet
-> (Phase 3), which is where behavior first changes and where the open decisions
-> below must be resolved.
+> and parity-tested. **Phase 3 is underway** — grading (3a), the `Sport`-enum
+> retirement on the ledger (3b), and the daily board are now routed through the
+> registry, with a byte-for-byte parity test locking the poster's output. What's
+> left in Phase 3: collapse the remaining parallel sport lists (nav/slate) onto
+> `SPORTS`. The `todays-board` / `tracked-plays` channel split + `/track` are a
+> deliberate follow-on (the board's output shape is preserved for now).
 
 ## Why this exists
 
@@ -164,10 +166,33 @@ adapter, push it into `SPORTS`.
   field mapping incl. the fight-date `postedForDate`. Registered; the separate
   embed-append is NOT retired yet — that happens in Phase 3 when the board is
   rewired to `SPORTS.flatMap(listPlays)`.
-- **Phase 3 — Collapse the registries + wire the board. ⏳ next (first live change).**
-  Nav/slate/board all derive from `SPORTS`; delete the parallel literal lists;
-  route the board/grader through the registry (retiring the UFC embed seam). This
-  is where the open decisions below must be answered — especially the `Sport` enum.
+- **Phase 3 — Collapse the registries + wire the board. ⏳ in progress.**
+  - **3a — grading through the registry. ✅ done.** `postResults.gradePending`
+    dispatches via `getAdapter(play.sportKey).grade`; the per-sport `if/else` chain
+    and `gradeGameLine/gradeProp/gradeUfcMoneyline` orchestration drop out. No
+    output change (an unregistered sport still voids exactly as before).
+  - **3b — retire the `Sport` enum on the ledger. ✅ done.** `PostedPlay.sport`
+    is now a plain registry string key (in-place `enum→text` cast migration — live
+    graded rows keep their sport, no data loss), so a new sport flows through the
+    ledger/grader with **no DB enum migration**. The `Sport` enum survives only on
+    `Game.sport` (a typed relation with a CHECK constraint — MLB/tennis/soccer
+    share that table). Resolves open decision #3.
+  - **3c — board wired to the registry. ✅ done.** The daily poster assembles from
+    `SPORTS.flatMap(listPlays)`, groups by sport, and records generically
+    (`sport: play.sportKey`) — the hardcoded `getUfcBestPlays`/`buildUfcEmbed` seam
+    is gone. Each adapter pre-renders its play's card line into `Play.display.line`
+    (MLB's edge/units voice, UFC's finish-lean voice) so the board concatenates
+    lines with no "is this MLB?" branch; the shared formatters live in the neutral
+    `@/lib/card/line` (keeps the engine's zero-`@/lib/discord`-imports posture). A
+    UFC odds-freshness `refresh()` hook on the adapter replaces the poster's direct
+    `ensureUfcOddsFresh` call. **Byte-for-byte output is locked by
+    `postCard.parity.test.ts`** (MLB-green card + UFC-red Fight-Night embed +
+    free-lean tease, all scenarios). The `SECTION_CHROME` map (per-sport embed
+    color/title) is the last sport-keyed literal in the poster; it dissolves with
+    the channel redesign.
+  - **3d — collapse nav/slate onto `SPORTS`. ⏳ next.** Nav (`nav.ts`), the sport
+    meta (`sports.ts`), and `SlateSport`/`SLATE_SPORTS` still carry their own
+    literal lists; derive them from the registry and delete the parallels.
 - **Phase 4 — Existing sports as adapters.** Tennis/soccer/F1 become adapters
   (market-only where there's no model). Generalize devig to n-way for soccer.
 - **Phase 5 — New sports are pure adds.** Ship the "How to add a sport" checklist.
@@ -184,5 +209,9 @@ adapter, push it into `SPORTS`.
    for breadth?)
 2. **Prop breadth per sport** at launch — full prop menu, or game lines first then
    props as a fast-follow per sport?
-3. **DB `Sport` enum** — retire toward a registry string key now, or keep the enum
-   through Phase 3 and migrate later?
+3. **DB `Sport` enum** — ✅ **resolved (Phase 3b): retired on the ledger path now.**
+   `PostedPlay.sport` is a registry string; the enum stays only on `Game.sport`.
+   Deferring was rejected as exactly the backtracking the every-sport mandate
+   forbids — a market-only sport (F1/NFL) would otherwise need an enum migration
+   plus a re-touch of the write path. The cast was in-place, so no graded rows
+   were lost.

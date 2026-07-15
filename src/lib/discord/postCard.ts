@@ -1,23 +1,18 @@
-import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
 import { todayEt } from "@/lib/dateEt";
-import { formatEv } from "@/lib/odds/format";
-import { formatAmerican } from "@/lib/odds/americanOdds";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
-import { getUfcBestPlays, type UfcBestPlay, type UfcCard, type UfcFinishLean } from "./ufcBestPlays";
 import { unitsFor } from "@/lib/betting/kelly";
 import { mosesAuthor } from "./brand";
-import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
-import type { Sport, MarketType } from "@/generated/prisma/client";
+import { SPORTS, type Play } from "@/lib/engine";
 
 /**
  * Auto-post Archer's Best Plays to a paid Discord — the capper product, not a
- * line-shopping feed. Reads the same priced-play pool that powers the Slate
- * (getOddsPoolForDate) but selects on the MODEL lens (`modelEv` — Archer's own
- * probability vs the price), NOT the market/consensus lens (`ev`). The model
- * lens is the differentiator: "my model found these," not "here's every book's
- * price." It's MLB game-lines only today (props/UFC/F1/tennis/soccer have no
- * game-line model yet — UFC fighter-math is a separate feed, wired later).
+ * line-shopping feed. The board is now assembled from the sport engine: every
+ * registered adapter's `listPlays` returns normalized, pre-priced `Play`s already
+ * rendered in that sport's capper voice (`display.line`), so this file just
+ * groups by sport, renders sections, records, and teases — with no "is this MLB?"
+ * branch. MLB carries the model (+EV) lens; UFC brings its fighter-math leans as
+ * a second section. (sport-engine Phase 3 — the board wired to the registry.)
  *
  * Posts:
  *   • the curated Best Plays card → the PREMIUM channel (DISCORD_WEBHOOK_URL)
@@ -29,20 +24,23 @@ import type { Sport, MarketType } from "@/generated/prisma/client";
  * webhook URL. Same posture as the Clerk layer: shippable while inert.
  */
 
-const SPORT_LABEL: Record<string, string> = { mlb: "MLB", tennis: "TEN", soccer: "SOC", ufc: "UFC" };
-const KIND_LABEL: Record<string, string> = { ml: "ML", spread: "SPR", total: "TOT", prop: "PROP" };
+// Line/selection formatters moved to the neutral @/lib/card/line so the engine
+// adapters can pre-render each play's line without importing this Discord layer.
+// Re-exported here so existing importers — and postCard.test.ts — keep resolving
+// them (and unitsFor) from this module.
+export { unitsFor };
+export { selectionDisplay, playLine } from "@/lib/card/line";
 
 /**
  * The premium card posts EVERY positive-Archer-EV play — no edge floor, no
  * ceiling, no count cap (product decision: paid members get the full model
  * board, they judge for themselves). Conviction shows in the STAKE, not a
- * filter: unitsFor sizes every play by Kelly (edge × odds), then hard-caps the
- * stake by price so long-priced dogs never get fat — a monster edge on a favorite
- * sizes up, the same edge on a +250 dog stays small. The UFC leans size the same
- * way (see ufcBestPlays.ts).
+ * filter: each adapter sizes every play by Kelly (edge × odds), hard-capped by
+ * price so long-priced dogs never get fat (see @/lib/betting/kelly).
  */
-/** Leave 1 of Discord's 10-embed limit for the UFC embed. */
-const MAX_PREMIUM_EMBEDS = 9;
+/** Discord allows 10 embeds/message; reserve 1 for a non-primary section (UFC). */
+const MAX_EMBEDS = 10;
+const MAX_PRIMARY_CHUNKS = MAX_EMBEDS - 1;
 /** Stamped on every post — keeps the compliance line in front of members daily. */
 const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
@@ -50,6 +48,19 @@ const RESEARCH_FOOTER =
 const ARCHR_GREEN = 0x06996b;
 /** UFC fight-night red — visually separates the fighter-math section from the +EV card. */
 const UFC_RED = 0xd20a0a;
+
+/**
+ * Per-sport board-section chrome (embed color, deep link, title prefix). Keyed by
+ * registry sportKey; the dynamic half of the title (UFC's event + date) rides on
+ * `play.display.sectionLabel`, so the primary MLB card uses the date label and UFC
+ * appends its event. This is the last sport-keyed literal in the poster; it
+ * collapses when the todays-board / tracked-plays channel split lands (the card's
+ * shape changes there anyway). Sports absent from this map fall back to green/root.
+ */
+const SECTION_CHROME: Record<string, { color: number; url: string; titlePrefix: string }> = {
+  mlb: { color: ARCHR_GREEN, url: `${SITE_URL}/slate`, titlePrefix: "🎯 ARCHR Edge · Best Plays · " },
+  ufc: { color: UFC_RED, url: `${SITE_URL}/ufc`, titlePrefix: "🥊 Fight Night — " },
+};
 
 export interface DiscordPostResult {
   posted: boolean;
@@ -59,69 +70,26 @@ export interface DiscordPostResult {
   ufcCount?: number;
 }
 
-function tagFor(p: OddsPlay): string {
-  return `${SPORT_LABEL[p.sport] ?? p.sport.toUpperCase()} ${KIND_LABEL[p.kind] ?? ""}`.trim();
-}
-
-// Kelly stake sizing now lives in @/lib/betting/kelly (pure, shared with the
-// sport engine's Play.suggestedUnits). Re-exported here so existing importers —
-// and postCard.test.ts — keep resolving unitsFor from this module.
-export { unitsFor };
-
-/** away @ home, using book abbreviations when available (e.g. "NYY @ BOS"). */
-function matchupLabel(p: OddsPlay): string {
-  return `${p.away.meta ?? p.away.name} @ ${p.home.meta ?? p.home.name}`;
-}
-
-/**
- * The member-facing selection. Moneyline/spread name a team so they're self-
- * identifying, but a total ("Over 8.5") or draw names no game — so prefix the
- * matchup, else members see a line with no idea WHICH game it's on.
- */
-export function selectionDisplay(p: OddsPlay): string {
-  const needsMatchup = p.side === "over" || p.side === "under" || p.side === "draw";
-  return needsMatchup ? `${matchupLabel(p)} ${p.selectionLabel}` : p.selectionLabel;
-}
-
-/** A play's first pitch / start as a compact ET stamp, e.g. "7:05p". */
-function startTimeLabel(d: Date): string {
-  const s = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  }).format(d);
-  return s.replace(/\s?AM$/, "a").replace(/\s?PM$/, "p");
-}
-
-/** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Edge · 1.5u · 7:05p ET */
-export function playLine(p: OddsPlay): string {
-  const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv, p.bestPrice)}u` : "";
-  const start = p.startUtc ? ` · ${startTimeLabel(p.startUtc)} ET` : "";
-  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}${start}`;
-}
-
 const EMPTY_CARD =
   "_No plays cleared ARCHR Edge today. No card is a card — we don't force action._";
 
-/**
- * The full premium body as one string (all lines, newline-joined) — used by the
- * on-demand preview page, a scrolling web view with no length limit.
- */
-function buildDescription(picks: OddsPlay[]): string {
-  if (!picks.length) return EMPTY_CARD;
-  return picks.map(playLine).join("\n");
+/** YYYY-MM-DD → "Jul 9" (avoids Date parsing/tz drift on a plain ET date string). */
+function prettyDate(dateEt: string): string {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const [, m, d] = dateEt.split("-").map(Number);
+  return `${months[m - 1]} ${d}`;
 }
 
 /**
- * Discord embed descriptions cap at 4096 chars, and we now post EVERY positive
- * play, so a big slate can exceed one embed. Pack the lines into as many ≤4000-
- * char chunks as needed — each becomes its own embed — so nothing is truncated.
+ * Discord embed descriptions cap at 4096 chars, and we post EVERY positive play,
+ * so a big section can exceed one embed. Pack the lines into as many ≤4000-char
+ * chunks as needed — each becomes its own embed — so nothing is truncated.
  */
-function packDescriptions(picks: OddsPlay[], limit = 4000): string[] {
-  if (!picks.length) return [EMPTY_CARD];
+function packLines(lines: string[], limit = 4000): string[] {
+  if (!lines.length) return [EMPTY_CARD];
   const chunks: string[] = [];
   let cur = "";
-  for (const line of picks.map(playLine)) {
+  for (const line of lines) {
     if (cur && cur.length + line.length + 1 > limit) {
       chunks.push(cur);
       cur = "";
@@ -132,142 +100,143 @@ function packDescriptions(picks: OddsPlay[], limit = 4000): string[] {
   return chunks;
 }
 
-const FINISH_METHOD_LABEL: Record<string, string> = { ko: "KO/TKO", submission: "submission", decision: "decision" };
+interface BoardSection {
+  sportKey: string;
+  title: string;
+  url: string;
+  color: number;
+  /** Rendered member lines for this sport, in the order the adapter returned them. */
+  lines: string[];
+  count: number;
+}
 
 /**
- * The fighter-math finish lean, in the card's analyst voice — "sees KO/TKO ~R2
- * (61% finish)" for a stoppage read, "sees a decision (55% to distance)" for a
- * points read. Turns the raw EV into a breakdown a capper would actually write.
+ * Group the registry's plays into board sections, in registry order. The primary
+ * sport (registry index 0, MLB) is ALWAYS rendered — empty means the "no card is
+ * a card" message, not a missing section — while other sports appear only when
+ * they have plays. Section title = chrome prefix + the play's own sectionLabel
+ * (UFC's event) or the card's date label (MLB).
  */
-function finishLeanLabel(lean: UfcFinishLean): string {
-  if (lean.method === "decision") {
-    return `sees a decision (${Math.round(lean.distanceProb * 100)}% to distance)`;
+export function assembleSections(plays: Play[], dateLabel: string): BoardSection[] {
+  const byKey = new Map<string, Play[]>();
+  for (const p of plays) {
+    const arr = byKey.get(p.sportKey) ?? [];
+    arr.push(p);
+    byKey.set(p.sportKey, arr);
   }
-  const method = FINISH_METHOD_LABEL[lean.method];
-  const round = lean.round ? ` ~R${lean.round}` : "";
-  return `sees ${method}${round} (${Math.round(lean.finishProb * 100)}% finish)`;
+  const primaryKey = SPORTS[0]?.key;
+  const sections: BoardSection[] = [];
+  for (const adapter of SPORTS) {
+    const group = byKey.get(adapter.key) ?? [];
+    if (!group.length && adapter.key !== primaryKey) continue; // only the primary shows empty
+    const chrome = SECTION_CHROME[adapter.key] ?? {
+      color: ARCHR_GREEN,
+      url: SITE_URL,
+      titlePrefix: `${adapter.meta.label} · `,
+    };
+    const sectionLabel = group[0]?.display?.sectionLabel ?? dateLabel;
+    sections.push({
+      sportKey: adapter.key,
+      title: `${chrome.titlePrefix}${sectionLabel}`,
+      url: chrome.url,
+      color: chrome.color,
+      lines: group.map((p) => p.display?.line ?? p.selection.label),
+      count: group.length,
+    });
+  }
+  return sections;
 }
 
-/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Edge · 1.5u · over Ode' Osbourne (58% model) · sees KO/TKO ~R2 (61% finish) */
-function ufcPlayLine(p: UfcBestPlay): string {
-  const marker = p.titleBout ? "🏆 " : "";
-  const lean = p.finishLean ? ` · ${finishLeanLabel(p.finishLean)}` : "";
-  return (
-    `${marker}**${p.pickName}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ` +
-    `${formatEv(p.archerEv)} Edge · ${unitsFor(p.archerEv, p.bestPrice)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
+/** All positive-EV plays across every registered sport, freshest data first. */
+async function collectPlays(dateEt: string): Promise<Play[]> {
+  // Best-effort freshness (UFC pokes its gated odds poll); a failure must not
+  // block the board. Registry-driven — no sport branch.
+  await Promise.allSettled(SPORTS.map((a) => a.refresh?.(dateEt) ?? Promise.resolve()));
+  const perSport = await Promise.all(
+    SPORTS.map(async (a) => {
+      try {
+        return await a.listPlays(dateEt);
+      } catch (err) {
+        console.error(`listPlays failed for ${a.key} (board continues without it):`, err);
+        return [] as Play[];
+      }
+    })
   );
+  return perSport.flat();
 }
 
 /**
- * UFC event date → "Sat Jul 12" (mirrors the /ufc list's formatter). eventDate
- * is a Cito date-only value stored at UTC midnight, so it MUST be formatted in
- * UTC — formatting in ET rolls it back to the previous evening ("Jul 11" → "Jul 10").
+ * Turn board sections into Discord embeds. author + title + link land on each
+ * section's FIRST embed, the compliance footer on its LAST, the section color on
+ * every embed — reproducing the old MLB-green card + UFC-red Fight-Night embed
+ * exactly, now from one branchless loop. The primary section is capped so a
+ * non-primary section always has room within Discord's 10-embed limit.
  */
-function prettyEventDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(date);
+export function sectionsToEmbeds(sections: BoardSection[]): Record<string, unknown>[] {
+  const embeds: Record<string, unknown>[] = [];
+  for (const section of sections) {
+    let chunks = packLines(section.lines);
+    if (section.sportKey === SPORTS[0]?.key && chunks.length > MAX_PRIMARY_CHUNKS) {
+      // No silent caps: a card this big (~360+ plays) means something's off upstream.
+      console.warn(
+        `postCard: ${chunks.length} ${section.sportKey} chunks exceeds ${MAX_PRIMARY_CHUNKS}; posting the first ${MAX_PRIMARY_CHUNKS}.`
+      );
+      chunks = chunks.slice(0, MAX_PRIMARY_CHUNKS);
+    }
+    chunks.forEach((desc, i, arr) => {
+      embeds.push({
+        ...(i === 0 ? { author: mosesAuthor(), title: section.title, url: section.url } : {}),
+        description: desc,
+        color: section.color,
+        ...(i === arr.length - 1 ? { footer: { text: RESEARCH_FOOTER } } : {}),
+      });
+    });
+  }
+  return embeds.slice(0, MAX_EMBEDS);
+}
+
+/** The single funnel tease — the top play, primary sport first (its own free lean). */
+export function freeLeanText(plays: Play[]): string | null {
+  const primaryKey = SPORTS[0]?.key;
+  const primaryTop = plays.find((p) => p.sportKey === primaryKey && p.display?.freeLean);
+  const anyTop = plays.find((p) => p.display?.freeLean);
+  return (primaryTop ?? anyTop)?.display?.freeLean ?? null;
 }
 
 /**
- * The fight-night embed: fighter-math's best leans on the next card. A model
- * lens with a confidence %, not +EV (UFC has no odds) — see ufcBestPlays.ts.
+ * Persist the plays we just posted so #results can grade them (see postResults).
+ * Upsert keyed on (postedForDate, playKey): a re-post of the same day leaves the
+ * original row (and its grade) untouched. Sport-agnostic — `sport` is the play's
+ * registry key, and grading dispatches on it via getAdapter(sport). Best-effort:
+ * the caller swallows failures so a DB hiccup never blocks the Discord post.
+ *
+ * The MLB-only prop columns (mlbPlayerId/statCategory) are left null: only game
+ * lines make the card (props carry no model EV), so they were already null on
+ * every posted row, and post-Phase-3a the grader recovers a prop's inputs from
+ * its playKey, not these columns.
  */
-function buildUfcEmbed(card: UfcCard) {
-  return {
-    author: mosesAuthor(),
-    title: `🥊 Fight Night — ${card.eventTitle} · ${prettyEventDate(card.eventDate)}`,
-    url: `${SITE_URL}/ufc`,
-    description: card.plays.map(ufcPlayLine).join("\n"),
-    color: UFC_RED,
-    footer: { text: RESEARCH_FOOTER },
-  };
-}
-
-/** YYYY-MM-DD → "Jul 9" (avoids Date parsing/tz drift on a plain ET date string). */
-function prettyDate(dateEt: string): string {
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const [, m, d] = dateEt.split("-").map(Number);
-  return `${months[m - 1]} ${d}`;
-}
-
-/**
- * Persist the plays we just posted so #results can grade them tomorrow (see
- * postResults.ts). Upsert keyed on (date, playKey): a re-post of the same day
- * leaves the original row (and its grade) untouched. Best-effort — the caller
- * swallows failures so a DB hiccup never blocks the Discord post itself.
- */
-async function recordPostedPlays(dateEt: string, picks: OddsPlay[]): Promise<void> {
+async function recordPlays(plays: Play[]): Promise<void> {
   await Promise.all(
-    picks.map((p) =>
+    plays.map((p) =>
       prisma.postedPlay.upsert({
-        where: { postedForDate_playKey: { postedForDate: dateEt, playKey: p.key } },
+        where: { postedForDate_playKey: { postedForDate: p.postedForDate, playKey: p.playKey } },
         update: {},
         create: {
-          postedForDate: dateEt,
-          playKey: p.key,
-          sport: p.sport as Sport,
-          matchId: p.matchId,
-          market: (p.market as MarketType | null) ?? null,
-          kind: p.kind,
-          side: p.side,
-          point: p.point,
-          selectionLabel: p.selectionLabel,
+          postedForDate: p.postedForDate,
+          playKey: p.playKey,
+          sport: p.sportKey,
+          matchId: p.eventRef,
+          market: p.selection.market,
+          kind: p.selection.kind,
+          side: p.selection.side,
+          point: p.selection.point,
+          selectionLabel: p.selection.label,
           bestPrice: p.bestPrice,
           bestBookName: p.bestBookName,
-          // Store the Archer (model) EV we actually posted on — units derive from
-          // it, and #results grades on units/price/result, not this field.
+          // The model EV we posted on — units derive from it, and #results grades
+          // on units/price/result, not this field.
           ev: p.modelEv,
-          units: p.modelEv !== null ? unitsFor(p.modelEv, p.bestPrice) : 1,
-          mlbPlayerId: p.mlbPlayerId ?? null,
-          statCategory: p.statCategory ?? null,
-        },
-      })
-    )
-  );
-}
-
-/** ET calendar date (YYYY-MM-DD) for a Date — en-CA formats as YYYY-MM-DD. */
-function etDateString(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
-/**
- * Persist UFC Archer EV plays so #results grades them after fight night. Unlike
- * the MLB card (posted for today, settled tomorrow), a UFC play is recorded
- * under its FIGHT'S ET date, so it settles the day after the bout no matter how
- * many days early we teased the card — and daily re-posts across the week dedupe
- * to one row per (fight-date, bout, side). Best-effort, like recordPostedPlays.
- */
-async function recordUfcPostedPlays(card: UfcCard): Promise<void> {
-  const postedForDate = etDateString(card.eventDate);
-  await Promise.all(
-    card.plays.map((p) =>
-      prisma.postedPlay.upsert({
-        where: { postedForDate_playKey: { postedForDate, playKey: `ufc:${p.boutId}:${p.side}` } },
-        update: {},
-        create: {
-          postedForDate,
-          playKey: `ufc:${p.boutId}:${p.side}`,
-          sport: "ufc",
-          matchId: p.boutId,
-          market: "h2h",
-          kind: "ml",
-          side: p.side,
-          point: null,
-          selectionLabel: p.pickName,
-          bestPrice: p.bestPrice,
-          bestBookName: p.bestBookName,
-          ev: p.archerEv,
-          units: unitsFor(p.archerEv, p.bestPrice),
+          units: p.suggestedUnits,
           mlbPlayerId: null,
           statCategory: null,
         },
@@ -288,33 +257,24 @@ export interface DailyCardPreview {
 }
 
 /**
- * Assemble the daily card EXACTLY as postDailyCardToDiscord would — same pool,
- * same MODEL-lens selection, same believability band, same formatters — but
- * post nothing and record nothing. The dry-run behind a "show me what it'd
- * post" preview (and a handy test/debug hook), so the card can be inspected
- * before a webhook is ever wired.
+ * Assemble the daily card EXACTLY as postDailyCardToDiscord would — same registry
+ * sources, same sections, same formatters — but post nothing and record nothing.
+ * The dry-run behind a "show me what it'd post" preview (and a test/debug hook),
+ * so the card can be inspected before a webhook is ever wired.
  */
 export async function previewDailyCard(dateEt: string = todayEt()): Promise<DailyCardPreview> {
-  const { plays } = await getOddsPoolForDate(dateEt);
-  const modelPlays = plays.filter((p): p is OddsPlay & { modelEv: number } => p.modelEv !== null);
-  const picks = modelPlays.filter((p) => p.modelEv > 0).sort((a, b) => b.modelEv - a.modelEv);
-
-  let ufcCard: UfcCard | null = null;
-  try {
-    await ensureUfcOddsFresh();
-    ufcCard = await getUfcBestPlays();
-  } catch {
-    // Best-effort, mirrors the poster: a UFC-side failure just drops that embed.
-  }
-  const ufcEmbed = ufcCard ? buildUfcEmbed(ufcCard) : null;
-
+  const label = prettyDate(dateEt);
+  const plays = await collectPlays(dateEt);
+  const sections = assembleSections(plays, label);
+  const primary = sections.find((s) => s.sportKey === SPORTS[0]?.key);
+  const ufc = sections.find((s) => s.sportKey === "ufc");
   return {
-    label: prettyDate(dateEt),
-    premium: buildDescription(picks),
-    ufc: ufcEmbed?.description ?? null,
-    ufcTitle: ufcEmbed?.title ?? null,
-    premiumCount: picks.length,
-    ufcCount: ufcCard?.plays.length ?? 0,
+    label,
+    premium: primary ? packLines(primary.lines).join("\n") : EMPTY_CARD,
+    ufc: ufc ? ufc.lines.join("\n") : null,
+    ufcTitle: ufc ? ufc.title : null,
+    premiumCount: primary?.count ?? 0,
+    ufcCount: ufc?.count ?? 0,
   };
 }
 
@@ -334,69 +294,34 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
   const premiumUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!premiumUrl) return { posted: false, reason: "dormant: DISCORD_WEBHOOK_URL not set" };
 
-  const { plays } = await getOddsPoolForDate(dateEt);
-  // EVERY positive-model-EV play, sorted by edge. The pool arrives sorted by
-  // MARKET ev, so it MUST be re-sorted by modelEv for a capper card. No floor,
-  // no ceiling, no count cap — Kelly sizing is the governor (see unitsFor).
-  const modelPlays = plays.filter((p): p is OddsPlay & { modelEv: number } => p.modelEv !== null);
-  const picks = modelPlays.filter((p) => p.modelEv > 0).sort((a, b) => b.modelEv - a.modelEv);
   const label = prettyDate(dateEt);
-  const premiumChunks = packDescriptions(picks);
-  if (premiumChunks.length > MAX_PREMIUM_EMBEDS) {
-    // No silent caps: a card this big (~360+ plays) means something's off upstream.
-    console.warn(
-      `postCard: ${premiumChunks.length} premium chunks exceeds ${MAX_PREMIUM_EMBEDS}; posting the first ${MAX_PREMIUM_EMBEDS}.`
-    );
-  }
+  const plays = await collectPlays(dateEt);
+  const sections = assembleSections(plays, label);
+  const premiumCount = sections.find((s) => s.sportKey === SPORTS[0]?.key)?.count ?? 0;
+  const ufcCount = sections.find((s) => s.sportKey === "ufc")?.count ?? 0;
 
-  // Fight-night leans from the fighter-math model — a second embed, only when a
-  // UFC card is imminent (getUfcBestPlays returns null otherwise). Best-effort:
-  // a UFC-side failure must not block the MLB card that's ready to post.
-  let ufcCard: UfcCard | null = null;
-  try {
-    // Price the fight-night card against current lines (gated poll — no-op if
-    // fresh). Best-effort: a UFC-side failure must not block the MLB card.
-    await ensureUfcOddsFresh();
-    ufcCard = await getUfcBestPlays();
-  } catch (err) {
-    console.error("getUfcBestPlays failed (posting MLB card without it):", err);
-  }
-
-  // One embed per description chunk — title/link on the first, footer on the
-  // last — then the UFC fight-night embed. Discord allows up to 10 embeds/message.
-  const premiumEmbeds = premiumChunks.slice(0, MAX_PREMIUM_EMBEDS).map((desc, i, arr) => ({
-    ...(i === 0 ? { author: mosesAuthor(), title: `🎯 ARCHR Edge · Best Plays · ${label}`, url: `${SITE_URL}/slate` } : {}),
-    description: desc,
-    color: ARCHR_GREEN,
-    ...(i === arr.length - 1 ? { footer: { text: RESEARCH_FOOTER } } : {}),
-  }));
   await postWebhook(premiumUrl, {
     username: "Moses, Leader of Many",
-    embeds: [...premiumEmbeds, ...(ufcCard ? [buildUfcEmbed(ufcCard)] : [])],
+    embeds: sectionsToEmbeds(sections),
   });
 
   // Record what we posted so #results can grade it. Best-effort: a DB failure
-  // must not fail the post that already went out. UFC plays are recorded under
-  // their fight date (settled the day after the bout), MLB under today's card date.
+  // must not fail the post that already went out. Each play carries its own
+  // postedForDate (UFC settles under its fight date, MLB under today's card).
   try {
-    await recordPostedPlays(dateEt, picks);
-    if (ufcCard) await recordUfcPostedPlays(ufcCard);
+    await recordPlays(plays);
   } catch (err) {
-    console.error("recordPostedPlays failed (card was still posted):", err);
+    console.error("recordPlays failed (card was still posted):", err);
   }
 
-  // Free channel: a single lean as the funnel tease — selection only, no EV,
-  // no best book. The value (the number + where to get it) stays behind the
-  // paywall. Prefer the top MLB play; on an MLB-dry fight day, tease the top
-  // UFC lean instead so the funnel still fires when there's a card to sell.
+  // Free channel: a single lean as the funnel tease — selection only, no EV, no
+  // best book. The value (the number + where to get it) stays behind the paywall.
+  // Prefer the top primary-sport (MLB) play; on an MLB-dry day, tease the next
+  // sport's top play so the funnel still fires when there's a card to sell.
   let freePosted = false;
   const freeUrl = process.env.DISCORD_FREE_WEBHOOK_URL;
-  const freeMlb = picks[0];
-  const freeUfc = ufcCard?.plays[0];
-  if (freeUrl && (freeMlb || freeUfc)) {
-    const lean = freeMlb
-      ? `\`${tagFor(freeMlb)}\` **${selectionDisplay(freeMlb)}**`
-      : `\`UFC\` **${freeUfc!.pickName}** over ${freeUfc!.opponentName}`;
+  const lean = freeLeanText(plays);
+  if (freeUrl && lean) {
     await postWebhook(freeUrl, {
       username: "Moses, Leader of Many",
       embeds: [
@@ -414,5 +339,5 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
     freePosted = true;
   }
 
-  return { posted: true, premiumCount: picks.length, freePosted, ufcCount: ufcCard?.plays.length ?? 0 };
+  return { posted: true, premiumCount, freePosted, ufcCount };
 }

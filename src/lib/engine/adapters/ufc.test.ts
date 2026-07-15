@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { ufcToPlay, ufcAdapter } from "./ufc";
 import { unitsFor } from "@/lib/betting/kelly";
+import { ufcPlayLine, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
 import type { UfcBestPlay } from "@/lib/discord/ufcBestPlays";
+
+const EVENT_TITLE = "UFC Fight Night: Costa vs Osbourne";
 
 /**
  * Phase 2 parity: prove the UFC adapter maps a fighter-math best play onto the
@@ -31,7 +34,7 @@ describe("ufcToPlay (UfcBestPlay → normalized Play)", () => {
   it("mirrors recordUfcPostedPlays' persisted fields exactly", () => {
     const eventDate = new Date("2026-07-19T00:00:00Z"); // Cito date-only @ UTC midnight
     const p = bestPlay();
-    const out = ufcToPlay(p, eventDate);
+    const out = ufcToPlay(p, eventDate, EVENT_TITLE);
     expect(out).toMatchObject({
       sportKey: "ufc",
       playKey: "ufc:bout1:blue", // recordUfcPostedPlays' key format
@@ -45,19 +48,30 @@ describe("ufcToPlay (UfcBestPlay → normalized Play)", () => {
     });
   });
 
+  it("carries the fighter-math voice on display (line, free lean, section label)", () => {
+    const eventDate = new Date("2026-07-19T00:00:00Z");
+    const p = bestPlay();
+    const out = ufcToPlay(p, eventDate, EVENT_TITLE);
+    // Rendered in the card's own formatters so the board keeps UFC's section
+    // byte-for-byte without a UFC branch.
+    expect(out.display?.line).toBe(ufcPlayLine(p));
+    expect(out.display?.freeLean).toBe(ufcFreeLean(p));
+    expect(out.display?.sectionLabel).toBe(`${EVENT_TITLE} · ${prettyEventDate(eventDate)}`);
+  });
+
   it("records the play under the FIGHT's ET date (settles the day after the tease)", () => {
     // UTC-midnight Jul 19 is still Jul 18 in ET (UTC-4) — the fight's calendar day.
     const eventDate = new Date("2026-07-19T00:00:00Z");
-    expect(ufcToPlay(bestPlay(), eventDate).postedForDate).toBe("2026-07-18");
+    expect(ufcToPlay(bestPlay(), eventDate, EVENT_TITLE).postedForDate).toBe("2026-07-18");
   });
 
   it("sizes units off the model edge with the same shared Kelly sizing as MLB", () => {
     const p = bestPlay({ archerEv: 0.12, bestPrice: -120 });
-    expect(ufcToPlay(p, new Date("2026-07-19T00:00:00Z")).suggestedUnits).toBe(unitsFor(0.12, -120));
+    expect(ufcToPlay(p, new Date("2026-07-19T00:00:00Z"), EVENT_TITLE).suggestedUnits).toBe(unitsFor(0.12, -120));
   });
 
   it("backs the red corner when that's the value side", () => {
-    const out = ufcToPlay(bestPlay({ side: "red", pickName: "Ode' Osbourne" }), new Date("2026-07-19T00:00:00Z"));
+    const out = ufcToPlay(bestPlay({ side: "red", pickName: "Ode' Osbourne" }), new Date("2026-07-19T00:00:00Z"), EVENT_TITLE);
     expect(out.playKey).toBe("ufc:bout1:red");
     expect(out.selection.side).toBe("red");
   });

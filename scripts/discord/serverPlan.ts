@@ -164,7 +164,8 @@ export const SERVER_PLAN: ServerPlan = {
       name: "🔒 PREMIUM",
       visibility: "premium",
       channels: [
-        { name: "full-card", topic: "Archer's Best Plays — the full daily +EV card.", readOnly: true },
+        { name: "todays-board", topic: "Every +EV play the model sees today — the full firehose. Info only, no units.", readOnly: true },
+        { name: "tracked-plays", topic: "The official card — the plays Archer is actually tracking in units.", readOnly: true },
         { name: "fight-night", topic: "Fighter-math's best leans on the next UFC card.", readOnly: true },
         { name: "bet-check", topic: "Grade your own bet with /betcheck — good/fair/poor value." },
         { name: "by-sport", topic: "MLB · UFC · F1 · tennis · soccer threads." },
@@ -191,6 +192,7 @@ export const SERVER_PLAN: ServerPlan = {
       name: "🛠️ STAFF",
       visibility: "staff",
       channels: [
+        { name: "command-deck", topic: "Archer's cockpit — curate the card with /track and settle from here. Invisible to members." },
         { name: "mod-log", topic: "Moderation audit trail.", readOnly: true },
         { name: "staff-chat", topic: "Private staff coordination." },
       ],

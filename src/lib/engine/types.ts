@@ -44,6 +44,20 @@ export interface PlayDisplay {
   playerName?: string | null;
   bestBookInitials?: string;
   booksCount?: number;
+  /**
+   * The fully-rendered member-facing card line, in the sport's own capper voice
+   * (MLB shows edge/units/start; UFC shows opponent/model%/finish lean). The
+   * adapter composes it so the board assembles by concatenating lines with zero
+   * "is this MLB?" branch — a new sport brings its own line. See @/lib/card/line.
+   */
+  line?: string;
+  /** The funnel tease — selection only, no EV/book/units — for the free channel. */
+  freeLean?: string;
+  /**
+   * A dynamic suffix for this sport's board section title (UFC: "<event> · <date>").
+   * Omitted → the section falls back to the card's date label (MLB).
+   */
+  sectionLabel?: string;
 }
 
 /** One normalized play — the only currency the engine speaks. */
@@ -118,6 +132,12 @@ export interface SportAdapter {
   meta: SportMeta;
   /** Pull this sport's data into its own storage. Cron routes become thin wrappers over this. */
   ingest(dateEt: string): Promise<IngestSummary>;
+  /**
+   * Optional best-effort freshness step the board runs before listing (UFC pokes
+   * its gated odds poll here). Omit when the sport's data is kept fresh out of
+   * band (MLB's odds poll is a separate cron). Failures must not block the board.
+   */
+  refresh?(dateEt: string): Promise<void>;
   /** Priced +EV candidates for the board on a given date. */
   listPlays(dateEt: string): Promise<Play[]>;
   /** Present when the sport has a model; omit → plays carry market-only EV. */
