@@ -18,9 +18,9 @@ import { playLine, mlbFreeLean } from "@/lib/card/line";
 import { gradeGameLine, gradeProp } from "@/lib/discord/gradePlay";
 import { STAT_COLUMN } from "@/lib/props/hitRate";
 import { STAT_CATEGORY_LABELS } from "@/lib/props/format";
-import { SPORT_META } from "@/lib/sports";
 import { syncMlbSchedule, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
+import { sportMetaByKey } from "../sportsMeta";
 import type { StatCategory } from "@/generated/prisma/client";
 import type {
   IngestSummary,
@@ -183,13 +183,13 @@ async function listPlays(dateEt: string): Promise<Play[]> {
   return selectBoardPlays(plays).map((p) => toPlay(p, dateEt));
 }
 
-export const mlbAdapter: SportAdapter = {
+export const mlbAdapter = {
   key: "mlb",
-  meta: SPORT_META.mlb,
+  meta: sportMetaByKey.mlb,
   model: MLB_MODEL,
   markets: MLB_MARKETS,
   props: MLB_PROPS,
   ingest,
   listPlays,
   grade,
-};
+} satisfies SportAdapter;

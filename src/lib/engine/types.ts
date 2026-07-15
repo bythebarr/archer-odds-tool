@@ -13,7 +13,30 @@
 import type { MarketType } from "@/generated/prisma/client";
 import type { MarketKind } from "@/lib/queries/oddsPool";
 import type { PlayResult } from "@/lib/discord/gradePlay";
-import type { SportMeta } from "@/lib/sports";
+
+/**
+ * A sport's display + routing metadata — the single source for nav, the Home
+ * launcher, the SportRail, and the /sports lobby. It lives on the adapter
+ * (`SportAdapter.meta`), so registering a sport describes it in exactly one
+ * place and every sport surface derives from `SPORTS` (see @/lib/sports).
+ */
+export interface SportMeta {
+  /** Registry key of the sport — equals the owning adapter's `key`. */
+  sport: string;
+  label: string;
+  icon: string;
+  href: string;
+  /** Section/accent color, e.g. "#3b82f6". */
+  accent: string;
+  /** MLB's board is date-scoped, so its link carries the browsed date; most aren't. */
+  carriesDate: boolean;
+  /**
+   * A sport with a page but no odds/slate presence (F1: results-only). Absent →
+   * the sport is on the Slate. Lets the slate/nav split derive from the registry
+   * instead of hardcoding "everything but F1".
+   */
+  resultsOnly?: boolean;
+}
 
 /**
  * A grade outcome, plus `pending` — a grader may not be able to settle yet

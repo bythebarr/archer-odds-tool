@@ -1,14 +1,18 @@
 // Single source of truth for the app's primary navigation. Both the desktop
 // SiteNav (full list) and the mobile BottomNav (primary subset) read from here
-// so the two bars can't drift out of sync.
+// so the two bars can't drift out of sync. The SPORT tabs derive from the sport
+// registry (`SPORTS`) — label/icon/href/carriesDate come straight off each
+// adapter's `meta`, so adding a sport surfaces it in nav automatically. The
+// fixed non-sport tabs (Home, Slate, Props, the mobile hub) bracket them.
 //
 // carriesDate: MLB's Games/Slate views share a browsed date across nav clicks;
-// Tennis/Soccer/F1 have no date filter, so they never carry one.
-// icon: a scannable sport glyph, DraftKings-style.
+// Tennis/Soccer/F1 have no date filter, so they never carry one (from meta).
 // primary: shows in the mobile BottomNav (a bottom bar shouldn't scroll).
 // mobileOnly: hidden from the desktop top bar. The desktop nav lists every
 // sport individually, so the "All Sports" hub tab would be redundant there —
 // it exists only to give mobile a single door to the non-primary sports.
+import { SPORT_METAS, type NavSport } from "@/lib/engine/sportsMeta";
+
 export type NavItem = {
   href: string;
   label: string;
@@ -18,14 +22,26 @@ export type NavItem = {
   mobileOnly?: boolean;
 };
 
+/**
+ * Sports that earn a mobile bottom-nav slot (the bar can't scroll, so it can't
+ * list every sport). A nav-presentation choice, not sport identity — kept here,
+ * typed to NavSport so it can't name a sport the registry doesn't have.
+ */
+const PRIMARY_SPORTS: ReadonlySet<NavSport> = new Set<NavSport>(["mlb", "ufc"]);
+
+/** The per-sport tabs, derived from each sport's display meta (registry order). */
+const SPORT_TABS: NavItem[] = SPORT_METAS.map((m) => ({
+  href: m.href,
+  label: m.label,
+  icon: m.icon,
+  carriesDate: m.carriesDate,
+  ...(PRIMARY_SPORTS.has(m.sport) ? { primary: true } : {}),
+}));
+
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", icon: "🏠", carriesDate: true, primary: true },
   { href: "/slate", label: "Slate", icon: "📊", carriesDate: true, primary: true },
-  { href: "/mlb", label: "MLB", icon: "⚾", carriesDate: true, primary: true },
-  { href: "/ufc", label: "UFC", icon: "🥊", carriesDate: false, primary: true },
-  { href: "/tennis", label: "Tennis", icon: "🎾", carriesDate: false },
-  { href: "/soccer", label: "Soccer", icon: "⚽", carriesDate: false },
-  { href: "/f1", label: "F1", icon: "🏁", carriesDate: false },
+  ...SPORT_TABS,
   { href: "/props", label: "Props", icon: "🎯", carriesDate: false, primary: true },
   // Mobile-only hub: one door to every sport (incl. Tennis/Soccer/F1) so the
   // bottom bar stays focused instead of listing each sport as its own tab.

@@ -1,13 +1,14 @@
 # ARCHR Sport Engine — Design Doc
 
 > **Status:** in progress (2026-07-15). The governing architecture for ARCHR's
-> full, every-sport deployment. Phases 0–2 are **done**: the contract exists and
-> both proving adapters (MLB odds-model + UFC fighter-math) are built, registered,
-> and parity-tested. **Phase 3 is underway** — grading (3a), the `Sport`-enum
-> retirement on the ledger (3b), and the daily board are now routed through the
-> registry, with a byte-for-byte parity test locking the poster's output. What's
-> left in Phase 3: collapse the remaining parallel sport lists (nav/slate) onto
-> `SPORTS`. The `todays-board` / `tracked-plays` channel split + `/track` are a
+> full, every-sport deployment. Phases 0–2 are **done** (contract + MLB/UFC
+> proving adapters, parity-tested). **Phase 3 is done**: grading (3a), the
+> `Sport`-enum retirement on the ledger (3b), the daily board (3c), and the
+> nav/Slate collapse onto one registry (3d) all route through `SPORTS`, with a
+> byte-for-byte parity test locking the poster's output. Tennis/soccer/F1 now
+> register as thin adapters (Phase 4 pulled forward for the nav/Slate collapse —
+> one pass, no backtracking), so **every** sport surface derives from the
+> registry. The `todays-board` / `tracked-plays` channel split + `/track` are a
 > deliberate follow-on (the board's output shape is preserved for now).
 
 ## Why this exists
@@ -190,11 +191,24 @@ adapter, push it into `SPORTS`.
     free-lean tease, all scenarios). The `SECTION_CHROME` map (per-sport embed
     color/title) is the last sport-keyed literal in the poster; it dissolves with
     the channel redesign.
-  - **3d — collapse nav/slate onto `SPORTS`. ⏳ next.** Nav (`nav.ts`), the sport
-    meta (`sports.ts`), and `SlateSport`/`SLATE_SPORTS` still carry their own
-    literal lists; derive them from the registry and delete the parallels.
-- **Phase 4 — Existing sports as adapters.** Tennis/soccer/F1 become adapters
-  (market-only where there's no model). Generalize devig to n-way for soccer.
+  - **3d — collapse nav/Slate onto one registry. ✅ done.** Every parallel sport
+    list is gone: `nav.ts` sport tabs, `sports.ts` (`NAV_SPORT_META`/`SPORT_ORDER`/
+    `SPORT_META`/`F1_META`), the dashboard's duplicate `SPORT_ORDER`, and the dead
+    `SLATE_SPORTS` all derive from the registry now. `SlateSport`/`NavSport` are
+    derived types (`Exclude`/`keyof` over the meta list), not hand-kept unions.
+    **Client-safety seam:** sport identity+display lives in a pure leaf,
+    `engine/sportsMeta.ts` (`SPORT_METAS`), which the heavy `SportAdapter`s
+    reference via `meta` — so the client nav bars / odds board import ONE meta
+    source without dragging prisma/ingest into the browser bundle (proven by
+    `next build`). `resultsOnly` on the meta is what splits nav (all sports) from
+    the Slate (odds sports); F1 sets it.
+  - **Phase 4 pulled forward (partial).** Tennis/soccer/F1 register as thin
+    adapters NOW — real `meta` + `ingest`, an empty board (`listPlays: []`) until
+    their paid-EV lens lands, a conservative `grade`. Doing this to enable 3d (vs.
+    deriving nav from a 2-sport registry and re-adding them later) was the
+    no-backtracking call. What's LEFT for full Phase 4: the +EV models
+    (tennis/soccer) and n-way devig for soccer's 1X2 — then `listPlays` fills in
+    and the board lights those sections up with no other change.
 - **Phase 5 — New sports are pure adds.** Ship the "How to add a sport" checklist.
 
 ## Definition of done

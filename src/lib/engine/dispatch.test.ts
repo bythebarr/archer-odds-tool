@@ -3,24 +3,32 @@ import { getAdapter, postedPlayToPlay } from "./index";
 import type { PostedPlay } from "@/generated/prisma/client";
 
 /**
- * Phase 3a: grading now dispatches through the registry. These cover the two
- * pure pieces the refactor rests on — the sport→adapter lookup (an unregistered
- * sport must resolve to undefined so gradePending voids it, exactly as
- * tennis/soccer were voided before) and the PostedPlay→Play rehydration grade
- * consumes. The per-sport grade logic itself is covered by the adapter tests.
+ * Phase 3a/3d: grading dispatches through the registry. These cover the two
+ * pure pieces the refactor rests on — the sport→adapter lookup and the
+ * PostedPlay→Play rehydration grade consumes. Every sport with a page is now
+ * registered (Phase 3d), so the "void path" is a truly-unregistered key; a
+ * registered thin sport (tennis) resolves but grades to "void" (no plays yet).
+ * The per-sport grade logic itself is covered by the adapter tests.
  */
 
 describe("getAdapter (grading dispatch lookup)", () => {
-  it("resolves the registered sports", () => {
+  it("resolves every registered sport", () => {
     expect(getAdapter("mlb")?.key).toBe("mlb");
     expect(getAdapter("ufc")?.key).toBe("ufc");
+    // Thin adapters (Phase 3d) — registered so nav/Slate derive from one list.
+    expect(getAdapter("tennis")?.key).toBe("tennis");
+    expect(getAdapter("soccer")?.key).toBe("soccer");
+    expect(getAdapter("f1")?.key).toBe("f1");
   });
 
-  it("returns undefined for unregistered sports (the void path)", () => {
-    // tennis/soccer have no adapter yet → gradePending voids them, as it always did.
-    expect(getAdapter("tennis")).toBeUndefined();
-    expect(getAdapter("soccer")).toBeUndefined();
+  it("returns undefined for an unregistered sport (the void path)", () => {
     expect(getAdapter("nfl")).toBeUndefined();
+  });
+
+  it("a thin sport resolves but grades to void (no tracked plays yet)", async () => {
+    const tennis = getAdapter("tennis");
+    expect(tennis).toBeDefined();
+    await expect(tennis!.grade({} as never)).resolves.toBe("void");
   });
 });
 

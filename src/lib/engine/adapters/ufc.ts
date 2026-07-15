@@ -19,7 +19,7 @@ import { ufcPlayLine, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
 import { gradeUfcMoneyline } from "@/lib/discord/gradePlay";
 import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
-import { SPORT_META } from "@/lib/sports";
+import { sportMetaByKey } from "../sportsMeta";
 import type {
   IngestSummary,
   MarketSpec,
@@ -152,13 +152,13 @@ async function ingest(): Promise<IngestSummary> {
   };
 }
 
-export const ufcAdapter: SportAdapter = {
+export const ufcAdapter = {
   key: "ufc",
-  meta: SPORT_META.ufc,
+  meta: sportMetaByKey.ufc,
   model: UFC_MODEL,
   markets: UFC_MARKETS,
   ingest,
   refresh,
   listPlays,
   grade,
-};
+} satisfies SportAdapter;

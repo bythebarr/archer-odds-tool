@@ -83,6 +83,6 @@ describe("adapter registration surface", () => {
     expect(ufcAdapter.meta.sport).toBe("ufc");
     expect(ufcAdapter.model?.describes).toContain("fighter-math");
     expect(ufcAdapter.markets.map((m) => m.kind)).toEqual(["ml"]);
-    expect(ufcAdapter.props).toBeUndefined(); // The Odds API has no MMA props
+    expect("props" in ufcAdapter).toBe(false); // The Odds API has no MMA props
   });
 });
