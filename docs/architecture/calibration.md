@@ -48,16 +48,24 @@ data that existed before the event**.
 | Sport | Verdict | n | Brier | base-rate | skill |
 |---|---|---|---|---|---|
 | **Tennis (surface Elo)** | ✅ **trusted** | 20000 | **0.2187** | 0.2301 | **−0.0114** |
+| **NFL (team Elo)** | ✅ **trusted** | 6000 | **0.2199** | 0.2292 | **−0.0093** |
 | UFC (fighter-math) | ✅ trusted | 1227 | 0.2403 | 0.2425 | −0.0022 |
 | MLB (moneyline) | 🟡 marginal | 1343 | 0.2499 | 0.2489 | +0.0010 |
 
-**Tennis is the strongest model by far** — ~5× UFC's skill and genuinely
-discriminating (its 52%→87% probability buckets each match the real win rate to
-within ~2pt after the 0.75 shrink). MLB and UFC sit within a hair of a coin flip —
-as expected (see the docstrings in `winProbability.ts` and `fighterMath.ts`).
-Calibration keeps them **honest**; it does not manufacture edge. The MLB
-`backtest:mlb` reproduces the previously never-committed shrink-0.2 audit, so that
-constant is now defensible from source.
+**Tennis and NFL are the strongest models** — both genuinely discriminating and
+well-calibrated (each 50–85% probability bucket matches the real win rate to within
+~2pt; tennis after its 0.75 shrink, NFL as-is with a 0.95 refit best-shrink, i.e. only
+a hair overconfident). MLB and UFC sit within a hair of a coin flip — as expected (see
+the docstrings in `winProbability.ts` and `fighterMath.ts`). Calibration keeps them all
+**honest**; it does not manufacture edge — and a trusted calibration verdict is NOT a
+market-beating one (see the CLV finding below: NFL is calibration-trusted yet
+CLV-negative). The MLB `backtest:mlb` reproduces the previously never-committed
+shrink-0.2 audit, so that constant is now defensible from source.
+
+The NFL model is the model LAYER only for now (`src/lib/nfl/{games,elo,model}.ts`,
+`npm run backtest:nfl`) — free nflverse data, validated but not yet wired to a live
+odds pipeline/nav. That live SportAdapter lands once the paid odds-feed decision is
+made; validating the model first is the deliberate "no surprises on the data" play.
 
 ## Calibration ≠ edge — the CLV finding (2026-07-16)
 
@@ -87,6 +95,26 @@ analysis + line-shopping**, NOT "guaranteed +EV vs the close." Real betting edge
 anywhere, lives in **less-efficient markets (props) and catching stale prices**, not
 main-line moneylines. This is why tennis (and UFC) stay **signal-only**, never
 auto-posted as +EV picks — calibration-trusted, but not market-validated.
+
+### NFL (biggest sport) — CLV-tested BEFORE building the adapter
+
+`npm run backtest:nfl:clv` runs the same beat-the-close test on free nflverse
+`games.csv` (7,276 games 1999–2025: results + closing spread/total, moneylines 2019+),
+walk-forward `NflElo`. Deliberately spiked *before* building the NFL adapter — test the
+riskiest assumption first, on free data, so no surprises when the paid-data decision comes.
+
+| Market | window | sample | ROI |
+|---|---|---|---|
+| ATS (model vs close, ≥1pt, −110) | 2007–2025 | 3,798 | **−3.38%** |
+| ATS | 2019+ (recent) | 1,462 | **−6.80%** |
+| Moneyline (model +EV into close) | 2019+ | 879 | **−7.97%** |
+
+Same verdict as tennis, on the biggest, sharpest market: a **calibration-trusted** NFL
+model does **not** beat the close. One wrinkle — ATS ROI is monotone by model-vs-market
+disagreement (1–2pt −7.3% → 5pt+ **+2.43%**, but only 539 bets); not a green light, since
+a public-info Elo disagreeing with the close by 5+ points usually means the market has
+info (injury/weather/QB) the model lacks, so likely noise. NFL, when surfaced, leads with
+line-shopping + PROPS (deepest prop market), model signal-only.
 
 ### Tennis Elo (Phase 4b) — built on free data
 
