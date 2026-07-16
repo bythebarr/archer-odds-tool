@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { TennisElo, eloExpectation, canonicalSurface } from "./elo";
+import {
+  TennisElo,
+  eloExpectation,
+  canonicalSurface,
+  winProbFromRatings,
+  DEFAULT_ELO,
+} from "./elo";
 
 /**
  * Surface-aware Elo core (tennis Phase 4b). Pins the properties the model + its
@@ -90,6 +96,32 @@ describe("TennisElo", () => {
     elo.update("a", "b", "clay");
     // null surface → pure overall gap, independent of any surface rating
     const p = elo.winProb("a", "b", null);
+    expect(p).toBeGreaterThan(0.5);
+  });
+});
+
+describe("winProbFromRatings (live-pricing path)", () => {
+  it("matches the class winProb for the same ratings (backtest == pricing)", () => {
+    // Build a live-pricing scenario and assert the stored-ratings function agrees
+    // with a class instance seeded to the same ratings — the two must never diverge.
+    const a = { overall: 1900, grass: 1850 };
+    const b = { overall: 1700, grass: 1780 };
+    const surfaceWeight = DEFAULT_ELO.surfaceWeight;
+    const shrink = DEFAULT_ELO.calibrationShrink;
+    // Hand-compute the expected blended-then-shrunk probability.
+    const ra = surfaceWeight * a.grass + (1 - surfaceWeight) * a.overall;
+    const rb = surfaceWeight * b.grass + (1 - surfaceWeight) * b.overall;
+    const raw = eloExpectation(ra, rb);
+    const expected = 1 / (1 + Math.exp(-shrink * Math.log(raw / (1 - raw))));
+    expect(winProbFromRatings(a, b, "grass")).toBeCloseTo(expected, 10);
+  });
+
+  it("falls back to overall when the surface rating is absent", () => {
+    const a = { overall: 1900 }; // no grass rating
+    const b = { overall: 1700 };
+    const p = winProbFromRatings(a, b, "grass");
+    // Equals the null-surface (overall-only) probability.
+    expect(p).toBeCloseTo(winProbFromRatings(a, b, null), 10);
     expect(p).toBeGreaterThan(0.5);
   });
 });

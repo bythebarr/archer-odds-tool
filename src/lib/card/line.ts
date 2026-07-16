@@ -55,8 +55,8 @@ export function playLine(p: OddsPlay): string {
   return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}${start}`;
 }
 
-/** The funnel tease for an MLB play — tag + selection only, no EV/book/units. */
-export function mlbFreeLean(p: OddsPlay): string {
+/** The funnel tease for a game-line play — tag + selection only, no EV/book/units. */
+export function gameLineFreeLean(p: OddsPlay): string {
   return `\`${tagFor(p)}\` **${selectionDisplay(p)}**`;
 }
 

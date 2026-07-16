@@ -131,6 +131,29 @@ model TennisArchiveMatch {
   @@index([loserNorm])
 }
 
+/// Current surface-aware Elo rating per archived player — the precomputed snapshot
+/// live pricing reads (replaying 62k archive matches on every board render would be
+/// far too slow). Rebuilt in full from TennisArchiveMatch by scripts/compute-tennis-
+/// ratings.ts after each import (see src/lib/tennis/ratings.ts). Keyed on Sackmann's
+/// stable player id; `norm` is the normalized-name join to a live Odds API competitor.
+model TennisRating {
+  id       String @id @default(cuid())
+  sackId   String @unique
+  tour     String
+  name     String
+  norm     String // normalized name — the live-match join key
+  overall  Float
+  hard     Float?
+  clay     Float?
+  grass    Float?
+  carpet   Float?
+  nOverall Int // career matches seen — confidence gate for pricing
+
+  updatedAt DateTime @default(now())
+
+  @@index([norm])
+}
+
 /// One row per game (MLB, soccer) or match (tennis) — `sport` decides which
 /// of the team/player FK pairs below is populated. Soccer reuses the same
 /// team-pair shape as MLB (homeTeamId/awayTeamId), just via a different Team
@@ -149,6 +172,11 @@ model Game {
   season            Int
   scheduledStartUtc DateTime
   status            GameStatus @default(scheduled)
+  /// Tennis only — court surface ("Hard"|"Clay"|"Grass"|"Carpet"), derived from
+  /// the polled tournament sport_key at ingest (see tennis/surface.ts). Feeds the
+  /// surface-aware Elo model's live pricing; null when unknown (model falls back to
+  /// overall Elo). Not populated for team sports.
+  surface           String?
 
   homeTeamId String?
   homeTeam   Team?   @relation("HomeTeam", fields: [homeTeamId], references: [id])

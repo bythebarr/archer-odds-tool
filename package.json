@@ -19,7 +19,8 @@
     "backtest:mlb": "tsx scripts/backtest-mlb-calibration.ts",
     "backtest:tennis": "tsx scripts/backtest-tennis-calibration.ts",
     "backtest:all": "tsx scripts/backtest-all.ts",
-    "import:tennis": "tsx scripts/import-tennis-archive.ts"
+    "import:tennis": "tsx scripts/import-tennis-archive.ts",
+    "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

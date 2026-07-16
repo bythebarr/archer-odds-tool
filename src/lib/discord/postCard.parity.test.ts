@@ -4,7 +4,7 @@ import { toPlay } from "@/lib/engine/adapters/mlb";
 import { ufcToPlay } from "@/lib/engine/adapters/ufc";
 import { mosesAuthor } from "./brand";
 import { SITE_URL } from "@/lib/siteUrl";
-import { playLine, ufcPlayLine, mlbFreeLean, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
+import { playLine, ufcPlayLine, gameLineFreeLean, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
 import type { OddsPlay } from "@/lib/queries/oddsPool";
 import type { UfcBestPlay } from "./ufcBestPlays";
 
@@ -129,7 +129,7 @@ describe("board parity — registry-sourced embeds equal the old poster's", () =
 
 describe("free-lean parity — MLB first, then the next sport", () => {
   it("prefers the top MLB play's tease", () => {
-    expect(freeLeanText([...mlbPlays, ...ufcPlays])).toBe(mlbFreeLean(mlbPicks[0]));
+    expect(freeLeanText([...mlbPlays, ...ufcPlays])).toBe(gameLineFreeLean(mlbPicks[0]));
   });
 
   it("falls back to the top UFC lean on an MLB-dry day", () => {

@@ -1,18 +1,20 @@
 /**
- * Tennis adapter (thin, Phase 4 lead-in). Tennis has an odds feed
- * (pollAndStoreTennisOdds) and a Slate presence, but no ARCHR model yet — so it
- * carries NO +EV board plays. It registers here so nav, the Slate list, and the
- * sport rail all derive from the ONE registry (Phase 3d) rather than a parallel
- * literal list; `listPlays` fills in when the paid-EV odds lens lights up (the
- * Slate's `ev` seam, see queries/slate.ts).
- *
- * Deliberately market-lite: meta + a real `ingest` wrapper, an empty board, and
- * a conservative `grade` (no tracked tennis plays exist to grade). See
- * docs/architecture/sport-engine.md.
+ * Tennis adapter (Phase 4b — modeled). Tennis now carries the surface-aware Elo
+ * model (src/lib/tennis/elo.ts), trained + backtested on the free Sackmann archive
+ * and cleared through the calibration trust gate. `listPlays` prices the live odds
+ * feed against each player's current Elo (read from the precomputed TennisRating
+ * snapshot), so the board's tennis section lights up with real +EV plays whenever
+ * a tournament is live — and self-gates to empty off-event. See
+ * docs/architecture/{sport-engine,calibration}.md.
  */
 import { prisma } from "@/lib/prisma";
 import { pollAndStoreTennisOdds } from "@/lib/tennis/ingest";
-import { TennisElo, canonicalSurface } from "@/lib/tennis/elo";
+import { TennisElo, canonicalSurface, winProbFromRatings } from "@/lib/tennis/elo";
+import { normalizeName } from "@/lib/tennis/archive";
+import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
+import { calculateEv } from "@/lib/odds/devig";
+import { unitsFor } from "@/lib/betting/kelly";
+import { playLine, gameLineFreeLean } from "@/lib/card/line";
 import { sportMetaByKey } from "../sportsMeta";
 import type { CalibrationSample } from "../calibration";
 import type {
@@ -29,6 +31,18 @@ const TENNIS_MARKETS: MarketSpec[] = [{ market: "h2h", kind: "ml", label: "Money
 
 /** Below this many career matches for either player, Elo has too little signal to price. */
 const MIN_MATCHES_FOR_SIGNAL = 10;
+
+/**
+ * Believability band on the model edge (mirrors UFC's, see docs/discord/OPERATIONS.md).
+ * The Elo model is well-CALIBRATED (it predicts winners honestly — trusted gate) but it
+ * is not yet MARKET-calibrated, and it's blind to today's form/injury (archive is ~weeks
+ * stale). So a large disagreement with the market — especially on a longshot price, where
+ * a modest probability gap explodes into a huge EV% — is almost always the model being
+ * wrong, not real value. Keep only plausible edges until a CLV (beat-the-close) backtest
+ * proves the disagreements are real. Below MIN isn't worth a play; above MAX is noise.
+ */
+const MIN_MODEL_EV = 0.02;
+const MAX_MODEL_EV = 0.2;
 
 /**
  * Lookahead-safe backtest sampler for the surface-aware Elo model (tennis Phase 4b).
@@ -96,14 +110,111 @@ async function ingest(): Promise<IngestSummary> {
   };
 }
 
-/** No ARCHR tennis model yet → no +EV board plays. Lights up with the paid-EV lens. */
-async function listPlays(): Promise<Play[]> {
-  return [];
+/**
+ * Map a priced tennis pool play onto the normalized `Play`. The generic card line
+ * (`playLine`) renders in the shared capper voice once the play carries `modelEv`,
+ * so tennis needs no bespoke formatter — it slots into the board like any modeled sport.
+ */
+function tennisToPlay(p: OddsPlay, postedForDate: string, modelEv: number): Play {
+  return {
+    sportKey: "tennis",
+    playKey: p.key,
+    eventRef: p.matchId,
+    postedForDate,
+    startUtc: p.startUtc,
+    selection: {
+      market: p.market,
+      kind: p.kind,
+      side: p.side,
+      point: p.point,
+      label: p.selectionLabel,
+    },
+    bestPrice: p.bestPrice,
+    bestBookName: p.bestBookName,
+    marketEv: p.ev,
+    modelEv,
+    suggestedUnits: unitsFor(modelEv, p.bestPrice),
+    display: {
+      href: p.href,
+      backed: p.backed,
+      booksCount: p.booksCount,
+      bestBookInitials: p.bestBookInitials,
+      // Hand playLine an OddsPlay carrying our modelEv so it renders edge/units.
+      line: playLine({ ...p, modelEv }),
+      freeLean: gameLineFreeLean(p),
+    },
+  };
 }
 
-/** Tennis produces no tracked plays yet, so this never runs; void is the safe default. */
-async function grade(): Promise<PlayGrade> {
-  return "void";
+/**
+ * Price the live tennis odds feed against the Elo model — the board's +EV tennis
+ * plays. Pulls the day's tennis h2h plays from the shared pool, matches each
+ * competitor to their current Elo (via normalized name → TennisRating), computes
+ * the model's win probability on the match surface, and keeps the plays where the
+ * best price beats the model (modelEv > 0). Players we can't confidently match or
+ * rate (name miss, or too few career matches) are skipped, never guessed.
+ */
+async function listPlays(dateEt: string): Promise<Play[]> {
+  const { plays } = await getOddsPoolForDate(dateEt);
+  const tennisPlays = plays.filter((p) => p.sport === "tennis" && p.kind === "ml");
+  if (!tennisPlays.length) return [];
+
+  // Surface per match (persisted at ingest from the tournament).
+  const matchIds = [...new Set(tennisPlays.map((p) => p.matchId))];
+  const games = await prisma.game.findMany({
+    where: { id: { in: matchIds } },
+    select: { id: true, surface: true },
+  });
+  const surfaceByMatch = new Map(games.map((g) => [g.id, canonicalSurface(g.surface)]));
+
+  // Ratings by normalized name; on a norm collision keep the higher-sample player.
+  const norms = new Set<string>();
+  for (const p of tennisPlays) {
+    norms.add(normalizeName(p.home.name));
+    norms.add(normalizeName(p.away.name));
+  }
+  const ratingRows = await prisma.tennisRating.findMany({ where: { norm: { in: [...norms] } } });
+  const ratingByNorm = new Map<string, (typeof ratingRows)[number]>();
+  for (const r of ratingRows) {
+    const prev = ratingByNorm.get(r.norm);
+    if (!prev || r.nOverall > prev.nOverall) ratingByNorm.set(r.norm, r);
+  }
+
+  const out: Play[] = [];
+  for (const p of tennisPlays) {
+    const backed = ratingByNorm.get(normalizeName(p.side === "home" ? p.home.name : p.away.name));
+    const opp = ratingByNorm.get(normalizeName(p.side === "home" ? p.away.name : p.home.name));
+    if (!backed || !opp) continue; // couldn't match a player to a rating
+    if (backed.nOverall < MIN_MATCHES_FOR_SIGNAL || opp.nOverall < MIN_MATCHES_FOR_SIGNAL) continue;
+
+    const modelProb = winProbFromRatings(backed, opp, surfaceByMatch.get(p.matchId) ?? null);
+    const modelEv = calculateEv(modelProb, p.bestPrice);
+    // Believability band: a plausible edge, not a coin-flip or a stale-model blowup.
+    if (modelEv < MIN_MODEL_EV || modelEv > MAX_MODEL_EV) continue;
+    out.push(tennisToPlay(p, dateEt, modelEv));
+  }
+  return out.sort((a, b) => (b.modelEv ?? 0) - (a.modelEv ?? 0));
+}
+
+/**
+ * Grade one tracked tennis play against its settled match. Tennis settlement lives
+ * in GameOutcome (one h2h row per competitor, written by syncAndGradeTennisResults),
+ * so the backed player's own outcome row IS the grade — hit | miss. Not final yet, or
+ * not graded yet → "pending" (a later pass settles it); never a fabricated loss.
+ */
+async function grade(play: Play): Promise<PlayGrade> {
+  const game = await prisma.game.findUnique({
+    where: { id: play.eventRef },
+    select: { status: true, homePlayerId: true, awayPlayerId: true },
+  });
+  if (!game || game.status !== "final") return "pending";
+  const playerId = play.selection.side === "home" ? game.homePlayerId : game.awayPlayerId;
+  if (!playerId) return "void";
+  const outcome = await prisma.gameOutcome.findUnique({
+    where: { gameId_playerId_marketType: { gameId: play.eventRef, playerId, marketType: "h2h" } },
+  });
+  if (!outcome) return "pending"; // not graded yet — leave for a later pass
+  return outcome.result as PlayGrade; // hit | miss | push — all valid PlayResults
 }
 
 export const tennisAdapter = {

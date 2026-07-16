@@ -26,9 +26,11 @@ describe("getAdapter (grading dispatch lookup)", () => {
   });
 
   it("a thin sport resolves but grades to void (no tracked plays yet)", async () => {
-    const tennis = getAdapter("tennis");
-    expect(tennis).toBeDefined();
-    await expect(tennis!.grade({} as never)).resolves.toBe("void");
+    // soccer is still a thin market-only adapter (tennis now grades for real via
+    // its GameOutcome store, so it's no longer the void-grade example).
+    const soccer = getAdapter("soccer");
+    expect(soccer).toBeDefined();
+    await expect(soccer!.grade({} as never)).resolves.toBe("void");
   });
 });
 

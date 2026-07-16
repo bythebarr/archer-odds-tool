@@ -68,6 +68,47 @@ export function eloExpectation(ratingA: number, ratingB: number): number {
   return 1 / (1 + 10 ** ((ratingB - ratingA) / 400));
 }
 
+/** Blend a player's overall + surface rating (surface null/absent → overall only). */
+export function blend(
+  overall: number,
+  surfaceRating: number | null | undefined,
+  surfaceWeight: number
+): number {
+  if (surfaceRating === null || surfaceRating === undefined) return overall;
+  return surfaceWeight * surfaceRating + (1 - surfaceWeight) * overall;
+}
+
+/** Logit shrink toward 0.5 — the baked overconfidence calibration (identity at 1.0). */
+export function shrinkProbability(p: number, shrink: number): number {
+  if (shrink === 1) return p;
+  return 1 / (1 + Math.exp(-shrink * Math.log(p / (1 - p))));
+}
+
+/** A player's current ratings as stored in TennisRating — the live-pricing input. */
+export interface StoredRating {
+  overall: number;
+  hard?: number | null;
+  clay?: number | null;
+  grass?: number | null;
+  carpet?: number | null;
+}
+
+/**
+ * P(a beats b) on `surface` from STORED ratings — the live-pricing path, sharing the
+ * exact blend + calibration shrink the backtest used, so a priced play's probability
+ * equals what the backtest scored. Used by the tennis adapter's listPlays.
+ */
+export function winProbFromRatings(
+  a: StoredRating,
+  b: StoredRating,
+  surface: Surface | null,
+  params: EloParams = DEFAULT_ELO
+): number {
+  const ra = blend(a.overall, surface ? a[surface] : null, params.surfaceWeight);
+  const rb = blend(b.overall, surface ? b[surface] : null, params.surfaceWeight);
+  return shrinkProbability(eloExpectation(ra, rb), params.calibrationShrink);
+}
+
 export class TennisElo {
   private readonly p: EloParams;
   private readonly ratings = new Map<string, Rating>();
@@ -102,16 +143,7 @@ export class TennisElo {
   /** The surface-blended rating used for prediction. Falls back to overall off-surface. */
   blendedRating(id: string, surface: Surface | null): number {
     const r = this.ratingOf(id);
-    if (!surface) return r.overall;
-    const sr = r.surface[surface] ?? r.overall;
-    return this.p.surfaceWeight * sr + (1 - this.p.surfaceWeight) * r.overall;
-  }
-
-  /** Apply the baked overconfidence shrink toward 0.5 in logit space (identity at 1.0). */
-  private shrink(p: number): number {
-    const s = this.p.calibrationShrink;
-    if (s === 1) return p;
-    return 1 / (1 + Math.exp(-s * Math.log(p / (1 - p))));
+    return blend(r.overall, surface ? r.surface[surface] ?? null : null, this.p.surfaceWeight);
   }
 
   /**
@@ -121,7 +153,22 @@ export class TennisElo {
    */
   winProb(aId: string, bId: string, surface: Surface | null): number {
     const raw = eloExpectation(this.blendedRating(aId, surface), this.blendedRating(bId, surface));
-    return this.shrink(raw);
+    return shrinkProbability(raw, this.p.calibrationShrink);
+  }
+
+  /** Snapshot every player's current ratings — the input to the persisted ratings store. */
+  exportRatings(): Array<{
+    id: string;
+    overall: number;
+    nOverall: number;
+    surface: Partial<Record<Surface, number>>;
+  }> {
+    return [...this.ratings.entries()].map(([id, r]) => ({
+      id,
+      overall: r.overall,
+      nOverall: r.nOverall,
+      surface: { ...r.surface },
+    }));
   }
 
   /** Apply one settled match (winner beat loser on `surface`), updating both ratings. */
