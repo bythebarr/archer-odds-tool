@@ -47,6 +47,7 @@ data that existed before the event**.
 
 | Sport | Verdict | n | Brier | base-rate | skill |
 |---|---|---|---|---|---|
+| **Soccer (Poisson goals)** | ✅ **trusted** | 12000 | **0.2368** | 0.2498 | **−0.0130** |
 | **Tennis (surface Elo)** | ✅ **trusted** | 20000 | **0.2187** | 0.2301 | **−0.0114** |
 | **NFL (team Elo)** | ✅ **trusted** | 6000 | **0.2199** | 0.2292 | **−0.0093** |
 | UFC (fighter-math) | ✅ trusted | 1227 | 0.2403 | 0.2425 | −0.0022 |
@@ -95,6 +96,31 @@ analysis + line-shopping**, NOT "guaranteed +EV vs the close." Real betting edge
 anywhere, lives in **less-efficient markets (props) and catching stale prices**, not
 main-line moneylines. This is why tennis (and UFC) stay **signal-only**, never
 auto-posted as +EV picks — calibration-trusted, but not market-validated.
+
+### Soccer (3-way, in-season) — first draw-native model, CLV-tested on free data
+
+Soccer is the first THREE-way sport (home/DRAW/away), so it uses a Poisson goals model
+(`src/lib/soccer/{footballData,poisson,model}.ts`) instead of a 2-way Elo: online
+attack/defense strengths → expected goals → a Poisson score matrix → 3-way probs. Trained
++ tested entirely on free football-data.co.uk (goals + closing 1X2 odds incl. Pinnacle,
+21k matches, big-five leagues + Championship). Independent Poisson under-produces draws, so
+the raw model was overconfident (80% picks won ~75%, refit wanted a 0.70 shrink); a
+`drawBoost` low-score correction (0.5, tuned on the reliability curve) fixed it — overall
+gap −2.8pt → −0.1pt, skill −0.0092 → **−0.0130 (our best)**, refit best-shrink back to 1.00.
+
+CLV (`npm run backtest:soccer:clv`) — same verdict as everyone else:
+
+| Ref | sample | ROI |
+|---|---|---|
+| Pinnacle (sharp) | 7,708 | −3.85% |
+| Best (shopped) | 3,934 | −2.63% |
+| Average | 6,036 | −3.87% |
+
+The model's +EV picks skew to **draws/underdogs** (where it most disagrees with the market)
+and those lose (draws −2.70%, away dogs −10.19%); EV buckets are non-monotone. **Notable
+line-shopping signal:** backing the market FAVORITE at the best-shopped (MaxC) closing price
+went **+1.48%** over 13,809 bets — i.e. the edge is line-shopping, NOT the model's
+disagreements. Same story, fifth model. Soccer stays signal-only.
 
 ### NFL (biggest sport) — CLV-tested BEFORE building the adapter
 
