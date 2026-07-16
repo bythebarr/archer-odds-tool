@@ -11,13 +11,17 @@ describe("isModelTrusted", () => {
   it("trusts UFC (baked trusted snapshot)", () => {
     expect(isModelTrusted("ufc")).toBe(true);
   });
+  it("trusts Tennis (baked trusted Elo snapshot)", () => {
+    expect(isModelTrusted("tennis")).toBe(true);
+    expect(modelCalibration("tennis")?.verdict).toBe("trusted");
+  });
   it("does NOT trust MLB (marginal — calibrated but edgeless)", () => {
     expect(isModelTrusted("mlb")).toBe(false);
     expect(modelCalibration("mlb")?.verdict).toBe("marginal");
   });
   it("does NOT trust a market-only sport (no model)", () => {
-    expect(isModelTrusted("tennis")).toBe(false);
-    expect(modelCalibration("tennis")).toBeNull();
+    expect(isModelTrusted("soccer")).toBe(false);
+    expect(modelCalibration("soccer")).toBeNull();
   });
   it("does NOT trust an unregistered sport", () => {
     expect(isModelTrusted("nope")).toBe(false);

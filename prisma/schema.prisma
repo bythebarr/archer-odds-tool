@@ -83,6 +83,54 @@ model Player {
   outcomes    GameOutcome[]
 }
 
+/// Historical tennis match archive, imported from the free public Jeff Sackmann
+/// ATP/WTA CSVs (scripts/import-tennis-archive.ts). This is the training + backtest
+/// base for the surface-aware Elo model — our live odds Game rows are forward-only
+/// and far too shallow to build ratings from. Keyed on Sackmann's own stable player
+/// ids (winnerSackId/loserSackId) so Elo never depends on name matching; names are
+/// kept only to join a live Odds API competitor to their rating at pricing time.
+/// Independent of Game/Player on purpose (mirrors how UFC added its own table family
+/// rather than overloading Game). Costs zero Odds API credits — pure free data.
+model TennisArchiveMatch {
+  id     String @id @default(cuid())
+  tour   String // "atp" | "wta"
+
+  tourneyId    String
+  tourneyName  String
+  surface      String? // "Hard" | "Clay" | "Grass" | "Carpet" (nullable — a few rows lack it)
+  tourneyLevel String? // G=Grand Slam, M=Masters, A=ATP 500/250, D=Davis Cup, etc.
+  round        String? // R128..F
+  /// Tournament start date (Sackmann's tourney_date, YYYYMMDD). Elo replays in
+  /// (tourneyDate, matchNum) order — matches within an event are ordered by matchNum.
+  tourneyDate  DateTime
+  matchNum     Int
+  bestOf       Int?
+
+  winnerSackId     String
+  winnerName       String
+  winnerNorm       String // normalized (lowercased, accent-stripped) for live-name matching
+  winnerRank       Int?
+  winnerRankPoints Int?
+  winnerAces       Int? // free serve stat — seeds a future ace/serve prop model
+  winnerDfs        Int?
+
+  loserSackId     String
+  loserName       String
+  loserNorm       String
+  loserRank       Int?
+  loserRankPoints Int?
+  loserAces       Int?
+  loserDfs        Int?
+
+  score String?
+
+  // Natural key for idempotent re-import (re-running the cron never dupes a match).
+  @@unique([tour, tourneyId, matchNum])
+  @@index([tourneyDate])
+  @@index([winnerNorm])
+  @@index([loserNorm])
+}
+
 /// One row per game (MLB, soccer) or match (tennis) — `sport` decides which
 /// of the team/player FK pairs below is populated. Soccer reuses the same
 /// team-pair shape as MLB (homeTeamId/awayTeamId), just via a different Team

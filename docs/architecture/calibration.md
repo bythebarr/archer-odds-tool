@@ -47,13 +47,29 @@ data that existed before the event**.
 
 | Sport | Verdict | n | Brier | base-rate | skill |
 |---|---|---|---|---|---|
+| **Tennis (surface Elo)** | ✅ **trusted** | 20000 | **0.2187** | 0.2301 | **−0.0114** |
 | UFC (fighter-math) | ✅ trusted | 1227 | 0.2403 | 0.2425 | −0.0022 |
 | MLB (moneyline) | 🟡 marginal | 1343 | 0.2499 | 0.2489 | +0.0010 |
 
-Both sit within a hair of a coin flip — as expected (see the docstrings in
-`winProbability.ts` and `fighterMath.ts`). Calibration keeps them **honest**; it
-does not manufacture edge. The MLB `backtest:mlb` reproduces the previously
-never-committed shrink-0.2 audit, so that constant is now defensible from source.
+**Tennis is the strongest model by far** — ~5× UFC's skill and genuinely
+discriminating (its 52%→87% probability buckets each match the real win rate to
+within ~2pt after the 0.75 shrink). MLB and UFC sit within a hair of a coin flip —
+as expected (see the docstrings in `winProbability.ts` and `fighterMath.ts`).
+Calibration keeps them **honest**; it does not manufacture edge. The MLB
+`backtest:mlb` reproduces the previously never-committed shrink-0.2 audit, so that
+constant is now defensible from source.
+
+### Tennis Elo (Phase 4b) — built on free data
+
+The tennis model needs no paid feed: it's trained + backtested entirely on the
+free public Jeff Sackmann ATP/WTA archive (`npm run import:tennis` →
+`TennisArchiveMatch`, 62k matches 2015–2026). Elo (`src/lib/tennis/elo.ts`) is a
+surface-aware, K-decaying rating; the backtest replays the archive chronologically
+and scores each match's pre-match favorite probability — lookahead-safe by
+construction (the pre-match rating can't see the result). The raw model was ~4pt
+overconfident; a baked 0.75 logit-shrink (validated out-of-sample) fixes it. Data
+caveat: the mirror's newest match is ~7 weeks stale, so current ratings slightly
+lag the very latest results — fine for slow-moving Elo, refreshed by re-import.
 
 ## Adding a new sport's model to the harness
 

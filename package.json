@@ -17,7 +17,9 @@
     "poll:odds:soccer": "tsx scripts/poll-odds-soccer.ts",
     "backtest:ufc": "tsx scripts/backtest-ufc-calibration.ts",
     "backtest:mlb": "tsx scripts/backtest-mlb-calibration.ts",
-    "backtest:all": "tsx scripts/backtest-all.ts"
+    "backtest:tennis": "tsx scripts/backtest-tennis-calibration.ts",
+    "backtest:all": "tsx scripts/backtest-all.ts",
+    "import:tennis": "tsx scripts/import-tennis-archive.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
