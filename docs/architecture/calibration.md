@@ -59,6 +59,35 @@ Calibration keeps them **honest**; it does not manufacture edge. The MLB
 `backtest:mlb` reproduces the previously never-committed shrink-0.2 audit, so that
 constant is now defensible from source.
 
+## Calibration ≠ edge — the CLV finding (2026-07-16)
+
+The trust gate measures whether a model's probabilities are HONEST (does its 60%
+win 60%). It does **not** measure whether the model BEATS THE MARKET. Those are
+different, and conflating them would be the biggest way to mislead ourselves.
+
+`npm run backtest:tennis:clv` is the honesty check: walk-forward over free
+tennis-data.co.uk history (results + surface + closing odds), bet the model's +EV
+picks INTO the closing line, measure realized ROI. Findings:
+
+| Window | vs Pinnacle (sharp) | vs Best line (shopped) | vs Avg book |
+|---|---|---|---|
+| 2010–2024 | −4.24% | −0.10% | −9.40% |
+| 2019–2024 | −2.87% | −1.11% | −8.46% |
+
+**The surface-aware Elo does NOT beat modern closing lines.** A profitable-looking
+5–10% EV pocket in the full sample (+2.46% at best line) evaporates in recent years
+(−0.98%) — it was old, softer markets, not a persistent edge. The buckets are noisy
+and non-monotonic recently: no reliable relationship between model-EV size and
+realized ROI.
+
+**What this means for the product (applies to every main-line model, not just tennis):**
+a pure public-info model — Elo, Archer, fighter-math — is well-calibrated but the
+market has already priced its information in. The member value is the **honest
+analysis + line-shopping**, NOT "guaranteed +EV vs the close." Real betting edge, if
+anywhere, lives in **less-efficient markets (props) and catching stale prices**, not
+main-line moneylines. This is why tennis (and UFC) stay **signal-only**, never
+auto-posted as +EV picks — calibration-trusted, but not market-validated.
+
 ### Tennis Elo (Phase 4b) — built on free data
 
 The tennis model needs no paid feed: it's trained + backtested entirely on the

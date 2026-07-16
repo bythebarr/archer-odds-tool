@@ -34,12 +34,13 @@ const MIN_MATCHES_FOR_SIGNAL = 10;
 
 /**
  * Believability band on the model edge (mirrors UFC's, see docs/discord/OPERATIONS.md).
- * The Elo model is well-CALIBRATED (it predicts winners honestly — trusted gate) but it
- * is not yet MARKET-calibrated, and it's blind to today's form/injury (archive is ~weeks
- * stale). So a large disagreement with the market — especially on a longshot price, where
- * a modest probability gap explodes into a huge EV% — is almost always the model being
- * wrong, not real value. Keep only plausible edges until a CLV (beat-the-close) backtest
- * proves the disagreements are real. Below MIN isn't worth a play; above MAX is noise.
+ * A sanity filter, NOT an edge: the CLV backtest (npm run backtest:tennis:clv, see
+ * docs/architecture/calibration.md) proved this well-calibrated Elo does NOT beat modern
+ * closing lines — betting its +EV picks loses ~1% at the best line, ~3% vs Pinnacle, in
+ * recent years. So tennis model output is analytical (honest win prob + line-shop
+ * highlight), SIGNAL-ONLY, never auto-posted as +EV picks. The band just drops the
+ * implausible blowups (stale-model longshot disagreements) so the surfaced numbers stay
+ * sane; it does not manufacture profitability.
  */
 const MIN_MODEL_EV = 0.02;
 const MAX_MODEL_EV = 0.2;

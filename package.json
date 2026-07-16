@@ -18,6 +18,7 @@
     "backtest:ufc": "tsx scripts/backtest-ufc-calibration.ts",
     "backtest:mlb": "tsx scripts/backtest-mlb-calibration.ts",
     "backtest:tennis": "tsx scripts/backtest-tennis-calibration.ts",
+    "backtest:tennis:clv": "tsx scripts/backtest-tennis-clv.ts",
     "backtest:all": "tsx scripts/backtest-all.ts",
     "import:tennis": "tsx scripts/import-tennis-archive.ts",
     "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts"
@@ -55,6 +56,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.22.5",
     "typescript": "^5",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "xlsx": "^0.18.5"
   }
 }
