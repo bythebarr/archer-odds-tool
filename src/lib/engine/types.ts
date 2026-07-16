@@ -133,6 +133,44 @@ export interface PropSpec {
   label: string;
 }
 
+import type { CalibrationSample, CalibrationVerdict } from "./calibration";
+
+/**
+ * A model's last calibration result, baked onto the model so the board/Discord
+ * can read its trust WITHOUT re-running a (DB-heavy) backtest live — the same
+ * posture as the baked shrink constants. Refresh it whenever you re-run
+ * `npm run backtest:<sport>`; docs/architecture/calibration.md tracks the numbers.
+ */
+export interface CalibrationSnapshot {
+  verdict: CalibrationVerdict;
+  brier: number;
+  baseRateBrier: number;
+  /** Settled events the verdict is based on. */
+  n: number;
+  /** ET date the backtest was last run, YYYY-MM-DD. */
+  asOf: string;
+}
+
+/**
+ * A model's ability to be backtested (Phase 4a). Turns settled history into
+ * lookahead-safe {pred, won} samples the shared calibration harness can score —
+ * the ONLY sport-specific part of calibration. Each model rebuilds its own
+ * historical predictions "as of" each event (no future-data leakage), exactly as
+ * scripts/backtest-ufc-calibration.ts does for UFC. Optional: a model may price
+ * the card before it can be backtested, but it stays untrusted until it can.
+ */
+export interface ModelBacktest {
+  /** What one sample is, for report headers. e.g. "priceable bout", "game moneyline". */
+  readonly unit: string;
+  /**
+   * Rebuild the model's historical predictions, NEWEST FIRST (the harness's
+   * time-split trains on the older tail). Each sample re-derives the probability
+   * using only data available before its event. `limit` caps how many settled
+   * events to walk back over.
+   */
+  collect(opts: { limit: number }): Promise<CalibrationSample[]>;
+}
+
 /**
  * Declares that a sport has a pricing model (so the board/preview can mark it
  * "modeled" vs "market-only"). Pricing itself is encapsulated inside the
@@ -141,6 +179,17 @@ export interface PropSpec {
 export interface SportModel {
   /** What the model prices, for docs/preview. e.g. "win prob + expected runs". */
   readonly describes: string;
+  /**
+   * Present when the model can be historically evaluated. The trust gate reads
+   * the harness's verdict over these samples; a model with no `backtest` (or one
+   * that hasn't cleared the bar) is priced but not trusted on the card.
+   */
+  readonly backtest?: ModelBacktest;
+  /**
+   * The last backtest's verdict, baked on so trust is readable without a live
+   * backtest. Absent → never backtested (treat as untrusted). See `isModelTrusted`.
+   */
+  readonly calibration?: CalibrationSnapshot;
 }
 
 /**

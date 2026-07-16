@@ -14,6 +14,9 @@
 import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { getUfcBestPlays, type UfcBestPlay } from "@/lib/discord/ufcBestPlays";
+import { getUfcMatchupAsOf } from "@/lib/queries/ufcMatchup";
+import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
+import type { CalibrationSample } from "../calibration";
 import { unitsFor } from "@/lib/betting/kelly";
 import { ufcPlayLine, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
 import { gradeUfcMoneyline } from "@/lib/discord/gradePlay";
@@ -32,9 +35,59 @@ import type {
 /** UFC offers moneyline only — no spreads/totals, and The Odds API has no MMA props. */
 const UFC_MARKETS: MarketSpec[] = [{ market: "h2h", kind: "ml", label: "Moneyline" }];
 
+/**
+ * Lookahead-safe backtest sampler for the fighter-math model (Phase 4a). For each
+ * settled bout with usable stats, rebuild the projection using ONLY fight history
+ * that predates the bout (getUfcMatchupAsOf) and record the model favorite's
+ * probability vs. whether that favorite actually won. This is the collect() the
+ * old scripts/backtest-ufc-calibration.ts inlined, now behind the contract so the
+ * shared harness scores it identically to every other sport.
+ */
+async function collectUfcSamples({ limit }: { limit: number }): Promise<CalibrationSample[]> {
+  const bouts = await prisma.ufcBout.findMany({
+    where: { status: "completed", winnerFighterId: { not: null }, event: { hasStats: true } },
+    select: {
+      redCornerFighterId: true,
+      blueCornerFighterId: true,
+      winnerFighterId: true,
+      event: { select: { eventDate: true } },
+    },
+    orderBy: { event: { eventDate: "desc" } }, // newest first (for the time split)
+    take: limit,
+  });
+
+  const samples: CalibrationSample[] = [];
+  for (const b of bouts) {
+    const matchup = await getUfcMatchupAsOf(
+      b.redCornerFighterId,
+      b.blueCornerFighterId,
+      b.event.eventDate
+    );
+    if (!matchup) continue;
+    const proj = computeUfcWinProbability(matchup, b.event.eventDate);
+    if (proj.fighterAProb === null || proj.fighterBProb === null) continue;
+    const redFav = proj.fighterAProb >= proj.fighterBProb;
+    samples.push({
+      pred: redFav ? proj.fighterAProb : proj.fighterBProb,
+      won: b.winnerFighterId === (redFav ? b.redCornerFighterId : b.blueCornerFighterId) ? 1 : 0,
+    });
+  }
+  return samples;
+}
+
 /** UFC's fighter-math model; metadata only (pricing lives in getUfcBestPlays). */
 const UFC_MODEL: SportModel = {
   describes: "fighter-math win probability + finish projection (method × round)",
+  backtest: { unit: "priceable bout", collect: collectUfcSamples },
+  // From `npm run backtest:ufc` — a thin but real edge (skill just past no-skill).
+  // Refresh as the sample grows; it sits close to the trusted/marginal line.
+  calibration: {
+    verdict: "trusted",
+    brier: 0.2403,
+    baseRateBrier: 0.2425,
+    n: 1227,
+    asOf: "2026-07-16",
+  },
 };
 
 /**

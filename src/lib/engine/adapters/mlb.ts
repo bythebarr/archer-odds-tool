@@ -16,6 +16,10 @@ import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
 import { unitsFor } from "@/lib/betting/kelly";
 import { playLine, mlbFreeLean } from "@/lib/card/line";
 import { gradeGameLine, gradeProp } from "@/lib/discord/gradePlay";
+import { getTeamFormForGame } from "@/lib/queries/teamForm";
+import { computeArcherWinProbability } from "@/lib/archer/winProbability";
+import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
+import type { CalibrationSample } from "../calibration";
 import { STAT_COLUMN } from "@/lib/props/hitRate";
 import { STAT_CATEGORY_LABELS } from "@/lib/props/format";
 import { syncMlbSchedule, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
@@ -44,9 +48,144 @@ const MLB_PROPS: PropSpec[] = (
   Object.entries(STAT_CATEGORY_LABELS) as [StatCategory, string][]
 ).map(([key, label]) => ({ key, label }));
 
+/**
+ * Lookahead-safe backtest sampler for the Archer win-probability (moneyline)
+ * model (Phase 4a). This is the reconstruction the winProbability.ts docstring
+ * describes but that was NEVER committed — so the shrink-0.2 calibration was, until
+ * now, unreproducible. For each settled game it rebuilds the matchup as it stood
+ * BEFORE first pitch: each team's actual starter's ERA + starts computed only from
+ * that pitcher's earlier game logs, and team form via getTeamFormForGame's `before`
+ * cutoff. It then records the model favorite's probability vs. whether that side won.
+ *
+ * We compute as-of ERA straight from PlayerGameLog pitching lines rather than the
+ * stored season aggregates, because those aggregates are full-season totals — using
+ * them would leak the rest of the season's results into a historical projection.
+ */
+async function collectMlbSamples({ limit }: { limit: number }): Promise<CalibrationSample[]> {
+  const games = await prisma.game.findMany({
+    where: {
+      sport: "mlb",
+      status: "final",
+      homeScore: { not: null },
+      awayScore: { not: null },
+      homeTeamId: { not: null },
+      awayTeamId: { not: null },
+    },
+    orderBy: { scheduledStartUtc: "desc" }, // newest first (for the time split)
+    take: limit,
+    select: {
+      id: true,
+      season: true,
+      homeTeamId: true,
+      awayTeamId: true,
+      homeScore: true,
+      awayScore: true,
+      scheduledStartUtc: true,
+    },
+  });
+  if (!games.length) return [];
+
+  // Preload every starter pitching line once (indexed in memory) so as-of ERA is a
+  // filter, not a query per starter. Restricted to the seasons actually in view.
+  const seasons = [...new Set(games.map((g) => g.season))];
+  const starterLogs = await prisma.playerGameLog.findMany({
+    where: {
+      isStarter: true,
+      outsRecorded: { gt: 0 },
+      earnedRuns: { not: null },
+      game: { sport: "mlb", season: { in: seasons } },
+    },
+    select: {
+      gameId: true,
+      mlbPlayerId: true,
+      teamId: true,
+      gameDate: true,
+      earnedRuns: true,
+      outsRecorded: true,
+      game: { select: { season: true } },
+    },
+  });
+
+  // gameId → { teamId → starterId }: who actually started for each team that game.
+  const starterByGameTeam = new Map<string, Map<string, string>>();
+  // `${season}:${pitcherId}` → their starts, so as-of ERA is a date filter + reduce.
+  type Start = { date: Date; er: number; outs: number };
+  const startsByPitcher = new Map<string, Start[]>();
+  for (const r of starterLogs) {
+    let byTeam = starterByGameTeam.get(r.gameId);
+    if (!byTeam) starterByGameTeam.set(r.gameId, (byTeam = new Map()));
+    byTeam.set(r.teamId, r.mlbPlayerId);
+    const key = `${r.game.season}:${r.mlbPlayerId}`;
+    const list = startsByPitcher.get(key) ?? [];
+    list.push({ date: r.gameDate, er: r.earnedRuns ?? 0, outs: r.outsRecorded ?? 0 });
+    startsByPitcher.set(key, list);
+  }
+
+  /** As-of ERA + starts for a pitcher, from starts that finished before `before`. */
+  const asOfPitcher = (
+    season: number,
+    pitcherId: string | undefined,
+    before: Date
+  ): PitcherInfo | null => {
+    if (!pitcherId) return null;
+    const prior = (startsByPitcher.get(`${season}:${pitcherId}`) ?? []).filter(
+      (s) => s.date < before
+    );
+    const outs = prior.reduce((s, r) => s + r.outs, 0);
+    if (outs === 0) return null; // no prior work this season — model treats ERA as unknown
+    const er = prior.reduce((s, r) => s + r.er, 0);
+    return {
+      fullName: "",
+      wins: 0,
+      losses: 0,
+      era: (27 * er) / outs, // 9 * ER / (outs/3)
+      gamesStarted: prior.length,
+      inningsPitched: outs / 3,
+    };
+  };
+
+  const samples: CalibrationSample[] = [];
+  for (const g of games) {
+    const before = g.scheduledStartUtc;
+    const starters = starterByGameTeam.get(g.id);
+    const { home: homeForm, away: awayForm } = await getTeamFormForGame(
+      g.homeTeamId!,
+      g.awayTeamId!,
+      g.season,
+      before
+    );
+    const matchup: GameMatchup = {
+      homePitcher: asOfPitcher(g.season, starters?.get(g.homeTeamId!), before),
+      awayPitcher: asOfPitcher(g.season, starters?.get(g.awayTeamId!), before),
+      homeForm,
+      awayForm,
+    };
+    const proj = computeArcherWinProbability(matchup);
+    if (proj.homeProb === null || proj.awayProb === null) continue; // too thin to price
+
+    const homeFav = proj.homeProb >= 0.5;
+    const homeWon = g.homeScore! > g.awayScore!;
+    samples.push({
+      pred: homeFav ? proj.homeProb : proj.awayProb,
+      won: homeFav === homeWon ? 1 : 0,
+    });
+  }
+  return samples;
+}
+
 /** MLB has a game-line model (only sport that does today); this is metadata only. */
 const MLB_MODEL: SportModel = {
   describes: "win probability (moneyline) + expected runs (spreads/totals)",
+  backtest: { unit: "game moneyline", collect: collectMlbSamples },
+  // From `npm run backtest:mlb` — the moneyline model is honest but edgeless
+  // (Brier ~= base rate). Refresh when the model gains features or the season grows.
+  calibration: {
+    verdict: "marginal",
+    brier: 0.2499,
+    baseRateBrier: 0.2489,
+    n: 1343,
+    asOf: "2026-07-16",
+  },
 };
 
 /**

@@ -10,11 +10,14 @@ export type {
   SportAdapter,
   SportMeta,
   SportModel,
+  ModelBacktest,
+  CalibrationSnapshot,
   IngestSummary,
   MarketSpec,
   PropSpec,
 } from "./types";
 export { SPORTS, sportByKey, getAdapter } from "./registry";
+export { modelCalibration, isModelTrusted } from "./trust";
 export type { SportKey, SlateSport, NavSport } from "./registry";
 export { postedPlayToPlay } from "./posted";
 export { mlbAdapter } from "./adapters/mlb";
