@@ -76,6 +76,12 @@ interface Prop {
    * base rate (an o5.5 K line looks impossible if you fold in one-out cameos).
    */
   qualifies: (r: LogRow) => boolean;
+  /**
+   * Season-progress ramp correction, fit per prop by `npm run calibrate:pitchers`
+   * (see that script). Pitching counting stats ride a within-season workload ramp
+   * a season-pooled base rate can't track; this de-biases them. Batting has none.
+   */
+  ramp?: { slope: number; pivot: number; cap: number };
 }
 const batted = (r: LogRow) => r.plateAppearances !== null;
 const started = (r: LogRow) => r.isStarter === true;
@@ -92,13 +98,13 @@ const PROPS: Prop[] = [
   { group: "Batting", label: "Walks o0.5", column: "baseOnBalls", line: 0.5, qualifies: batted },
   { group: "Batting", label: "Stolen Bases o0.5", column: "stolenBases", line: 0.5, qualifies: batted },
   // ── Pitching (starters only) ─────────────────────────────────────────────
-  { group: "Pitching", label: "Pitcher Ks o4.5", column: "strikeoutsPitching", line: 4.5, qualifies: started },
-  { group: "Pitching", label: "Pitcher Ks o5.5", column: "strikeoutsPitching", line: 5.5, qualifies: started },
-  { group: "Pitching", label: "Pitcher Ks o6.5", column: "strikeoutsPitching", line: 6.5, qualifies: started },
-  { group: "Pitching", label: "Outs Recorded o17.5", column: "outsRecorded", line: 17.5, qualifies: started },
-  { group: "Pitching", label: "Earned Runs o2.5", column: "earnedRuns", line: 2.5, qualifies: started },
-  { group: "Pitching", label: "Hits Allowed o5.5", column: "hitsAllowed", line: 5.5, qualifies: started },
-  { group: "Pitching", label: "Walks Allowed o1.5", column: "walksAllowed", line: 1.5, qualifies: started },
+  { group: "Pitching", label: "Pitcher Ks o4.5", column: "strikeoutsPitching", line: 4.5, qualifies: started, ramp: { slope: 0.01766, pivot: 5.0, cap: 8 } },
+  { group: "Pitching", label: "Pitcher Ks o5.5", column: "strikeoutsPitching", line: 5.5, qualifies: started, ramp: { slope: 0.01457, pivot: 5.14, cap: 8 } },
+  { group: "Pitching", label: "Pitcher Ks o6.5", column: "strikeoutsPitching", line: 6.5, qualifies: started, ramp: { slope: 0.01407, pivot: 5.31, cap: 8 } },
+  { group: "Pitching", label: "Outs Recorded o17.5", column: "outsRecorded", line: 17.5, qualifies: started, ramp: { slope: 0.02063, pivot: 4.7, cap: 8 } },
+  { group: "Pitching", label: "Earned Runs o2.5", column: "earnedRuns", line: 2.5, qualifies: started, ramp: { slope: 0.01312, pivot: 4.29, cap: 8 } },
+  { group: "Pitching", label: "Hits Allowed o5.5", column: "hitsAllowed", line: 5.5, qualifies: started, ramp: { slope: 0.02256, pivot: 4.57, cap: 8 } },
+  { group: "Pitching", label: "Walks Allowed o1.5", column: "walksAllowed", line: 1.5, qualifies: started, ramp: { slope: -0.00537, pivot: 6.63, cap: 8 } },
 ];
 
 interface Sample {
@@ -111,7 +117,8 @@ interface Sample {
 function buildSamples(
   logs: { mlbPlayerId: string; gameDate: Date; value: number | null }[],
   line: number,
-  baseRate: number
+  baseRate: number,
+  ramp?: { slope: number; pivot: number; cap: number }
 ): Sample[] {
   const samples: Sample[] = [];
   let curPlayer = "";
@@ -135,7 +142,7 @@ function buildSamples(
     // Project from PRIOR games only (before folding this game in).
     if (seasonSample > 0) {
       const recentRate = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : null;
-      const proj = projectPropHit({ seasonHits, seasonSample, recentRate, baseRate });
+      const proj = projectPropHit({ seasonHits, seasonSample, recentRate, baseRate }, ramp ? { ramp } : {});
       if (proj) samples.push({ prob: proj.probability, base: baseRate, hit });
     }
 
@@ -231,7 +238,7 @@ async function main() {
     const qualified = logs.filter((l) => l.value !== null);
     if (!qualified.length) continue;
     const base = qualified.reduce((a, l) => a + (l.value! > p.line ? 1 : 0), 0) / qualified.length;
-    const samples = buildSamples(logs, p.line, base);
+    const samples = buildSamples(logs, p.line, base, p.ramp);
     if (!samples.length) continue;
     const roiCells = SHARPNESS.map((f) => {
       const { roi } = roiAtSharpness(samples, f);
@@ -240,10 +247,15 @@ async function main() {
     console.log(p.label.padEnd(22) + calibration(samples).padEnd(52) + roiCells);
   }
 
+  const holdBaseline = (-HOLD / (1 + HOLD)) * 100;
   console.log(
     `\nRead: props are +EV only where ROI stays positive — i.e. only if real books are softer` +
       `\nthan that f. The true f is unknown without paid prop-odds history; this sweep is what` +
-      `\nthat data would pin down. Directional proxy only (real lines move & vary).`
+      `\nthat data would pin down. Directional proxy only (real lines move & vary).` +
+      `\n\nf=1 note: the book line then EQUALS our (calibrated) model, so a genuinely edgeless` +
+      `\nprop pays exactly the hold — ROI ≈ ${holdBaseline.toFixed(1)}%, NOT 0%. Read the f=1 cell against` +
+      `\nthat ${holdBaseline.toFixed(1)}% floor: sitting above it means the model still out-discriminates a` +
+      `\nmodel-sharp book on its high-conviction bets. Pitcher Ks clear the floor by the most.`
   );
 }
 
