@@ -80,6 +80,23 @@ describe("projectPropHit", () => {
       expect(onPivot.probability - bareOnPivot.probability).toBeCloseTo(0, 10);
     });
   });
+
+  describe("contextShift (matchup context)", () => {
+    const input = { seasonHits: 5, seasonSample: 10, recentRate: 0.5, baseRate: 0.4 };
+
+    it("adds the caller's shift directly to the probability", () => {
+      const bare = projectPropHit(input)!;
+      const shifted = projectPropHit(input, { contextShift: 0.05 })!;
+      expect(shifted.probability - bare.probability).toBeCloseTo(0.05, 10);
+    });
+
+    it("still respects the [floor, ceiling] clamp", () => {
+      const hi = projectPropHit(input, { contextShift: 5 })!;
+      const lo = projectPropHit(input, { contextShift: -5 })!;
+      expect(hi.probability).toBeLessThanOrEqual(0.98);
+      expect(lo.probability).toBeGreaterThanOrEqual(0.02);
+    });
+  });
 });
 
 describe("pooledBaseRate", () => {

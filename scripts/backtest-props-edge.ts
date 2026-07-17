@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { projectPropHit } from "@/lib/props/projection";
+import { buildTeamKRateModel, opponentTrailingKRate, pitcherKContextShift } from "@/lib/props/opponentKRate";
 
 /**
  * Props edge screen — the honest first look at whether player props (the market
@@ -47,6 +48,9 @@ type PitchingCol =
 interface LogRow {
   mlbPlayerId: string;
   gameDate: Date;
+  teamId: string;
+  isHome: boolean;
+  game: { homeTeamId: string | null; awayTeamId: string | null } | null;
   plateAppearances: number | null;
   isStarter: boolean | null;
   hits: number | null;
@@ -115,7 +119,7 @@ interface Sample {
 
 /** Lookahead-safe: project each game from ONLY the player's prior games this season. */
 function buildSamples(
-  logs: { mlbPlayerId: string; gameDate: Date; value: number | null }[],
+  logs: { mlbPlayerId: string; gameDate: Date; value: number | null; contextShift: number }[],
   line: number,
   baseRate: number,
   ramp?: { slope: number; pivot: number; cap: number }
@@ -142,7 +146,10 @@ function buildSamples(
     // Project from PRIOR games only (before folding this game in).
     if (seasonSample > 0) {
       const recentRate = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : null;
-      const proj = projectPropHit({ seasonHits, seasonSample, recentRate, baseRate }, ramp ? { ramp } : {});
+      const proj = projectPropHit(
+        { seasonHits, seasonSample, recentRate, baseRate },
+        { ramp, contextShift: g.contextShift }
+      );
       if (proj) samples.push({ prob: proj.probability, base: baseRate, hit });
     }
 
@@ -193,6 +200,9 @@ async function main() {
     select: {
       mlbPlayerId: true,
       gameDate: true,
+      teamId: true,
+      isHome: true,
+      game: { select: { homeTeamId: true, awayTeamId: true } },
       plateAppearances: true,
       isStarter: true,
       hits: true,
@@ -215,6 +225,17 @@ async function main() {
   const nStart = rows.filter(started).length;
   console.log(`${rows.length} game logs (${nBat} batting, ${nStart} starts).\n`);
 
+  // Team batter-K-rate model for the pitcher-K matchup shift (opponent context).
+  const teamModel = buildTeamKRateModel(rows.filter(batted));
+
+  /** Opponent-K contextShift for a pitcher-K prop this game; 0 for every other prop. */
+  const contextShiftFor = (p: Prop, r: LogRow): number => {
+    if (p.column !== "strikeoutsPitching") return 0;
+    const oppTeamId = r.isHome ? r.game?.awayTeamId : r.game?.homeTeamId;
+    const oppRate = opponentTrailingKRate(teamModel, oppTeamId, r.gameDate);
+    return pitcherKContextShift(p.line, oppRate, teamModel.leagueRate);
+  };
+
   console.log(`Book-sharpness sweep (hold ${(HOLD * 100).toFixed(0)}%, bet when |edge|≥${BET_THRESHOLD * 100}pt).`);
   console.log(`f = fraction of the projection's deviation-from-base the book's line already captures.`);
   console.log(`f=0 → soft book (line at base rate); f=1 → book as sharp as our model.\n`);
@@ -230,11 +251,15 @@ async function main() {
     }
     // Null out games that don't qualify for this prop, so both the base rate and
     // the per-player rolling sample are built from only the games it's offered on.
-    const logs = rows.map((r) => ({
-      mlbPlayerId: r.mlbPlayerId,
-      gameDate: r.gameDate,
-      value: p.qualifies(r) ? r[p.column] : null,
-    }));
+    const logs = rows.map((r) => {
+      const value = p.qualifies(r) ? r[p.column] : null;
+      return {
+        mlbPlayerId: r.mlbPlayerId,
+        gameDate: r.gameDate,
+        value,
+        contextShift: value === null ? 0 : contextShiftFor(p, r),
+      };
+    });
     const qualified = logs.filter((l) => l.value !== null);
     if (!qualified.length) continue;
     const base = qualified.reduce((a, l) => a + (l.value! > p.line ? 1 : 0), 0) / qualified.length;
@@ -255,7 +280,9 @@ async function main() {
       `\n\nf=1 note: the book line then EQUALS our (calibrated) model, so a genuinely edgeless` +
       `\nprop pays exactly the hold — ROI ≈ ${holdBaseline.toFixed(1)}%, NOT 0%. Read the f=1 cell against` +
       `\nthat ${holdBaseline.toFixed(1)}% floor: sitting above it means the model still out-discriminates a` +
-      `\nmodel-sharp book on its high-conviction bets. Pitcher Ks clear the floor by the most.`
+      `\nmodel-sharp book on its high-conviction bets. Pitcher Ks clear the floor by the most —` +
+      `\nand their projection now folds in OPPONENT lineup K-rate (lib/props/opponentKRate.ts),` +
+      `\nwhich lowers their Brier and lifts the f=1 edge again on top of the workload de-bias.`
   );
 }
 

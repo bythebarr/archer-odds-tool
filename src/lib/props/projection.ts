@@ -91,6 +91,15 @@ export interface PropProjectionOptions {
    * Omit for batting — it has no ramp (a regular's PA are flat all year).
    */
   ramp?: { slope: number; pivot: number; cap?: number };
+  /**
+   * A pre-computed additive probability shift for external matchup context the
+   * player-only rate can't see — e.g. the opposing lineup's strikeout tendency
+   * for a pitcher-K prop (a validated ~+8–10pt swing soft→whiff-prone lineup).
+   * The CALLER owns the feature+coefficient (see lib/props/opponentKRate.ts) and
+   * passes the finished shift, keeping this function generic. Summed in before
+   * the [floor, ceiling] clamp; defaults to 0 (no context).
+   */
+  contextShift?: number;
 }
 
 /**
@@ -125,7 +134,10 @@ export function projectPropHit(
     ? options.ramp.slope * (Math.min(seasonSample, options.ramp.cap ?? Infinity) - options.ramp.pivot)
     : 0;
 
-  const probability = Math.min(Math.max(shrunkRate + tilt + ramp, PROB_FLOOR), PROB_CEILING);
+  // Caller-supplied matchup shift (opponent context), 0 when absent.
+  const contextShift = options.contextShift ?? 0;
+
+  const probability = Math.min(Math.max(shrunkRate + tilt + ramp + contextShift, PROB_FLOOR), PROB_CEILING);
   return { probability, shrunkRate, edgeVsBase: probability - baseRate };
 }
 

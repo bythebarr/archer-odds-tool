@@ -26,6 +26,7 @@
     "backtest:all": "tsx scripts/backtest-all.ts",
     "backtest:props": "tsx scripts/backtest-props-edge.ts",
     "calibrate:pitchers": "tsx scripts/calibrate-pitcher-props.ts",
+    "matchup:pitcherk": "tsx scripts/matchup-pitcher-k.ts",
     "import:tennis": "tsx scripts/import-tennis-archive.ts",
     "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts"
   },
