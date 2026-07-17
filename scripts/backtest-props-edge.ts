@@ -27,18 +27,78 @@ const HOLD = 0.06; // assumed prop over-round (~6%, props run richer than main l
 const BET_THRESHOLD = 0.03; // only "bet" when the projection deviates ≥3pt from base
 const SHARPNESS = [0, 0.25, 0.5, 0.75, 1.0]; // fraction of our deviation the book captures
 
-interface Prop {
-  label: string;
-  column: "hits" | "totalBases" | "homeRuns" | "runs" | "rbi" | "strikeoutsBatting";
-  line: number;
+type BattingCol =
+  | "hits"
+  | "totalBases"
+  | "homeRuns"
+  | "runs"
+  | "rbi"
+  | "strikeoutsBatting"
+  | "baseOnBalls"
+  | "stolenBases";
+type PitchingCol =
+  | "strikeoutsPitching"
+  | "outsRecorded"
+  | "earnedRuns"
+  | "hitsAllowed"
+  | "walksAllowed";
+
+/** A game row carrying every stat + the flags that decide which games qualify. */
+interface LogRow {
+  mlbPlayerId: string;
+  gameDate: Date;
+  plateAppearances: number | null;
+  isStarter: boolean | null;
+  hits: number | null;
+  totalBases: number | null;
+  homeRuns: number | null;
+  runs: number | null;
+  rbi: number | null;
+  strikeoutsBatting: number | null;
+  baseOnBalls: number | null;
+  stolenBases: number | null;
+  strikeoutsPitching: number | null;
+  outsRecorded: number | null;
+  earnedRuns: number | null;
+  hitsAllowed: number | null;
+  walksAllowed: number | null;
 }
+
+interface Prop {
+  group: "Batting" | "Pitching";
+  label: string;
+  column: BattingCol | PitchingCol;
+  line: number;
+  /**
+   * Which games count for this prop's sample & base rate. Batting props need a
+   * game where the player batted; pitcher-strikeout/outs style props are only
+   * offered on STARTERS, so a reliever's stray game must not pollute the line's
+   * base rate (an o5.5 K line looks impossible if you fold in one-out cameos).
+   */
+  qualifies: (r: LogRow) => boolean;
+}
+const batted = (r: LogRow) => r.plateAppearances !== null;
+const started = (r: LogRow) => r.isStarter === true;
+
 const PROPS: Prop[] = [
-  { label: "Hits o0.5", column: "hits", line: 0.5 },
-  { label: "Hits o1.5", column: "hits", line: 1.5 },
-  { label: "Total Bases o1.5", column: "totalBases", line: 1.5 },
-  { label: "Home Runs o0.5", column: "homeRuns", line: 0.5 },
-  { label: "Runs o0.5", column: "runs", line: 0.5 },
-  { label: "RBIs o0.5", column: "rbi", line: 0.5 },
+  // ── Batting ──────────────────────────────────────────────────────────────
+  { group: "Batting", label: "Hits o0.5", column: "hits", line: 0.5, qualifies: batted },
+  { group: "Batting", label: "Hits o1.5", column: "hits", line: 1.5, qualifies: batted },
+  { group: "Batting", label: "Total Bases o1.5", column: "totalBases", line: 1.5, qualifies: batted },
+  { group: "Batting", label: "Home Runs o0.5", column: "homeRuns", line: 0.5, qualifies: batted },
+  { group: "Batting", label: "Runs o0.5", column: "runs", line: 0.5, qualifies: batted },
+  { group: "Batting", label: "RBIs o0.5", column: "rbi", line: 0.5, qualifies: batted },
+  { group: "Batting", label: "Batter Ks o0.5", column: "strikeoutsBatting", line: 0.5, qualifies: batted },
+  { group: "Batting", label: "Walks o0.5", column: "baseOnBalls", line: 0.5, qualifies: batted },
+  { group: "Batting", label: "Stolen Bases o0.5", column: "stolenBases", line: 0.5, qualifies: batted },
+  // ── Pitching (starters only) ─────────────────────────────────────────────
+  { group: "Pitching", label: "Pitcher Ks o4.5", column: "strikeoutsPitching", line: 4.5, qualifies: started },
+  { group: "Pitching", label: "Pitcher Ks o5.5", column: "strikeoutsPitching", line: 5.5, qualifies: started },
+  { group: "Pitching", label: "Pitcher Ks o6.5", column: "strikeoutsPitching", line: 6.5, qualifies: started },
+  { group: "Pitching", label: "Outs Recorded o17.5", column: "outsRecorded", line: 17.5, qualifies: started },
+  { group: "Pitching", label: "Earned Runs o2.5", column: "earnedRuns", line: 2.5, qualifies: started },
+  { group: "Pitching", label: "Hits Allowed o5.5", column: "hitsAllowed", line: 5.5, qualifies: started },
+  { group: "Pitching", label: "Walks Allowed o1.5", column: "walksAllowed", line: 1.5, qualifies: started },
 ];
 
 interface Sample {
@@ -120,40 +180,64 @@ function calibration(samples: Sample[]): string {
 
 async function main() {
   console.log("Loading MLB game logs…");
-  const rows = await prisma.playerGameLog.findMany({
-    where: { plateAppearances: { not: null } },
+  const rows: LogRow[] = await prisma.playerGameLog.findMany({
+    // Batting games OR pitching starts — everything a prop below can qualify on.
+    where: { OR: [{ plateAppearances: { not: null } }, { isStarter: true }] },
     select: {
       mlbPlayerId: true,
       gameDate: true,
+      plateAppearances: true,
+      isStarter: true,
       hits: true,
       totalBases: true,
       homeRuns: true,
       runs: true,
       rbi: true,
       strikeoutsBatting: true,
+      baseOnBalls: true,
+      stolenBases: true,
+      strikeoutsPitching: true,
+      outsRecorded: true,
+      earnedRuns: true,
+      hitsAllowed: true,
+      walksAllowed: true,
     },
     orderBy: [{ mlbPlayerId: "asc" }, { gameDate: "asc" }],
   });
-  console.log(`${rows.length} batting game logs.\n`);
+  const nBat = rows.filter(batted).length;
+  const nStart = rows.filter(started).length;
+  console.log(`${rows.length} game logs (${nBat} batting, ${nStart} starts).\n`);
 
   console.log(`Book-sharpness sweep (hold ${(HOLD * 100).toFixed(0)}%, bet when |edge|≥${BET_THRESHOLD * 100}pt).`);
   console.log(`f = fraction of the projection's deviation-from-base the book's line already captures.`);
   console.log(`f=0 → soft book (line at base rate); f=1 → book as sharp as our model.\n`);
 
-  const header = "prop".padEnd(18) + "calibration".padEnd(52) + SHARPNESS.map((f) => `f=${f}`.padStart(9)).join("");
-  console.log(header);
+  const header = "prop".padEnd(22) + "calibration".padEnd(52) + SHARPNESS.map((f) => `f=${f}`.padStart(9)).join("");
 
+  let lastGroup = "";
   for (const p of PROPS) {
-    const logs = rows.map((r) => ({ mlbPlayerId: r.mlbPlayerId, gameDate: r.gameDate, value: r[p.column] }));
-    const base = logs.filter((l) => l.value !== null).reduce((a, l) => a + (l.value! > p.line ? 1 : 0), 0) /
-      logs.filter((l) => l.value !== null).length;
+    if (p.group !== lastGroup) {
+      console.log(`\n── ${p.group} ${"─".repeat(76 - p.group.length)}`);
+      console.log(header);
+      lastGroup = p.group;
+    }
+    // Null out games that don't qualify for this prop, so both the base rate and
+    // the per-player rolling sample are built from only the games it's offered on.
+    const logs = rows.map((r) => ({
+      mlbPlayerId: r.mlbPlayerId,
+      gameDate: r.gameDate,
+      value: p.qualifies(r) ? r[p.column] : null,
+    }));
+    const qualified = logs.filter((l) => l.value !== null);
+    if (!qualified.length) continue;
+    const base = qualified.reduce((a, l) => a + (l.value! > p.line ? 1 : 0), 0) / qualified.length;
     const samples = buildSamples(logs, p.line, base);
     if (!samples.length) continue;
     const roiCells = SHARPNESS.map((f) => {
       const { roi } = roiAtSharpness(samples, f);
       return `${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%`.padStart(9);
     }).join("");
-    console.log(p.label.padEnd(18) + calibration(samples).padEnd(52) + roiCells);
+    console.log(p.label.padEnd(22) + calibration(samples).padEnd(52) + roiCells);
   }
 
   console.log(
