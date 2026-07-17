@@ -28,7 +28,8 @@
     "calibrate:pitchers": "tsx scripts/calibrate-pitcher-props.ts",
     "matchup:pitcherk": "tsx scripts/matchup-pitcher-k.ts",
     "import:tennis": "tsx scripts/import-tennis-archive.ts",
-    "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts"
+    "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts",
+    "matchup:batter": "tsx scripts/matchup-batter.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

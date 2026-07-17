@@ -2,6 +2,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { projectPropHit } from "@/lib/props/projection";
 import { buildTeamKRateModel, opponentTrailingKRate, pitcherKContextShift } from "@/lib/props/opponentKRate";
+import { buildStarterKModel, opposingStarterKRate, batterKvsStarterShift } from "@/lib/props/opposingStarter";
 
 /**
  * Props edge screen — the honest first look at whether player props (the market
@@ -51,6 +52,7 @@ interface LogRow {
   teamId: string;
   isHome: boolean;
   game: { homeTeamId: string | null; awayTeamId: string | null } | null;
+  opposingStarterId: string | null;
   plateAppearances: number | null;
   isStarter: boolean | null;
   hits: number | null;
@@ -203,6 +205,7 @@ async function main() {
       teamId: true,
       isHome: true,
       game: { select: { homeTeamId: true, awayTeamId: true } },
+      opposingStarterId: true,
       plateAppearances: true,
       isStarter: true,
       hits: true,
@@ -225,15 +228,25 @@ async function main() {
   const nStart = rows.filter(started).length;
   console.log(`${rows.length} game logs (${nBat} batting, ${nStart} starts).\n`);
 
-  // Team batter-K-rate model for the pitcher-K matchup shift (opponent context).
+  // Matchup models: opponent lineup K-rate (for pitcher-K props) and opposing
+  // starter K-rate (for batter-K props). Both trailing-only → lookahead-safe.
   const teamModel = buildTeamKRateModel(rows.filter(batted));
+  const starterModel = buildStarterKModel(rows.filter(started));
 
-  /** Opponent-K contextShift for a pitcher-K prop this game; 0 for every other prop. */
+  /** Matchup contextShift for a prop this game; 0 for props with no fitted matchup. */
   const contextShiftFor = (p: Prop, r: LogRow): number => {
-    if (p.column !== "strikeoutsPitching") return 0;
-    const oppTeamId = r.isHome ? r.game?.awayTeamId : r.game?.homeTeamId;
-    const oppRate = opponentTrailingKRate(teamModel, oppTeamId, r.gameDate);
-    return pitcherKContextShift(p.line, oppRate, teamModel.leagueRate);
+    if (p.column === "strikeoutsPitching") {
+      // Pitcher-K over: shift up vs a whiff-prone opposing lineup.
+      const oppTeamId = r.isHome ? r.game?.awayTeamId : r.game?.homeTeamId;
+      const oppRate = opponentTrailingKRate(teamModel, oppTeamId, r.gameDate);
+      return pitcherKContextShift(p.line, oppRate, teamModel.leagueRate);
+    }
+    if (p.column === "strikeoutsBatting") {
+      // Batter-K over: shift up vs a high-K opposing starter.
+      const starterRate = opposingStarterKRate(starterModel, r.opposingStarterId, r.gameDate);
+      return batterKvsStarterShift(starterRate, starterModel.leagueRate);
+    }
+    return 0;
   };
 
   console.log(`Book-sharpness sweep (hold ${(HOLD * 100).toFixed(0)}%, bet when |edge|≥${BET_THRESHOLD * 100}pt).`);
