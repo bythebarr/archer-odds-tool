@@ -30,7 +30,8 @@
     "import:tennis": "tsx scripts/import-tennis-archive.ts",
     "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts",
     "matchup:batter": "tsx scripts/matchup-batter.ts",
-    "fit:pitcherramps": "tsx scripts/fit-pitcher-ramps.ts"
+    "fit:pitcherramps": "tsx scripts/fit-pitcher-ramps.ts",
+    "matchup:platoon": "tsx scripts/matchup-platoon.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
