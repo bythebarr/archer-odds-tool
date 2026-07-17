@@ -4,6 +4,7 @@ import { getRecentTeamPlayersBatch } from "@/lib/queries/props";
 import { tallyPropHits, type PropHitRateResult } from "./hitRate";
 import { projectPropHit, pooledBaseRate } from "./projection";
 import { pitcherRampFor } from "./pitcherRamp";
+import { pitcherKContextShift } from "./opponentKRate";
 import type { PropBoardColumnDef, PropBoardRow, PropLineCells, PropStatDef, PropView, SportPropConfig } from "./boardTypes";
 
 /** A stat with the PlayerGameLog column it reads. */
@@ -139,7 +140,10 @@ async function seasonLogsByPlayer(playerIds: string[]): Promise<Map<string, Game
  * line index i means the same number across every row. (See props/projection.ts
  * for why the raw trailing rate needed this in the first place.)
  */
-function attachProjections(rows: PropBoardRow[], stat: MlbStatDef): void {
+/** Per-(row, line-index) matchup shift for projectPropHit's contextShift; 0 by default. */
+type ContextShiftFn = (row: PropBoardRow, lineIndex: number) => number;
+
+function attachProjections(rows: PropBoardRow[], stat: MlbStatDef, contextShiftFor: ContextShiftFn = () => 0): void {
   for (let i = 0; i < stat.standardLines.length; i++) {
     const pool = rows
       .map((r) => r.lines[i]?.cells.season)
@@ -163,7 +167,7 @@ function attachProjections(rows: PropBoardRow[], stat: MlbStatDef): void {
               recentRate: cell.cells.l10?.hitRate ?? null,
               baseRate: base,
             },
-            { ramp }
+            { ramp, contextShift: contextShiftFor(row, i) }
           )
         : null;
     }
@@ -195,7 +199,8 @@ function buildRows(
   stat: MlbStatDef,
   windows: WindowDef[],
   splitKeys: string[],
-  toEntry: (row: GameLogRow, column: string) => PropLogEntry
+  toEntry: (row: GameLogRow, column: string) => PropLogEntry,
+  contextShiftFor?: ContextShiftFn
 ): PropBoardRow[] {
   const rows: PropBoardRow[] = [];
   for (const c of candidates) {
@@ -215,7 +220,7 @@ function buildRows(
       ev: null,
     });
   }
-  attachProjections(rows, stat);
+  attachProjections(rows, stat, contextShiftFor);
   rows.sort((a, b) => defaultRank(b) - defaultRank(a));
   return rows;
 }
@@ -305,6 +310,35 @@ async function buildBatterBoard(dateEt: string, statKey: string): Promise<PropBo
   });
 }
 
+/**
+ * Season-to-date batter-K rate (K per PA) for a set of opponent teams as of the
+ * board day, plus the league rate — the inputs the pitcher-K matchup shift needs.
+ * Two light aggregate queries (no row load): correct for a "today" projection
+ * because it pools everything strictly before the board date.
+ */
+async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: Date) {
+  const dateFilter = { gte: seasonStart, lt: before };
+  const [league, byTeam] = await Promise.all([
+    prisma.playerGameLog.aggregate({
+      where: { plateAppearances: { not: null }, gameDate: dateFilter },
+      _sum: { strikeoutsBatting: true, plateAppearances: true },
+    }),
+    prisma.playerGameLog.groupBy({
+      by: ["teamId"],
+      where: { plateAppearances: { not: null }, teamId: { in: teamIds }, gameDate: dateFilter },
+      _sum: { strikeoutsBatting: true, plateAppearances: true },
+    }),
+  ]);
+  const leaguePA = league._sum.plateAppearances ?? 0;
+  const leagueRate = leaguePA > 0 ? (league._sum.strikeoutsBatting ?? 0) / leaguePA : 0.22;
+  const rateByTeam = new Map<string, number>();
+  for (const t of byTeam) {
+    const pa = t._sum.plateAppearances ?? 0;
+    if (pa >= 100) rateByTeam.set(t.teamId, (t._sum.strikeoutsBatting ?? 0) / pa);
+  }
+  return { leagueRate, rateByTeam };
+}
+
 async function buildPitcherBoard(dateEt: string, statKey: string): Promise<PropBoardRow[]> {
   const stat = PITCHER_STATS.find((s) => s.key === statKey) ?? PITCHER_STATS[0];
   const { gte, lt } = etDayBoundsUtc(dateEt);
@@ -312,21 +346,22 @@ async function buildPitcherBoard(dateEt: string, statKey: string): Promise<PropB
   const games = await prisma.game.findMany({
     where: { sport: "mlb", scheduledStartUtc: { gte, lt } },
     select: {
-      homeTeam: { select: { abbreviation: true } },
-      awayTeam: { select: { abbreviation: true } },
+      homeTeam: { select: { id: true, abbreviation: true } },
+      awayTeam: { select: { id: true, abbreviation: true } },
       homeProbablePitcher: { select: { mlbPersonId: true, fullName: true } },
       awayProbablePitcher: { select: { mlbPersonId: true, fullName: true } },
     },
   });
 
-  // Probable starters, with the opponent they face for row context.
-  const probables: { personId: number; name: string; meta: string }[] = [];
+  // Probable starters, with the opponent they face (abbrev for row context, team
+  // id for the matchup shift — a home starter faces the away lineup, and vice-versa).
+  const probables: { personId: number; name: string; meta: string; oppTeamId: string | null }[] = [];
   for (const g of games) {
     if (g.homeProbablePitcher && g.awayTeam) {
-      probables.push({ personId: g.homeProbablePitcher.mlbPersonId, name: g.homeProbablePitcher.fullName, meta: `vs ${g.awayTeam.abbreviation}` });
+      probables.push({ personId: g.homeProbablePitcher.mlbPersonId, name: g.homeProbablePitcher.fullName, meta: `vs ${g.awayTeam.abbreviation}`, oppTeamId: g.awayTeam.id });
     }
     if (g.awayProbablePitcher && g.homeTeam) {
-      probables.push({ personId: g.awayProbablePitcher.mlbPersonId, name: g.awayProbablePitcher.fullName, meta: `@ ${g.homeTeam.abbreviation}` });
+      probables.push({ personId: g.awayProbablePitcher.mlbPersonId, name: g.awayProbablePitcher.fullName, meta: `@ ${g.homeTeam.abbreviation}`, oppTeamId: g.homeTeam.id });
     }
   }
   if (probables.length === 0) return [];
@@ -340,20 +375,38 @@ async function buildPitcherBoard(dateEt: string, statKey: string): Promise<PropB
   const idByPerson = new Map(players.map((p) => [p.mlbPersonId, p.id]));
 
   const candidates: Candidate[] = [];
+  const oppTeamByPlayer = new Map<string, string | null>();
   const seen = new Set<string>();
   for (const p of probables) {
     const playerId = idByPerson.get(p.personId);
     if (!playerId || seen.has(playerId)) continue;
     seen.add(playerId);
     candidates.push({ playerId, personId: p.personId, name: p.name, meta: p.meta });
+    oppTeamByPlayer.set(playerId, p.oppTeamId);
   }
   if (candidates.length === 0) return [];
 
+  // Opponent lineup K-rate → the pitcher-K matchup shift (contextShift). Only
+  // strikeoutsPitching has a fitted coefficient; every other pitcher stat no-ops.
+  const oppTeamIds = [...new Set([...oppTeamByPlayer.values()].filter((x): x is string => !!x))];
+  const { leagueRate, rateByTeam } = await opponentKRatesAsOf(oppTeamIds, new Date(`${dateEt.slice(0, 4)}-01-01T00:00:00Z`), gte);
+  const contextShiftFor: ContextShiftFn = (row, i) => {
+    if (stat.column !== "strikeoutsPitching") return 0;
+    const oppTeamId = oppTeamByPlayer.get(row.entityId) ?? null;
+    const oppRate = oppTeamId ? rateByTeam.get(oppTeamId) ?? null : null;
+    return pitcherKContextShift(stat.standardLines[i], oppRate, leagueRate);
+  };
+
   const logsByPlayer = await seasonLogsByPlayer(candidates.map((c) => c.playerId));
-  return buildRows(candidates, logsByPlayer, stat, PITCHER_WINDOWS, PITCHER_SPLIT_KEYS, (row, column) => ({
-    value: readColumn(row, column),
-    splits: row.isHome ? ["home"] : ["away"],
-  }));
+  return buildRows(
+    candidates,
+    logsByPlayer,
+    stat,
+    PITCHER_WINDOWS,
+    PITCHER_SPLIT_KEYS,
+    (row, column) => ({ value: readColumn(row, column), splits: row.isHome ? ["home"] : ["away"] }),
+    contextShiftFor
+  );
 }
 
 const batterView: PropView = {
