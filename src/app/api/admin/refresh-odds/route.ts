@@ -1,5 +1,6 @@
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
 import { recordPollLog } from "@/lib/pollingPolicy";
+import { checkAdminAuth } from "@/lib/adminAuth";
 
 // Run on every request — never statically cache an admin action.
 export const dynamic = "force-dynamic";
@@ -27,7 +28,10 @@ export const dynamic = "force-dynamic";
  * -archr2.vercel.app deployment host, where Vercel SSO gates it to a logged-in
  * team member (the app proxy deliberately leaves /api ungated for the crons).
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = checkAdminAuth(request);
+  if (denied) return denied;
+
   try {
     const s = await pollAndStoreOdds();
     await recordPollLog("poll-odds", "ok (admin refresh)", s.creditsUsed, s.creditsRemaining);

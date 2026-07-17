@@ -1,4 +1,5 @@
 import { postMorningDrop } from "@/lib/discord/mosesDaily";
+import { checkAdminAuth } from "@/lib/adminAuth";
 
 // Run on every request — never statically cache an admin action.
 export const dynamic = "force-dynamic";
@@ -11,7 +12,10 @@ export const dynamic = "force-dynamic";
  * confirmed. GET so it runs from a plain browser click; returns an HTML receipt
  * that surfaces the real outcome (posted / dormant / Discord error).
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = checkAdminAuth(request);
+  if (denied) return denied;
+
   let outcome: string;
   let title: string;
   try {

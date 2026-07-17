@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { checkAdminAuth } from "@/lib/adminAuth";
 import { settlePendingUfcPlays } from "@/lib/discord/postResults";
 import { gradeUfcMoneyline } from "@/lib/discord/gradePlay";
 import { syncRecentUfcEvents } from "@/lib/ufc/backfillUfc";
@@ -145,7 +146,10 @@ function actionButton(mode: "sync" | "settle", label: string, bg: string): strin
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = checkAdminAuth(request);
+  if (denied) return denied;
+
   const rows = await buildRows();
   const controls = rows.some((r) => r.state === "PENDING")
     ? // Primary: sync fresh Cito results first, then settle — the one-click heal
@@ -159,6 +163,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = checkAdminAuth(request);
+  if (denied) return denied;
+
   const form = await request.formData();
   const mode = form.get("mode") === "sync" ? "sync" : "settle";
 

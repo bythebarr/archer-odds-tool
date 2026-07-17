@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { checkAdminAuth } from "@/lib/adminAuth";
 
 // Run on every request — never statically cache an admin action.
 export const dynamic = "force-dynamic";
@@ -18,7 +19,10 @@ export const dynamic = "force-dynamic";
  *   • GET  → shows a confirmation page with a button (no query params to fumble)
  *   • POST → the button submits this; it does the actual delete + shows a receipt
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = checkAdminAuth(request);
+  if (denied) return denied;
+
   return page(
     "⚠️ Reset the results ledger?",
     `This clears <strong>every</strong> recorded play — yesterday, all-time, streaks. ` +
@@ -31,7 +35,10 @@ export async function GET() {
   );
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = checkAdminAuth(request);
+  if (denied) return denied;
+
   const { count } = await prisma.postedPlay.deleteMany({});
   return page(
     "✅ Ledger wiped",

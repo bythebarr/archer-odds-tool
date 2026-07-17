@@ -1,5 +1,6 @@
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
 import { postDailyCardToDiscord } from "@/lib/discord/postCard";
+import { checkAdminAuth } from "@/lib/adminAuth";
 
 // Run on every request — never statically cache an admin action.
 export const dynamic = "force-dynamic";
@@ -15,7 +16,10 @@ export const dynamic = "force-dynamic";
  * can reach it. Temporary-ish, but harmless to keep — it just re-posts the card.
  * GET so it runs from a browser click; returns an HTML receipt.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = checkAdminAuth(request);
+  if (denied) return denied;
+
   let oddsLine: string;
   try {
     const s = await pollAndStoreOdds();
