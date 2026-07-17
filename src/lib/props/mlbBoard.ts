@@ -3,6 +3,7 @@ import { etDayBoundsUtc } from "@/lib/dateEt";
 import { getRecentTeamPlayersBatch } from "@/lib/queries/props";
 import { tallyPropHits, type PropHitRateResult } from "./hitRate";
 import { projectPropHit, pooledBaseRate } from "./projection";
+import { pitcherRampFor } from "./pitcherRamp";
 import type { PropBoardColumnDef, PropBoardRow, PropLineCells, PropStatDef, PropView, SportPropConfig } from "./boardTypes";
 
 /** A stat with the PlayerGameLog column it reads. */
@@ -138,26 +139,32 @@ async function seasonLogsByPlayer(playerIds: string[]): Promise<Map<string, Game
  * line index i means the same number across every row. (See props/projection.ts
  * for why the raw trailing rate needed this in the first place.)
  */
-function attachProjections(rows: PropBoardRow[], lineCount: number): void {
-  for (let i = 0; i < lineCount; i++) {
+function attachProjections(rows: PropBoardRow[], stat: MlbStatDef): void {
+  for (let i = 0; i < stat.standardLines.length; i++) {
     const pool = rows
       .map((r) => r.lines[i]?.cells.season)
       .filter((s): s is NonNullable<typeof s> => !!s)
       .map((s) => ({ seasonHits: s.hits, seasonSample: s.sampleSize }));
     const base = pooledBaseRate(pool);
+    // Pitcher counting stats ride a within-season workload ramp; the fitted term
+    // de-biases them. undefined for every batting stat → no ramp (as intended).
+    const ramp = pitcherRampFor(stat.column, stat.standardLines[i]);
     for (const row of rows) {
       const cell = row.lines[i];
       if (!cell) continue;
       const season = cell.cells.season;
       cell.projection = season
-        ? projectPropHit({
-            seasonHits: season.hits,
-            seasonSample: season.sampleSize,
-            // L10 is the recency window the projection was fit on; every MLB view
-            // exposes it. Fall back to null (no tilt) if a view ever drops it.
-            recentRate: cell.cells.l10?.hitRate ?? null,
-            baseRate: base,
-          })
+        ? projectPropHit(
+            {
+              seasonHits: season.hits,
+              seasonSample: season.sampleSize,
+              // L10 is the recency window the projection was fit on; every MLB view
+              // exposes it. Fall back to null (no tilt) if a view ever drops it.
+              recentRate: cell.cells.l10?.hitRate ?? null,
+              baseRate: base,
+            },
+            { ramp }
+          )
         : null;
     }
   }
@@ -208,7 +215,7 @@ function buildRows(
       ev: null,
     });
   }
-  attachProjections(rows, stat.standardLines.length);
+  attachProjections(rows, stat);
   rows.sort((a, b) => defaultRank(b) - defaultRank(a));
   return rows;
 }
