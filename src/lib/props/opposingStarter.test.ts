@@ -50,14 +50,19 @@ describe("opposingStarterKRate", () => {
 });
 
 describe("batterKvsStarterShift", () => {
-  it("pushes the batter-K over UP against a high-K starter", () => {
-    const shift = batterKvsStarterShift(0.28, 0.22);
-    expect(shift).toBeCloseTo(BATTER_K_VS_STARTER_BETA * 0.06, 10);
+  it("pushes the batter-K over UP against a high-K starter (validated o0.5)", () => {
+    const shift = batterKvsStarterShift(0.5, 0.28, 0.22);
+    expect(shift).toBeCloseTo(BATTER_K_VS_STARTER_BETA["0.5"] * 0.06, 10);
     expect(shift).toBeGreaterThan(0);
   });
 
   it("pushes DOWN against a soft-tossing (low-K) starter, and no-ops when unknown", () => {
-    expect(batterKvsStarterShift(0.16, 0.22)).toBeLessThan(0);
-    expect(batterKvsStarterShift(null, 0.22)).toBe(0);
+    expect(batterKvsStarterShift(0.5, 0.16, 0.22)).toBeLessThan(0);
+    expect(batterKvsStarterShift(0.5, null, 0.22)).toBe(0);
+  });
+
+  it("no-ops for an unvalidated line (only o0.5 has a fitted beta)", () => {
+    expect(batterKvsStarterShift(1.5, 0.28, 0.22)).toBe(0);
+    expect(batterKvsStarterShift(2.5, 0.28, 0.22)).toBe(0);
   });
 });

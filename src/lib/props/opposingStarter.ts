@@ -30,11 +30,14 @@ export interface StarterKModel {
 }
 
 /**
- * Batter-K opponent term, fit by OLS of the batter-only residual on the opposing
- * starter's league-relative K/BF over all games (matchup-batter.ts). Improves
- * out-of-sample Brier on Batter Ks o0.5 (0.2347 → 0.2314).
+ * Batter-K opponent term per line, fit by OLS of the batter-only residual on the
+ * opposing starter's league-relative K/BF (matchup-batter.ts). Only o0.5 (does
+ * the batter strike out at all) was validated — it improves out-of-sample Brier
+ * 0.2347 → 0.2314. Higher lines have no fitted beta, so they get no shift.
  */
-export const BATTER_K_VS_STARTER_BETA = 0.8643;
+export const BATTER_K_VS_STARTER_BETA: Record<string, number> = {
+  "0.5": 0.8643,
+};
 
 /** Minimum batters faced before a starter's trailing K rate is trusted. */
 export const MIN_STARTER_BF = 200;
@@ -88,11 +91,12 @@ export function opposingStarterKRate(model: StarterKModel, starterId: string | n
 }
 
 /**
- * The additive probability shift for a batter-K prop given the opposing
- * starter's trailing K rate. `beta · (starterRate − leagueRate)`; 0 when the
- * rate is unavailable (thin/unknown) — a safe no-op.
+ * The additive probability shift for a batter-K prop at `line` given the
+ * opposing starter's trailing K rate. `beta · (starterRate − leagueRate)`; 0 when
+ * the line has no fitted beta or the rate is unavailable — a safe no-op.
  */
-export function batterKvsStarterShift(starterKRate: number | null, leagueRate: number): number {
-  if (starterKRate === null) return 0;
-  return BATTER_K_VS_STARTER_BETA * (starterKRate - leagueRate);
+export function batterKvsStarterShift(line: number, starterKRate: number | null, leagueRate: number): number {
+  const beta = BATTER_K_VS_STARTER_BETA[String(line)];
+  if (beta === undefined || starterKRate === null) return 0;
+  return beta * (starterKRate - leagueRate);
 }

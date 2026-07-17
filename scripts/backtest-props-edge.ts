@@ -244,7 +244,7 @@ async function main() {
     if (p.column === "strikeoutsBatting") {
       // Batter-K over: shift up vs a high-K opposing starter.
       const starterRate = opposingStarterKRate(starterModel, r.opposingStarterId, r.gameDate);
-      return batterKvsStarterShift(starterRate, starterModel.leagueRate);
+      return batterKvsStarterShift(p.line, starterRate, starterModel.leagueRate);
     }
     return 0;
   };
