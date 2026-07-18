@@ -2,6 +2,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { projectPropHit } from "@/lib/props/projection";
 import { buildTeamKRateModel, opponentTrailingKRate, pitcherKContextShift } from "@/lib/props/opponentKRate";
+import { buildParkKRateModel, parkTrailingKRate, pitcherKParkShift } from "@/lib/props/parkKRate";
 import { buildStarterKModel, opposingStarterKRate, batterKvsStarterShift } from "@/lib/props/opposingStarter";
 
 /**
@@ -232,14 +233,21 @@ async function main() {
   // starter K-rate (for batter-K props). Both trailing-only → lookahead-safe.
   const teamModel = buildTeamKRateModel(rows.filter(batted));
   const starterModel = buildStarterKModel(rows.filter(started));
+  const parkModel = buildParkKRateModel(
+    rows.filter(batted).map((r) => ({ park: r.game?.homeTeamId, gameDate: r.gameDate, strikeoutsBatting: r.strikeoutsBatting, plateAppearances: r.plateAppearances }))
+  );
 
   /** Matchup contextShift for a prop this game; 0 for props with no fitted matchup. */
   const contextShiftFor = (p: Prop, r: LogRow): number => {
     if (p.column === "strikeoutsPitching") {
-      // Pitcher-K over: shift up vs a whiff-prone opposing lineup.
+      // Pitcher-K over: shift up vs a whiff-prone opposing lineup AND in a high-K park.
       const oppTeamId = r.isHome ? r.game?.awayTeamId : r.game?.homeTeamId;
       const oppRate = opponentTrailingKRate(teamModel, oppTeamId, r.gameDate);
-      return pitcherKContextShift(p.line, oppRate, teamModel.leagueRate);
+      const parkRate = parkTrailingKRate(parkModel, r.game?.homeTeamId, r.gameDate);
+      return (
+        pitcherKContextShift(p.line, oppRate, teamModel.leagueRate) +
+        pitcherKParkShift(p.line, parkRate, teamModel.leagueRate)
+      );
     }
     if (p.column === "strikeoutsBatting") {
       // Batter-K over: shift up vs a high-K opposing starter.
@@ -294,8 +302,9 @@ async function main() {
       `\nprop pays exactly the hold — ROI ≈ ${holdBaseline.toFixed(1)}%, NOT 0%. Read the f=1 cell against` +
       `\nthat ${holdBaseline.toFixed(1)}% floor: sitting above it means the model still out-discriminates a` +
       `\nmodel-sharp book on its high-conviction bets. Pitcher Ks clear the floor by the most —` +
-      `\nand their projection now folds in OPPONENT lineup K-rate (lib/props/opponentKRate.ts),` +
-      `\nwhich lowers their Brier and lifts the f=1 edge again on top of the workload de-bias.`
+      `\nand their projection now folds in OPPONENT lineup K-rate (lib/props/opponentKRate.ts)` +
+      `\nAND the PARK K-rate (lib/props/parkKRate.ts), both of which lower Brier and lift the` +
+      `\nf=1 edge on top of the workload de-bias.`
   );
 }
 
