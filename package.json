@@ -33,7 +33,8 @@
     "fit:pitcherramps": "tsx scripts/fit-pitcher-ramps.ts",
     "matchup:platoon": "tsx scripts/matchup-platoon.ts",
     "matchup:park": "tsx scripts/matchup-park.ts",
-    "matchup:batterpark": "tsx scripts/matchup-batter-park.ts"
+    "matchup:batterpark": "tsx scripts/matchup-batter-park.ts",
+    "matchup:sb": "tsx scripts/matchup-sb.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
