@@ -70,6 +70,7 @@ relative to the residual spread.
 | Batter park factors (hits/TB/HR) | `matchup:batterpark` | Real + PA-clean, but OOS Brier only −0.0005/−0.0006 (HR flat) — an order of magnitude below the pitcher-K terms. Offensive park factors are also the best-priced adjustment books make. |
 | Opposing-team SB-allowed (SB o0.5) | `matchup:sb` | Real + PA-clean, but OOS Brier just −0.0001. Team-level proxy too coarse — steals hinge on the specific catcher's arm, which we don't log per game. |
 | Batter hits vs opposing starter | `matchup:batter` | No OOS gain (DIPS: pitchers barely control BABIP). Only the batter-K half of that study wired. |
+| Pitcher days of rest | `matchup:rest` | Standard rest (5 vs 6 days, ~87% of starts) is flat over ramp+opponent+park. Extended rest (≥7 days, n=293) shows a consistent +3–4.6pt — a real *lead*, but concentrated in ~13% of starts and confoundable (extended rest clusters around the All-Star break / deliberate skips). Needs an OOS split + calendar-confound check before it's wireable; not wired. |
 
 **Meta-finding:** batting-side matchup context is consistently marginal (OOS Brier
 −0.0001 to −0.0006) versus the pitcher-K terms (−0.0013 to −0.0036). **Pitcher
