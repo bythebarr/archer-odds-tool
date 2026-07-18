@@ -68,6 +68,9 @@ async function main() {
   for (const line of LINES) {
     acc.set(line, new Map(BUCKETS.map((b) => [b, { sum: 0, n: 0 }])));
   }
+  // Deep-dive collector for the extended-rest (≥7) lead, line o5.5: keep each
+  // row so we can OOS-validate a bonus and check the All-Star-break confound.
+  const long55: { hit: number; proj: number; date: Date; july: boolean }[] = [];
 
   let curPlayer = "";
   let curYear = -1;
@@ -112,6 +115,13 @@ async function main() {
           const cell = acc.get(line)!.get(bucket)!;
           cell.sum += hit - proj.probability;
           cell.n += 1;
+          if (line === 5.5 && bucket === "long ≥7") {
+            // All-Star break lands ~Jul 11–18; flag mid-to-late July as the
+            // calendar window extended rest clusters in.
+            const m = s.gameDate.getUTCMonth();
+            const day = s.gameDate.getUTCDate();
+            long55.push({ hit, proj: proj.probability, date: s.gameDate, july: m === 6 && day >= 8 && day <= 22 });
+          }
         }
       }
     }
@@ -139,6 +149,41 @@ async function main() {
     );
   }
   console.log("\n(A flat pattern / small spread across rest buckets = rest adds nothing over ramp+opponent+park. A monotonic short→long climb would be a real fatigue/freshness signal.)");
+
+  // ── Deep-dive on the extended-rest (≥7) lead, o5.5 ───────────────────────
+  console.log(`\nExtended-rest (≥7d) lead — o5.5 deep dive (n=${long55.length}):`);
+
+  // (A) Calendar confound: is the bonus just the All-Star-break window?
+  const july = long55.filter((r) => r.july);
+  const other = long55.filter((r) => !r.july);
+  const meanResid = (rows: typeof long55) => (rows.length ? (rows.reduce((a, r) => a + (r.hit - r.proj), 0) / rows.length) * 100 : NaN);
+  const maxDate = long55.reduce((m, r) => (r.date > m ? r.date : m), new Date(0));
+  console.log(
+    `  (A) calendar:  All-Star window (Jul 8–22) ${meanResid(july).toFixed(1)}pt (n=${july.length})  vs  rest of season ${meanResid(other).toFixed(1)}pt (n=${other.length})`
+  );
+  if (july.length === 0) {
+    console.log(
+      `      ⚠ UNTESTABLE: 0 extended-rest starts in the break window — the data ends ${maxDate.toISOString().slice(0, 10)}` +
+        ` (single partial season, pre-break). The calendar confound is NOT ruled out, just uncovered.`
+    );
+  } else {
+    console.log(`      → if the edge lives only in the July window, it's the break confound, not freshness.`);
+  }
+
+  // (B) OOS: fit one bonus on older 70%, validate Brier on newer 30%.
+  const sorted = [...long55].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const cut = Math.floor(sorted.length * 0.7);
+  const train = sorted.slice(0, cut);
+  const val = sorted.slice(cut);
+  const bonus = train.length ? train.reduce((a, r) => a + (r.hit - r.proj), 0) / train.length : 0;
+  const clamp = (p: number) => Math.min(Math.max(p, 0.02), 0.98);
+  const brier = (fn: (r: (typeof long55)[number]) => number) => val.reduce((a, r) => a + (fn(r) - r.hit) ** 2, 0) / val.length;
+  const bd = brier((r) => r.proj);
+  const ba = brier((r) => clamp(r.proj + bonus));
+  console.log(
+    `  (B) OOS bonus:  train ${(bonus * 100).toFixed(1)}pt  →  val Brier ${bd.toFixed(4)} → ${ba.toFixed(4)}  (${ba < bd ? "IMPROVES" : "no gain"})`
+  );
+  console.log(`      → wire only if the edge survives OUTSIDE July AND improves OOS Brier.`);
 }
 
 main()

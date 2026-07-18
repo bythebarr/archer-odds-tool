@@ -70,13 +70,22 @@ relative to the residual spread.
 | Batter park factors (hits/TB/HR) | `matchup:batterpark` | Real + PA-clean, but OOS Brier only −0.0005/−0.0006 (HR flat) — an order of magnitude below the pitcher-K terms. Offensive park factors are also the best-priced adjustment books make. |
 | Opposing-team SB-allowed (SB o0.5) | `matchup:sb` | Real + PA-clean, but OOS Brier just −0.0001. Team-level proxy too coarse — steals hinge on the specific catcher's arm, which we don't log per game. |
 | Batter hits vs opposing starter | `matchup:batter` | No OOS gain (DIPS: pitchers barely control BABIP). Only the batter-K half of that study wired. |
-| Pitcher days of rest | `matchup:rest` | Standard rest (5 vs 6 days, ~87% of starts) is flat over ramp+opponent+park. Extended rest (≥7 days, n=293) shows a consistent +3–4.6pt — a real *lead*, but concentrated in ~13% of starts and confoundable (extended rest clusters around the All-Star break / deliberate skips). Needs an OOS split + calendar-confound check before it's wireable; not wired. |
+| Pitcher days of rest | `matchup:rest` | Standard rest (5 vs 6 days, ~87% of starts) is flat over ramp+opponent+park. Extended rest (≥7 days, n=293) shows a consistent +3–4.6pt and *does* improve OOS Brier (−0.0010, same order as wired terms) — a genuine lead. **But not wireable yet:** the obvious confound (extended rest clustering around the All-Star break / deliberate ace-skips) is **untestable on current data** — the archive is a single partial season (2026, Mar 26–Jul 7) that ends before the break. Revisit once multi-season / post-break data lands. |
 
 **Meta-finding:** batting-side matchup context is consistently marginal (OOS Brier
 −0.0001 to −0.0006) versus the pitcher-K terms (−0.0013 to −0.0036). **Pitcher
 strikeouts are the prop edge.** Remaining unexplored matchup factors need data we
 don't have — day-of (weather, umpire) or finer-grained (catcher-level) — so the
 free-data matchup space is now well-explored.
+
+## Data caveat
+
+Every term and finding here was fit and validated on a **single partial season**
+(the game-log archive is young — 2026, Mar 26–Jul 7 at time of writing). The
+out-of-sample splits are *temporal within that season* (train early, validate
+late), which is a real lookahead-safe test but weaker than multi-season. As the
+archive grows, the wired betas are worth a re-fit and the shelved leads (esp.
+extended rest, whose confound needs the break period) a re-check.
 
 ## Where this feeds
 
