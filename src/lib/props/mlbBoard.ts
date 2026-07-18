@@ -5,6 +5,7 @@ import { tallyPropHits, type PropHitRateResult } from "./hitRate";
 import { projectPropHit, pooledBaseRate } from "./projection";
 import { pitcherRampFor } from "./pitcherRamp";
 import { pitcherKContextShift } from "./opponentKRate";
+import { pitcherKParkShift, MIN_PARK_PA } from "./parkKRate";
 import { batterKvsStarterShift } from "./opposingStarter";
 import type { PropBoardColumnDef, PropBoardRow, PropLineCells, PropStatDef, PropView, SportPropConfig } from "./boardTypes";
 
@@ -406,6 +407,29 @@ async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: 
   return { leagueRate, rateByTeam };
 }
 
+/**
+ * Season-to-date strikeout rate (K per PA, both lineups) at each park as of the
+ * board day — the park term the pitcher-K shift needs (see parkKRate.ts). A park
+ * is its home team; grouping by a relation field isn't a Prisma groupBy, so this
+ * is one light aggregate per park (≤15 on a full slate, no row load), each summing
+ * every batter line in games at that park strictly before the board date.
+ */
+async function parkKRatesAsOf(parkIds: string[], seasonStart: Date, before: Date) {
+  const dateFilter = { gte: seasonStart, lt: before };
+  const rateByPark = new Map<string, number>();
+  await Promise.all(
+    parkIds.map(async (park) => {
+      const agg = await prisma.playerGameLog.aggregate({
+        where: { plateAppearances: { not: null }, gameDate: dateFilter, game: { homeTeamId: park } },
+        _sum: { strikeoutsBatting: true, plateAppearances: true },
+      });
+      const pa = agg._sum.plateAppearances ?? 0;
+      if (pa >= MIN_PARK_PA) rateByPark.set(park, (agg._sum.strikeoutsBatting ?? 0) / pa);
+    })
+  );
+  return { rateByPark };
+}
+
 async function buildPitcherBoard(dateEt: string, statKey: string): Promise<PropBoardRow[]> {
   const stat = PITCHER_STATS.find((s) => s.key === statKey) ?? PITCHER_STATS[0];
   const { gte, lt } = etDayBoundsUtc(dateEt);
@@ -422,13 +446,14 @@ async function buildPitcherBoard(dateEt: string, statKey: string): Promise<PropB
 
   // Probable starters, with the opponent they face (abbrev for row context, team
   // id for the matchup shift — a home starter faces the away lineup, and vice-versa).
-  const probables: { personId: number; name: string; meta: string; oppTeamId: string | null }[] = [];
+  // park = the game's home team for BOTH starters (the yard the game is played in).
+  const probables: { personId: number; name: string; meta: string; oppTeamId: string | null; park: string | null }[] = [];
   for (const g of games) {
     if (g.homeProbablePitcher && g.awayTeam) {
-      probables.push({ personId: g.homeProbablePitcher.mlbPersonId, name: g.homeProbablePitcher.fullName, meta: `vs ${g.awayTeam.abbreviation}`, oppTeamId: g.awayTeam.id });
+      probables.push({ personId: g.homeProbablePitcher.mlbPersonId, name: g.homeProbablePitcher.fullName, meta: `vs ${g.awayTeam.abbreviation}`, oppTeamId: g.awayTeam.id, park: g.homeTeam?.id ?? null });
     }
     if (g.awayProbablePitcher && g.homeTeam) {
-      probables.push({ personId: g.awayProbablePitcher.mlbPersonId, name: g.awayProbablePitcher.fullName, meta: `@ ${g.homeTeam.abbreviation}`, oppTeamId: g.homeTeam.id });
+      probables.push({ personId: g.awayProbablePitcher.mlbPersonId, name: g.awayProbablePitcher.fullName, meta: `@ ${g.homeTeam.abbreviation}`, oppTeamId: g.homeTeam.id, park: g.homeTeam.id });
     }
   }
   if (probables.length === 0) return [];
@@ -443,6 +468,7 @@ async function buildPitcherBoard(dateEt: string, statKey: string): Promise<PropB
 
   const candidates: Candidate[] = [];
   const oppTeamByPlayer = new Map<string, string | null>();
+  const parkByPlayer = new Map<string, string | null>();
   const seen = new Set<string>();
   for (const p of probables) {
     const playerId = idByPerson.get(p.personId);
@@ -450,18 +476,28 @@ async function buildPitcherBoard(dateEt: string, statKey: string): Promise<PropB
     seen.add(playerId);
     candidates.push({ playerId, personId: p.personId, name: p.name, meta: p.meta });
     oppTeamByPlayer.set(playerId, p.oppTeamId);
+    parkByPlayer.set(playerId, p.park);
   }
   if (candidates.length === 0) return [];
 
-  // Opponent lineup K-rate → the pitcher-K matchup shift (contextShift). Only
-  // strikeoutsPitching has a fitted coefficient; every other pitcher stat no-ops.
+  // Pitcher-K matchup shift (contextShift): opponent lineup K-rate + park K-rate,
+  // both league-relative. Only strikeoutsPitching has fitted coefficients; every
+  // other pitcher stat no-ops. leagueRate (batter K/PA) is shared by both terms.
   const oppTeamIds = [...new Set([...oppTeamByPlayer.values()].filter((x): x is string => !!x))];
-  const { leagueRate, rateByTeam } = await opponentKRatesAsOf(oppTeamIds, new Date(`${dateEt.slice(0, 4)}-01-01T00:00:00Z`), gte);
+  const parkIds = [...new Set([...parkByPlayer.values()].filter((x): x is string => !!x))];
+  const seasonStart = new Date(`${dateEt.slice(0, 4)}-01-01T00:00:00Z`);
+  const [{ leagueRate, rateByTeam }, { rateByPark }] = await Promise.all([
+    opponentKRatesAsOf(oppTeamIds, seasonStart, gte),
+    parkKRatesAsOf(parkIds, seasonStart, gte),
+  ]);
   const contextShiftFor: ContextShiftFn = (row, i) => {
     if (stat.column !== "strikeoutsPitching") return 0;
+    const line = stat.standardLines[i];
     const oppTeamId = oppTeamByPlayer.get(row.entityId) ?? null;
     const oppRate = oppTeamId ? rateByTeam.get(oppTeamId) ?? null : null;
-    return pitcherKContextShift(stat.standardLines[i], oppRate, leagueRate);
+    const parkId = parkByPlayer.get(row.entityId) ?? null;
+    const parkRate = parkId ? rateByPark.get(parkId) ?? null : null;
+    return pitcherKContextShift(line, oppRate, leagueRate) + pitcherKParkShift(line, parkRate, leagueRate);
   };
 
   const logsByPlayer = await seasonLogsByPlayer(candidates.map((c) => c.playerId));
