@@ -20,6 +20,12 @@ export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   if (path === "/terms" || path === "/privacy") return NextResponse.next();
 
+  // The deck carries its OWN secret (?token=CRON_SECRET) and 404s without it, so
+  // Basic Auth on top adds a second password without adding protection — and it
+  // has to be typed on a phone, at the exact moment the card needs making. One
+  // gate, not two.
+  if (path === "/deck") return NextResponse.next();
+
   const password = process.env.SITE_ACCESS_PASSWORD;
   if (!password) return NextResponse.next(); // gate dormant until the env var is set
 
