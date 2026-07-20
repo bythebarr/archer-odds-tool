@@ -85,6 +85,10 @@ async function storeUfcBoutOdds(
       const corner = cornerForOutcome(outcome.name, bout);
       if (!corner) continue;
 
+      // A suspended market comes back priceless; skip rather than store a row
+      // that can't be line-shopped or graded.
+      if (typeof outcome.price !== "number" || !Number.isFinite(outcome.price)) continue;
+
       await prisma.ufcBoutOdds.upsert({
         where: { boutId_bookKey_corner: { boutId: bout.id, bookKey: bookmaker.key, corner } },
         create: {

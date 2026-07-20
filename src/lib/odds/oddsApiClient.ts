@@ -49,9 +49,15 @@ export type OddsApiMarketKey =
   | "alternate_spreads"
   | "alternate_totals";
 
+/**
+ * NOTE the nullable price: ParlayAPI returns `price: null` for a suspended or
+ * pulled market where TOA omitted the outcome entirely. Callers must guard —
+ * see storeOdds, which skips them rather than storing an unusable row.
+ */
 export interface OddsApiOutcome {
   name: string; // team name for h2h/spreads; "Over"/"Under" for totals and player props
-  price: number; // American odds (we always request oddsFormat=american)
+  /** American odds. NULLABLE: a suspended/pulled market comes back priceless. */
+  price: number | null;
   point?: number;
   // Present on player-prop outcomes only: the player's full name. Confirmed
   // live against a real per-event player-props response — see propMarkets.ts.

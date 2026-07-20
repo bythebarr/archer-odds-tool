@@ -95,6 +95,10 @@ export async function storePlayerPropOdds(
           continue;
         }
 
+        // Suspended/pulled prop — no price to store. See storeOdds for the
+        // same guard on game lines.
+        if (typeof outcome.price !== "number" || !Number.isFinite(outcome.price)) continue;
+
         await prisma.playerPropSnapshot.create({
           data: {
             gameId,

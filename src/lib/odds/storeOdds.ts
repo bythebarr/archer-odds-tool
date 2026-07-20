@@ -85,6 +85,12 @@ export async function storeBookmakerOdds(
       for (const outcome of market.outcomes) {
         const side = outcomeToSide(marketType, outcome.name, homeCompetitorName, awayCompetitorName);
         if (!side) continue;
+        // A book can list an outcome with NO price — a suspended or pulled
+        // market. ParlayAPI surfaces these as `price: null` where TOA simply
+        // omitted them. Skip rather than store: a null price isn't a number we
+        // can line-shop, de-vig, or grade, and storing one poisons every
+        // best-price comparison downstream.
+        if (typeof outcome.price !== "number" || !Number.isFinite(outcome.price)) continue;
 
         await prisma.oddsSnapshot.create({
           data: {
