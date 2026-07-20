@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { unitsFor } from "@/lib/betting/kelly";
 import { mosesAuthor } from "./brand";
 import { SPORTS, type Play } from "@/lib/engine";
+import { getSelection, splitBySelection, type PlayStream } from "@/lib/card/selection";
 
 /**
  * Auto-post Archer's Best Plays to a paid Discord — the capper product, not a
@@ -44,27 +45,71 @@ const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
 /** ARCHR accent green (matches the app's --accent), as a Discord embed color int. */
 const ARCHR_GREEN = 0x06996b;
-/** UFC fight-night red — visually separates the fighter-math section from the +EV card. */
-const UFC_RED = 0xd20a0a;
 
 /**
- * Per-sport board-section chrome (embed color, deep link, title prefix). Keyed by
- * registry sportKey; the dynamic half of the title (UFC's event + date) rides on
- * `play.display.sectionLabel`, so the primary MLB card uses the date label and UFC
- * appends its event. This is the last sport-keyed literal in the poster; it
- * collapses when the todays-board / tracked-plays channel split lands (the card's
- * shape changes there anyway). Sports absent from this map fall back to green/root.
+ * Section chrome derives entirely from the adapter's own `meta` — icon, label,
+ * accent, href. There is no sport-keyed literal left in this file: MLB is not
+ * special, UFC is not special, and a newly registered sport renders correctly
+ * with zero changes here. That was the owner's explicit ask — the room is an
+ * all-sports room, not a baseball room with UFC bolted on.
  */
-const SECTION_CHROME: Record<string, { color: number; url: string; titlePrefix: string }> = {
-  mlb: { color: ARCHR_GREEN, url: `${SITE_URL}/slate`, titlePrefix: "🎯 ARCHR Edge · Best Plays · " },
-  ufc: { color: UFC_RED, url: `${SITE_URL}/ufc`, titlePrefix: "🥊 Fight Night — " },
-};
+function chromeFor(sportKey: string): { color: number; url: string; titlePrefix: string } {
+  const meta = SPORTS.find((a) => a.key === sportKey)?.meta;
+  if (!meta) return { color: ARCHR_GREEN, url: SITE_URL, titlePrefix: `${sportKey.toUpperCase()} · ` };
+  return {
+    color: hexToInt(meta.accent),
+    url: `${SITE_URL}${meta.href}`,
+    titlePrefix: `${meta.icon} ${meta.label} · `,
+  };
+}
+
+/** "#3b82f6" → 0x3b82f6, the int form Discord embeds want. */
+function hexToInt(hex: string): number {
+  const n = Number.parseInt(hex.replace("#", ""), 16);
+  return Number.isNaN(n) ? ARCHR_GREEN : n;
+}
+
+const KIND_TAG: Record<string, string> = { ml: "ML", spread: "SPR", total: "TOT", prop: "PROP" };
+
+/**
+ * The slate's line — deliberately NOT the card's voice. #ev-slate is a data
+ * board: uniform across sports, both EV lenses side by side, and **no units**,
+ * because nothing on the slate is staked or recorded. The card keeps each
+ * sport's capper voice (`display.line`); this is the flat read of the same play.
+ */
+export function slateLine(p: Play): string {
+  const meta = SPORTS.find((a) => a.key === p.sportKey)?.meta;
+  const tag = `${meta?.label.toUpperCase() ?? p.sportKey.toUpperCase()} ${KIND_TAG[p.selection.kind] ?? ""}`.trim();
+  const price = p.bestPrice > 0 ? `+${p.bestPrice}` : `${p.bestPrice}`;
+  const model = p.modelEv !== null ? `model ${formatPct(p.modelEv)}` : null;
+  const market = p.marketEv !== null ? `market ${formatPct(p.marketEv)}` : null;
+  const evs = [model, market].filter(Boolean).join(" · ");
+  const start = ` · ${startStamp(p.startUtc)} ET`;
+  return `\`${tag}\` **${p.selection.label}** ${price} · ${p.bestBookName}${evs ? ` · ${evs}` : ""}${start}`;
+}
+
+function formatPct(ev: number): string {
+  return `${ev >= 0 ? "+" : ""}${(ev * 100).toFixed(1)}%`;
+}
+
+function startStamp(d: Date): string {
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })
+    .format(d)
+    .replace(/\s?AM$/, "a")
+    .replace(/\s?PM$/, "p");
+}
 
 export interface DiscordPostResult {
   posted: boolean;
   reason?: string;
-  premiumCount?: number;
-  ufcCount?: number;
+  /** Handpicked plays posted to #todays-card (units, tracked). */
+  cardCount?: number;
+  /** Whether the single #free-play went out. */
+  freePosted?: boolean;
+  /** Unpicked plays posted to #ev-slate (no units, not recorded). */
+  slateCount?: number;
+  /** Selected plays whose line vanished before post time — skipped, not posted stale. */
+  missingCount?: number;
 }
 
 const EMPTY_CARD =
@@ -108,36 +153,40 @@ interface BoardSection {
 }
 
 /**
- * Group the registry's plays into board sections, in registry order. The primary
- * sport (registry index 0, MLB) is ALWAYS rendered — empty means the "no card is
- * a card" message, not a missing section — while other sports appear only when
- * they have plays. Section title = chrome prefix + the play's own sectionLabel
- * (UFC's event) or the card's date label (MLB).
+ * Group plays into board sections, in registry order. **A sport with no plays
+ * renders nothing** — there is no always-present primary section any more. That
+ * single change is what stops a quiet baseball day from posting an empty MLB
+ * card, and is why UFC simply isn't mentioned the six days a week it isn't on:
+ * event-timed surfacing falls out of the data instead of a per-sport rule.
+ *
+ * `mode` picks the voice: the card uses each sport's pre-rendered capper line,
+ * the slate uses the flat two-EV read.
  */
-export function assembleSections(plays: Play[], dateLabel: string): BoardSection[] {
+export function assembleSections(
+  plays: Play[],
+  dateLabel: string,
+  mode: "card" | "slate" = "card"
+): BoardSection[] {
   const byKey = new Map<string, Play[]>();
   for (const p of plays) {
     const arr = byKey.get(p.sportKey) ?? [];
     arr.push(p);
     byKey.set(p.sportKey, arr);
   }
-  const primaryKey = SPORTS[0]?.key;
   const sections: BoardSection[] = [];
   for (const adapter of SPORTS) {
     const group = byKey.get(adapter.key) ?? [];
-    if (!group.length && adapter.key !== primaryKey) continue; // only the primary shows empty
-    const chrome = SECTION_CHROME[adapter.key] ?? {
-      color: ARCHR_GREEN,
-      url: SITE_URL,
-      titlePrefix: `${adapter.meta.label} · `,
-    };
+    if (!group.length) continue;
+    const chrome = chromeFor(adapter.key);
     const sectionLabel = group[0]?.display?.sectionLabel ?? dateLabel;
     sections.push({
       sportKey: adapter.key,
       title: `${chrome.titlePrefix}${sectionLabel}`,
       url: chrome.url,
       color: chrome.color,
-      lines: group.map((p) => p.display?.line ?? p.selection.label),
+      lines: group.map((p) =>
+        mode === "slate" ? slateLine(p) : p.display?.line ?? p.selection.label
+      ),
       count: group.length,
     });
   }
@@ -173,8 +222,8 @@ export function sectionsToEmbeds(sections: BoardSection[]): Record<string, unkno
   const embeds: Record<string, unknown>[] = [];
   for (const section of sections) {
     let chunks = packLines(section.lines);
-    if (section.sportKey === SPORTS[0]?.key && chunks.length > MAX_PRIMARY_CHUNKS) {
-      // No silent caps: a card this big (~360+ plays) means something's off upstream.
+    if (chunks.length > MAX_PRIMARY_CHUNKS) {
+      // No silent caps: a section this big means something's off upstream.
       console.warn(
         `postCard: ${chunks.length} ${section.sportKey} chunks exceeds ${MAX_PRIMARY_CHUNKS}; posting the first ${MAX_PRIMARY_CHUNKS}.`
       );
@@ -204,13 +253,14 @@ export function sectionsToEmbeds(sections: BoardSection[]): Record<string, unkno
  * every posted row, and post-Phase-3a the grader recovers a prop's inputs from
  * its playKey, not these columns.
  */
-async function recordPlays(plays: Play[]): Promise<void> {
+async function recordPlays(plays: Play[], stream: PlayStream): Promise<void> {
   await Promise.all(
     plays.map((p) =>
       prisma.postedPlay.upsert({
         where: { postedForDate_playKey: { postedForDate: p.postedForDate, playKey: p.playKey } },
         update: {},
         create: {
+          stream,
           postedForDate: p.postedForDate,
           playKey: p.playKey,
           sport: p.sportKey,
@@ -234,15 +284,24 @@ async function recordPlays(plays: Play[]): Promise<void> {
   );
 }
 
+export interface PreviewSection {
+  title: string;
+  body: string;
+  /** Section accent as a CSS hex string, for the preview's left border. */
+  accent: string;
+}
+
 export interface DailyCardPreview {
   label: string;
-  /** Rendered premium-embed body — exactly what would post to DISCORD_WEBHOOK_URL. */
-  premium: string;
-  /** Rendered fight-night embed body, or null when no UFC card is imminent. */
-  ufc: string | null;
-  ufcTitle: string | null;
-  premiumCount: number;
-  ufcCount: number;
+  /** #todays-card sections — his handpicks, with units. Empty = "no card is a card". */
+  card: PreviewSection[];
+  /** The single #free-play line, or null when he hasn't picked one. */
+  free: string | null;
+  /** #ev-slate sections — everything unpicked, no units. */
+  slate: PreviewSection[];
+  cardCount: number;
+  slateCount: number;
+  missingCount: number;
 }
 
 /**
@@ -254,16 +313,23 @@ export interface DailyCardPreview {
 export async function previewDailyCard(dateEt: string = todayEt()): Promise<DailyCardPreview> {
   const label = prettyDate(dateEt);
   const plays = await collectPlays(dateEt);
-  const sections = assembleSections(plays, label);
-  const primary = sections.find((s) => s.sportKey === SPORTS[0]?.key);
-  const ufc = sections.find((s) => s.sportKey === "ufc");
+  const selection = await getSelection(dateEt);
+  const { card, free, slate, missing } = splitBySelection(plays, selection);
+
+  const toPreview = (s: BoardSection): PreviewSection => ({
+    title: s.title,
+    body: s.lines.join("\n"),
+    accent: `#${s.color.toString(16).padStart(6, "0")}`,
+  });
+
   return {
     label,
-    premium: primary ? packLines(primary.lines).join("\n") : EMPTY_CARD,
-    ufc: ufc ? ufc.lines.join("\n") : null,
-    ufcTitle: ufc ? ufc.title : null,
-    premiumCount: primary?.count ?? 0,
-    ufcCount: ufc?.count ?? 0,
+    card: assembleSections(card, label, "card").map(toPreview),
+    free: free ? free.display?.line ?? slateLine(free) : null,
+    slate: assembleSections(slate, label, "slate").map(toPreview),
+    cardCount: card.length,
+    slateCount: slate.length,
+    missingCount: missing.length,
   };
 }
 
@@ -279,29 +345,103 @@ export async function postWebhook(url: string, body: unknown): Promise<void> {
   }
 }
 
+/**
+ * The daily drop — three posts, from one pull of the board and one read of the
+ * owner's deck picks (see @/lib/card/selection):
+ *
+ *   👑 #todays-card — his handpicks, with units. Recorded as `card`.
+ *   🎯 #free-play   — the single free play, with units. Recorded as `free`.
+ *   📊 #ev-slate    — everything he didn't pick. No units. NOT recorded.
+ *
+ * Each channel is independently dormant: an unset webhook skips that post and
+ * the others still go. The card's webhook is the one required env — with it
+ * unset nothing runs at all, preserving the "shippable while inert" posture.
+ *
+ * Ordering matters: the card posts BEFORE the slate. If the slate went first,
+ * premium members would see the full board and could infer the card from what
+ * was withheld.
+ */
 export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promise<DiscordPostResult> {
-  const premiumUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!premiumUrl) return { posted: false, reason: "dormant: DISCORD_WEBHOOK_URL not set" };
+  const cardUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!cardUrl) return { posted: false, reason: "dormant: DISCORD_WEBHOOK_URL not set" };
 
   const label = prettyDate(dateEt);
   const plays = await collectPlays(dateEt);
-  const sections = assembleSections(plays, label);
-  const premiumCount = sections.find((s) => s.sportKey === SPORTS[0]?.key)?.count ?? 0;
-  const ufcCount = sections.find((s) => s.sportKey === "ufc")?.count ?? 0;
+  const selection = await getSelection(dateEt);
+  const { card, free, slate, missing } = splitBySelection(plays, selection);
 
-  await postWebhook(premiumUrl, {
-    username: "Moses, Leader of Many",
-    embeds: sectionsToEmbeds(sections),
-  });
-
-  // Record what we posted so #results can grade it. Best-effort: a DB failure
-  // must not fail the post that already went out. Each play carries its own
-  // postedForDate (UFC settles under its fight date, MLB under today's card).
-  try {
-    await recordPlays(plays);
-  } catch (err) {
-    console.error("recordPlays failed (card was still posted):", err);
+  if (missing.length) {
+    console.warn(`postCard: ${missing.length} selected play(s) no longer live, skipping:`, missing);
   }
 
-  return { posted: true, premiumCount, ufcCount };
+  // 👑 The card. Posts even when empty — "no card is a card" is a real signal,
+  // and silence would read as a broken bot.
+  const cardSections = assembleSections(card, label, "card");
+  await postWebhook(cardUrl, {
+    username: "Moses, Leader of Many",
+    embeds: cardSections.length
+      ? sectionsToEmbeds(cardSections)
+      : [
+          {
+            author: mosesAuthor(),
+            title: `👑 Today's Card · ${label}`,
+            description: EMPTY_CARD,
+            color: ARCHR_GREEN,
+            footer: { text: RESEARCH_FOOTER },
+          },
+        ],
+  });
+
+  // 🎯 The free play — selection + number, same as premium sees it. It carries
+  // units because it rides its own tracked record.
+  let freePosted = false;
+  const freeUrl = process.env.DISCORD_FREE_WEBHOOK_URL;
+  if (freeUrl && free) {
+    await postWebhook(freeUrl, {
+      username: "Moses, Leader of Many",
+      embeds: [
+        {
+          author: mosesAuthor(),
+          title: `🎯 Free Play · ${label}`,
+          description: `${free.display?.line ?? slateLine(free)}\n\nTracked in #results on its own record — wins and losses.`,
+          color: ARCHR_GREEN,
+          footer: { text: RESEARCH_FOOTER },
+        },
+      ],
+    });
+    freePosted = true;
+  }
+
+  // 📊 The slate — the firehose, no units, never recorded.
+  const slateUrl = process.env.DISCORD_SLATE_WEBHOOK_URL;
+  if (slateUrl && slate.length) {
+    const slateSections = assembleSections(slate, label, "slate");
+    const embeds = sectionsToEmbeds(slateSections);
+    if (embeds.length) {
+      embeds[0] = { ...embeds[0], title: `📊 Full +EV Slate · ${label}` };
+      embeds[embeds.length - 1] = {
+        ...embeds[embeds.length - 1],
+        footer: { text: `No units — information only. Today's staked card is in #todays-card. ${RESEARCH_FOOTER}` },
+      };
+    }
+    await postWebhook(slateUrl, { username: "Moses, Leader of Many", embeds });
+  }
+
+  // Record ONLY what carries units. The slate is deliberately absent from the
+  // ledger — nothing unstaked may ever move a record. Best-effort: a DB failure
+  // must not fail posts that already went out.
+  try {
+    await recordPlays(card, "card");
+    if (free) await recordPlays([free], "free");
+  } catch (err) {
+    console.error("recordPlays failed (posts still went out):", err);
+  }
+
+  return {
+    posted: true,
+    cardCount: card.length,
+    freePosted,
+    slateCount: slate.length,
+    missingCount: missing.length,
+  };
 }

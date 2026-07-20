@@ -111,6 +111,7 @@ function EmbedPreview({
 
 /** A muted timeline label above the post (its slot in the day). */
 function Slot({ label }: { label: string }) {
+  if (!label) return null; // continuation sections of the same post carry no slot label
   return <div className="mb-1 mt-6 text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>;
 }
 
@@ -162,11 +163,15 @@ export default async function DiscordPreviewPage() {
         <div className="archredge-scan mt-4 h-px w-full" />
         <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
           <span className="rounded bg-muted px-2 py-1">
-            {card.premiumCount} card play{card.premiumCount === 1 ? "" : "s"}
+            👑 {card.cardCount} handpicked
           </span>
-          <span className="rounded bg-muted px-2 py-1">
-            {card.ufcCount} UFC lean{card.ufcCount === 1 ? "" : "s"}
-          </span>
+          <span className="rounded bg-muted px-2 py-1">🎯 {card.free ? 1 : 0} free</span>
+          <span className="rounded bg-muted px-2 py-1">📊 {card.slateCount} slate</span>
+          {card.missingCount > 0 && (
+            <span className="rounded bg-muted px-2 py-1 text-amber-600 dark:text-amber-500">
+              ⚠️ {card.missingCount} no longer live
+            </span>
+          )}
         </div>
       </div>
 
@@ -174,27 +179,61 @@ export default async function DiscordPreviewPage() {
         The card exactly as it would post — dry-run, nothing is posted or recorded. Refresh to re-pull.
       </p>
 
-      <Post
-        slot="10:30 AM ET · #todays-card"
-        title={`🎯 ARCHR Edge · Best Plays · ${card.label}`}
-        body={card.premium}
-        accent="#06996b"
-        delay={0}
-      />
-      {card.ufc && card.ufcTitle && (
-        <div className="archredge-post mt-4" style={{ animationDelay: "90ms" }}>
-          <EmbedPreview title={card.ufcTitle} body={card.ufc} accent="#d20a0a" />
-        </div>
+      {/* 👑 The card — his handpicks, per-sport sections, with units. */}
+      {card.card.length === 0 ? (
+        <Post
+          slot="#todays-card"
+          title={`👑 Today's Card · ${card.label}`}
+          body="_No plays cleared ARCHR Edge today. No card is a card — we don't force action._"
+          accent="#06996b"
+          delay={0}
+        />
+      ) : (
+        card.card.map((s, i) => (
+          <Post
+            key={s.title}
+            slot={i === 0 ? "#todays-card" : ""}
+            title={s.title}
+            body={s.body}
+            accent={s.accent}
+            delay={i * 60}
+          />
+        ))
       )}
+
+      {/* 🎯 The single free play. */}
+      {card.free && (
+        <Post
+          slot="#free-play"
+          title={`🎯 Free Play · ${card.label}`}
+          body={card.free}
+          accent="#06996b"
+          delay={120}
+        />
+      )}
+
+      {/* 📊 The slate — everything unpicked, no units. */}
+      {card.slate.map((s, i) => (
+        <Post
+          key={s.title}
+          slot={i === 0 ? "#ev-slate · no units, not recorded" : ""}
+          title={s.title}
+          body={s.body}
+          accent={s.accent}
+          delay={180 + i * 60}
+        />
+      ))}
 
       <Card className="mt-8">
         <CardHeader className="pb-2 text-sm font-medium text-foreground">What this is</CardHeader>
         <CardContent className="text-xs text-muted-foreground">
-          A non-posting dry-run of the daily card
-          (<code className="font-mono">post-discord</code> → <code className="font-mono">#todays-card</code>).
-          It runs the exact same pipeline the real poster uses, but posts nothing and writes no
-          grading rows. The post stays dormant until <code className="font-mono">DISCORD_WEBHOOK_URL</code>
-          is set — this page is how you review it first.
+          A non-posting dry-run of the full daily drop
+          (<code className="font-mono">post-discord</code>): your handpicks →{" "}
+          <code className="font-mono">#todays-card</code>, the one free play →{" "}
+          <code className="font-mono">#free-play</code>, and everything you didn&apos;t pick →{" "}
+          <code className="font-mono">#ev-slate</code> with no units. It reads the same deck
+          selections and runs the same pipeline the real poster uses, but posts nothing and writes
+          no grading rows. Pick your plays in <code className="font-mono">/deck</code>.
         </CardContent>
       </Card>
     </PageShell>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assembleSections, sectionsToEmbeds } from "./postCard";
+import { assembleSections, sectionsToEmbeds, slateLine } from "./postCard";
 import { toPlay } from "@/lib/engine/adapters/mlb";
 import { ufcToPlay } from "@/lib/engine/adapters/ufc";
 import { mosesAuthor } from "./brand";
@@ -9,22 +9,28 @@ import type { OddsPlay } from "@/lib/queries/oddsPool";
 import type { UfcBestPlay } from "./ufcBestPlays";
 
 /**
- * BYTE-FOR-BYTE parity: the board is now assembled from the sport registry
- * (SPORTS.flatMap(listPlays)) instead of a hardcoded MLB pool + appended UFC
- * embed. This test pins the produced Discord embeds to EXACTLY the shape the old
- * poster emitted — the MLB-green Best Plays card + the UFC-red Fight-Night embed
- * — using the same @/lib/card/line formatters as the oracle. If the registry
- * rewrite ever drifts the output, this fails. The poster is the owner's LOCKED
- * 9:30/10:30 machine, so this is the safety net for "must not silently regress."
+ * Pins the poster's rendered output. Originally this held byte-for-byte parity
+ * with the pre-registry poster; that parity was deliberately BROKEN on
+ * 2026-07-20 when the room became all-sports:
+ *
+ *   • No always-present primary section. A sport with no plays renders NOTHING,
+ *     so a quiet baseball day no longer posts an empty MLB card and UFC is
+ *     simply absent the six days a week it isn't on. Event-timed surfacing now
+ *     falls out of the data rather than a per-sport rule.
+ *   • Section chrome derives from each adapter's own `meta` (icon/label/accent),
+ *     so MLB is no longer ARCHR-green-and-special and a new sport needs no
+ *     poster change.
+ *
+ * What's still locked: the line formatters, the author/footer/color placement,
+ * and the card-vs-slate voice split.
  */
 
 const LABEL = "Jul 15";
 const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
-const EMPTY_CARD =
-  "_No plays cleared ARCHR Edge today. No card is a card — we don't force action._";
-const ARCHR_GREEN = 0x06996b;
-const UFC_RED = 0xd20a0a;
+// Accents now come from sportsMeta, not poster-local constants.
+const MLB_BLUE = 0x3b82f6;
+const UFC_RED = 0xef4444;
 
 function oddsPlay(over: Partial<OddsPlay> = {}): OddsPlay {
   return {
@@ -73,23 +79,23 @@ function ufcBestPlay(over: Partial<UfcBestPlay> = {}): UfcBestPlay {
 const EVENT_DATE = new Date("2026-07-19T00:00:00Z");
 const EVENT_TITLE = "UFC Fight Night: Costa vs Osbourne";
 
-/** The MLB Best Plays card exactly as the old poster built it (single chunk). */
+/** The MLB section as the poster builds it now — chrome from the adapter's meta. */
 function oracleMlbEmbed(picks: OddsPlay[]) {
   return {
     author: mosesAuthor(),
-    title: `🎯 ARCHR Edge · Best Plays · ${LABEL}`,
-    url: `${SITE_URL}/slate`,
-    description: picks.length ? picks.map(playLine).join("\n") : EMPTY_CARD,
-    color: ARCHR_GREEN,
+    title: `⚾ MLB · ${LABEL}`,
+    url: `${SITE_URL}/mlb`,
+    description: picks.map(playLine).join("\n"),
+    color: MLB_BLUE,
     footer: { text: RESEARCH_FOOTER },
   };
 }
 
-/** The Fight-Night embed exactly as the old buildUfcEmbed produced it. */
+/** The UFC section — same shape, its own meta accent, event label from the play. */
 function oracleUfcEmbed(bouts: UfcBestPlay[]) {
   return {
     author: mosesAuthor(),
-    title: `🥊 Fight Night — ${EVENT_TITLE} · ${prettyEventDate(EVENT_DATE)}`,
+    title: `🥊 UFC · ${EVENT_TITLE} · ${prettyEventDate(EVENT_DATE)}`,
     url: `${SITE_URL}/ufc`,
     description: bouts.map(ufcPlayLine).join("\n"),
     color: UFC_RED,
@@ -107,22 +113,43 @@ function embeds(plays: Parameters<typeof assembleSections>[0]) {
   return sectionsToEmbeds(assembleSections(plays, LABEL));
 }
 
-describe("board parity — registry-sourced embeds equal the old poster's", () => {
-  it("MLB card + UFC Fight-Night (both present)", () => {
+describe("board rendering — sections come from the registry, no primary sport", () => {
+  it("renders a section per sport that HAS plays, in registry order", () => {
     expect(embeds([...mlbPlays, ...ufcPlays])).toEqual([oracleMlbEmbed(mlbPicks), oracleUfcEmbed(ufcBouts)]);
   });
 
-  it("MLB only (no UFC card imminent)", () => {
+  it("MLB only (nothing else running)", () => {
     expect(embeds(mlbPlays)).toEqual([oracleMlbEmbed(mlbPicks)]);
   });
 
-  it("no MLB plays still shows the 'no card is a card' MLB embed, then UFC", () => {
-    // The primary (MLB) section always renders — empty means the message, not a
-    // missing section — exactly as the old poster's packDescriptions([]) did.
-    expect(embeds(ufcPlays)).toEqual([oracleMlbEmbed([]), oracleUfcEmbed(ufcBouts)]);
+  it("a UFC-only day posts ONLY the UFC section — no empty MLB card", () => {
+    // The regression this guards: an all-sports room must not announce a sport
+    // that isn't playing. Previously MLB rendered an empty section every day.
+    expect(embeds(ufcPlays)).toEqual([oracleUfcEmbed(ufcBouts)]);
   });
 
-  it("empty board → just the empty MLB card", () => {
-    expect(embeds([])).toEqual([oracleMlbEmbed([])]);
+  it("empty board → no embeds at all (the caller posts 'no card is a card')", () => {
+    expect(embeds([])).toEqual([]);
+  });
+});
+
+describe("slate voice — flat, both EV lenses, never units", () => {
+  it("shows model AND market EV and omits units entirely", () => {
+    const line = slateLine(mlbPlays[0]);
+    expect(line).toContain("model +6.2%");
+    expect(line).toContain("market +3.0%");
+    expect(line).not.toMatch(/\d+u\b/); // nothing on the slate is staked
+  });
+
+  it("uses the flat read, not the sport's card voice", () => {
+    expect(slateLine(mlbPlays[0])).not.toBe(mlbPlays[0].display?.line);
+  });
+
+  it("renders a sport with no model EV without a dangling separator", () => {
+    const noModel = { ...mlbPlays[0], modelEv: null };
+    const line = slateLine(noModel);
+    expect(line).toContain("market +3.0%");
+    expect(line).not.toContain("model");
+    expect(line).not.toContain("· ·");
   });
 });
