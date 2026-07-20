@@ -205,11 +205,14 @@ async function main() {
  */
 const COMMUNITY_RULES_CHANNEL = "welcome-and-rules";
 const COMMUNITY_UPDATES_CHANNEL = "announcements";
+/** Safety alerts are mod-facing, so this one points at the staff channel. */
+const COMMUNITY_SAFETY_CHANNEL = "command-deck";
 
 interface Guild {
   features: string[];
   rules_channel_id: string | null;
   public_updates_channel_id: string | null;
+  safety_alerts_channel_id: string | null;
 }
 
 async function repointCommunityChannels(
@@ -221,11 +224,15 @@ async function repointCommunityChannels(
 
   const rules = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_RULES_CHANNEL}`);
   const updates = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_UPDATES_CHANNEL}`);
+  const safety = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_SAFETY_CHANNEL}`);
 
   const patch: Record<string, string> = {};
   if (rules && guild.rules_channel_id !== rules.id) patch.rules_channel_id = rules.id;
   if (updates && guild.public_updates_channel_id !== updates.id) {
     patch.public_updates_channel_id = updates.id;
+  }
+  if (safety && guild.safety_alerts_channel_id !== safety.id) {
+    patch.safety_alerts_channel_id = safety.id;
   }
   if (!Object.keys(patch).length) return;
 
