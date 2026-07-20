@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { setSelection, clearSelection, type PlayStream } from "@/lib/card/selection";
+import { setSelection, setUnits, clearSelection, type PlayStream } from "@/lib/card/selection";
 import { todayEt } from "@/lib/dateEt";
 
 /**
@@ -26,6 +26,27 @@ export async function pickAction(formData: FormData) {
 
   const stream: PlayStream | null = raw === "card" || raw === "free" ? raw : null;
   await setSelection(dateEt, playKey, stream);
+  revalidatePath("/deck");
+}
+
+/**
+ * Set the stake on a ticked play. An empty/zero value clears back to the model's
+ * suggestion rather than staking nothing — "no opinion" and "0u" are different
+ * things, and the deck has no way to express a genuine zero stake (that's what
+ * un-ticking is for).
+ */
+export async function unitsAction(formData: FormData) {
+  const token = String(formData.get("token") ?? "");
+  assertOwner(token);
+
+  const playKey = String(formData.get("playKey") ?? "");
+  const dateEt = String(formData.get("dateEt") ?? "") || todayEt();
+  const raw = String(formData.get("units") ?? "").trim();
+  if (!playKey) throw new Error("Missing playKey");
+
+  const parsed = Number(raw);
+  const units = raw === "" || !Number.isFinite(parsed) || parsed <= 0 ? null : Math.min(parsed, 25);
+  await setUnits(dateEt, playKey, units);
   revalidatePath("/deck");
 }
 

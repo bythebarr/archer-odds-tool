@@ -576,6 +576,10 @@ model CardSelection {
   /// Play.playKey — matches the live play at post time.
   playKey   String
   stream    PlayStream
+  /// Owner's stake for this play. NULL means "use the model's suggestion" — the
+  /// distinction matters: an explicit 1u and an unset 1u look identical in the
+  /// posted card but mean different things if the Kelly sizing later changes.
+  units     Float?
   createdAt DateTime   @default(now())
 
   @@unique([dateEt, playKey])

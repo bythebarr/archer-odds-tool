@@ -26,8 +26,8 @@ function play(over: Partial<Play> = {}): Play {
   };
 }
 
-function selection(entries: Array<[string, PlayStream]>): DaySelection {
-  const byKey = new Map(entries);
+function selection(entries: Array<[string, PlayStream, number?]>): DaySelection {
+  const byKey = new Map(entries.map(([k, stream, units]) => [k, { stream, units: units ?? null }]));
   const free = entries.find(([, s]) => s === "free");
   return {
     byKey,
@@ -80,5 +80,31 @@ describe("splitBySelection", () => {
     const out = splitBySelection([a, c], selection([["b", "free"], ["a", "card"]]));
     expect(out.free).toBeNull();
     expect(out.missing).toEqual(["b"]);
+  });
+});
+
+describe("manual unit sizing", () => {
+  const a = play({ playKey: "a", suggestedUnits: 1 });
+
+  it("uses the owner's stake when he set one", () => {
+    const out = splitBySelection([a], selection([["a", "card", 3]]));
+    expect(out.card[0].suggestedUnits).toBe(3);
+  });
+
+  it("falls back to the model's suggestion when he didn't", () => {
+    const out = splitBySelection([a], selection([["a", "card"]]));
+    expect(out.card[0].suggestedUnits).toBe(1);
+  });
+
+  it("applies to the free play too", () => {
+    const out = splitBySelection([a], selection([["a", "free", 2.5]]));
+    expect(out.free?.suggestedUnits).toBe(2.5);
+  });
+
+  it("does not mutate the play the engine handed us", () => {
+    // The override must be a copy — mutating would corrupt the same object in
+    // the slate list and in any other view holding it.
+    splitBySelection([a], selection([["a", "card", 3]]));
+    expect(a.suggestedUnits).toBe(1);
   });
 });

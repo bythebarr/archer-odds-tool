@@ -48,11 +48,17 @@ function startTimeLabel(d: Date): string {
   return s.replace(/\s?AM$/, "a").replace(/\s?PM$/, "p");
 }
 
-/** e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Edge · 1.5u · 7:05p ET */
+/**
+ * e.g. `MLB TOT` **NYY @ BOS Over 8.5** +102 · FanDuel · +6.2% Edge · 7:05p ET
+ *
+ * NO UNITS. The stake is the owner's decision, made per play in the deck, so it
+ * is appended by the poster at post time — see appendUnits in postCard. Baking
+ * it in here would let the printed card disagree with the ledger the moment he
+ * sized a play himself.
+ */
 export function playLine(p: OddsPlay): string {
-  const units = p.modelEv !== null ? ` · ${unitsFor(p.modelEv, p.bestPrice)}u` : "";
   const start = p.startUtc ? ` · ${startTimeLabel(p.startUtc)} ET` : "";
-  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}${start}`;
+  return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${start}`;
 }
 
 const FINISH_METHOD_LABEL: Record<string, string> = { ko: "KO/TKO", submission: "submission", decision: "decision" };
@@ -71,13 +77,13 @@ function finishLeanLabel(lean: UfcFinishLean): string {
   return `sees ${method}${round} (${Math.round(lean.finishProb * 100)}% finish)`;
 }
 
-/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Edge · 1.5u · over Ode' Osbourne (58% model) · sees KO/TKO ~R2 (61% finish) */
+/** e.g. 🏆 **Alessandro Costa** +150 · DraftKings · +7.2% Edge · over Ode' Osbourne (58% model) · sees KO/TKO ~R2 (61% finish) — units appended by the poster. */
 export function ufcPlayLine(p: UfcBestPlay): string {
   const marker = p.titleBout ? "🏆 " : "";
   const lean = p.finishLean ? ` · ${finishLeanLabel(p.finishLean)}` : "";
   return (
     `${marker}**${p.pickName}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ` +
-    `${formatEv(p.archerEv)} Edge · ${unitsFor(p.archerEv, p.bestPrice)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
+    `${formatEv(p.archerEv)} Edge · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
   );
 }
 

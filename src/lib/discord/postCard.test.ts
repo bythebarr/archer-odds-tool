@@ -77,12 +77,13 @@ describe("selectionDisplay", () => {
 });
 
 describe("playLine", () => {
-  it("renders a total with its matchup, price, book, EV and units", () => {
-    const line = playLine(play({ side: "over", selectionLabel: "Over 8.5", kind: "total" }));
-    expect(line).toContain("**NYY @ BOS Over 8.5**");
+  it("renders a total with its matchup, price, book and EV — but NOT units", () => {
+    // Units moved out of the sport renderers: the stake is the owner's per-play
+    // decision, appended by the poster, so a line can never print a number the
+    // ledger disagrees with.
+    const line = playLine(play({ kind: "total", side: "over", selectionLabel: "Over 8.5", bestPrice: 102 }));
+    expect(line).toContain("NYY @ BOS Over 8.5");
     expect(line).toContain("+102");
-    expect(line).toContain("Edge");
-    expect(line).toContain("0.75u"); // Kelly: 6.2% edge @ +102 → 0.75u
-    expect(line).toContain("7:05p ET"); // per-line start time
+    expect(line).not.toMatch(/\d+(\.\d+)?u/);
   });
 });

@@ -5,7 +5,7 @@ import { getSelection, splitBySelection } from "@/lib/card/selection";
 import { SPORTS } from "@/lib/engine";
 import { todayEt } from "@/lib/dateEt";
 import { PageShell, PageHeader } from "@/components/PageShell";
-import { pickAction, clearAction } from "./actions";
+import { pickAction, clearAction, unitsAction } from "./actions";
 
 /**
  * The command deck — where the owner turns the engine's slate into the day's
@@ -87,8 +87,11 @@ export default async function DeckPage({
       {/* What happens when the poster fires — the consequence of the ticks below. */}
       <div className="mt-4 rounded-lg border border-border bg-card/50 p-3 text-xs text-muted-foreground">
         <div>
-          👑 <strong className="text-foreground">{split.card.length}</strong> → #todays-card,
-          with units, tracked on the premium record.
+          👑 <strong className="text-foreground">{split.card.length}</strong> → #👑-todays-card ·{" "}
+          <strong className="text-foreground">
+            {split.card.reduce((s, p) => s + p.suggestedUnits, 0).toFixed(2).replace(/\.?0+$/, "")}u
+          </strong>{" "}
+          total, tracked on the premium record.
         </div>
         <div className="mt-1">
           🎯 <strong className="text-foreground">{split.free ? 1 : 0}</strong> → #free-play,
@@ -113,7 +116,9 @@ export default async function DeckPage({
       ) : (
         <ul className="mt-4 space-y-2">
           {plays.map((p) => {
-            const current = selection.byKey.get(p.playKey) ?? null;
+            const pick = selection.byKey.get(p.playKey) ?? null;
+            const current = pick?.stream ?? null;
+            const staked = pick?.units ?? p.suggestedUnits;
             const accent = SPORT_ACCENT.get(p.sportKey) ?? "#06996b";
             return (
               <li
@@ -138,6 +143,9 @@ export default async function DeckPage({
                   <span className={evClass(p.modelEv)}>model {pct(p.modelEv)}</span>
                   <span className={evClass(p.marketEv)}>market {pct(p.marketEv)}</span>
                   <span className="text-muted-foreground">{p.suggestedUnits}u suggested</span>
+                  {pick?.units != null && (
+                    <span className="font-semibold text-[#06996b]">yours: {staked}u</span>
+                  )}
                   <span className="text-muted-foreground">{startLabel(p.startUtc)} ET</span>
                 </div>
 
@@ -170,6 +178,58 @@ export default async function DeckPage({
                     />
                   )}
                 </div>
+
+                {/* Stake sizing appears only once a play is picked — units on an
+                    unpicked play would be a stake on nothing. */}
+                {current && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+                    <span className="mr-1 text-[0.7rem] uppercase tracking-wide text-muted-foreground">
+                      Units
+                    </span>
+                    {[0.5, 1, 1.5, 2, 3].map((u) => (
+                      <UnitButton
+                        key={u}
+                        token={token}
+                        dateEt={dateEt}
+                        playKey={p.playKey}
+                        units={String(u)}
+                        label={`${u}u`}
+                        active={pick?.units === u}
+                      />
+                    ))}
+                    <form action={unitsAction} className="flex items-center gap-1">
+                      <input type="hidden" name="token" value={token} />
+                      <input type="hidden" name="dateEt" value={dateEt} />
+                      <input type="hidden" name="playKey" value={p.playKey} />
+                      <input
+                        type="number"
+                        name="units"
+                        step="0.25"
+                        min="0"
+                        max="25"
+                        inputMode="decimal"
+                        placeholder="custom"
+                        className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                      />
+                      <button
+                        type="submit"
+                        className="rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Set
+                      </button>
+                    </form>
+                    {pick?.units != null && (
+                      <UnitButton
+                        token={token}
+                        dateEt={dateEt}
+                        playKey={p.playKey}
+                        units=""
+                        label="↺ suggested"
+                        active={false}
+                      />
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}
@@ -189,6 +249,42 @@ export default async function DeckPage({
         </form>
       )}
     </PageShell>
+  );
+}
+
+function UnitButton({
+  token,
+  dateEt,
+  playKey,
+  units,
+  label,
+  active,
+}: {
+  token: string;
+  dateEt: string;
+  playKey: string;
+  units: string;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <form action={unitsAction}>
+      <input type="hidden" name="token" value={token} />
+      <input type="hidden" name="dateEt" value={dateEt} />
+      <input type="hidden" name="playKey" value={playKey} />
+      <input type="hidden" name="units" value={units} />
+      <button
+        type="submit"
+        className={
+          "rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors " +
+          (active
+            ? "border-[#06996b] bg-[#06996b] text-white"
+            : "border-border text-muted-foreground hover:text-foreground")
+        }
+      >
+        {label}
+      </button>
+    </form>
   );
 }
 

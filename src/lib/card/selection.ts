@@ -22,9 +22,16 @@ import type { Play } from "@/lib/engine";
 export type { PlayStream };
 
 /** A day's picks, as the deck and the poster both want them: keyed by playKey. */
+/** One ticked play: which ledger it rides, and the owner's stake if he set one. */
+export interface Pick {
+  stream: PlayStream;
+  /** Null → fall back to the model's suggested (quarter-Kelly) stake. */
+  units: number | null;
+}
+
 export interface DaySelection {
-  /** playKey → stream, for every ticked play. */
-  byKey: Map<string, PlayStream>;
+  /** playKey → pick, for every ticked play. */
+  byKey: Map<string, Pick>;
   /** The single free play's key, or null when he hasn't chosen one. */
   freeKey: string | null;
   cardCount: number;
@@ -32,7 +39,7 @@ export interface DaySelection {
 
 export async function getSelection(dateEt: string): Promise<DaySelection> {
   const rows = await prisma.cardSelection.findMany({ where: { dateEt } });
-  const byKey = new Map<string, PlayStream>(rows.map((r) => [r.playKey, r.stream]));
+  const byKey = new Map<string, Pick>(rows.map((r) => [r.playKey, { stream: r.stream, units: r.units }]));
   const free = rows.find((r) => r.stream === "free");
   return {
     byKey,
@@ -68,10 +75,20 @@ export async function setSelection(
     }
     await tx.cardSelection.upsert({
       where: { dateEt_playKey: { dateEt, playKey } },
+      // Deliberately does NOT touch units: re-tapping Card/Free must not silently
+      // discard a stake he already set.
       update: { stream },
       create: { dateEt, playKey, stream },
     });
   });
+}
+
+/**
+ * Set (or clear, with null) the stake on an already-ticked play. A no-op on a
+ * play that isn't picked — units without a pick would be a stake on nothing.
+ */
+export async function setUnits(dateEt: string, playKey: string, units: number | null): Promise<void> {
+  await prisma.cardSelection.updateMany({ where: { dateEt, playKey }, data: { units } });
 }
 
 /** Wipe a day's picks — the deck's "start over". */
@@ -104,13 +121,16 @@ export function splitBySelection(plays: Play[], selection: DaySelection): SplitP
   let free: Play | null = null;
   const missing: string[] = [];
 
-  for (const [key, stream] of selection.byKey) {
-    const play = byKey.get(key);
-    if (!play) {
+  for (const [key, pick] of selection.byKey) {
+    const live = byKey.get(key);
+    if (!live) {
       missing.push(key);
       continue;
     }
-    if (stream === "free") free = play;
+    // Resolve the stake once, here, so everything downstream — the posted line,
+    // the ledger row, the units total in the intro — reads the same number.
+    const play: Play = pick.units === null ? live : { ...live, suggestedUnits: pick.units };
+    if (pick.stream === "free") free = play;
     else card.push(play);
   }
 

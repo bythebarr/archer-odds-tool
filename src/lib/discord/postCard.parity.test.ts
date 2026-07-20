@@ -5,6 +5,7 @@ import { ufcToPlay } from "@/lib/engine/adapters/ufc";
 import { mosesAuthor } from "./brand";
 import { SITE_URL } from "@/lib/siteUrl";
 import { playLine, ufcPlayLine, prettyEventDate } from "@/lib/card/line";
+import { unitsFor } from "@/lib/betting/kelly";
 import type { OddsPlay } from "@/lib/queries/oddsPool";
 import type { Play } from "@/lib/engine";
 import type { UfcBestPlay } from "./ufcBestPlays";
@@ -86,7 +87,7 @@ function oracleMlbEmbed(picks: OddsPlay[]) {
     author: mosesAuthor(),
     title: `⚾ MLB · ${LABEL}`,
     url: `${SITE_URL}/mlb`,
-    description: picks.map(playLine).join("\n"),
+    description: picks.map((p) => `${playLine(p)} · **${unitsFor(p.modelEv!, p.bestPrice)}u**`).join("\n"),
     color: MLB_BLUE,
     footer: { text: RESEARCH_FOOTER },
   };
@@ -98,7 +99,7 @@ function oracleUfcEmbed(bouts: UfcBestPlay[]) {
     author: mosesAuthor(),
     title: `🥊 UFC · ${EVENT_TITLE} · ${prettyEventDate(EVENT_DATE)}`,
     url: `${SITE_URL}/ufc`,
-    description: bouts.map(ufcPlayLine).join("\n"),
+    description: bouts.map((b) => `${ufcPlayLine(b)} · **${unitsFor(b.archerEv, b.bestPrice)}u**`).join("\n"),
     color: UFC_RED,
     footer: { text: RESEARCH_FOOTER },
   };

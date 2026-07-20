@@ -77,6 +77,18 @@ const KIND_TAG: Record<string, string> = { ml: "ML", spread: "SPR", total: "TOT"
  * because nothing on the slate is staked or recorded. The card keeps each
  * sport's capper voice (`display.line`); this is the flat read of the same play.
  */
+/**
+ * Stamp the stake onto a card line. Units live here rather than in each sport's
+ * renderer because the stake is the owner's call — set per play in the deck —
+ * and `suggestedUnits` has already been replaced with his number by
+ * splitBySelection. The slate never gets this: nothing there is staked.
+ */
+export function appendUnits(line: string, p: Play): string {
+  const u = p.suggestedUnits;
+  if (!u) return line;
+  return `${line} · **${String(Number(u.toFixed(2)))}u**`;
+}
+
 export function slateLine(p: Play): string {
   const meta = SPORTS.find((a) => a.key === p.sportKey)?.meta;
   const tag = `${meta?.label.toUpperCase() ?? p.sportKey.toUpperCase()} ${KIND_TAG[p.selection.kind] ?? ""}`.trim();
@@ -185,7 +197,7 @@ export function assembleSections(
       url: chrome.url,
       color: chrome.color,
       lines: group.map((p) =>
-        mode === "slate" ? slateLine(p) : p.display?.line ?? p.selection.label
+        mode === "slate" ? slateLine(p) : appendUnits(p.display?.line ?? p.selection.label, p)
       ),
       count: group.length,
     });
