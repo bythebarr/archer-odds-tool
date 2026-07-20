@@ -184,9 +184,57 @@ async function main() {
     }
   }
 
-  if (PRUNE) await prune(existingChannels, apply);
+  // Must run BEFORE prune: Discord refuses to delete whichever channels a
+  // Community server has designated as its rules/updates channels (error 50074).
+  await repointCommunityChannels(chanByName, apply);
+
+  if (PRUNE) await prune(await api<DiscordChannel[]>(`/guilds/${GUILD}/channels`), apply);
 
   console.log(`\n${apply ? "✓ Provisioning complete." : "Dry run complete — re-run with --apply to build."}\n`);
+}
+
+/**
+ * A Community server designates one channel as its rules channel and one as its
+ * moderator-updates channel, and Discord hard-refuses to delete either (API error
+ * 50074) — which blocks pruning an old layout that still owns those slots.
+ *
+ * So repoint them at the new plan's equivalents first. Both targets are public
+ * and readable by @everyone, which Discord requires of these two slots.
+ *
+ * A no-op on a non-Community server, which has neither slot.
+ */
+const COMMUNITY_RULES_CHANNEL = "welcome-and-rules";
+const COMMUNITY_UPDATES_CHANNEL = "announcements";
+
+interface Guild {
+  features: string[];
+  rules_channel_id: string | null;
+  public_updates_channel_id: string | null;
+}
+
+async function repointCommunityChannels(
+  chanByName: Map<string, DiscordChannel>,
+  apply: boolean
+): Promise<void> {
+  const guild = await api<Guild>(`/guilds/${GUILD}`);
+  if (!guild.features?.includes("COMMUNITY")) return;
+
+  const rules = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_RULES_CHANNEL}`);
+  const updates = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_UPDATES_CHANNEL}`);
+
+  const patch: Record<string, string> = {};
+  if (rules && guild.rules_channel_id !== rules.id) patch.rules_channel_id = rules.id;
+  if (updates && guild.public_updates_channel_id !== updates.id) {
+    patch.public_updates_channel_id = updates.id;
+  }
+  if (!Object.keys(patch).length) return;
+
+  if (!apply) {
+    console.log(`\n  community: WOULD repoint ${Object.keys(patch).join(" + ")} to the new channels`);
+    return;
+  }
+  await api(`/guilds/${GUILD}`, "PATCH", patch);
+  console.log(`\n  community: repointed ${Object.keys(patch).join(" + ")} to the new channels`);
 }
 
 /**
@@ -211,6 +259,7 @@ async function prune(existing: DiscordChannel[], apply: boolean) {
   // Children first, then their (now-empty) categories.
   orphans.sort((a, b) => (a.type === CHANNEL_CATEGORY ? 1 : 0) - (b.type === CHANNEL_CATEGORY ? 1 : 0));
 
+  const failed: string[] = [];
   console.log(`\n--- prune: ${orphans.length} channel(s) not in the plan ---`);
   const skipped = existing.filter((c) => PRUNE_PROTECTED.has(c.name));
   for (const s of skipped) console.log(`  #${s.name} — PROTECTED, keeping`);
@@ -224,8 +273,21 @@ async function prune(existing: DiscordChannel[], apply: boolean) {
       console.log(`  ${kind} ${o.name} — WOULD DELETE`);
       continue;
     }
-    await api(`/channels/${o.id}`, "DELETE");
-    console.log(`  ${kind} ${o.name} — deleted`);
+    // Keep going on failure. Discord refuses some deletes (a Community server's
+    // reserved channels, for one), and aborting the whole pass over a single
+    // stubborn channel would leave the rest of the old layout standing.
+    try {
+      await api(`/channels/${o.id}`, "DELETE");
+      console.log(`  ${kind} ${o.name} — deleted`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`  ${kind} ${o.name} — ✗ SKIPPED: ${msg.slice(0, 140)}`);
+      failed.push(o.name);
+    }
+  }
+  if (failed.length) {
+    console.log(`\n  ⚠️ ${failed.length} could not be deleted: ${failed.join(", ")}`);
+    console.log("     Usually a Community-server reserved channel — re-run after the repoint, or delete by hand.");
   }
   if (!apply) console.log("\n  (dry run — re-run with --prune --apply to actually delete)");
 }
