@@ -132,6 +132,28 @@ DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-ser
 ```
 
 ```bash
+# Verify the REAL server matches the plan (read-only, changes nothing):
+npm run discord:audit
+
+# Empty planned channels of everything except their current pinned copy:
+npm run discord:purge            # counts only
+npm run discord:purge -- --apply # deletes
+```
+
+**`discord:audit` is the one to trust.** The provisioner reports what it
+*attempted*; Discord silently rejects some edits, so the audit is what confirms
+what actually stuck — placement, permissions, the ✅ gate, the AutoMod exempt
+list, leftovers, and whether pinned copy is current. It grades by consequence:
+a premium channel `@everyone` can see is a PROBLEM, a cosmetic permission
+difference is a warning.
+
+**`discord:purge` exists because renaming preserves history.** The provisioner
+reconciles structure in place, so a channel that used to be `#results` still
+holds every post from the old layout — a freshly-built room full of junk. Purge
+empties planned channels of everything except the current pins (including the
+"X pinned a message" system notices Discord auto-posts).
+
+```bash
 # Register (or update) the /value slash command:
 DISCORD_APP_ID=… DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/register-discord-commands.ts
 ```

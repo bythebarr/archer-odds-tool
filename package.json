@@ -40,7 +40,8 @@
     "discord:dry": "tsx scripts/discord/provision-server.ts --prune",
     "discord:sync": "tsx scripts/discord/provision-server.ts --prune --apply",
     "discord:commands": "tsx scripts/register-discord-commands.ts",
-    "discord:audit": "tsx scripts/discord/audit.ts"
+    "discord:audit": "tsx scripts/discord/audit.ts",
+    "discord:purge": "tsx scripts/discord/purge.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
