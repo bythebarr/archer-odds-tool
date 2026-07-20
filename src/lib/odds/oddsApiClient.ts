@@ -276,6 +276,60 @@ export async function fetchEventPlayerProps(
   };
 }
 
+/**
+ * ParlayAPI's bulk player-props row. Flat — one row per (event, book, player,
+ * market, line) with BOTH sides priced — where TOA nests
+ * bookmakers → markets → outcomes and needs one call per event.
+ *
+ * That difference is the whole reason this exists: TOA charged
+ * markets × regions PER GAME, so a 15-game slate cost ~165 credits. This is a
+ * single 3-credit call for the entire slate.
+ */
+export interface ParlayPropRow {
+  event_id: string;
+  sport_key: string;
+  home_team: string;
+  away_team: string;
+  commence_time: string;
+  bookmaker: string;
+  bookmaker_title: string;
+  player: string;
+  market_key: string;
+  market: string;
+  line: number | null;
+  over_price: number | null;
+  under_price: number | null;
+  /** DFS pick-em books (PrizePicks, Underdog) — flat payout, not a real price. */
+  is_dfs_flat_payout?: boolean;
+}
+
+export interface FetchBulkPropsResult {
+  rows: ParlayPropRow[];
+  creditsUsed: number | null;
+  creditsRemaining: number | null;
+}
+
+/**
+ * Every player prop for a sport, in ONE call. ParlayAPI only — TOA has no
+ * equivalent bulk props endpoint, which is why the caller branches on provider.
+ */
+export async function fetchBulkPlayerProps(sportKey: string): Promise<FetchBulkPropsResult> {
+  const url = new URL(`${BASE_URL}/sports/${sportKey}/props`);
+  url.searchParams.set("apiKey", oddsApiKey());
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`ParlayAPI props ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+  const used = res.headers.get("x-requests-used");
+  const left = res.headers.get("x-requests-remaining");
+  return {
+    rows: (await res.json()) as ParlayPropRow[],
+    creditsUsed: used ? Number(used) : null,
+    creditsRemaining: left ? Number(left) : null,
+  };
+}
+
 export interface OddsApiScoreEntry {
   name: string;
   score: string;
