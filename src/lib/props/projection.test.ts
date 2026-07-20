@@ -53,6 +53,50 @@ describe("projectPropHit", () => {
     const p = projectPropHit({ seasonHits: 200, seasonSample: 200, recentRate: 1, baseRate: 0.9 })!;
     expect(p.probability).toBeLessThanOrEqual(0.98);
   });
+
+  describe("season-progress ramp (pitching)", () => {
+    const input = { seasonHits: 5, seasonSample: 10, recentRate: 0.5, baseRate: 0.4 };
+    const ramp = { slope: 0.02, pivot: 5, cap: 8 };
+
+    it("is inert by default (batting keeps the same number)", () => {
+      const bare = projectPropHit(input)!;
+      const withEmpty = projectPropHit(input, {})!;
+      expect(withEmpty.probability).toBe(bare.probability);
+    });
+
+    it("adds slope·(progress − pivot) above the pivot, holding flat past the cap", () => {
+      const bare = projectPropHit(input)!; // seasonSample 10, capped to 8
+      const ramped = projectPropHit(input, { ramp })!;
+      // (min(10,8) − 5) · 0.02 = +0.06
+      expect(ramped.probability - bare.probability).toBeCloseTo(0.06, 10);
+    });
+
+    it("pushes below the pivot down, and lands at zero adjustment on the pivot", () => {
+      const early = projectPropHit({ ...input, seasonSample: 3 }, { ramp })!;
+      const bareEarly = projectPropHit({ ...input, seasonSample: 3 })!;
+      expect(early.probability - bareEarly.probability).toBeCloseTo(-0.04, 10); // (3−5)·0.02
+      const onPivot = projectPropHit({ ...input, seasonSample: 5 }, { ramp })!;
+      const bareOnPivot = projectPropHit({ ...input, seasonSample: 5 })!;
+      expect(onPivot.probability - bareOnPivot.probability).toBeCloseTo(0, 10);
+    });
+  });
+
+  describe("contextShift (matchup context)", () => {
+    const input = { seasonHits: 5, seasonSample: 10, recentRate: 0.5, baseRate: 0.4 };
+
+    it("adds the caller's shift directly to the probability", () => {
+      const bare = projectPropHit(input)!;
+      const shifted = projectPropHit(input, { contextShift: 0.05 })!;
+      expect(shifted.probability - bare.probability).toBeCloseTo(0.05, 10);
+    });
+
+    it("still respects the [floor, ceiling] clamp", () => {
+      const hi = projectPropHit(input, { contextShift: 5 })!;
+      const lo = projectPropHit(input, { contextShift: -5 })!;
+      expect(hi.probability).toBeLessThanOrEqual(0.98);
+      expect(lo.probability).toBeGreaterThanOrEqual(0.02);
+    });
+  });
 });
 
 describe("pooledBaseRate", () => {

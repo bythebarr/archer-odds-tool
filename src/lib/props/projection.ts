@@ -63,25 +63,81 @@ export interface PropProjection {
 }
 
 /**
+ * Per-family calibration overrides. The default K/tilt were fit on BATTING props;
+ * pitching props ride a within-season workload ramp (starters stretch out from
+ * short April outings to 6+ inning summer starts) that a season-pooled base rate
+ * understates, so they want their own K/tilt. Omitted fields fall back to the
+ * module defaults, keeping existing callers byte-for-byte identical.
+ */
+export interface PropProjectionOptions {
+  /** Override the population-prior strength (games). Defaults to PRIOR_STRENGTH_GAMES. */
+  priorGames?: number;
+  /** Override the recency tilt weight. Defaults to RECENCY_TILT. */
+  recencyTilt?: number;
+  /**
+   * Season-progress ramp correction (pitching only). A calibration study proved
+   * every pitching counting stat rides a within-season workload ramp: starters
+   * stretch from short April outings to 6+ inning summer starts, so the over-rate
+   * climbs ~linearly with how deep into the season the pitcher is — a bias a
+   * season-pooled base rate and a flat season rate structurally cannot track
+   * (K/tilt tuning moved it <0.3pt). `seasonSample` — the count of prior starts —
+   * IS that progress index, so the fix is a linear adjustment in it:
+   *   adjustment = slope · (seasonSample − pivot)
+   * `slope` is prob-per-prior-start (fit per prop on the older games, validated on
+   * the newer); `pivot` is where the adjustment crosses zero (the season-average
+   * progress). `cap` bounds the progress index — workload saturates (a starter
+   * tops out near 6–7 innings, he can't ramp forever), so past `cap` starts the
+   * correction holds flat; without it a linear term overshoots late-season games.
+   * Omit for batting — it has no ramp (a regular's PA are flat all year).
+   */
+  ramp?: { slope: number; pivot: number; cap?: number };
+  /**
+   * A pre-computed additive probability shift for external matchup context the
+   * player-only rate can't see — e.g. the opposing lineup's strikeout tendency
+   * for a pitcher-K prop (a validated ~+8–10pt swing soft→whiff-prone lineup).
+   * The CALLER owns the feature+coefficient (see lib/props/opponentKRate.ts) and
+   * passes the finished shift, keeping this function generic. Summed in before
+   * the [floor, ceiling] clamp; defaults to 0 (no context).
+   */
+  contextShift?: number;
+}
+
+/**
  * Project a player's next-game hit probability for one prop line. Pure and
  * DB-free so it's unit-testable; the board layer supplies the population
  * baseRate (see mlbBoard.ts). Returns null only when there's no season sample
  * to stand on — nothing to project from.
  */
-export function projectPropHit(input: PropProjectionInput): PropProjection | null {
+export function projectPropHit(
+  input: PropProjectionInput,
+  options: PropProjectionOptions = {}
+): PropProjection | null {
   const { seasonHits, seasonSample, recentRate, baseRate } = input;
   if (seasonSample <= 0) return null;
 
+  const priorGames = options.priorGames ?? PRIOR_STRENGTH_GAMES;
+  const recencyTilt = options.recencyTilt ?? RECENCY_TILT;
+
   // Empirical-Bayes posterior mean: prior of K games at the base rate, plus the
   // player's actual season record.
-  const shrunkRate = (seasonHits + PRIOR_STRENGTH_GAMES * baseRate) / (seasonSample + PRIOR_STRENGTH_GAMES);
+  const shrunkRate = (seasonHits + priorGames * baseRate) / (seasonSample + priorGames);
 
   // Small additive nudge toward recent form (recentRate − seasonRate), so a
   // hot/cold streak moves the number a little without letting it run the show.
   const seasonRate = seasonHits / seasonSample;
-  const tilt = recentRate === null ? 0 : RECENCY_TILT * (recentRate - seasonRate);
+  const tilt = recentRate === null ? 0 : recencyTilt * (recentRate - seasonRate);
 
-  const probability = Math.min(Math.max(shrunkRate + tilt, PROB_FLOOR), PROB_CEILING);
+  // Season-progress ramp: a bounded linear correction in how deep into the
+  // season the pitcher is (seasonSample = prior starts), held flat past `cap`
+  // because workload saturates. Zero unless a family supplies it.
+  const ramp = options.ramp
+    ? options.ramp.slope * (Math.min(seasonSample, options.ramp.cap ?? Infinity) - options.ramp.pivot)
+    : 0;
+
+  // Caller-supplied matchup shift (opponent context), 0 when absent.
+  const contextShift = options.contextShift ?? 0;
+
+  const probability = Math.min(Math.max(shrunkRate + tilt + ramp + contextShift, PROB_FLOOR), PROB_CEILING);
   return { probability, shrunkRate, edgeVsBase: probability - baseRate };
 }
 

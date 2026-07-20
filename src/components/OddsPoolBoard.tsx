@@ -15,13 +15,9 @@ import { useSlip, buildSlipPickId, type SlipPick, type SlipSport } from "@/lib/s
 import type { FeedFreshness } from "@/lib/freshness";
 import { EmptyState } from "./EmptyState";
 import { FreshnessStamp } from "./FreshnessStamp";
-
-const SPORT_META: Record<SlateSport, { label: string; icon: string }> = {
-  mlb: { label: "MLB", icon: "⚾" },
-  tennis: { label: "Tennis", icon: "🎾" },
-  soccer: { label: "Soccer", icon: "⚽" },
-  ufc: { label: "UFC", icon: "🥊" },
-};
+// Sport label/icon comes from the shared client-safe meta list (the ONE source),
+// so this board's chips can't drift from nav/the Slate.
+import { SPORT_META } from "@/lib/sports";
 
 const KIND_LABEL: Record<MarketKind, string> = { ml: "ML", spread: "Spread", total: "Total", prop: "Prop" };
 const KINDS: MarketKind[] = ["ml", "spread", "total", "prop"];

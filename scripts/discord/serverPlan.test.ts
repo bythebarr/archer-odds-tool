@@ -17,13 +17,68 @@ describe("SERVER_PLAN integrity", () => {
     expect(new Set(chans).size).toBe(chans.length);
   });
 
+  it("no channel name collides with another's alias (a rename would fight itself)", () => {
+    const names = new Set(SERVER_PLAN.categories.flatMap((c) => c.channels.map((ch) => ch.name)));
+    for (const cat of SERVER_PLAN.categories) {
+      for (const ch of cat.channels) {
+        for (const alias of ch.aliases ?? []) {
+          expect(names.has(alias), `alias "${alias}" is also a live channel name`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("image-only channels are public — the AutoMod rule is pointless on a hidden one", () => {
+    for (const cat of SERVER_PLAN.categories) {
+      for (const ch of cat.channels) {
+        if (ch.imageOnly) expect(cat.visibility).toBe("public");
+      }
+    }
+  });
+
+  it("claims all three reserved Community slots exactly once", () => {
+    // An unclaimed slot stays on an old channel, and Discord then refuses to
+    // delete that channel forever (error 50074) — which is precisely how the
+    // old #rules and #mod-log survived three prune passes.
+    const claimed = SERVER_PLAN.categories
+      .flatMap((c) => c.channels)
+      .map((ch) => ch.communityRole)
+      .filter(Boolean);
+    expect([...claimed].sort()).toEqual(["rules", "safety", "updates"]);
+  });
+
+  it("the ✅ screening terms fit Discord's limits (5 entries, 300 chars each)", () => {
+    // Over either limit and the member-verification PATCH is rejected, which
+    // silently leaves the room with NO rules gate at all.
+    expect(SERVER_PLAN.screeningRules.length).toBeLessThanOrEqual(5);
+    for (const rule of SERVER_PLAN.screeningRules) {
+      expect(rule.length, `"${rule.slice(0, 40)}…" is ${rule.length} chars`).toBeLessThanOrEqual(300);
+    }
+  });
+
+  it("the screening terms carry the leak rule — the one that gets people banned", () => {
+    expect(SERVER_PLAN.screeningRules.join(" ").toLowerCase()).toContain("premium");
+  });
+
+  it("every pinned message fits Discord's 2000-char cap", () => {
+    // The provisioner posts each pinned entry as ONE message; Discord rejects
+    // anything longer, and a rejected pin fails provisioning mid-run.
+    for (const cat of SERVER_PLAN.categories) {
+      for (const ch of cat.channels) {
+        for (const [i, msg] of (ch.pinned ?? []).entries()) {
+          expect(msg.length, `#${ch.name} pin ${i + 1} is ${msg.length} chars`).toBeLessThanOrEqual(2000);
+        }
+      }
+    }
+  });
+
   it("only uses known visibilities, and every gated category resolves to defined roles", () => {
     const roleNames = new Set(SERVER_PLAN.roles.map((r) => r.name));
     for (const cat of SERVER_PLAN.categories) {
-      expect(["public", "verified", "premium", "staff"]).toContain(cat.visibility);
+      expect(["public", "premium", "staff"]).toContain(cat.visibility);
     }
-    // Premium/Verified/Mod/Archer are referenced by the overwrite logic — ensure they exist.
-    for (const needed of ["Premium", "Verified", "Mod", "Archer"]) {
+    // Premium/Mod/Archer are referenced by the overwrite logic — ensure they exist.
+    for (const needed of ["Premium", "Mod", "Archer"]) {
       expect(roleNames.has(needed)).toBe(true);
     }
   });

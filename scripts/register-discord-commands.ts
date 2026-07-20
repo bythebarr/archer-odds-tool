@@ -1,6 +1,11 @@
 /**
- * Registers the /betcheck slash command with Discord. Run once (and again
- * whenever the command definition changes):
+ * Registers the `/value` slash command with Discord. Run once, and again
+ * whenever the command definition below changes:
+ *
+ *   npm run discord:commands
+ *
+ * Reads DISCORD_APP_ID / DISCORD_BOT_TOKEN / DISCORD_GUILD_ID from .env, or pass
+ * them inline:
  *
  *   DISCORD_APP_ID=... DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... \
  *     npx tsx scripts/register-discord-commands.ts
@@ -10,57 +15,34 @@
  * appear). Needs the bot token only here, never at runtime.
  */
 
+import "dotenv/config";
+
 const APP_ID = process.env.DISCORD_APP_ID;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 
 const STRING_OPTION = 3;
 
+// Deliberately two options, not five. The old MLB-only /betcheck asked for
+// market/side/line separately; matching against the board by name means the
+// member just types what they'd say out loud, and it works for every sport.
 const commands = [
   {
-    name: "betcheck",
-    description: "Grade a bet's value vs Archer's fair-value model (MLB)",
+    name: "value",
+    description: "Is your bet worth it? Prices any play on today's board — every sport.",
     type: 1, // CHAT_INPUT
-    // Discord requires all `required` options before optional ones.
     options: [
       {
         type: STRING_OPTION,
-        name: "team",
-        description: "Team you're betting (e.g. Yankees or NYY)",
+        name: "play",
+        description: "The play — team, player, or selection (e.g. Yankees, Alcaraz, Over 8.5)",
         required: true,
       },
       {
         type: STRING_OPTION,
         name: "price",
-        description: "American odds you're getting (e.g. -120 or +105)",
+        description: "American odds you're getting (e.g. -120 or +145)",
         required: true,
-      },
-      {
-        type: STRING_OPTION,
-        name: "market",
-        description: "Moneyline (default), spread, or total",
-        required: false,
-        choices: [
-          { name: "Moneyline", value: "ml" },
-          { name: "Spread (runline)", value: "spread" },
-          { name: "Total (over/under)", value: "total" },
-        ],
-      },
-      {
-        type: STRING_OPTION,
-        name: "side",
-        description: "For totals: over or under",
-        required: false,
-        choices: [
-          { name: "Over", value: "over" },
-          { name: "Under", value: "under" },
-        ],
-      },
-      {
-        type: STRING_OPTION,
-        name: "line",
-        description: "The point you took (spread/total), e.g. -1.5 or 8.5",
-        required: false,
       },
     ],
   },

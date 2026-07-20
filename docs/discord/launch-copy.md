@@ -9,18 +9,20 @@ to taste before pasting.
 
 ## 1. Server + channel structure
 
-**🟢 FREE (open to anyone — the funnel)**
-- `#start-here` — the pitch + what premium unlocks + join button (Whop link)
-- `#todays-lean` — one free play/day, auto-posted by Archer (selection only)
-- `#results` — running W/L + unit record, updated daily. **Never delete a loss.**
+Six channels, no more. The source of truth is `scripts/discord/serverPlan.ts` —
+if this list and that file disagree, the file wins.
 
-**🔒 PREMIUM (Whop-gated role)**
-- `#full-card` — the whole daily +EV card with the number + best book (auto-posted)
-- `#props` — per-event prop plays
-- `#line-moves` — value/steam alerts
-- `#by-sport` — MLB / UFC / F1 / tennis / soccer threads
-- `#tail-chat` — community (the real retention engine)
-- `#bankroll-101` — units, CLV, staking discipline
+**🟢 START HERE (public)**
+- `#start-here` — the pitch + how the room works + rules + disclaimer + join link (Whop)
+- `#announcements` — server news and launch drops
+
+**👑 THE CARD (Whop-gated @Premium)**
+- `#todays-card` — the whole daily card: every play, the number, the best book (auto-posted)
+- `#results` — running W/L + unit record, updated daily. **Never delete a loss.**
+- `#chat` — talk through the card
+
+**🛠️ STAFF**
+- `#command-deck` — your cockpit, invisible to members
 
 ---
 
@@ -33,9 +35,8 @@ to taste before pasting.
 > is actually in your favor. You get the plays, the EV, and the best book to get
 > them at. We track every pick in units, in the open, wins and losses.
 >
-> **Free here:** one lean a day + our full public record.
-> **Premium unlocks:** the complete daily card, EV on every play, best-price line
-> shopping across books, prop plays, line-move alerts, and the community.
+> **Inside you get:** the complete daily card, EV on every play, best-price line
+> shopping across books, prop plays, and a public record you can audit.
 >
 > 👉 **Start a 3-day free trial:** [Whop link]
 >
@@ -118,21 +119,24 @@ to taste before pasting.
 ## 7. How the auto-poster connects (for you, not members)
 
 The tool posts the card itself — you don't copy/paste plays daily:
-- Create a **webhook** on your `#full-card` channel → set it as `DISCORD_WEBHOOK_URL`.
-- (Optional) a webhook on `#todays-lean` → `DISCORD_FREE_WEBHOOK_URL`.
+- Create a **webhook** on `#todays-card` → set it as `DISCORD_WEBHOOK_URL`.
+- Create a **webhook** on `#results` → set it as `DISCORD_RESULTS_WEBHOOK_URL`.
 - The `post-discord` cron fires daily (14:30 UTC / 10:30am ET, right after the
-  morning odds poll) and posts the qualifying +EV card to premium and one free
-  lean to the public channel — early enough to land before first pitch on day
-  slates. No webhook set = nothing posts.
+  morning odds poll) and posts the card — early enough to land before first pitch
+  on day slates. `post-results` follows at 15:00 UTC / 11am ET with the graded
+  recap. No webhook set = nothing posts.
+- That's the whole cadence: **two posts a day.** There is no free lean.
 
 ---
 
 ## 8. Launch checklist
 
-- [ ] Build channels + roles + paste rules/disclaimer/pitch
+- [ ] Run the provisioner (`--apply`) to build the 6 channels + 3 roles + the `#start-here` pin
+- [ ] Delete any leftover channels from the old layout (the provisioner won't)
 - [ ] Whop product + Discord connect + 3-day trial
 - [ ] **Paper-log 1–2 weeks of picks first** so `#results` launches with a record
-- [ ] Add the `#full-card` webhook → `DISCORD_WEBHOOK_URL` (prod env)
+- [ ] Add the `#todays-card` webhook → `DISCORD_WEBHOOK_URL` (prod env)
+- [ ] Add the `#results` webhook → `DISCORD_RESULTS_WEBHOOK_URL` (prod env)
 - [ ] Open Founders tier to your network / one relevant community
 - [ ] Post daily, religiously — never hide a loss
 - [ ] Flip Founders → standard $25 once the room feels alive

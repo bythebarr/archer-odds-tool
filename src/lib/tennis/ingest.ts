@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchOdds, fetchSportsList, type OddsApiEvent, type OddsApiMarketKey } from "@/lib/odds/oddsApiClient";
 import { storeBookmakerOdds } from "@/lib/odds/storeOdds";
 import { PREFERRED_TENNIS_SPORT_KEY, FALLBACK_TENNIS_SPORT_KEY } from "./tournamentAllowlist";
+import { surfaceForSportKey } from "./surface";
 
 /** h2h only (match winner) — see the tennis plan doc's credit budget and non-goals. */
 const TENNIS_MARKETS: OddsApiMarketKey[] = ["h2h"];
@@ -39,9 +40,16 @@ async function upsertPlayer(name: string) {
  * exist, keyed by the Odds API's own event id (known at creation, so no
  * fuzzy name/time-window matching is needed the way MLB's is).
  */
-async function upsertMatchForEvent(event: OddsApiEvent) {
+async function upsertMatchForEvent(event: OddsApiEvent, surface: string | null) {
   const existing = await prisma.game.findUnique({ where: { oddsApiEventId: event.id, sport: "tennis" } });
-  if (existing) return existing;
+  if (existing) {
+    // Backfill surface onto a match created before we tracked it (or by an earlier
+    // poll that couldn't resolve the tournament); never overwrite a known surface.
+    if (existing.surface === null && surface !== null) {
+      return prisma.game.update({ where: { id: existing.id }, data: { surface } });
+    }
+    return existing;
+  }
 
   const [homePlayer, awayPlayer] = await Promise.all([
     upsertPlayer(event.home_team),
@@ -54,6 +62,7 @@ async function upsertMatchForEvent(event: OddsApiEvent) {
       oddsApiEventId: event.id,
       season: new Date(event.commence_time).getUTCFullYear(),
       scheduledStartUtc: new Date(event.commence_time),
+      surface,
       homePlayerId: homePlayer.id,
       awayPlayerId: awayPlayer.id,
     },
@@ -89,6 +98,7 @@ export async function pollAndStoreTennisOdds(): Promise<PollTennisOddsSummary> {
   }
 
   const { events, creditsUsed, creditsRemaining } = await fetchOdds(sportKey, TENNIS_MARKETS, TENNIS_REGIONS);
+  const surface = surfaceForSportKey(sportKey); // one tournament per poll → one surface
 
   let matchesStored = 0;
   let snapshotsWritten = 0;
@@ -101,7 +111,7 @@ export async function pollAndStoreTennisOdds(): Promise<PollTennisOddsSummary> {
     const minutesToStart = (new Date(event.commence_time).getTime() - now.getTime()) / 60_000;
     if (minutesToStart < 0) continue;
 
-    const match = await upsertMatchForEvent(event);
+    const match = await upsertMatchForEvent(event, surface);
     matchesStored++;
     snapshotsWritten += await storeBookmakerOdds(match.id, event.home_team, event.away_team, event.bookmakers);
   }

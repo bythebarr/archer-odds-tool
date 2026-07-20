@@ -1,6 +1,7 @@
 import { getSlateForDate, type SlateSport, type SlateSide } from "./slate";
 import { getOddsPoolForDate } from "./oddsPool";
 import { getNextRace } from "./f1";
+import { SPORT_ORDER } from "@/lib/sports";
 import type { NavSport } from "@/lib/sports";
 
 /**
@@ -35,7 +36,7 @@ export interface HomeData {
   upNext: HomeUpNext[];
 }
 
-const SPORT_ORDER: SlateSport[] = ["mlb", "ufc", "tennis", "soccer"];
+// SPORT_ORDER (the odds-Slate sports) is derived from the registry — see @/lib/sports.
 // F1 has no daily slate; it's "on deck" (count 1) only inside race week.
 const F1_ON_DECK_MS = 8 * 24 * 60 * 60 * 1000;
 

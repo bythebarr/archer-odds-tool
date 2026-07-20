@@ -23,8 +23,12 @@ import { computeFinishProjection, scheduledRoundsForBout, type FinishMethod } fr
  * free signals: the Archer model probability (MLB) and, later, per-sport models.
  */
 
-export type SlateSport = "mlb" | "tennis" | "soccer" | "ufc";
-export const SLATE_SPORTS: readonly SlateSport[] = ["mlb", "tennis", "soccer", "ufc"] as const;
+// SlateSport is derived from the sport registry now (the odds-Slate sports —
+// every registered sport except results-only ones like F1). Imported for local
+// use and re-exported so the many `from "./slate"` importers keep resolving it.
+// Type-only → no runtime dependency on the engine from this query module.
+import type { SlateSport } from "@/lib/engine";
+export type { SlateSport };
 
 export interface SlateSide {
   name: string;

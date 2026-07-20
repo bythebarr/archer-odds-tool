@@ -15,7 +15,35 @@
     "poll:odds": "tsx scripts/poll-odds.ts",
     "poll:odds:tennis": "tsx scripts/poll-odds-tennis.ts",
     "poll:odds:soccer": "tsx scripts/poll-odds-soccer.ts",
-    "backtest:ufc": "tsx scripts/backtest-ufc-calibration.ts"
+    "backtest:ufc": "tsx scripts/backtest-ufc-calibration.ts",
+    "backtest:mlb": "tsx scripts/backtest-mlb-calibration.ts",
+    "backtest:tennis": "tsx scripts/backtest-tennis-calibration.ts",
+    "backtest:nfl": "tsx scripts/backtest-nfl-calibration.ts",
+    "backtest:soccer": "tsx scripts/backtest-soccer-calibration.ts",
+    "backtest:soccer:clv": "tsx scripts/backtest-soccer-clv.ts",
+    "backtest:tennis:clv": "tsx scripts/backtest-tennis-clv.ts",
+    "backtest:nfl:clv": "tsx scripts/backtest-nfl-clv.ts",
+    "backtest:all": "tsx scripts/backtest-all.ts",
+    "backtest:props": "tsx scripts/backtest-props-edge.ts",
+    "calibrate:pitchers": "tsx scripts/calibrate-pitcher-props.ts",
+    "matchup:pitcherk": "tsx scripts/matchup-pitcher-k.ts",
+    "import:tennis": "tsx scripts/import-tennis-archive.ts",
+    "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts",
+    "matchup:batter": "tsx scripts/matchup-batter.ts",
+    "fit:pitcherramps": "tsx scripts/fit-pitcher-ramps.ts",
+    "matchup:platoon": "tsx scripts/matchup-platoon.ts",
+    "matchup:park": "tsx scripts/matchup-park.ts",
+    "matchup:batterpark": "tsx scripts/matchup-batter-park.ts",
+    "matchup:sb": "tsx scripts/matchup-sb.ts",
+    "matchup:rest": "tsx scripts/matchup-rest.ts",
+    "discord:plan": "tsx scripts/discord/provision-server.ts --plan",
+    "discord:dry": "tsx scripts/discord/provision-server.ts --prune",
+    "discord:sync": "tsx scripts/discord/provision-server.ts --prune --apply",
+    "discord:commands": "tsx scripts/register-discord-commands.ts",
+    "discord:audit": "tsx scripts/discord/audit.ts",
+    "discord:purge": "tsx scripts/discord/purge.ts",
+    "discord:webhooks": "tsx scripts/discord/webhooks.ts",
+    "discord:testpost": "tsx scripts/discord/test-post.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -50,6 +78,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.22.5",
     "typescript": "^5",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "xlsx": "^0.18.5"
   }
 }

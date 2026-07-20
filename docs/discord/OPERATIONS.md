@@ -1,89 +1,268 @@
 # ARCHR Discord — operations runbook
 
-Everything that runs the ARCHR Discord: what's live, the scripts that built it,
+Everything that runs the ARCHR Discord: what's live, the script that built it,
 the knobs to tune, and the manual steps left before opening. Companion to
-`launch-copy.md` (the paste-ready copy) and the server blueprint artifact.
+`launch-copy.md` (the paste-ready copy).
+
+## The shape
+
+**13 channels, 3 roles.** Cut down from 25 and then rebuilt to the owner's spec.
+
+```
+📌 IMPORTANT (public)   #welcome-and-rules · #go-premium · #announcements
+🎯 FREE      (public)   #how-this-works · #free-play · #results · #tips
+👑 PREMIUM   (paid)     #todays-card · #ev-slate · #value-check
+👥 COMMUNITY (public)   #wins · #purchases
+🛠️ STAFF     (staff)    #command-deck
+```
+
+The bar for adding a channel: **something posts to it every day, or the room is
+actively asking for it.** Not "it'd be nice to have."
+
+Premium channels are genuinely **hidden**, not "visible but locked" — Discord
+shows live messages to anyone who can view a channel, so a locked-but-visible
+`#ev-slate` would leak exactly what rule 4 bans. `#go-premium` names each premium
+channel and its contents instead, doing the FOMO job with no leak surface.
+
+## The three streams — the core product architecture
+
+Everything downstream depends on this split. Don't collapse it.
+
+| Stream | Channel | Units? | Recorded? |
+| --- | --- | --- | --- |
+| **card** | `#todays-card` | ✅ | ✅ the headline record |
+| **free** | `#free-play` | ✅ | ✅ its own separate record |
+| **slate** | `#ev-slate` | ❌ | ❌ never |
+
+The engine finds far more +EV plays than anyone should fire at in a day. The
+owner handpicks the card and the one free play in **`/deck`**; everything he
+doesn't pick posts to the slate carrying no units and never touches a ledger.
+
+`#results` posts both records as separate embeds — never summed, so the free play
+can't flatter or drag the premium number. Free members see both.
 
 ## What's live
 
-All posts sign as **Moses, Leader of Many** (the webhook username). Moses's day, in order:
+All posts sign as **Moses, Leader of Many** (the webhook username).
 
 | Piece | Where | Trigger |
 | --- | --- | --- |
-| **☀️ Morning slate drop** (today's board + fight-week flag) | `src/lib/discord/mosesDaily.ts` `postMorningDrop` | `post-morning` cron, 13:00 UTC / 9am ET |
-| **📚 Moses 101** (rotating glossary lesson) | `src/lib/discord/mosesDaily.ts` `postTeachingDrop` | `post-teaching` cron, 15:30 UTC / 11:30am ET |
-| **#results grader** (recap + streak/last-10) | `src/lib/discord/postResults.ts` → `#results` | `post-results` cron, 15:00 UTC / 11am ET |
-| **Archer's Best Plays** (MLB model +EV card) | `src/lib/discord/postCard.ts` → `#full-card` (currently `#paper-log`) | `post-discord` cron, 14:30 UTC / 10:30am ET (early, to beat first pitch) |
-| **Free lean** (funnel tease) | same poster → `#todays-lean` | same cron (needs `DISCORD_FREE_WEBHOOK_URL`) |
-| **UFC fighter-math leans** | `src/lib/discord/ufcBestPlays.ts` → `#fight-night` | same poster, on fight weeks (3-day lookahead) |
-| **/betcheck** (ML · spread · total value grader) | `src/app/api/discord/interactions/route.ts` | slash command in the server |
+| **The card** (handpicks, with units) | `postCard.ts` → `#todays-card` | card tick |
+| **The free play** (one, with units) | same poster → `#free-play` | same tick |
+| **The slate** (everything unpicked, no units) | same poster → `#ev-slate` | same tick |
+| **Results** (both ledgers, streak/last-10) | `postResults.ts` → `#results` | results tick |
+| **Tip of the day** | `postTips.ts` → `#tips` | card tick, after 9am ET |
+| **`/value`** (price any play, any sport) | `valueCheck.ts` + `api/discord/interactions` | member slash command |
 
-Preview the whole daily cadence (no posting) at **`/preview/discord`** — behind the site password.
+### Timing is event-driven, not clock-driven
+
+A fixed time is a baseball assumption. Instead:
+
+- **The card posts 3 hours before the day's FIRST event**, whatever sport that
+  is. A 1pm ET tennis match pulls the card to 10am; a 10pm UFC main card pushes
+  it to 7pm. `LEAD_HOURS` in `src/lib/discord/schedule.ts`.
+- **Results post the moment the day's LAST tracked play settles** — not on a
+  morning timer.
+- **The tip is the exception, and posts on a clock** (after 9am ET). It's tied to
+  no event, and the days with no slate are exactly the days a free member needs a
+  reason to open the room — so it must not be gated on the card. It rides the
+  card tick rather than a cron of its own, with its own marker, and a #tips
+  failure is swallowed so it can never take the card down.
+
+Vercel crons are fixed-schedule, so both are **ticks** (`post-discord` every 15m,
+`post-results` every 30m) that usually do nothing and ask "is it time yet?"
+Idempotency comes from a PollLog marker keyed by ET date, written only after a
+webhook actually resolves.
+
+Two deliberate behaviors worth knowing before you debug them:
+- **A missed tick posts LATE, it does not skip the day.** There's no cutoff — a
+  late card is recoverable, a missing one looks like a dead room.
+- **The recap waits for every tracked play to settle.** A partial record on the
+  trust channel is worse than a late one. Voided plays count as settled, so an
+  unsupported sport can't hold a recap hostage.
+
+### Every sport, only when it's on
+
+No sport is special in the poster any more — section chrome (icon, label, accent,
+link) derives from each adapter's own `meta`, and **a sport with no plays renders
+nothing**. That's why a quiet baseball day no longer posts an empty MLB card and
+UFC is simply absent the six days a week it isn't on. Event-timed surfacing falls
+out of the data, not a per-sport rule.
+
+Preview all three streams (no posting) at **`/preview/discord`**; make the picks
+at **`/deck`**. Both behind the site password.
 
 ## Env vars
 
 **Production (Vercel, `archr2` scope):**
-- `DISCORD_WEBHOOK_URL` — the premium card channel (today: `#paper-log`; repoint to `#full-card` at launch).
-- `DISCORD_RESULTS_WEBHOOK_URL` — the results recap channel.
-- `DISCORD_MOSES_WEBHOOK_URL` — Moses's daily rhythm (morning drop + Moses 101). **Unset = both dormant.** Point it at the room's main channel to light them up. Crons are already scheduled; they no-op until this is set.
-- `DISCORD_FREE_WEBHOOK_URL` — optional free-lean channel.
-- `DISCORD_PUBLIC_KEY` — verifies `/betcheck` interaction signatures. Unset = command endpoint returns 503 (dormant).
+- `DISCORD_WEBHOOK_URL` — `#todays-card` (today: `#paper-log`). **Unset = the whole drop is dormant.**
+- `DISCORD_FREE_WEBHOOK_URL` — `#free-play`. Unset = the free play is skipped, the rest still posts.
+- `DISCORD_SLATE_WEBHOOK_URL` — `#ev-slate`. Unset = the slate is skipped, the rest still posts.
+- `DISCORD_RESULTS_WEBHOOK_URL` — `#results`. **Unset = dormant.**
+- `DISCORD_TIPS_WEBHOOK_URL` — `#tips`. Unset = the daily tip is skipped.
+- `DISCORD_PUBLIC_KEY` — verifies `/value` interaction signatures. Unset = the endpoint 503s (dormant).
+- `CRON_SECRET` — also gates `/deck` (`?token=…`) and `/api/admin/*`.
 - `SITE_ACCESS_PASSWORD` — Basic Auth gate on the whole site (`/api/*` is exempt so Discord + crons work).
 
+Each channel is independently dormant, so the room can be brought up one surface
+at a time.
+
 **Local only (for the ops scripts below — never stored in prod):**
-- `DISCORD_BOT_TOKEN` — the bot token. Used to provision/seed/register.
+- `DISCORD_BOT_TOKEN` — the bot token.
 - `DISCORD_GUILD_ID` — the server id.
 - `DISCORD_APP_ID` — the application id (command registration only).
 
-## The scripts
+## The script
 
-All idempotent and safe to re-run. Run from repo root.
+Idempotent and safe to re-run. Run from repo root.
 
 ```bash
 # Preview the whole server structure (no token needed):
 npx tsx scripts/discord/provision-server.ts --plan
 
-# Build/repair the server (roles, categories, channels, locks, pinned rules):
+# Dry run against the real server (reads only, shows the diff):
+DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts
+
+# Build/repair the server (roles, categories, channels, locks, pins):
 DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --apply
 
-# Seed welcome/how-to content into the bare channels (skips any with pins):
-DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/seed-content.ts
+# Reconcile DOWN too — report, then delete, anything not in the plan:
+DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --prune
+DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --prune --apply
+```
 
-# Elevate to a Community server — icon, Community mode, Welcome Screen, Onboarding,
-# :archr: emoji, Hall of Cashes forum, Fight Night event (idempotent, safe to re-run):
-DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/pro-upgrade.ts
+```bash
+# Verify the REAL server matches the plan (read-only, changes nothing):
+npm run discord:audit
 
-# Register (or update) the /betcheck slash command to the server:
+# Empty planned channels of everything except their current pinned copy:
+npm run discord:purge            # counts only
+npm run discord:purge -- --apply # deletes
+```
+
+**`discord:audit` is the one to trust.** The provisioner reports what it
+*attempted*; Discord silently rejects some edits, so the audit is what confirms
+what actually stuck — placement, permissions, the ✅ gate, the AutoMod exempt
+list, leftovers, and whether pinned copy is current. It grades by consequence:
+a premium channel `@everyone` can see is a PROBLEM, a cosmetic permission
+difference is a warning.
+
+**`discord:purge` exists because renaming preserves history.** The provisioner
+reconciles structure in place, so a channel that used to be `#results` still
+holds every post from the old layout — a freshly-built room full of junk. Purge
+empties planned channels of everything except the current pins (including the
+"X pinned a message" system notices Discord auto-posts).
+
+```bash
+# Register (or update) the /value slash command:
 DISCORD_APP_ID=… DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/register-discord-commands.ts
 ```
 
-The server spec lives in `scripts/discord/serverPlan.ts` (roles/channels/locks) and
-`scripts/discord/channelContent.ts` (pinned copy). Edit those, re-run the scripts —
-they fill gaps, never duplicate.
+The whole server spec — roles, channels, locks, and every pinned message — lives
+in `scripts/discord/serverPlan.ts`. Edit it, re-run the script; it fills gaps and
+never duplicates. A test pins every `pinned` entry under Discord's 2000-char cap,
+so an over-long pin fails in CI rather than mid-provision.
+
+Names are the idempotency key, so **renaming in the plan creates a second
+channel** rather than renaming the existing one — rename in Discord too, or prune.
+
+`--prune` deletes what the plan doesn't describe. It skips `PRUNE_PROTECTED`
+(`#paper-log`, prod's live webhook target) and never touches **roles**, which
+carry member and Whop assignments — an accidental role delete is unrecoverable in
+a way a channel isn't.
+
+## The daily operation
+
+1. Open **`/deck?token=<CRON_SECRET>`** (works on a phone — plain forms, no JS).
+2. Every +EV play the system found is listed with model EV, market EV, price,
+   best book, suggested units, and start time.
+3. Tap **👑 Card** on the plays you'd stake, **🎯 Free** on the one that goes out
+   free. Tap nothing and no card posts — "no card is a card".
+4. The tick does the rest.
+
+Selections are stored as intent (`CardSelection`), not results: tick and un-tick
+all morning while prices move. Nothing is recorded until the poster fires, and it
+records the price that actually posted. A pick whose line vanishes before post
+time is skipped with a warning rather than posted at a stale number.
+
+## #tips and the daily welcome
+
+`#tips` posts one glossary lesson a day, rotating deterministically by date (the
+same date always yields the same tip, so a retry can't skip or duplicate one, and
+the cycle covers every entry before repeating). Content comes from
+`@/lib/glossary` — the same source `/learn` and the in-app InfoTips use — so a
+term explained in the room can't drift from the one explained in the product.
+**Adding a glossary entry adds a lesson.** App-navigation terms are excluded;
+they mean nothing to someone reading in Discord.
+
+The old "morning drop" is not coming back as its own post. The part of it worth
+keeping — the good-morning line and how the day looks — is now the **message
+content above the card's embeds** in `#todays-card` (`cardIntro` in postCard.ts),
+which is where the owner wanted it: in the channel giving the picks, not a
+separate channel announcing that a post is coming. It names whichever sports are
+actually playing, so it reads right on a five-sport Saturday and a one-match
+Tuesday alike.
+
+## `/value` — how members price their own bets
+
+`/value play:<text> price:<american>` matches the text against **today's board**
+(every sport the engine priced), then re-prices that play at the member's number
+and answers with both lenses plus a better-number tip if we have one.
+
+The re-price works because EV and probability are the same fact in different
+clothes (`ev = p·decimal − 1`), so the implied probability recovers exactly from
+a play's EV at our quoted price, and its EV at any other price follows.
+
+Three deliberate behaviors:
+- **Replies are ephemeral.** A public reply would turn #value-check into a second
+  board showing our numbers on premium plays to anyone who can read the channel.
+- **Ambiguity is asked about, never guessed.** "yankees" matching three plays
+  lists them rather than confidently pricing the wrong one.
+- **Disagreeing lenses report "mixed",** not a false-confident verdict. Model and
+  market genuinely disagree sometimes, and collapsing that would misrepresent
+  how much we know.
+
+Bands: `GOOD_EV` (+2%) / `POOR_EV` (−2%) in `valueCheck.ts`.
 
 ## Tuning knobs
 
-- **Best Plays band** — `postCard.ts`: `MIN_ARCHER_EV` (0.03), `MAX_ARCHER_EV` (0.20, drops miscalibrated extremes), `MAX_PLAYS` (8).
+- **`LEAD_HOURS`** — `schedule.ts` (3): how far ahead of the first event the card drops.
+- **Staking** — `@/lib/betting/kelly` (quarter-Kelly, per-price cap).
 - **UFC leans** — `ufcBestPlays.ts`: `MIN_CONFIDENCE` (0.60), `MAX_UFC_PLAYS` (6), `LOOKAHEAD_DAYS` (3).
-- **Bet Check verdict bands** — `betCheck.ts`: `SHARP_EV` (+0.02), `POOR_EV` (−0.02).
 
 ## Left to do (manual)
 
-1. **Whop** — in the Whop dashboard, connect Discord and map the product to the
-   **@Premium** role (auto-assign on payment, strip on cancel). Put the checkout
-   link in `#get-access`.
-2. **Verify + welcome bot** — add **Carl-bot** or **MEE6** for the ✅ rules-gate
-   (→ `@Verified`) and member greetings. Our ARCHR bot is HTTP-interactions only
-   (no persistent gateway), so it can't listen for reactions/joins — this is the
-   standard split, not a gap in the build. Until this exists, the `👥 COMMUNITY`
-   category is visible to `@Verified`/staff only.
-3. **Go live** — after ~2 weeks of private paper-logging, create a webhook on
-   `#full-card` and repoint `DISCORD_WEBHOOK_URL` from `#paper-log` → `#full-card`.
-   Seed the first 20 founders ($15/life), then flip to $25/mo once the room's alive.
+1. **Run the provisioner** (`--apply`) to build the layout, then `--prune --apply`
+   to remove leftovers from the old 25-channel version.
+2. **Whop** — connect Discord in the Whop dashboard and map the product to the
+   **@Premium** role (auto-assign on payment, strip on cancel). Paste the checkout
+   link into the `#go-premium` pin (it currently says `[Checkout link goes here]`).
+3. **Go live** — create webhooks on `#todays-card`, `#free-play`, `#ev-slate`, and
+   `#results`, and set the four env vars. Repoint `DISCORD_WEBHOOK_URL` off
+   `#paper-log` when the paper-logging run ends.
+4. **Wipe the ledger** at cutover — the paper-log rows are pre-split history.
 
 ## Deferred follow-ups
 
 - Grade UFC leans (a win-rate ledger — they post but aren't recorded/graded yet).
-- Exact alt-line grading in `/betcheck` (currently grades at the main line).
-- Automated leaderboard → `@Tail Captain`.
 - Market-EV coverage for tennis/soccer in the card.
+
+## Cut (2026-07-20) — deliberately, not lost
+
+Removed because the room was doing too much before it had a single member. All of
+it is in git history if it earns its way back:
+
+- **Channels:** `#rules`, `#disclaimer` (folded into `#start-here`), `#todays-lean`,
+  `#get-access`, `#general`, `#todays-board`, `#tracked-plays`, `#fight-night`,
+  `#bet-check`, `#by-sport`, `#tail-chat`, `#member-plays`, `#bankroll-101`,
+  `#leaderboard`, `#wins`, `#introductions`, `#sports-talk`, `#support`,
+  `#responsible-gaming`, `#mod-log`, `#staff-chat`.
+- **Roles:** `@Founders`, `@Tail Captain`, `@Verified`.
+- **Daily posts:** the morning slate drop (`post-morning`) and Moses 101
+  (`post-teaching`) crons + `mosesDaily.ts`; the free-lean tease and the whole
+  `freeLean` display field through the engine.
+- **Commands:** `/betcheck` + `betCheck.ts` + the interactions endpoint +
+  `register-discord-commands.ts`.
+- **Scripts:** `seed-content.ts`, `channelContent.ts`, `pro-upgrade.ts`
+  (Community mode, Welcome Screen, Onboarding, forum, recurring event).
+- **Admin:** the `fire-morning` bookmark route.
