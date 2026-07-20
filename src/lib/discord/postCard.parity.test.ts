@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { assembleSections, sectionsToEmbeds, slateLine } from "./postCard";
+import { assembleSections, sectionsToEmbeds, slateLine, onlyTodaysEvents } from "./postCard";
 import { toPlay } from "@/lib/engine/adapters/mlb";
 import { ufcToPlay } from "@/lib/engine/adapters/ufc";
 import { mosesAuthor } from "./brand";
 import { SITE_URL } from "@/lib/siteUrl";
 import { playLine, ufcPlayLine, prettyEventDate } from "@/lib/card/line";
 import type { OddsPlay } from "@/lib/queries/oddsPool";
+import type { Play } from "@/lib/engine";
 import type { UfcBestPlay } from "./ufcBestPlays";
 
 /**
@@ -151,5 +152,42 @@ describe("slate voice — flat, both EV lenses, never units", () => {
     expect(line).toContain("market +3.0%");
     expect(line).not.toContain("model");
     expect(line).not.toContain("· ·");
+  });
+});
+
+describe("event-timed surfacing — a sport appears only on its own day", () => {
+  const CARD_DATE = "2026-07-20";
+
+  function at(startUtc: string, sportKey = "mlb"): Play {
+    return { ...mlbPlays[0], sportKey, playKey: `k-${startUtc}-${sportKey}`, startUtc: new Date(startUtc) };
+  }
+
+  it("keeps an event happening today", () => {
+    // 7:05p ET on the 20th.
+    expect(onlyTodaysEvents([at("2026-07-20T23:05:00Z")], CARD_DATE)).toHaveLength(1);
+  });
+
+  it("drops a UFC card that isn't until later in the week", () => {
+    // The actual bug: UFC's adapter looks 3 days ahead, so Saturday's card was
+    // being posted (and talked about) every day from Wednesday.
+    expect(onlyTodaysEvents([at("2026-07-23T02:00:00Z", "ufc")], CARD_DATE)).toEqual([]);
+  });
+
+  it("KEEPS a late-night ET event even though it's tomorrow in UTC", () => {
+    // 10pm ET Monday = 02:00Z Tuesday. Comparing in UTC would hold this back a
+    // day — posting the card AFTER the fight started.
+    expect(onlyTodaysEvents([at("2026-07-21T02:00:00Z", "ufc")], CARD_DATE)).toHaveLength(1);
+  });
+
+  it("drops yesterday's leftovers", () => {
+    expect(onlyTodaysEvents([at("2026-07-19T23:05:00Z")], CARD_DATE)).toEqual([]);
+  });
+
+  it("filters per-play, not per-sport — today's game survives a future one", () => {
+    const kept = onlyTodaysEvents(
+      [at("2026-07-20T23:05:00Z"), at("2026-07-25T23:05:00Z")],
+      CARD_DATE
+    );
+    expect(kept).toHaveLength(1);
   });
 });

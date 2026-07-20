@@ -4,6 +4,7 @@ import {
   sectionsToEmbeds,
   cardIntro,
   slateLine,
+  onlyTodaysEvents,
   postWebhook,
 } from "@/lib/discord/postCard";
 import { buildStreamRecap, buildRecapEmbeds } from "@/lib/discord/postResults";
@@ -29,6 +30,8 @@ const ARCHR_GREEN = 0x06996b;
 const RESEARCH_FOOTER =
   "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
 const LABEL = "Sample";
+/** The ET day these samples are "for" — everything is filtered against it. */
+const SAMPLE_DATE = "2026-07-20";
 
 function play(over: Partial<Play> = {}): Play {
   return {
@@ -84,6 +87,8 @@ const SLATE: Play[] = [
     modelEv: 0.048,
     marketEv: 0.012,
   }),
+  // 10pm ET the same evening — after midnight UTC, but still TODAY in ET, so it
+  // belongs on the card. This is the case a UTC comparison would wrongly drop.
   play({
     sportKey: "ufc",
     playKey: "sample-5",
@@ -93,7 +98,19 @@ const SLATE: Play[] = [
     bestBookName: "DraftKings",
     modelEv: 0.072,
     marketEv: null,
-    display: { sectionLabel: "UFC Fight Night · Sat Jul 21" },
+    display: { sectionLabel: "UFC Fight Night · tonight" },
+  }),
+  // A card three days out. The room must NOT mention this today — it should be
+  // filtered out below, and its absence from the post is the thing to verify.
+  play({
+    sportKey: "ufc",
+    playKey: "sample-future",
+    startUtc: new Date("2026-07-23T02:00:00Z"),
+    selection: { market: null, kind: "ml", side: "blue", point: null, label: "SHOULD NOT APPEAR — fight is Thursday" },
+    bestPrice: 120,
+    bestBookName: "FanDuel",
+    modelEv: 0.05,
+    marketEv: null,
   }),
   play({
     sportKey: "soccer",
@@ -147,11 +164,18 @@ async function send(env: string, label: string, body: unknown) {
 async function main() {
   console.log("\nARCHR test post — sample data, real channels\n");
 
+  // Apply the same event-timed rule the real board does, so the samples can't
+  // show something production would hold back.
+  const card = onlyTodaysEvents(CARD, SAMPLE_DATE);
+  const slate = onlyTodaysEvents(SLATE, SAMPLE_DATE);
+  const dropped = CARD.length + SLATE.length - card.length - slate.length;
+  console.log(`  (event-timed filter held back ${dropped} play(s) not happening today)\n`);
+
   // 👑 the card, with its welcome line
   await send("DISCORD_WEBHOOK_URL", "#👑-todays-card", {
     username: "Moses, Leader of Many",
-    content: cardIntro(CARD, SLATE, LABEL),
-    embeds: sectionsToEmbeds(assembleSections(CARD, LABEL, "card")),
+    content: cardIntro(card, slate, LABEL),
+    embeds: sectionsToEmbeds(assembleSections(card, LABEL, "card")),
   });
 
   // 🎁 the free play
@@ -161,7 +185,7 @@ async function main() {
       {
         author: mosesAuthor(),
         title: `🎯 Free Play · ${LABEL}`,
-        description: `${CARD[0].display?.line}\n\nTracked in #📊-the-ledger on its own record — wins and losses.`,
+        description: `${card[0].display?.line}\n\nTracked in #📊-the-ledger on its own record — wins and losses.`,
         color: ARCHR_GREEN,
         footer: { text: RESEARCH_FOOTER },
       },
@@ -169,7 +193,7 @@ async function main() {
   });
 
   // 📈 the slate — no units anywhere in here
-  const slateEmbeds = sectionsToEmbeds(assembleSections(SLATE, LABEL, "slate"));
+  const slateEmbeds = sectionsToEmbeds(assembleSections(slate, LABEL, "slate"));
   slateEmbeds[0] = { ...slateEmbeds[0], title: `📊 Full +EV Slate · ${LABEL}` };
   slateEmbeds[slateEmbeds.length - 1] = {
     ...slateEmbeds[slateEmbeds.length - 1],
@@ -206,7 +230,7 @@ async function main() {
   }
 
   console.log("\n✓ Sent. Go look at the room.");
-  console.log("  Slate line sample: " + slateLine(SLATE[0]));
+  console.log("  Slate line sample: " + slateLine(slate[0]));
   console.log("\n  Clean up with: npm run discord:purge -- --apply\n");
 }
 

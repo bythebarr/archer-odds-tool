@@ -1,4 +1,4 @@
-import { todayEt } from "@/lib/dateEt";
+import { todayEt, etDateOf } from "@/lib/dateEt";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
 import { unitsFor } from "@/lib/betting/kelly";
@@ -193,6 +193,26 @@ export function assembleSections(
   return sections;
 }
 
+/**
+ * Keep only plays whose event actually happens on the card's ET date.
+ *
+ * GOVERNING RULE (owner, 2026-07-20): a sport is surfaced the day its event
+ * runs — never before. Books don't load a card until game day, and a room that
+ * talks about Saturday's UFC card every day from Wednesday reads as filler.
+ *
+ * Enforced HERE, once, rather than as a per-sport lookahead, because "how far
+ * ahead do we tease?" is a property of the ROOM, not of any sport. UFC's adapter
+ * still looks 3 days ahead for the app's own /ufc page; that's the app's
+ * business, and this is the board's.
+ *
+ * ET, not UTC, is what makes this correct: a 10pm ET Saturday fight starts after
+ * midnight UTC, so a UTC comparison would hold it back to "Sunday" and post it a
+ * day late — the mirror image of the bug this fixes.
+ */
+export function onlyTodaysEvents(plays: Play[], dateEt: string): Play[] {
+  return plays.filter((p) => etDateOf(p.startUtc) === dateEt);
+}
+
 /** All positive-EV plays across every registered sport, freshest data first. */
 export async function collectPlays(dateEt: string): Promise<Play[]> {
   // Best-effort freshness (UFC pokes its gated odds poll); a failure must not
@@ -208,7 +228,15 @@ export async function collectPlays(dateEt: string): Promise<Play[]> {
       }
     })
   );
-  return perSport.flat();
+  const all = perSport.flat();
+  const todays = onlyTodaysEvents(all, dateEt);
+  if (todays.length !== all.length) {
+    // No silent filtering — say what was held back and why.
+    const held = all.length - todays.length;
+    const sports = [...new Set(all.filter((p) => !todays.includes(p)).map((p) => p.sportKey))];
+    console.log(`postCard: holding ${held} play(s) whose event isn't today (${sports.join(", ")})`);
+  }
+  return todays;
 }
 
 /**
