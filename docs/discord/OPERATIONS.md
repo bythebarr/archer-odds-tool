@@ -113,17 +113,26 @@ npx tsx scripts/discord/provision-server.ts --plan
 # Dry run against the real server (reads only, shows the diff):
 DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts
 
-# Build/repair the server (roles, categories, channels, locks, the pinned #start-here):
+# Build/repair the server (roles, categories, channels, locks, pins):
 DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --apply
+
+# Reconcile DOWN too — report, then delete, anything not in the plan:
+DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --prune
+DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --prune --apply
 ```
 
-The whole server spec — roles, channels, locks, and the pinned welcome/rules/
-disclaimer copy — lives in `scripts/discord/serverPlan.ts`. Edit it, re-run the
-script; it fills gaps and never duplicates.
+The whole server spec — roles, channels, locks, and every pinned message — lives
+in `scripts/discord/serverPlan.ts`. Edit it, re-run the script; it fills gaps and
+never duplicates. A test pins every `pinned` entry under Discord's 2000-char cap,
+so an over-long pin fails in CI rather than mid-provision.
 
-⚠️ The provisioner matches by **name** and only *creates what's missing* — it does
-not delete. Channels from the old 25-channel layout that already exist on the
-server have to be deleted by hand in Discord.
+Names are the idempotency key, so **renaming in the plan creates a second
+channel** rather than renaming the existing one — rename in Discord too, or prune.
+
+`--prune` deletes what the plan doesn't describe. It skips `PRUNE_PROTECTED`
+(`#paper-log`, prod's live webhook target) and never touches **roles**, which
+carry member and Whop assignments — an accidental role delete is unrecoverable in
+a way a channel isn't.
 
 ## The daily operation
 
