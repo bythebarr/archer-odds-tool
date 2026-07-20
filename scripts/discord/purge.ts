@@ -18,6 +18,12 @@ import { SERVER_PLAN } from "./serverPlan";
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const GUILD = process.env.DISCORD_GUILD_ID;
 const APPLY = process.argv.includes("--apply");
+/**
+ * Optional `--channel=<substring>` limit. Without it every planned channel is
+ * emptied, which is right after a rebuild but far too blunt for "clear the
+ * ledger because the record restarted" — that must not take the card with it.
+ */
+const ONLY = process.argv.find((a) => a.startsWith("--channel="))?.split("=")[1];
 
 const CHANNEL_TEXT = 0;
 /** Discord's bulk-delete only accepts messages younger than 14 days. */
@@ -63,7 +69,9 @@ async function allMessages(channelId: string): Promise<Message[]> {
 async function main() {
   if (!TOKEN || !GUILD) throw new Error("Set DISCORD_BOT_TOKEN and DISCORD_GUILD_ID in .env");
 
-  console.log(`\nARCHR purge — ${APPLY ? "APPLY (deleting)" : "DRY RUN (counting only)"}\n`);
+  console.log(
+    `\nARCHR purge — ${APPLY ? "APPLY (deleting)" : "DRY RUN (counting only)"}${ONLY ? ` · only channels matching "${ONLY}"` : ""}\n`
+  );
 
   const channels = await api<Channel[]>(`/guilds/${GUILD}/channels`);
   const byName = new Map(channels.map((c) => [`${c.type}:${c.name}`, c]));
@@ -71,6 +79,7 @@ async function main() {
   let total = 0;
   for (const cat of SERVER_PLAN.categories) {
     for (const ch of cat.channels) {
+      if (ONLY && !ch.name.includes(ONLY)) continue;
       const live = byName.get(`${CHANNEL_TEXT}:${ch.name}`);
       if (!live) continue;
 
