@@ -152,6 +152,10 @@
     {
       "path": "/api/cron/post-results",
       "schedule": "35 22 * * *"
+    },
+    {
+      "path": "/api/cron/poll-player-props",
+      "schedule": "40 10 * * *"
     }
   ]
 }

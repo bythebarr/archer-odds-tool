@@ -10,13 +10,15 @@ export async function GET(request: Request) {
 }
 
 /**
- * Deliberately kept dormant in production: this route is NOT registered in
- * vercel.json's crons (so nothing invokes it automatically), and even a
- * manual trigger is a no-op unless PLAYER_PROPS_ODDS_ENABLED="true" is set.
- * Both gates exist because props cost ~4,350 credits/mo on top of an
- * already-over-budget free-tier baseline (see odds_api_credit_budget
- * memory) — flip PLAYER_PROPS_ODDS_ENABLED and add the cron entry together,
- * only after upgrading to a paid Odds API plan.
+ * LIVE as of the ParlayAPI switch. It was dormant because props cost ~4,350
+ * credits/mo on The Odds API, which charged markets x regions PER GAME. Parlay
+ * returns the whole sport's props in one 3-credit call, so a daily run is ~90
+ * credits/mo — a ~48x cut that removed the only reason for the gate.
+ *
+ * `PLAYER_PROPS_ODDS_ENABLED="true"` is still required, so this stays a single
+ * switch to pull if a future provider's pricing makes props expensive again.
+ * Props are the edge that survived backtesting, so this is the one poll worth
+ * paying for.
  */
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
