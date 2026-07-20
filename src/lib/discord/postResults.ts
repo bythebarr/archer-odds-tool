@@ -168,7 +168,7 @@ function settledProfit(p: PostedPlay): number {
   return tallyLedger([ledgerInput(p)]).netUnits;
 }
 
-interface StreamRecap {
+export interface StreamRecap {
   body: string;
   dayRecord: string;
   dayUnits: number;
@@ -187,13 +187,25 @@ async function recapForStream(stream: PlayStream, dateEt: string, label: string)
     where: { stream, postedForDate: dateEt, gradedAt: { not: null }, voided: false },
     orderBy: { ev: "desc" },
   });
-  const dayLedger = tallyLedger(dayPlays.map(ledgerInput));
-
   // Chronological, so streak + last-10 read from the most recent plays.
   const allSettled = await prisma.postedPlay.findMany({
     where: { stream, gradedAt: { not: null }, voided: false },
     orderBy: [{ postedForDate: "asc" }, { gradedAt: "asc" }],
   });
+  return buildStreamRecap(dayPlays, allSettled, label);
+}
+
+/**
+ * The recap's rendering, split from its queries so it can be exercised with
+ * fabricated rows — a results post otherwise can't be reviewed until a real day
+ * has settled, which is far too late to discover the copy reads wrong.
+ */
+export function buildStreamRecap(
+  dayPlays: PostedPlay[],
+  allSettled: PostedPlay[],
+  label: string
+): StreamRecap {
+  const dayLedger = tallyLedger(dayPlays.map(ledgerInput));
   const allLedger = tallyLedger(allSettled.map(ledgerInput));
   const last10 = tallyLedger(allSettled.slice(-10).map(ledgerInput));
   const streak = currentStreak(allSettled.map((p) => ledgerInput(p).result));
@@ -230,16 +242,15 @@ async function recapForStream(stream: PlayStream, dateEt: string, label: string)
   };
 }
 
-export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<ResultsPostResult> {
-  const url = process.env.DISCORD_RESULTS_WEBHOOK_URL;
-  if (!url) return { posted: false, reason: "dormant: DISCORD_RESULTS_WEBHOOK_URL not set" };
-
-  const graded = await gradePending(dateEt);
-  const label = prettyDate(dateEt);
-
-  const card = await recapForStream("card", dateEt, label);
-  const free = await recapForStream("free", dateEt, label);
-
+/**
+ * The posted embeds. Shared by the live poster and the test-post harness, so a
+ * preview can never drift from what actually goes out.
+ */
+export function buildRecapEmbeds(
+  card: StreamRecap,
+  free: StreamRecap,
+  label: string
+): Record<string, unknown>[] {
   // The premium record always posts — it's the trust spine, and a silent day
   // reads as a hidden day. The free block appears once it has any history.
   const embeds: Record<string, unknown>[] = [
@@ -259,8 +270,23 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
       footer: { text: RESEARCH_FOOTER },
     });
   }
+  return embeds;
+}
 
-  await postWebhook(url, { username: "Moses, Leader of Many", embeds });
+export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<ResultsPostResult> {
+  const url = process.env.DISCORD_RESULTS_WEBHOOK_URL;
+  if (!url) return { posted: false, reason: "dormant: DISCORD_RESULTS_WEBHOOK_URL not set" };
+
+  const graded = await gradePending(dateEt);
+  const label = prettyDate(dateEt);
+
+  const card = await recapForStream("card", dateEt, label);
+  const free = await recapForStream("free", dateEt, label);
+
+  await postWebhook(url, {
+    username: "Moses, Leader of Many",
+    embeds: buildRecapEmbeds(card, free, label),
+  });
 
   return {
     posted: true,
