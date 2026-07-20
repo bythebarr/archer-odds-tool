@@ -37,6 +37,16 @@ enum OutcomeResult {
   push
 }
 
+/// Which ledger a play belongs to. The owner handpicks BOTH streams daily from
+/// the deck; everything he doesn't pick posts to the premium slate carrying no
+/// units and is never recorded, so it never touches a record.
+enum PlayStream {
+  /// Premium #todays-card — the handpicked plays units ride on. The headline record.
+  card
+  /// The single daily #free-play, tracked on its own separate record.
+  free
+}
+
 enum Sport {
   mlb
   tennis
@@ -532,6 +542,11 @@ model PostedPlay {
   bestBookName   String
   ev             Float?
   units          Float
+  /// Which ledger this row counts toward — #results reports card and free
+  /// SEPARATELY (owner's call: the free play must not flatter or drag the
+  /// premium record). Defaults to `card` so pre-split paper-log rows, which were
+  /// all premium-card posts, keep counting where they always did.
+  stream         PlayStream    @default(card)
   // Prop grading inputs (null for game lines).
   mlbPlayerId    String?
   statCategory   StatCategory?
@@ -544,6 +559,27 @@ model PostedPlay {
   @@unique([postedForDate, playKey])
   @@index([postedForDate])
   @@index([gradedAt])
+  @@index([stream])
+}
+
+/// The owner's handpicks for a day, chosen in the deck (/deck) BEFORE the card
+/// posts. Kept separate from PostedPlay because a selection is an intent, not a
+/// result: he can tick and un-tick all morning, and prices keep moving until the
+/// poster fires. At post time the poster re-reads live plays, matches them by
+/// playKey, and only then writes PostedPlay rows at the price that actually
+/// posted. A playKey with no matching live play (line pulled, event scratched)
+/// is dropped with a warning rather than posted at a stale number.
+model CardSelection {
+  id        String     @id @default(cuid())
+  /// ET card date (YYYY-MM-DD) this selection is for.
+  dateEt    String
+  /// Play.playKey — matches the live play at post time.
+  playKey   String
+  stream    PlayStream
+  createdAt DateTime   @default(now())
+
+  @@unique([dateEt, playKey])
+  @@index([dateEt])
 }
 
 /// Drives the tiered polling throttle — last successful poll timestamp per job.

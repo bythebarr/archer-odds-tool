@@ -145,7 +145,7 @@ export function assembleSections(plays: Play[], dateLabel: string): BoardSection
 }
 
 /** All positive-EV plays across every registered sport, freshest data first. */
-async function collectPlays(dateEt: string): Promise<Play[]> {
+export async function collectPlays(dateEt: string): Promise<Play[]> {
   // Best-effort freshness (UFC pokes its gated odds poll); a failure must not
   // block the board. Registry-driven — no sport branch.
   await Promise.allSettled(SPORTS.map((a) => a.refresh?.(dateEt) ?? Promise.resolve()));
