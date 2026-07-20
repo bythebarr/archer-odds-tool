@@ -5,7 +5,9 @@ import { getSelection, splitBySelection } from "@/lib/card/selection";
 import { SPORTS } from "@/lib/engine";
 import { todayEt } from "@/lib/dateEt";
 import { PageShell, PageHeader } from "@/components/PageShell";
-import { pickAction, clearAction, unitsAction } from "./actions";
+import { pickAction, clearAction, unitsAction, fireAction } from "./actions";
+import { postedAt } from "@/lib/discord/postMarker";
+import { cardDropTime } from "@/lib/discord/schedule";
 
 /**
  * The command deck — where the owner turns the engine's slate into the day's
@@ -64,8 +66,13 @@ export default async function DeckPage({
   if (!expected || !token || token !== expected) notFound();
 
   const dateEt = date ?? todayEt();
-  const [plays, selection] = await Promise.all([collectPlays(dateEt), getSelection(dateEt)]);
+  const [plays, selection, firedAt] = await Promise.all([
+    collectPlays(dateEt),
+    getSelection(dateEt),
+    postedAt("post-card", dateEt),
+  ]);
   const split = splitBySelection(plays, selection);
+  const dueAt = cardDropTime(plays);
 
   // Engine order groups by sport already; keep it, so the deck reads like the card.
   const totalEv = plays.length;
@@ -106,6 +113,57 @@ export default async function DeckPage({
             ⚠️ {split.missing.length} earlier pick{split.missing.length === 1 ? " is" : "s are"} no
             longer live (line pulled or event scratched) and won&apos;t post.
           </div>
+        )}
+      </div>
+
+      {/* Fire control. Deliberately below the summary, so the last thing read
+          before posting is what's about to go out. */}
+      <div className="mt-4 rounded-lg border border-border bg-card/50 p-3">
+        {firedAt ? (
+          <div className="text-xs text-muted-foreground">
+            ✅ Today&apos;s card posted at{" "}
+            <strong className="text-foreground">
+              {new Intl.DateTimeFormat("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                timeZone: "America/New_York",
+              }).format(firedAt)}{" "}
+              ET
+            </strong>
+            . The scheduled post is now skipped for today.
+            <details className="mt-2">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                Post again anyway
+              </summary>
+              <p className="mt-1.5 text-muted-foreground">
+                This posts a SECOND card to the room. Only useful if the first one went
+                out wrong.
+              </p>
+              <FireButton token={token} dateEt={dateEt} label="Post again" />
+            </details>
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground">
+              Scheduled to post{" "}
+              <strong className="text-foreground">
+                {dueAt
+                  ? `${new Intl.DateTimeFormat("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      timeZone: "America/New_York",
+                    }).format(dueAt)} ET`
+                  : "— nothing on the board"}
+              </strong>
+              {" · "}or send it now:
+            </div>
+            <FireButton token={token} dateEt={dateEt} label={`🚀 Post to Discord now`} />
+            <p className="mt-1.5 text-[0.7rem] text-muted-foreground">
+              Posts your {split.card.length} pick{split.card.length === 1 ? "" : "s"} to
+              #👑-todays-card{split.free ? ", the free play to #🎁-free-play" : ""}, and{" "}
+              {split.slate.length} to #📈-the-firehose. This is live — members see it.
+            </p>
+          </>
         )}
       </div>
 
@@ -249,6 +307,21 @@ export default async function DeckPage({
         </form>
       )}
     </PageShell>
+  );
+}
+
+function FireButton({ token, dateEt, label }: { token: string; dateEt: string; label: string }) {
+  return (
+    <form action={fireAction} className="mt-2">
+      <input type="hidden" name="token" value={token} />
+      <input type="hidden" name="dateEt" value={dateEt} />
+      <button
+        type="submit"
+        className="rounded-md bg-[#06996b] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+      >
+        {label}
+      </button>
+    </form>
   );
 }
 

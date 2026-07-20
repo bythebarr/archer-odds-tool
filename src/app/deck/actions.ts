@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { setSelection, setUnits, clearSelection, type PlayStream } from "@/lib/card/selection";
 import { todayEt } from "@/lib/dateEt";
+import { postDailyCardToDiscord } from "@/lib/discord/postCard";
+import { markPosted } from "@/lib/discord/postMarker";
 
 /**
  * Deck mutations. Every action re-checks the shared owner token itself rather
@@ -47,6 +49,23 @@ export async function unitsAction(formData: FormData) {
   const parsed = Number(raw);
   const units = raw === "" || !Number.isFinite(parsed) || parsed <= 0 ? null : Math.min(parsed, 25);
   await setUnits(dateEt, playKey, units);
+  revalidatePath("/deck");
+}
+
+/**
+ * Post the card NOW, rather than waiting for the tick.
+ *
+ * Marks the day as posted on success so the scheduled tick won't post it a
+ * second time — firing by hand and firing on schedule are the same event, and
+ * the room must only ever see one card a day.
+ */
+export async function fireAction(formData: FormData) {
+  const token = String(formData.get("token") ?? "");
+  assertOwner(token);
+
+  const dateEt = String(formData.get("dateEt") ?? "") || todayEt();
+  const result = await postDailyCardToDiscord(dateEt);
+  if (result.posted) await markPosted("post-card", dateEt);
   revalidatePath("/deck");
 }
 

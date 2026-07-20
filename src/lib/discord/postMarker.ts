@@ -20,6 +20,12 @@ export async function alreadyPosted(job: PostJob, dateEt: string): Promise<boole
   return row?.lastStatus === dateEt;
 }
 
+/** When `job` last posted for this ET date, or null if it hasn't. */
+export async function postedAt(job: PostJob, dateEt: string): Promise<Date | null> {
+  const row = await prisma.pollLog.findUnique({ where: { jobName: job } });
+  return row?.lastStatus === dateEt ? row.lastPolledAt : null;
+}
+
 /**
  * Record that `job` posted for this ET date.
  *
