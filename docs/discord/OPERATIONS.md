@@ -6,39 +6,97 @@ the knobs to tune, and the manual steps left before opening. Companion to
 
 ## The shape
 
-Deliberately small: **6 channels, 3 roles, 2 posts a day.** The room was cut down
-from 25 channels / 4 daily posts because a room with more surfaces than content
-reads as dead. One play surface, one record, one place to talk.
+**13 channels, 3 roles.** Cut down from 25 and then rebuilt to the owner's spec.
 
 ```
-🟢 START HERE   (public)   #start-here · #announcements
-👑 THE CARD     (premium)  #todays-card · #results · #chat
-🛠️ STAFF        (staff)    #command-deck
+📌 IMPORTANT (public)   #welcome-and-rules · #go-premium · #announcements
+🎯 FREE      (public)   #how-this-works · #free-play · #results · #tips
+👑 PREMIUM   (paid)     #todays-card · #ev-slate · #value-check
+👥 COMMUNITY (public)   #wins · #purchases
+🛠️ STAFF     (staff)    #command-deck
 ```
 
-The bar for adding a channel back: **something posts to it every day, or the
-room is actively asking for it.** Not "it'd be nice to have."
+The bar for adding a channel: **something posts to it every day, or the room is
+actively asking for it.** Not "it'd be nice to have."
+
+Premium channels are genuinely **hidden**, not "visible but locked" — Discord
+shows live messages to anyone who can view a channel, so a locked-but-visible
+`#ev-slate` would leak exactly what rule 4 bans. `#go-premium` names each premium
+channel and its contents instead, doing the FOMO job with no leak surface.
+
+## The three streams — the core product architecture
+
+Everything downstream depends on this split. Don't collapse it.
+
+| Stream | Channel | Units? | Recorded? |
+| --- | --- | --- | --- |
+| **card** | `#todays-card` | ✅ | ✅ the headline record |
+| **free** | `#free-play` | ✅ | ✅ its own separate record |
+| **slate** | `#ev-slate` | ❌ | ❌ never |
+
+The engine finds far more +EV plays than anyone should fire at in a day. The
+owner handpicks the card and the one free play in **`/deck`**; everything he
+doesn't pick posts to the slate carrying no units and never touches a ledger.
+
+`#results` posts both records as separate embeds — never summed, so the free play
+can't flatter or drag the premium number. Free members see both.
 
 ## What's live
 
-Both posts sign as **Moses, Leader of Many** (the webhook username).
+All posts sign as **Moses, Leader of Many** (the webhook username).
 
 | Piece | Where | Trigger |
 | --- | --- | --- |
-| **Archer's Best Plays** (the card — model +EV game lines + props, every positive play) | `src/lib/discord/postCard.ts` → `#todays-card` | `post-discord` cron, 14:30 UTC / 10:30am ET (early, to beat first pitch) |
-| **UFC fighter-math leans** | `src/lib/discord/ufcBestPlays.ts` → a second embed on the same post | same poster, on fight weeks (3-day lookahead) |
-| **#results grader** (recap + streak/last-10) | `src/lib/discord/postResults.ts` → `#results` | `post-results` cron, 15:00 UTC / 11am ET |
+| **The card** (handpicks, with units) | `postCard.ts` → `#todays-card` | card tick |
+| **The free play** (one, with units) | same poster → `#free-play` | same tick |
+| **The slate** (everything unpicked, no units) | same poster → `#ev-slate` | same tick |
+| **Results** (both ledgers, streak/last-10) | `postResults.ts` → `#results` | results tick |
 
-There is **no free lean and no second board** — the card is the only play surface.
+### Timing is event-driven, not clock-driven
 
-Preview the card (no posting) at **`/preview/discord`** — behind the site password.
+A fixed time is a baseball assumption. Instead:
+
+- **The card posts 3 hours before the day's FIRST event**, whatever sport that
+  is. A 1pm ET tennis match pulls the card to 10am; a 10pm UFC main card pushes
+  it to 7pm. `LEAD_HOURS` in `src/lib/discord/schedule.ts`.
+- **Results post the moment the day's LAST tracked play settles** — not on a
+  morning timer.
+
+Vercel crons are fixed-schedule, so both are **ticks** (`post-discord` every 15m,
+`post-results` every 30m) that usually do nothing and ask "is it time yet?"
+Idempotency comes from a PollLog marker keyed by ET date, written only after a
+webhook actually resolves.
+
+Two deliberate behaviors worth knowing before you debug them:
+- **A missed tick posts LATE, it does not skip the day.** There's no cutoff — a
+  late card is recoverable, a missing one looks like a dead room.
+- **The recap waits for every tracked play to settle.** A partial record on the
+  trust channel is worse than a late one. Voided plays count as settled, so an
+  unsupported sport can't hold a recap hostage.
+
+### Every sport, only when it's on
+
+No sport is special in the poster any more — section chrome (icon, label, accent,
+link) derives from each adapter's own `meta`, and **a sport with no plays renders
+nothing**. That's why a quiet baseball day no longer posts an empty MLB card and
+UFC is simply absent the six days a week it isn't on. Event-timed surfacing falls
+out of the data, not a per-sport rule.
+
+Preview all three streams (no posting) at **`/preview/discord`**; make the picks
+at **`/deck`**. Both behind the site password.
 
 ## Env vars
 
 **Production (Vercel, `archr2` scope):**
-- `DISCORD_WEBHOOK_URL` — the card channel (today: `#paper-log`; repoint to `#todays-card` at launch). **Unset = the card is dormant.**
-- `DISCORD_RESULTS_WEBHOOK_URL` — the results recap channel. **Unset = dormant.**
+- `DISCORD_WEBHOOK_URL` — `#todays-card` (today: `#paper-log`). **Unset = the whole drop is dormant.**
+- `DISCORD_FREE_WEBHOOK_URL` — `#free-play`. Unset = the free play is skipped, the rest still posts.
+- `DISCORD_SLATE_WEBHOOK_URL` — `#ev-slate`. Unset = the slate is skipped, the rest still posts.
+- `DISCORD_RESULTS_WEBHOOK_URL` — `#results`. **Unset = dormant.**
+- `CRON_SECRET` — also gates `/deck` (`?token=…`) and `/api/admin/*`.
 - `SITE_ACCESS_PASSWORD` — Basic Auth gate on the whole site (`/api/*` is exempt so Discord + crons work).
+
+Each channel is independently dormant, so the room can be brought up one surface
+at a time.
 
 **Local only (for the ops script below — never stored in prod):**
 - `DISCORD_BOT_TOKEN` — the bot token.
@@ -67,23 +125,42 @@ script; it fills gaps and never duplicates.
 not delete. Channels from the old 25-channel layout that already exist on the
 server have to be deleted by hand in Discord.
 
+## The daily operation
+
+1. Open **`/deck?token=<CRON_SECRET>`** (works on a phone — plain forms, no JS).
+2. Every +EV play the system found is listed with model EV, market EV, price,
+   best book, suggested units, and start time.
+3. Tap **👑 Card** on the plays you'd stake, **🎯 Free** on the one that goes out
+   free. Tap nothing and no card posts — "no card is a card".
+4. The tick does the rest.
+
+Selections are stored as intent (`CardSelection`), not results: tick and un-tick
+all morning while prices move. Nothing is recorded until the poster fires, and it
+records the price that actually posted. A pick whose line vanishes before post
+time is skipped with a warning rather than posted at a stale number.
+
 ## Tuning knobs
 
-- **Best Plays band** — `postCard.ts`: the card posts EVERY positive-EV play; conviction shows in the stake, not a filter. Staking is `@/lib/betting/kelly` (quarter-Kelly, per-price cap).
+- **`LEAD_HOURS`** — `schedule.ts` (3): how far ahead of the first event the card drops.
+- **Staking** — `@/lib/betting/kelly` (quarter-Kelly, per-price cap).
 - **UFC leans** — `ufcBestPlays.ts`: `MIN_CONFIDENCE` (0.60), `MAX_UFC_PLAYS` (6), `LOOKAHEAD_DAYS` (3).
 
 ## Left to do (manual)
 
-1. **Delete the old channels** — the provisioner won't. Remove anything not in
-   the 6-channel spine above.
+1. **Run the provisioner** (`--apply`) to build the layout, then `--prune --apply`
+   to remove leftovers from the old 25-channel version.
 2. **Whop** — connect Discord in the Whop dashboard and map the product to the
-   **@Premium** role (auto-assign on payment, strip on cancel). The checkout link
-   goes in `#start-here` (there's no `#get-access` channel any more).
-3. **Go live** — after the private paper-logging run, create a webhook on
-   `#todays-card` and repoint `DISCORD_WEBHOOK_URL` from `#paper-log` → `#todays-card`.
+   **@Premium** role (auto-assign on payment, strip on cancel). Paste the checkout
+   link into the `#go-premium` pin (it currently says `[Checkout link goes here]`).
+3. **Go live** — create webhooks on `#todays-card`, `#free-play`, `#ev-slate`, and
+   `#results`, and set the four env vars. Repoint `DISCORD_WEBHOOK_URL` off
+   `#paper-log` when the paper-logging run ends.
+4. **Wipe the ledger** at cutover — the paper-log rows are pre-split history.
 
 ## Deferred follow-ups
 
+- **`#value-check`** — the ask-the-bot EV lookup. Channel exists, bot doesn't yet.
+- **`#tips`** — no poster yet; the old rotating-lesson content was cut and needs rebuilding into its own channel.
 - Grade UFC leans (a win-rate ledger — they post but aren't recorded/graded yet).
 - Market-EV coverage for tennis/soccer in the card.
 
