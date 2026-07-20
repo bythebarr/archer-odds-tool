@@ -34,6 +34,23 @@ export interface ChannelPlan {
   readOnly?: boolean;
   /** Message(s) to post and pin on first creation (welcome/rules/disclaimer). */
   pinned?: string[];
+  /**
+   * Former names for this channel. Names are the idempotency key, so without
+   * this a rename in the plan would CREATE a second channel and orphan the
+   * original (losing its history and any webhook pointed at it). Listed here,
+   * the provisioner finds the old one and renames it in place instead.
+   */
+  aliases?: string[];
+  /**
+   * Images only — an AutoMod rule blocks any message carrying text. A photo with
+   * no caption posts fine; a caption is refused before it ever appears, which is
+   * stricter (and cleaner) than deleting it afterwards.
+   *
+   * This is also a leak control, not just tidiness: #hall-of-cashes is public,
+   * so a member typing out the pick behind their slip would expose a premium
+   * play to free members. Staff roles are exempt.
+   */
+  imageOnly?: boolean;
 }
 
 export interface CategoryPlan {
@@ -123,7 +140,7 @@ const WELCOME_PITCH = [
   "",
   "**And the record is public.** Units on every tracked play, wins *and* losses, never deleted. If the system has a bad week you'll see the bad week. That's the point — a record you can audit is the only thing that separates this from the noise.",
   "",
-  "👉 **Read the rules below, then head to #go-premium.**",
+  "👉 **Read the rules below, then head to #🔓-go-premium.**",
 ].join("\n");
 
 const WELCOME_RULES = [
@@ -133,7 +150,7 @@ const WELCOME_RULES = [
   "**2. Research, not advice.** Every play is analysis and opinion. You own your action. No outcome is guaranteed.",
   "**3. Units, never dollars.** Plays are staked in units (1u = your standard bet). We never tell you how much money to wager.",
   "**4. Never leak premium plays.** Posting, screenshotting, relaying, or DMing premium picks to anyone outside premium = **instant permanent ban**, no refund. This is the one rule with no second chance.",
-  "**5. Slips only after they settle.** Post your wins in #wins once the play is graded — never before. A live slip is a leaked pick.",
+  "**5. Slips only after they settle.** Post your wins in #🏆-hall-of-cashes once the play is graded — never before. A live slip is a leaked pick.",
   "**6. No touting or DM-selling.** Selling picks, shilling other services, or DMing members to sell = instant ban.",
   "**7. Be decent.** No harassment, bigotry, or scam links.",
   "**8. Wins and losses both get posted.** I never hide a bad day, and neither should you.",
@@ -155,15 +172,15 @@ const WELCOME_RULES = [
 const GO_PREMIUM = [
   "# 🔓 What premium actually gets you",
   "",
-  "**Free members get:** one handpicked play a day (#free-play), the full public record for both free and premium plays (#results), and the daily tips (#tips).",
+  "**Free members get:** one handpicked play a day (#🎁-free-play), the full public record for both free and premium plays (#📊-the-ledger), and the daily tips (#📚-sharp-school).",
   "",
   "**Premium unlocks three channels:**",
   "",
-  "**👑 #todays-card** — my handpicked plays for the day, with units on every one. This is the card the tracked record is built on. Posted ~3 hours before the day's first event, every day, across whatever sports are actually running.",
+  "**👑 #👑-todays-card** — my handpicked plays for the day, with units on every one. This is the card the tracked record is built on. Posted ~3 hours before the day's first event, every day, across whatever sports are actually running.",
   "",
-  "**📊 #ev-slate** — the firehose. *Every* positive-EV play my system finds that day, all sports, all markets, with both the model EV and the market EV on each one, plus the best book. No units — this is the full board to judge for yourself. Most days this is far more plays than any room hands out.",
+  "**📊 #📈-the-firehose** — the firehose. *Every* positive-EV play my system finds that day, all sports, all markets, with both the model EV and the market EV on each one, plus the best book. No units — this is the full board to judge for yourself. Most days this is far more plays than any room hands out.",
   "",
-  "**🤖 #value-check** — ask the bot about any play you're looking at, in any sport. It runs the same numbers and tells you whether the price you're getting is worth it. Not just my plays — *yours*.",
+  "**🤖 #🤖-value-check** — ask the bot about any play you're looking at, in any sport. It runs the same numbers and tells you whether the price you're getting is worth it. Not just my plays — *yours*.",
   "",
   "## How to join",
   "",
@@ -188,9 +205,9 @@ const HOW_THIS_WORKS = [
   "",
   "## The two kinds of plays — this is the important part",
   "",
-  "**The slate** (#ev-slate, premium) is *every* play my system flags as positive EV that day. It's big. It carries no units and it is **not** part of the tracked record. It's the raw board — information, for you to judge.",
+  "**The slate** (#📈-the-firehose, premium) is *every* play my system flags as positive EV that day. It's big. It carries no units and it is **not** part of the tracked record. It's the raw board — information, for you to judge.",
   "",
-  "**The card** (#todays-card, premium) is the handful of plays **I personally pick** out of that slate each day. These carry units. **This is the only thing the record tracks.** When you see the ARCHR record, it's this.",
+  "**The card** (#👑-todays-card, premium) is the handful of plays **I personally pick** out of that slate each day. These carry units. **This is the only thing the record tracks.** When you see the ARCHR record, it's this.",
   "",
   "Why the split: the system finds far more edges than anyone should fire at in a day. The card is me choosing which ones I'd actually put money behind. You get both — the full board *and* my selections.",
 ].join("\n");
@@ -200,20 +217,20 @@ const HOW_THIS_WORKS_CHANNELS = [
   "",
   "**📌 IMPORTANT**",
   "• **#welcome-and-rules** — the pitch and the rules. Rule 4 (never leak premium plays) is the one that gets you banned.",
-  "• **#go-premium** — what premium unlocks and how to get it.",
-  "• **#announcements** — news, giveaways, anything big. From me, straight to you.",
+  "• **#🔓-go-premium** — what premium unlocks and how to get it.",
+  "• **#📣-announcements** — news, giveaways, anything big. From me, straight to you.",
   "",
   "**🎯 FREE — everyone**",
-  "• **#free-play** — one handpicked play a day, from me, free. Tracked on its own record.",
-  "• **#results** — the ledger. Units and W/L for the premium card *and*, separately, for the free plays. Wins and losses both. Posted once the day's last play settles.",
-  "• **#tips** — a bet-smarter tip most days. Units, CLV, staking, line shopping.",
+  "• **#🎁-free-play** — one handpicked play a day, from me, free. Tracked on its own record.",
+  "• **#📊-the-ledger** — the ledger. Units and W/L for the premium card *and*, separately, for the free plays. Wins and losses both. Posted once the day's last play settles.",
+  "• **#📚-sharp-school** — a bet-smarter tip most days. Units, CLV, staking, line shopping.",
   "",
   "**👑 PREMIUM**",
-  "• **#todays-card** · **#ev-slate** · **#value-check** — see #go-premium.",
+  "• **#👑-todays-card** · **#📈-the-firehose** · **#🤖-value-check** — see #🔓-go-premium.",
   "",
   "**👥 COMMUNITY — everyone**",
-  "• **#wins** — winning slips only. Nothing else, no chatter. **Only after the play settles.**",
-  "• **#purchases** — what you bought with what you won. Brag away.",
+  "• **#🏆-hall-of-cashes** — winning slips only. Nothing else, no chatter. **Only after the play settles.**",
+  "• **#💸-the-haul** — what you bought with what you won. Brag away.",
   "",
   "## Timing",
   "The card and the slate land about **3 hours before the first event of the day** — whatever sport that happens to be. Results post as soon as the day's last play is graded. No fixed clock, because the sports don't run on one.",
@@ -223,19 +240,19 @@ const HOW_THIS_WORKS_CHANNELS = [
 ].join("\n");
 
 const WINS_RULE = [
-  "# 🎉 Wins",
+  "# 🏆 Hall of Cashes",
   "",
-  "**Winning slips only.** No chat, no questions, no takes — those get removed to keep this clean.",
+  "**Winning slips only. Images only — no captions.** Anything with text gets blocked automatically, so just drop the screenshot.",
   "",
   "⚠️ **Post only AFTER the play has settled.** A live slip is a leaked pick, and leaking premium plays is an instant permanent ban (rule 4). Once it's graded, flex all you want. 📸",
 ].join("\n");
 
 const PURCHASES_RULE = [
-  "# 💸 Purchases",
+  "# 💸 The Haul",
   "",
-  "What the winnings bought. Post the thing, not the picks.",
+  "What the winnings bought. **Images only — no captions**, same as the Hall.",
   "",
-  "Same rule as #wins: **no live plays, no lines, no screenshots of the card.** Keep it to the payoff.",
+  "Post the thing, not the picks. No lines, no screenshots of the card.",
 ].join("\n");
 
 /**
@@ -247,7 +264,7 @@ const PURCHASES_RULE = [
  *
  * Premium channels are genuinely HIDDEN, not "visible but locked": Discord shows
  * live messages to anyone who can view a channel, so a locked-but-visible
- * #ev-slate would leak the very plays rule 4 bans. GO_PREMIUM does the FOMO job
+ * #📈-the-firehose would leak the very plays rule 4 bans. GO_PREMIUM does the FOMO job
  * instead, by naming each premium channel and its contents.
  */
 export const SERVER_PLAN: ServerPlan = {
@@ -261,43 +278,43 @@ export const SERVER_PLAN: ServerPlan = {
       name: "📌 IMPORTANT",
       visibility: "public",
       channels: [
-        { name: "welcome-and-rules", topic: "What ARCHR is, and the rules. Read before anything else.", readOnly: true, pinned: [WELCOME_PITCH, WELCOME_RULES] },
-        { name: "go-premium", topic: "What premium unlocks + how to join.", readOnly: true, pinned: [GO_PREMIUM] },
-        { name: "announcements", topic: "News, giveaways, and drops — from Archer.", readOnly: true },
+        { name: "👋-start-here", topic: "What ARCHR is, and the rules. Read before anything else.", readOnly: true, pinned: [WELCOME_PITCH, WELCOME_RULES], aliases: ["welcome-and-rules"] },
+        { name: "🔓-go-premium", topic: "What premium unlocks + how to join.", readOnly: true, pinned: [GO_PREMIUM], aliases: ["go-premium"] },
+        { name: "📣-announcements", topic: "News, giveaways, and drops — from Archer.", readOnly: true, aliases: ["announcements"] },
       ],
     },
     {
       name: "🎯 FREE",
       visibility: "public",
       channels: [
-        { name: "how-this-works", topic: "The whole room explained in one read.", readOnly: true, pinned: [HOW_THIS_WORKS, HOW_THIS_WORKS_CHANNELS] },
-        { name: "free-play", topic: "One handpicked play a day, free. Tracked on its own record.", readOnly: true },
-        { name: "results", topic: "The ledger — units + W/L for the premium card and the free plays, tracked separately. Wins AND losses.", readOnly: true },
-        { name: "tips", topic: "Bet smarter — units, CLV, staking, line shopping.", readOnly: true },
+        { name: "🗺️-how-this-works", topic: "The whole room explained in one read.", readOnly: true, pinned: [HOW_THIS_WORKS, HOW_THIS_WORKS_CHANNELS], aliases: ["how-this-works"] },
+        { name: "🎁-free-play", topic: "One handpicked play a day, free. Tracked on its own record.", readOnly: true, aliases: ["free-play"] },
+        { name: "📊-the-ledger", topic: "Units + W/L for the premium card and the free plays, tracked separately. Wins AND losses.", readOnly: true, aliases: ["results"] },
+        { name: "📚-sharp-school", topic: "Bet smarter — units, CLV, staking, line shopping.", readOnly: true, aliases: ["tips"] },
       ],
     },
     {
       name: "👑 PREMIUM",
       visibility: "premium",
       channels: [
-        { name: "todays-card", topic: "Archer's handpicked plays, with units. The tracked record is built on this.", readOnly: true },
-        { name: "ev-slate", topic: "Every +EV play the system finds today — all sports, model EV + market EV, best book. No units, info only.", readOnly: true },
-        { name: "value-check", topic: "Ask the bot about any play, any sport — is the price worth it?" },
+        { name: "👑-todays-card", topic: "Archer's handpicked plays, with units. The tracked record is built on this.", readOnly: true, aliases: ["todays-card"] },
+        { name: "📈-the-firehose", topic: "Every +EV play the system finds today — all sports, model EV + market EV, best book. No units, info only.", readOnly: true, aliases: ["ev-slate"] },
+        { name: "🤖-value-check", topic: "Ask the bot about any play, any sport — is the price worth it?", aliases: ["value-check"] },
       ],
     },
     {
       name: "👥 COMMUNITY",
       visibility: "public",
       channels: [
-        { name: "wins", topic: "Winning slips only — and only after the play settles.", pinned: [WINS_RULE] },
-        { name: "purchases", topic: "What the winnings bought. No picks, no lines.", pinned: [PURCHASES_RULE] },
+        { name: "🏆-hall-of-cashes", topic: "Winning slips only — images only, and only after the play settles.", pinned: [WINS_RULE], aliases: ["wins"], imageOnly: true },
+        { name: "💸-the-haul", topic: "What the winnings bought. Images only.", pinned: [PURCHASES_RULE], aliases: ["purchases"], imageOnly: true },
       ],
     },
     {
       name: "🛠️ STAFF",
       visibility: "staff",
       channels: [
-        { name: "command-deck", topic: "Archer's cockpit — the daily handpick deck lands here. Invisible to members." },
+        { name: "🎛️-command-deck", topic: "Archer's cockpit — the daily handpick deck lands here. Invisible to members.", aliases: ["command-deck"] },
       ],
     },
   ],

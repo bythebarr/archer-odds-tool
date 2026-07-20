@@ -146,7 +146,29 @@ async function main() {
     }
 
     for (const ch of cat.channels) {
-      const existing = chanByName.get(`${CHANNEL_TEXT}:${ch.name}`);
+      let existing = chanByName.get(`${CHANNEL_TEXT}:${ch.name}`);
+
+      // Not found under its current name — look for a former name and rename it
+      // in place, so a rename in the plan never orphans the real channel (and
+      // its history, and any webhook pointed at it) behind a fresh empty one.
+      if (!existing) {
+        for (const alias of ch.aliases ?? []) {
+          const old = chanByName.get(`${CHANNEL_TEXT}:${alias}`);
+          if (!old) continue;
+          if (!apply) {
+            console.log(`    #${alias} — WOULD RENAME to #${ch.name}`);
+            existing = old;
+            break;
+          }
+          await api(`/channels/${old.id}`, "PATCH", { name: ch.name });
+          console.log(`    #${alias} — renamed to #${ch.name}`);
+          chanByName.delete(`${CHANNEL_TEXT}:${alias}`);
+          chanByName.set(`${CHANNEL_TEXT}:${ch.name}`, { ...old, name: ch.name });
+          existing = { ...old, name: ch.name };
+          break;
+        }
+      }
+
       if (existing) {
         // A channel that survived an earlier layout is in the WRONG PLACE, not
         // done: it keeps its old parent and old permissions. Skipping it (the
@@ -196,9 +218,94 @@ async function main() {
   // Community server has designated as its rules/updates channels (error 50074).
   await repointCommunityChannels(chanByName, apply);
 
+  await ensureImageOnlyRule(chanByName, roleId, apply);
+
   if (PRUNE) await prune(await api<DiscordChannel[]>(`/guilds/${GUILD}/channels`), apply);
 
   console.log(`\n${apply ? "✓ Provisioning complete." : "Dry run complete — re-run with --apply to build."}\n`);
+}
+
+const AUTOMOD_RULE_NAME = "ARCHR: images only";
+/**
+ * Matches a message carrying ANY character at all. A photo posted with no
+ * caption has empty content and so doesn't match — which is the whole trick:
+ * one rule turns a channel image-only without needing a bot that watches
+ * messages (impossible on serverless) or deletes them after the fact.
+ */
+const ANY_TEXT = "[\\s\\S]+";
+
+interface AutoModRule {
+  id: string;
+  name: string;
+}
+
+/**
+ * Enforce `imageOnly` channels with a single AutoMod rule.
+ *
+ * AutoMod rules are GUILD-wide with an exemption list — there's no "apply only
+ * here" — so image-only is expressed inversely: block text everywhere, exempt
+ * every channel that isn't image-only. The exempt list is recomputed from the
+ * plan on every run, so it can't drift as channels come and go.
+ *
+ * ⚠️ That inversion is why this is worth reading twice: a wrong exempt list
+ * blocks text SERVER-WIDE. Staff roles are exempt as an escape hatch, and the
+ * run prints exactly which channels end up restricted.
+ */
+async function ensureImageOnlyRule(
+  chanByName: Map<string, DiscordChannel>,
+  roleId: (name: string) => string,
+  apply: boolean
+): Promise<void> {
+  const planned = SERVER_PLAN.categories.flatMap((c) => c.channels);
+  const restricted = planned.filter((ch) => ch.imageOnly);
+  if (!restricted.length) return;
+
+  const idFor = (name: string) => chanByName.get(`${CHANNEL_TEXT}:${name}`)?.id;
+  const restrictedIds = new Set(restricted.map((ch) => idFor(ch.name)).filter(Boolean) as string[]);
+  // Everything that exists and ISN'T image-only stays exempt.
+  const exemptChannels = [...chanByName.values()]
+    .filter((c) => c.type === CHANNEL_TEXT && !restrictedIds.has(c.id))
+    .map((c) => c.id);
+
+  if (!restrictedIds.size) return;
+
+  const body = {
+    name: AUTOMOD_RULE_NAME,
+    event_type: 1, // MESSAGE_SEND
+    trigger_type: 1, // KEYWORD
+    trigger_metadata: { regex_patterns: [ANY_TEXT], keyword_filter: [], allow_list: [] },
+    actions: [
+      {
+        type: 1, // BLOCK_MESSAGE
+        metadata: { custom_message: "This channel is images only — post the screenshot with no caption." },
+      },
+    ],
+    enabled: true,
+    exempt_roles: [roleId("Mod"), roleId("Archer")],
+    exempt_channels: exemptChannels,
+  };
+
+  const names = restricted.map((c) => `#${c.name}`).join(", ");
+  if (!apply) {
+    console.log(`\n  automod: WOULD enforce images-only in ${names}`);
+    return;
+  }
+
+  try {
+    const existing = await api<AutoModRule[]>(`/guilds/${GUILD}/auto-moderation/rules`);
+    const mine = existing.find((r) => r.name === AUTOMOD_RULE_NAME);
+    if (mine) {
+      await api(`/guilds/${GUILD}/auto-moderation/rules/${mine.id}`, "PATCH", body);
+      console.log(`\n  automod: updated — images-only in ${names}`);
+    } else {
+      await api(`/guilds/${GUILD}/auto-moderation/rules`, "POST", body);
+      console.log(`\n  automod: created — images-only in ${names}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`\n  automod: ✗ SKIPPED: ${msg.slice(0, 200)}`);
+    console.log("     (set it by hand: Server Settings → AutoMod → custom keyword rule)");
+  }
 }
 
 /**

@@ -17,6 +17,25 @@ describe("SERVER_PLAN integrity", () => {
     expect(new Set(chans).size).toBe(chans.length);
   });
 
+  it("no channel name collides with another's alias (a rename would fight itself)", () => {
+    const names = new Set(SERVER_PLAN.categories.flatMap((c) => c.channels.map((ch) => ch.name)));
+    for (const cat of SERVER_PLAN.categories) {
+      for (const ch of cat.channels) {
+        for (const alias of ch.aliases ?? []) {
+          expect(names.has(alias), `alias "${alias}" is also a live channel name`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("image-only channels are public — the AutoMod rule is pointless on a hidden one", () => {
+    for (const cat of SERVER_PLAN.categories) {
+      for (const ch of cat.channels) {
+        if (ch.imageOnly) expect(cat.visibility).toBe("public");
+      }
+    }
+  });
+
   it("every pinned message fits Discord's 2000-char cap", () => {
     // The provisioner posts each pinned entry as ONE message; Discord rejects
     // anything longer, and a rejected pin fails provisioning mid-run.
