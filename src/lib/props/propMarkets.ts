@@ -83,6 +83,51 @@ export const PARLAY_MARKET_KEY_TO_ODDS_API_KEY: Record<string, string> = {
   player_pitching_outs: "pitcher_outs",
 };
 
+/**
+ * Markets only a PITCHER can have. Used to learn who's pitching from the feed
+ * itself, which is how the ambiguous strikeouts market gets resolved.
+ */
+export const PARLAY_PITCHER_ONLY_MARKETS = new Set([
+  "player_earned_runs",
+  "player_earned_runs_allowed",
+  "player_hits_allowed",
+  "player_outs",
+  "player_outs_recorded",
+  "player_pitcher_outs",
+  "player_pitching_outs",
+  "player_pitching_walks",
+  "player_walks_allowed",
+  "player_pitcher_strikeouts",
+  "player_strikeouts_thrown",
+]);
+
+/**
+ * `player_strikeouts` is the market we can't take at face value AND can't
+ * afford to drop.
+ *
+ * Refusing it outright was the first instinct — it mixes batter and pitcher
+ * lines in one bucket — but the live feed settles the argument: the explicit
+ * `player_pitcher_strikeouts` key had ONE row (a single exchange), while
+ * `player_strikeouts` had 101 across ten books including Pinnacle. Dropping it
+ * leaves pitcher strikeouts, the one backtested edge, with no market at all.
+ *
+ * So it's disambiguated instead, in priority order:
+ *   1. If the player is quoted elsewhere in the SAME feed on a pitcher-only
+ *      market (earned runs, outs, hits allowed), they're a pitcher. This is
+ *      evidence, not a guess.
+ *   2. Otherwise fall back to the line: MLB batter strikeout props run 0.5-2.5,
+ *      starting-pitcher props 3.5+. The gap is wide and stable.
+ *
+ * A batter mis-read as a pitcher would pollute the edge, so rule 1 leads and
+ * the threshold only covers players the feed says nothing else about.
+ */
+const PITCHER_LINE_FLOOR = 3;
+
+export function resolveStrikeoutsMarket(line: number, isKnownPitcher: boolean): string {
+  if (isKnownPitcher) return "pitcher_strikeouts";
+  return line >= PITCHER_LINE_FLOOR ? "pitcher_strikeouts" : "batter_strikeouts";
+}
+
 /** Parlay key → our key, or null when the market isn't one we can grade. */
 export function normalizeParlayMarketKey(key: string): string | null {
   return PARLAY_MARKET_KEY_TO_ODDS_API_KEY[key] ?? null;

@@ -1,5 +1,10 @@
 import type { ParlayPropRow, OddsApiBookmaker } from "@/lib/odds/oddsApiClient";
-import { normalizeParlayMarketKey, looksLikePlayerName } from "./propMarkets";
+import {
+  normalizeParlayMarketKey,
+  looksLikePlayerName,
+  resolveStrikeoutsMarket,
+  PARLAY_PITCHER_ONLY_MARKETS,
+} from "./propMarkets";
 
 /**
  * Reshape ParlayAPI's flat prop rows into the nested bookmakers → markets →
@@ -30,6 +35,16 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
   const titles = new Map<string, string>();
   const skipped = { dfs: 0, noLine: 0, noPrice: 0, unmappedMarket: 0, notAPlayer: 0 };
 
+  // First pass: learn who's pitching TODAY from the feed itself — anyone quoted
+  // on a pitcher-only market. This is what makes the ambiguous strikeouts
+  // market safe to use rather than guessing from the line alone.
+  const knownPitchers = new Set<string>();
+  for (const row of rows) {
+    if (PARLAY_PITCHER_ONLY_MARKETS.has(row.market_key) && looksLikePlayerName(row.player)) {
+      knownPitchers.add(row.player.trim().toLowerCase());
+    }
+  }
+
   for (const row of rows) {
     // DFS pick-em books quote a flat payout, not a two-sided market. Their
     // "price" isn't comparable to a sportsbook's, so including them would
@@ -48,7 +63,10 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
     }
     // Translate Parlay's vocabulary, and drop anything ambiguous or ungradeable
     // — see PARLAY_MARKET_KEY_TO_ODDS_API_KEY for why this is an allowlist.
-    const marketKey = normalizeParlayMarketKey(row.market_key);
+    const marketKey =
+      row.market_key === "player_strikeouts"
+        ? resolveStrikeoutsMarket(row.line, knownPitchers.has(row.player.trim().toLowerCase()))
+        : normalizeParlayMarketKey(row.market_key);
     if (!marketKey) {
       skipped.unmappedMarket++;
       continue;

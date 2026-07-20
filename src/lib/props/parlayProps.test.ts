@@ -106,14 +106,39 @@ describe("market vocabulary translation", () => {
     expect(byEventId.get("e1")![0].markets[0].key).toBe("pitcher_strikeouts");
   });
 
-  it("REFUSES the ambiguous bare player_strikeouts key", () => {
-    // This key carries pitcher lines, batter lines, and milestone rows in one
-    // bucket. Mapping it would corrupt pitcher Ks — the one backtested edge.
-    const { byEventId, skipped } = groupPropRows([
+  it("resolves player_strikeouts to PITCHER when the feed shows them pitching", () => {
+    // The same player quoted on a pitcher-only market elsewhere in the feed is
+    // evidence, not a guess — this is what makes the ambiguous key usable.
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_hits_allowed", player: "Tarik Skubal", line: 5.5 }),
       row({ market_key: "player_strikeouts", player: "Tarik Skubal", line: 6.5 }),
     ]);
-    expect(byEventId.size).toBe(0);
-    expect(skipped.unmappedMarket).toBe(1);
+    const keys = byEventId.get("e1")![0].markets.map((m) => m.key).sort();
+    expect(keys).toContain("pitcher_strikeouts");
+  });
+
+  it("resolves an unknown player's strikeouts by line — batters sit below 3", () => {
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_strikeouts", player: "Aaron Judge", line: 1.5 }),
+    ]);
+    expect(byEventId.get("e1")![0].markets[0].key).toBe("batter_strikeouts");
+  });
+
+  it("resolves a high line to pitcher even with no other evidence", () => {
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_strikeouts", player: "Unknown Arm", line: 6.5 }),
+    ]);
+    expect(byEventId.get("e1")![0].markets[0].key).toBe("pitcher_strikeouts");
+  });
+
+  it("pitcher evidence BEATS a low line — a starter can be quoted at 2.5", () => {
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_outs", player: "Opener Guy", line: 8.5 }),
+      row({ market_key: "player_strikeouts", player: "Opener Guy", line: 2.5 }),
+    ]);
+    const keys = byEventId.get("e1")![0].markets.map((m) => m.key);
+    expect(keys).toContain("pitcher_strikeouts");
+    expect(keys).not.toContain("batter_strikeouts");
   });
 
   it("keeps batter and pitcher strikeouts as different categories", () => {
