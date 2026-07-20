@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { MarketType, Side } from "@/generated/prisma/client";
 import type { OddsApiBookmaker } from "./oddsApiClient";
+import { isCoherentMarket, overround } from "./marketSanity";
 import { ALLOWED_BOOK_KEYS } from "./bookAllowlist";
 
 function isAllowedBook(key: string): boolean {
@@ -82,7 +83,27 @@ export async function storeBookmakerOdds(
       // whichever is actually present, falling back to "now" if neither is.
       const sourceLastUpdate = new Date(market.last_update ?? bookmaker.last_update ?? polledAt);
 
+      // Reject the whole market if its sides don't add up to a plausible book.
+      // Grouped by point, since a totals/spreads market is only two-way AT a
+      // given number — 8.5 and 9.5 are separate markets, not one four-way.
+      const byPoint = new Map<number | null, number[]>();
+      for (const o of market.outcomes) {
+        if (typeof o.price !== "number" || !Number.isFinite(o.price)) continue;
+        const key = o.point ?? null;
+        byPoint.set(key, [...(byPoint.get(key) ?? []), o.price]);
+      }
+      const incoherentPoints = new Set(
+        [...byPoint.entries()].filter(([, prices]) => !isCoherentMarket(prices)).map(([point]) => point)
+      );
+      if (incoherentPoints.size) {
+        console.warn(
+          `storeOdds: dropping ${bookmaker.key} ${market.key} — implausible market ` +
+            [...incoherentPoints].map((pt) => `${pt ?? "ml"}:${overround(byPoint.get(pt) ?? []).toFixed(3)}`).join(", ")
+        );
+      }
+
       for (const outcome of market.outcomes) {
+        if (incoherentPoints.has(outcome.point ?? null)) continue;
         const side = outcomeToSide(marketType, outcome.name, homeCompetitorName, awayCompetitorName);
         if (!side) continue;
         // A book can list an outcome with NO price — a suspended or pulled

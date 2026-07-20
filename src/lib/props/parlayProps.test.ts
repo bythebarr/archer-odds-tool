@@ -180,3 +180,24 @@ describe("market vocabulary translation", () => {
     expect(new Set(allKeys)).toEqual(new Set(["pitcher_outs"]));
   });
 });
+
+describe("market sanity in props", () => {
+  it("drops a two-way prop whose sides don't add up to a real market", () => {
+    // The Kalshi failure mode, applied to props: both sides long, implying far
+    // under 100%. One of these on a card would manufacture fake EV.
+    const { byEventId, skipped } = groupPropRows([row({ over_price: 4900, under_price: 133 })]);
+    expect(byEventId.size).toBe(0);
+    expect(skipped.incoherent).toBe(1);
+  });
+
+  it("keeps a normal juiced prop", () => {
+    const { byEventId } = groupPropRows([row({ over_price: 290, under_price: -370 })]);
+    expect(byEventId.size).toBe(1);
+  });
+
+  it("still keeps a one-sided quote — nothing to cross-check it against", () => {
+    const { byEventId, skipped } = groupPropRows([row({ over_price: 4900, under_price: null })]);
+    expect(byEventId.size).toBe(1);
+    expect(skipped.incoherent).toBe(0);
+  });
+});

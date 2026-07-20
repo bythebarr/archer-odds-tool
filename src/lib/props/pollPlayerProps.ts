@@ -94,7 +94,7 @@ export async function pollAndStorePlayerProps(now: Date = new Date()): Promise<P
       const { byEventId, skipped } = groupPropRows(bulk.rows);
       console.log(
         `props: ${bulk.rows.length} rows · skipped ${skipped.dfs} DFS, ${skipped.noLine} no-line, ` +
-          `${skipped.noPrice} unpriced, ${skipped.unmappedMarket} unmapped-market, ${skipped.notAPlayer} not-a-player`
+          `${skipped.noPrice} unpriced, ${skipped.unmappedMarket} unmapped-market, ${skipped.notAPlayer} not-a-player, ${skipped.incoherent} implausible`
       );
 
       for (const game of gamesToPoll) {

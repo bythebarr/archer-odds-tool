@@ -1,4 +1,5 @@
 import type { ParlayPropRow, OddsApiBookmaker } from "@/lib/odds/oddsApiClient";
+import { isCoherentMarket } from "@/lib/odds/marketSanity";
 import {
   normalizeParlayMarketKey,
   looksLikePlayerName,
@@ -26,14 +27,22 @@ export interface GroupedProps {
   /** Parlay event id → the bookmakers for that event, TOA-shaped. */
   byEventId: Map<string, OddsApiBookmaker[]>;
   /** Rows dropped as unusable, by reason — reported, never silent. */
-  skipped: { dfs: number; noLine: number; noPrice: number; unmappedMarket: number; notAPlayer: number };
+  skipped: {
+    dfs: number;
+    noLine: number;
+    noPrice: number;
+    unmappedMarket: number;
+    notAPlayer: number;
+    /** Two-way quote whose sides don't add up to a plausible market. */
+    incoherent: number;
+  };
 }
 
 export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
   // event → book → market → outcomes
   const events = new Map<string, Map<string, Map<string, OddsApiBookmaker["markets"][number]>>>();
   const titles = new Map<string, string>();
-  const skipped = { dfs: 0, noLine: 0, noPrice: 0, unmappedMarket: 0, notAPlayer: 0 };
+  const skipped = { dfs: 0, noLine: 0, noPrice: 0, unmappedMarket: 0, notAPlayer: 0, incoherent: 0 };
 
   // First pass: learn who's pitching TODAY from the feed itself — anyone quoted
   // on a pitcher-only market. This is what makes the ambiguous strikeouts
@@ -73,6 +82,17 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
     }
     if (!looksLikePlayerName(row.player)) {
       skipped.notAPlayer++;
+      continue;
+    }
+    // Same guard as game lines: a row quoting BOTH sides is a two-way market
+    // and has to add up like one. A one-sided quote passes — nothing to check
+    // it against. See marketSanity for the measurements behind the bounds.
+    if (
+      row.over_price != null &&
+      row.under_price != null &&
+      !isCoherentMarket([row.over_price, row.under_price])
+    ) {
+      skipped.incoherent++;
       continue;
     }
 
