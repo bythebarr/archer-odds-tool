@@ -51,6 +51,17 @@ export interface ChannelPlan {
    * play to free members. Staff roles are exempt.
    */
   imageOnly?: boolean;
+  /**
+   * Claims one of Discord's reserved Community slots. Discord REFUSES to delete
+   * whichever channel holds a slot (error 50074), so the old layout can only be
+   * pruned once these point at the new channels.
+   *
+   * Declared on the plan rather than by name in the provisioner: the first
+   * version hardcoded channel names, which silently stopped matching the moment
+   * those channels were renamed — leaving the slots on the old channels and the
+   * prune permanently blocked.
+   */
+  communityRole?: "rules" | "updates" | "safety";
 }
 
 export interface CategoryPlan {
@@ -295,9 +306,9 @@ export const SERVER_PLAN: ServerPlan = {
       name: "📌 IMPORTANT",
       visibility: "public",
       channels: [
-        { name: "👋-start-here", topic: "What ARCHR is, and the rules. Read before anything else.", readOnly: true, pinned: [WELCOME_PITCH, WELCOME_RULES], aliases: ["welcome-and-rules"] },
+        { name: "👋-start-here", topic: "What ARCHR is, and the rules. Read before anything else.", readOnly: true, pinned: [WELCOME_PITCH, WELCOME_RULES], aliases: ["welcome-and-rules"], communityRole: "rules" },
         { name: "🔓-go-premium", topic: "What premium unlocks + how to join.", readOnly: true, pinned: [GO_PREMIUM], aliases: ["go-premium"] },
-        { name: "📣-announcements", topic: "News, giveaways, and drops — from Archer.", readOnly: true, aliases: ["announcements"] },
+        { name: "📣-announcements", topic: "News, giveaways, and drops — from Archer.", readOnly: true, aliases: ["announcements"], communityRole: "updates" },
       ],
     },
     {
@@ -331,7 +342,7 @@ export const SERVER_PLAN: ServerPlan = {
       name: "🛠️ STAFF",
       visibility: "staff",
       channels: [
-        { name: "🎛️-command-deck", topic: "Archer's cockpit — the daily handpick deck lands here. Invisible to members.", aliases: ["command-deck"] },
+        { name: "🎛️-command-deck", topic: "Archer's cockpit — the daily handpick deck lands here. Invisible to members.", aliases: ["command-deck"], communityRole: "safety" },
       ],
     },
   ],

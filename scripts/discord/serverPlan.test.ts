@@ -36,6 +36,17 @@ describe("SERVER_PLAN integrity", () => {
     }
   });
 
+  it("claims all three reserved Community slots exactly once", () => {
+    // An unclaimed slot stays on an old channel, and Discord then refuses to
+    // delete that channel forever (error 50074) — which is precisely how the
+    // old #rules and #mod-log survived three prune passes.
+    const claimed = SERVER_PLAN.categories
+      .flatMap((c) => c.channels)
+      .map((ch) => ch.communityRole)
+      .filter(Boolean);
+    expect([...claimed].sort()).toEqual(["rules", "safety", "updates"]);
+  });
+
   it("the ✅ screening terms fit Discord's limits (5 entries, 300 chars each)", () => {
     // Over either limit and the member-verification PATCH is rejected, which
     // silently leaves the room with NO rules gate at all.

@@ -424,11 +424,6 @@ async function ensureImageOnlyRule(
  *
  * A no-op on a non-Community server, which has neither slot.
  */
-const COMMUNITY_RULES_CHANNEL = "welcome-and-rules";
-const COMMUNITY_UPDATES_CHANNEL = "announcements";
-/** Safety alerts are mod-facing, so this one points at the staff channel. */
-const COMMUNITY_SAFETY_CHANNEL = "command-deck";
-
 interface Guild {
   features: string[];
   rules_channel_id: string | null;
@@ -443,17 +438,31 @@ async function repointCommunityChannels(
   const guild = await api<Guild>(`/guilds/${GUILD}`);
   if (!guild.features?.includes("COMMUNITY")) return;
 
-  const rules = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_RULES_CHANNEL}`);
-  const updates = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_UPDATES_CHANNEL}`);
-  const safety = chanByName.get(`${CHANNEL_TEXT}:${COMMUNITY_SAFETY_CHANNEL}`);
+  const SLOT_FIELD = {
+    rules: "rules_channel_id",
+    updates: "public_updates_channel_id",
+    safety: "safety_alerts_channel_id",
+  } as const;
 
+  console.log(
+    `  community: currently rules=${guild.rules_channel_id ?? "—"} updates=${guild.public_updates_channel_id ?? "—"} safety=${guild.safety_alerts_channel_id ?? "—"}`
+  );
+
+  // Always send every slot rather than diffing. Diffing is what hid the bug: a
+  // lookup that silently missed left the slot on an old channel and the prune
+  // blocked, with nothing logged because "no change needed" looks identical to
+  // "couldn't find the channel".
   const patch: Record<string, string> = {};
-  if (rules && guild.rules_channel_id !== rules.id) patch.rules_channel_id = rules.id;
-  if (updates && guild.public_updates_channel_id !== updates.id) {
-    patch.public_updates_channel_id = updates.id;
-  }
-  if (safety && guild.safety_alerts_channel_id !== safety.id) {
-    patch.safety_alerts_channel_id = safety.id;
+  for (const cat of SERVER_PLAN.categories) {
+    for (const ch of cat.channels) {
+      if (!ch.communityRole) continue;
+      const found = chanByName.get(`${CHANNEL_TEXT}:${ch.name}`);
+      if (!found) {
+        console.log(`  community: ⚠️ ${ch.communityRole} slot wants #${ch.name}, which doesn't exist`);
+        continue;
+      }
+      patch[SLOT_FIELD[ch.communityRole]] = found.id;
+    }
   }
   if (!Object.keys(patch).length) return;
 
@@ -462,7 +471,7 @@ async function repointCommunityChannels(
     return;
   }
   await api(`/guilds/${GUILD}`, "PATCH", patch);
-  console.log(`\n  community: repointed ${Object.keys(patch).join(" + ")} to the new channels`);
+  console.log(`  community: repointed ${Object.keys(patch).join(" + ")} to the new channels`);
 }
 
 /**
