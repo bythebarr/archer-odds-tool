@@ -4,6 +4,14 @@
  * the Discord API. Idempotent: matches everything by name and creates only what
  * is missing, so re-running after editing the plan just fills the gaps.
  *
+ * Credentials come from .env (DISCORD_BOT_TOKEN, DISCORD_GUILD_ID) — gitignored,
+ * local-only, and never read by the app itself. The npm scripts are the intended
+ * entry points; the long forms below still work if you'd rather pass them inline.
+ *
+ *   npm run discord:plan     # print the plan, no token needed
+ *   npm run discord:dry      # dry run against the real server, reads only
+ *   npm run discord:sync     # build + prune for real
+ *
  *   # inspect the plan, no token needed:
  *   npx tsx scripts/discord/provision-server.ts --plan
  *
@@ -25,6 +33,7 @@
  * an accidental delete is unrecoverable in a way a channel isn't.
  */
 
+import "dotenv/config";
 import { SERVER_PLAN, overwritesFor, type ChannelPlan } from "./serverPlan";
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;

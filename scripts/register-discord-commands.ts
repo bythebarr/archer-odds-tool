@@ -2,6 +2,11 @@
  * Registers the `/value` slash command with Discord. Run once, and again
  * whenever the command definition below changes:
  *
+ *   npm run discord:commands
+ *
+ * Reads DISCORD_APP_ID / DISCORD_BOT_TOKEN / DISCORD_GUILD_ID from .env, or pass
+ * them inline:
+ *
  *   DISCORD_APP_ID=... DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... \
  *     npx tsx scripts/register-discord-commands.ts
  *
@@ -9,6 +14,8 @@
  * a single private Discord). Without it, registers globally (can take ~1h to
  * appear). Needs the bot token only here, never at runtime.
  */
+
+import "dotenv/config";
 
 const APP_ID = process.env.DISCORD_APP_ID;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;

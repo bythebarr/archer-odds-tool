@@ -35,7 +35,11 @@
     "matchup:park": "tsx scripts/matchup-park.ts",
     "matchup:batterpark": "tsx scripts/matchup-batter-park.ts",
     "matchup:sb": "tsx scripts/matchup-sb.ts",
-    "matchup:rest": "tsx scripts/matchup-rest.ts"
+    "matchup:rest": "tsx scripts/matchup-rest.ts",
+    "discord:plan": "tsx scripts/discord/provision-server.ts --plan",
+    "discord:dry": "tsx scripts/discord/provision-server.ts --prune",
+    "discord:sync": "tsx scripts/discord/provision-server.ts --prune --apply",
+    "discord:commands": "tsx scripts/register-discord-commands.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
