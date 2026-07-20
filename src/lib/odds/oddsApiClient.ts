@@ -1,4 +1,45 @@
-const BASE_URL = "https://api.the-odds-api.com/v4";
+/**
+ * Odds provider. ParlayAPI is deliberately URL- and shape-compatible with The
+ * Odds API on the endpoints we use — same paths, same `?apiKey=`, and (verified
+ * against live responses) the same JSON for game lines AND scores — so the
+ * provider is a base-URL + key swap rather than an integration.
+ *
+ * Why we moved: TOA carries no sharp book, so our de-vigged "fair price" was a
+ * consensus of recreational books. ParlayAPI carries **Pinnacle**, which is the
+ * closest thing to a true market price — that upgrades both the fair-value
+ * baseline and any honest CLV measurement.
+ *
+ * `ODDS_PROVIDER` forces a choice; otherwise we prefer Parlay when its key is
+ * present and fall back to TOA, so the switch is reversible by unsetting one
+ * env var rather than a deploy.
+ *
+ * NOT compatible: player props. Parlay returns flat per-book rows rather than
+ * TOA's nested bookmakers→markets→outcomes, so pollPlayerProps still needs its
+ * own mapping — see fetchEventPlayerProps below.
+ */
+type OddsProvider = "parlay" | "toa";
+
+const PROVIDER: OddsProvider =
+  (process.env.ODDS_PROVIDER as OddsProvider | undefined) ??
+  (process.env.PARLAY_API_KEY ? "parlay" : "toa");
+
+const BASE_URL =
+  PROVIDER === "parlay" ? "https://parlay-api.com/v1" : "https://api.the-odds-api.com/v4";
+
+/** The key for whichever provider is active. */
+function oddsApiKey(): string {
+  const key = PROVIDER === "parlay" ? process.env.PARLAY_API_KEY : process.env.ODDS_API_KEY;
+  if (!key) {
+    throw new Error(
+      PROVIDER === "parlay" ? "PARLAY_API_KEY is not set" : "ODDS_API_KEY is not set"
+    );
+  }
+  return key;
+}
+
+export function activeOddsProvider(): OddsProvider {
+  return PROVIDER;
+}
 const MLB_SPORT_KEY = "baseball_mlb";
 
 export type OddsApiMarketKey =
@@ -65,10 +106,7 @@ export async function fetchOdds(
   markets: OddsApiMarketKey[],
   regions: string[]
 ): Promise<FetchOddsResult> {
-  const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) {
-    throw new Error("ODDS_API_KEY is not set");
-  }
+  const apiKey = oddsApiKey();
 
   const url = new URL(`${BASE_URL}/sports/${sportKey}/odds`);
   url.searchParams.set("apiKey", apiKey);
@@ -139,10 +177,7 @@ export interface OddsApiSport {
  * usage quota (confirmed via docs and a live call this session).
  */
 export async function fetchSportsList(): Promise<OddsApiSport[]> {
-  const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) {
-    throw new Error("ODDS_API_KEY is not set");
-  }
+  const apiKey = oddsApiKey();
 
   const url = new URL(`${BASE_URL}/sports`);
   url.searchParams.set("apiKey", apiKey);
@@ -173,10 +208,7 @@ export async function fetchEventAlternateOdds(
   eventId: string,
   markets: OddsApiMarketKey[] = ["alternate_spreads", "alternate_totals"]
 ): Promise<FetchEventOddsResult> {
-  const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) {
-    throw new Error("ODDS_API_KEY is not set");
-  }
+  const apiKey = oddsApiKey();
 
   const url = new URL(`${BASE_URL}/sports/${MLB_SPORT_KEY}/events/${eventId}/odds`);
   url.searchParams.set("apiKey", apiKey);
@@ -214,10 +246,7 @@ export async function fetchEventPlayerProps(
   markets: string[],
   regions: string[]
 ): Promise<FetchEventOddsResult> {
-  const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) {
-    throw new Error("ODDS_API_KEY is not set");
-  }
+  const apiKey = oddsApiKey();
 
   const url = new URL(`${BASE_URL}/sports/${MLB_SPORT_KEY}/events/${eventId}/odds`);
   url.searchParams.set("apiKey", apiKey);
@@ -274,10 +303,7 @@ export interface FetchScoresResult {
  * during a live tournament day) — see tennis/grading.ts's defensive parsing.
  */
 export async function fetchScores(sportKey: string, daysFrom: number): Promise<FetchScoresResult> {
-  const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) {
-    throw new Error("ODDS_API_KEY is not set");
-  }
+  const apiKey = oddsApiKey();
 
   const url = new URL(`${BASE_URL}/sports/${sportKey}/scores`);
   url.searchParams.set("apiKey", apiKey);
