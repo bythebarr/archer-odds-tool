@@ -7,7 +7,7 @@ import { marketConsensus } from "@/lib/odds/lineEconomics";
 import { calculateEv, consensusFairProbability, type DevigPair } from "@/lib/odds/devig";
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { formatPoint } from "@/lib/odds/format";
-import { ALLOWED_BOOK_KEYS, BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
+import { BETTABLE_BOOK_KEYS, BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
 import { STAT_CATEGORY_LABELS } from "@/lib/props/format";
 import { mlbHeadshotUrl } from "@/lib/logos";
 import { getGameMatchupsBatch } from "./matchup";
@@ -262,7 +262,10 @@ export async function getOddsPoolForDate(dateEt: string): Promise<OddsPool> {
     },
   })) as unknown as GameRow[];
 
-  const allowed = new Set<string>(ALLOWED_BOOK_KEYS);
+  // BETTABLE, not ALLOWED: best-price selection must never surface a book the
+  // member can't actually use. The sharp book is still stored and still shapes
+  // the de-vigged consensus above — it just isn't a place we send anyone.
+  const allowed = new Set<string>(BETTABLE_BOOK_KEYS);
   const plays: OddsPlay[] = [];
 
   // Archer model for the MLB games — the "model" value lens. Win probability
