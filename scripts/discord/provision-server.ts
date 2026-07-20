@@ -60,6 +60,7 @@ const PRUNE = process.argv.includes("--prune");
  */
 const PRUNE_PROTECTED = new Set<string>([]);
 
+const PERM_VIEW = "1024"; // VIEW_CHANNEL, for hiding what we cannot delete
 const CHANNEL_TEXT = 0;
 const CHANNEL_CATEGORY = 4;
 
@@ -532,8 +533,19 @@ async function prune(existing: DiscordChannel[], apply: boolean) {
           // fall through to the report below
         }
       }
-      console.log(`  ${kind} ${o.name} — ✗ SKIPPED: ${msg.slice(0, 140)}`);
-      failed.push(o.name);
+      // Undeletable (Discord reserves it) — so HIDE it instead. A leftover
+      // channel members can still see is a visible flaw in a paid room; one
+      // they can't see is just clutter in the admin's sidebar. Falling back to
+      // hiding turns a hard failure into a cosmetic one.
+      try {
+        await api(`/channels/${o.id}`, "PATCH", {
+          permission_overwrites: [{ id: GUILD, type: 0, allow: "0", deny: PERM_VIEW }],
+        });
+        console.log(`  ${kind} ${o.name} — couldn't delete (reserved), HIDDEN from members instead`);
+      } catch {
+        console.log(`  ${kind} ${o.name} — ✗ SKIPPED: ${msg.slice(0, 140)}`);
+        failed.push(o.name);
+      }
     }
   }
   if (failed.length) {

@@ -39,7 +39,8 @@
     "discord:plan": "tsx scripts/discord/provision-server.ts --plan",
     "discord:dry": "tsx scripts/discord/provision-server.ts --prune",
     "discord:sync": "tsx scripts/discord/provision-server.ts --prune --apply",
-    "discord:commands": "tsx scripts/register-discord-commands.ts"
+    "discord:commands": "tsx scripts/register-discord-commands.ts",
+    "discord:audit": "tsx scripts/discord/audit.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
