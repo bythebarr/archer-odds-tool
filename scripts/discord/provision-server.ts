@@ -39,12 +39,17 @@ const MODE = process.argv.includes("--apply") ? "apply" : process.argv.includes(
  */
 const PRUNE = process.argv.includes("--prune");
 /**
- * Channels we refuse to delete even when pruning, because prod points at them.
- * #paper-log is the live DISCORD_WEBHOOK_URL target during the paper-logging
- * run — deleting it silently kills the daily card. Add names here before
- * repointing any webhook, not after.
+ * Channels prune must never delete, whatever the plan says.
+ *
+ * Empty by design right now: #paper-log used to sit here because prod's
+ * DISCORD_WEBHOOK_URL pointed at it, but the owner asked for it gone and that
+ * webhook is being repointed at #👑-todays-card anyway. Note the RECORD lives in
+ * the database, not in the channel's message history — deleting it loses the
+ * posts, not the ledger.
+ *
+ * Add a name here BEFORE repointing any webhook at a channel, not after.
  */
-const PRUNE_PROTECTED = new Set(["paper-log"]);
+const PRUNE_PROTECTED = new Set<string>([]);
 
 const CHANNEL_TEXT = 0;
 const CHANNEL_CATEGORY = 4;
@@ -96,6 +101,20 @@ async function main() {
 
   const apply = MODE === "apply";
   console.log(`\nARCHR provisioner — ${apply ? "APPLY (writing)" : "DRY RUN (reads only)"}\n`);
+
+  // Clear the Community/Onboarding guards FIRST. They reject the very edits this
+  // script exists to make (read-only locks, deleting old channels), so doing this
+  // afterwards means a second run — and a human clicking through Server Settings
+  // in between. Both are API-settable; neither needs to be manual.
+  await relaxCommunityGuards(apply);
+
+  // Who we are — used to tell our own pinned messages from anyone else's.
+  let botId: string | null = null;
+  try {
+    botId = (await api<{ id: string }>("/users/@me")).id;
+  } catch {
+    console.log("  (couldn't read bot identity — pin syncing skipped)");
+  }
 
   // Existing state (idempotency keys are names).
   const existingRoles = await api<DiscordRole[]>(`/guilds/${GUILD}/roles`);
@@ -195,6 +214,7 @@ async function main() {
             console.log(`    #${ch.name} — ✗ SKIPPED: ${msg.slice(0, 160)}`);
           }
         }
+        await syncPins(existing.id, ch, botId, apply);
         continue;
       }
       if (!apply) {
@@ -223,6 +243,52 @@ async function main() {
   if (PRUNE) await prune(await api<DiscordChannel[]>(`/guilds/${GUILD}/channels`), apply);
 
   console.log(`\n${apply ? "✓ Provisioning complete." : "Dry run complete — re-run with --apply to build."}\n`);
+}
+
+/**
+ * Turn off Onboarding and leave Community mode.
+ *
+ * Both were switched on by the old `pro-upgrade` script for features this room
+ * doesn't use (Welcome Screen, Onboarding, discovery, forums), and both actively
+ * fight the plan:
+ *   • Onboarding refuses any edit that leaves no channel writable by @everyone,
+ *     which blocks locking #announcements and the ledger read-only (error 350005).
+ *   • Community reserves rules/updates/safety channels and refuses to delete
+ *     them (error 50074), stranding the old layout.
+ *
+ * Idempotent: a server already out of Community with Onboarding off does nothing.
+ */
+async function relaxCommunityGuards(apply: boolean): Promise<void> {
+  const guild = await api<Guild>(`/guilds/${GUILD}`);
+  if (!guild.features?.includes("COMMUNITY")) return;
+
+  if (!apply) {
+    console.log("  community: WOULD disable Onboarding and leave Community mode");
+    return;
+  }
+
+  // Onboarding first — it can't be enabled on a non-Community server, so the
+  // reverse order can leave the PUT rejected.
+  try {
+    await api(`/guilds/${GUILD}/onboarding`, "PUT", {
+      prompts: [],
+      default_channel_ids: [],
+      enabled: false,
+      mode: 0,
+    });
+    console.log("  community: Onboarding disabled");
+  } catch (err) {
+    console.log(`  community: ✗ Onboarding — ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`);
+  }
+
+  try {
+    await api(`/guilds/${GUILD}`, "PATCH", {
+      features: guild.features.filter((f) => f !== "COMMUNITY"),
+    });
+    console.log("  community: left Community mode (reserved channels are now deletable)");
+  } catch (err) {
+    console.log(`  community: ✗ leaving Community — ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`);
+  }
 }
 
 const AUTOMOD_RULE_NAME = "ARCHR: images only";
@@ -420,6 +486,62 @@ async function postPins(channelId: string, ch: ChannelPlan) {
     await api(`/channels/${channelId}/pins/${msg.id}`, "PUT");
     console.log(`      pinned a message in #${ch.name}`);
   }
+}
+
+interface PinnedMessage {
+  id: string;
+  content: string;
+  author?: { id: string };
+}
+
+/**
+ * Keep pinned copy in sync with the plan, not just seeded once at creation.
+ *
+ * Pins are written when a channel is first made, so every later edit to the copy
+ * — a reworded pitch, a renamed channel referenced in the text — silently left
+ * the real server stale. Editing in place (rather than delete-and-repost) keeps
+ * the pin's position and any reactions on it.
+ *
+ * Only messages OUR bot authored are touched: a pin someone else added is
+ * theirs, and clobbering it would be a surprise.
+ */
+async function syncPins(channelId: string, ch: ChannelPlan, botId: string | null, apply: boolean) {
+  const wanted = ch.pinned ?? [];
+  if (!wanted.length || !botId) return;
+
+  let pins: PinnedMessage[];
+  try {
+    const raw = await api<PinnedMessage[] | { items: { message: PinnedMessage }[] }>(
+      `/channels/${channelId}/pins`
+    );
+    // v10 returns a bare array; newer shapes wrap it — accept either.
+    pins = Array.isArray(raw) ? raw : raw.items.map((i) => i.message);
+  } catch {
+    return; // can't read pins (permissions) — leave them alone rather than duplicate
+  }
+
+  const mine = pins.filter((m) => m.author?.id === botId).reverse(); // oldest first
+
+  if (mine.length === wanted.length) {
+    for (const [i, msg] of mine.entries()) {
+      if (msg.content === wanted[i]) continue;
+      if (!apply) {
+        console.log(`      #${ch.name} — pin ${i + 1} WOULD UPDATE`);
+        continue;
+      }
+      await api(`/channels/${channelId}/messages/${msg.id}`, "PATCH", { content: wanted[i] });
+      console.log(`      #${ch.name} — pin ${i + 1} updated`);
+    }
+    return;
+  }
+
+  // Count changed (a pin was added to or removed from the plan) — rebuild ours.
+  if (!apply) {
+    console.log(`      #${ch.name} — pins WOULD BE REBUILT (${mine.length} → ${wanted.length})`);
+    return;
+  }
+  for (const msg of mine) await api(`/channels/${channelId}/messages/${msg.id}`, "DELETE");
+  await postPins(channelId, ch);
 }
 
 main().catch((err) => {
