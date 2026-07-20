@@ -146,8 +146,25 @@ async function main() {
     }
 
     for (const ch of cat.channels) {
-      if (chanByName.has(`${CHANNEL_TEXT}:${ch.name}`)) {
-        console.log(`    #${ch.name} — exists`);
+      const existing = chanByName.get(`${CHANNEL_TEXT}:${ch.name}`);
+      if (existing) {
+        // A channel that survived an earlier layout is in the WRONG PLACE, not
+        // done: it keeps its old parent and old permissions. Skipping it (the
+        // original behavior) silently left e.g. #results outside the category
+        // whose visibility rules it depends on. Heal it into the plan instead.
+        const needsReparent = existing.parent_id !== (parent?.id ?? null);
+        if (!apply) {
+          console.log(`    #${ch.name} — exists${needsReparent ? ", WOULD MOVE + relock" : ", WOULD relock"}`);
+          continue;
+        }
+        if (parent) {
+          await api(`/channels/${existing.id}`, "PATCH", {
+            topic: ch.topic,
+            parent_id: parent.id,
+            permission_overwrites: overwritesFor(cat.visibility, Boolean(ch.readOnly), everyoneId, roleId),
+          });
+          console.log(`    #${ch.name} — healed (moved into ${cat.name}, permissions reapplied)`);
+        }
         continue;
       }
       if (!apply) {
