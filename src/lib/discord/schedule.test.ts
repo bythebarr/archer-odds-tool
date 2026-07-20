@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { firstStart, cardTiming, cardDropTime, resultsTiming, LEAD_HOURS } from "./schedule";
+import { firstStart, cardTiming, cardDropTime, resultsTiming, tipTiming, etHour, LEAD_HOURS } from "./schedule";
 import type { Play } from "@/lib/engine";
 
 /**
@@ -122,5 +122,39 @@ describe("resultsTiming", () => {
 
   it("stays quiet on a day with no tracked plays", () => {
     expect(resultsTiming([], false)).toEqual({ post: false, reason: "no-plays" });
+  });
+});
+
+describe("etHour", () => {
+  it("reads the hour in ET, not UTC", () => {
+    expect(etHour(new Date("2026-07-20T13:00:00Z"))).toBe(9); // EDT = UTC-4
+  });
+
+  it("normalizes midnight to 0 rather than 24", () => {
+    expect(etHour(new Date("2026-07-20T04:00:00Z"))).toBe(0);
+  });
+});
+
+describe("tipTiming", () => {
+  // 13:00Z = 9am ET in summer (EDT, UTC-4).
+  const nineEt = new Date("2026-07-20T13:00:00Z");
+  const eightEt = new Date("2026-07-20T12:00:00Z");
+
+  it("holds before the morning hour", () => {
+    expect(tipTiming(eightEt, false)).toEqual({ post: false, reason: "too-early" });
+  });
+
+  it("fires at the morning hour", () => {
+    expect(tipTiming(nineEt, false)).toEqual({ post: true });
+  });
+
+  it("never posts twice in a day", () => {
+    expect(tipTiming(nineEt, true)).toEqual({ post: false, reason: "already-posted" });
+  });
+
+  it("posts regardless of whether there's a slate — that's the point", () => {
+    // A tip takes no plays at all; the days with no card are exactly the days a
+    // free member needs a reason to open the room.
+    expect(tipTiming(new Date("2026-07-20T20:00:00Z"), false)).toEqual({ post: true });
   });
 });

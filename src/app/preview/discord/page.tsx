@@ -179,6 +179,12 @@ export default async function DiscordPreviewPage() {
         The card exactly as it would post — dry-run, nothing is posted or recorded. Refresh to re-pull.
       </p>
 
+      {/* The card's opening line, posted as message content above the embeds. */}
+      <Slot label="#todays-card · daily welcome" />
+      <div className="rounded-md border border-border bg-card/50 p-3 text-sm text-muted-foreground">
+        {card.intro.split("\n").map((line, i) => renderLine(line, i))}
+      </div>
+
       {/* 👑 The card — his handpicks, per-sport sections, with units. */}
       {card.card.length === 0 ? (
         <Post
@@ -192,7 +198,7 @@ export default async function DiscordPreviewPage() {
         card.card.map((s, i) => (
           <Post
             key={s.title}
-            slot={i === 0 ? "#todays-card" : ""}
+            slot=""
             title={s.title}
             body={s.body}
             accent={s.accent}

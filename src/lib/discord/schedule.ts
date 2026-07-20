@@ -62,6 +62,36 @@ export function cardDropTime(plays: Play[], leadHours: number = LEAD_HOURS): Dat
   return start ? new Date(start.getTime() - leadHours * HOUR_MS) : null;
 }
 
+/** The hour (0–23) it currently is in ET — the room's operating timezone. */
+export function etHour(now: Date): number {
+  const h = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    hour12: false,
+    timeZone: "America/New_York",
+  }).format(now);
+  // Intl can render midnight as "24" in some ICU versions; normalize to 0.
+  return Number(h) % 24;
+}
+
+export type TipTiming = { post: true } | { post: false; reason: "already-posted" | "too-early" };
+
+/**
+ * Should today's tip go out?
+ *
+ * Unlike the card, a tip is tied to no event, so a clock is the RIGHT rule here
+ * rather than a lazy one — it should land in the morning whether or not there's
+ * a slate, since the days with no plays are exactly the days a free member needs
+ * a reason to open the room.
+ */
+export function tipTiming(
+  now: Date,
+  alreadyPostedForDate: boolean,
+  afterHourEt = 9
+): TipTiming {
+  if (alreadyPostedForDate) return { post: false, reason: "already-posted" };
+  return etHour(now) >= afterHourEt ? { post: true } : { post: false, reason: "too-early" };
+}
+
 /** A recorded play, reduced to what the recap gate needs. */
 export interface SettleState {
   gradedAt: Date | null;

@@ -12,7 +12,7 @@
  */
 import { prisma } from "@/lib/prisma";
 
-export type PostJob = "post-card" | "post-results";
+export type PostJob = "post-card" | "post-results" | "post-tip";
 
 /** Has `job` already run for this ET date? */
 export async function alreadyPosted(job: PostJob, dateEt: string): Promise<boolean> {

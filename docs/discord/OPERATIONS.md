@@ -51,6 +51,7 @@ All posts sign as **Moses, Leader of Many** (the webhook username).
 | **The free play** (one, with units) | same poster → `#free-play` | same tick |
 | **The slate** (everything unpicked, no units) | same poster → `#ev-slate` | same tick |
 | **Results** (both ledgers, streak/last-10) | `postResults.ts` → `#results` | results tick |
+| **Tip of the day** | `postTips.ts` → `#tips` | card tick, after 9am ET |
 | **`/value`** (price any play, any sport) | `valueCheck.ts` + `api/discord/interactions` | member slash command |
 
 ### Timing is event-driven, not clock-driven
@@ -62,6 +63,11 @@ A fixed time is a baseball assumption. Instead:
   it to 7pm. `LEAD_HOURS` in `src/lib/discord/schedule.ts`.
 - **Results post the moment the day's LAST tracked play settles** — not on a
   morning timer.
+- **The tip is the exception, and posts on a clock** (after 9am ET). It's tied to
+  no event, and the days with no slate are exactly the days a free member needs a
+  reason to open the room — so it must not be gated on the card. It rides the
+  card tick rather than a cron of its own, with its own marker, and a #tips
+  failure is swallowed so it can never take the card down.
 
 Vercel crons are fixed-schedule, so both are **ticks** (`post-discord` every 15m,
 `post-results` every 30m) that usually do nothing and ask "is it time yet?"
@@ -93,6 +99,7 @@ at **`/deck`**. Both behind the site password.
 - `DISCORD_FREE_WEBHOOK_URL` — `#free-play`. Unset = the free play is skipped, the rest still posts.
 - `DISCORD_SLATE_WEBHOOK_URL` — `#ev-slate`. Unset = the slate is skipped, the rest still posts.
 - `DISCORD_RESULTS_WEBHOOK_URL` — `#results`. **Unset = dormant.**
+- `DISCORD_TIPS_WEBHOOK_URL` — `#tips`. Unset = the daily tip is skipped.
 - `DISCORD_PUBLIC_KEY` — verifies `/value` interaction signatures. Unset = the endpoint 503s (dormant).
 - `CRON_SECRET` — also gates `/deck` (`?token=…`) and `/api/admin/*`.
 - `SITE_ACCESS_PASSWORD` — Basic Auth gate on the whole site (`/api/*` is exempt so Discord + crons work).
@@ -156,6 +163,24 @@ all morning while prices move. Nothing is recorded until the poster fires, and i
 records the price that actually posted. A pick whose line vanishes before post
 time is skipped with a warning rather than posted at a stale number.
 
+## #tips and the daily welcome
+
+`#tips` posts one glossary lesson a day, rotating deterministically by date (the
+same date always yields the same tip, so a retry can't skip or duplicate one, and
+the cycle covers every entry before repeating). Content comes from
+`@/lib/glossary` — the same source `/learn` and the in-app InfoTips use — so a
+term explained in the room can't drift from the one explained in the product.
+**Adding a glossary entry adds a lesson.** App-navigation terms are excluded;
+they mean nothing to someone reading in Discord.
+
+The old "morning drop" is not coming back as its own post. The part of it worth
+keeping — the good-morning line and how the day looks — is now the **message
+content above the card's embeds** in `#todays-card` (`cardIntro` in postCard.ts),
+which is where the owner wanted it: in the channel giving the picks, not a
+separate channel announcing that a post is coming. It names whichever sports are
+actually playing, so it reads right on a five-sport Saturday and a one-match
+Tuesday alike.
+
 ## `/value` — how members price their own bets
 
 `/value play:<text> price:<american>` matches the text against **today's board**
@@ -197,7 +222,6 @@ Bands: `GOOD_EV` (+2%) / `POOR_EV` (−2%) in `valueCheck.ts`.
 
 ## Deferred follow-ups
 
-- **`#tips`** — no poster yet; the old rotating-lesson content was cut and needs rebuilding into its own channel.
 - Grade UFC leans (a win-rate ledger — they post but aren't recorded/graded yet).
 - Market-EV coverage for tennis/soccer in the card.
 

@@ -284,6 +284,37 @@ async function recordPlays(plays: Play[], stream: PlayStream): Promise<void> {
   );
 }
 
+/**
+ * The card's opening line — the "good morning, here's how today looks" note the
+ * owner liked from the old morning drop, moved to where it belongs: on top of
+ * the card itself, in the channel giving the picks, rather than a separate post
+ * in a separate channel announcing that a post is coming.
+ *
+ * Sport-agnostic by construction — it names whichever sports are actually
+ * playing, so it reads right on a five-sport Saturday and on a one-match Tuesday.
+ */
+export function cardIntro(card: Play[], slate: Play[], label: string): string {
+  const sports = [...new Set([...card, ...slate].map((p) => p.sportKey))]
+    .map((k) => SPORTS.find((a) => a.key === k)?.meta)
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
+  const sportList = sports.map((m) => `${m.icon} ${m.label}`).join(" · ");
+
+  if (!card.length) {
+    return sportList
+      ? `**Good morning — ${label}.**\nWe looked at ${sportList}. Nothing cleared the bar, so there's no card today. No card is a card.`
+      : `**Good morning — ${label}.**\nNothing on the board today.`;
+  }
+
+  const units = card.reduce((sum, p) => sum + p.suggestedUnits, 0);
+  const first = card.reduce((a, b) => (a.startUtc < b.startUtc ? a : b));
+  return (
+    `**Good morning — ${label}.**\n` +
+    `${card.length} play${card.length === 1 ? "" : "s"} on the card` +
+    `${sportList ? ` · ${sportList}` : ""} · ${units.toFixed(2).replace(/\.?0+$/, "")}u total` +
+    ` · first one starts ${startStamp(first.startUtc)} ET. Let's eat. 🏹`
+  );
+}
+
 export interface PreviewSection {
   title: string;
   body: string;
@@ -293,6 +324,8 @@ export interface PreviewSection {
 
 export interface DailyCardPreview {
   label: string;
+  /** The card's opening welcome line, exactly as it would post. */
+  intro: string;
   /** #todays-card sections — his handpicks, with units. Empty = "no card is a card". */
   card: PreviewSection[];
   /** The single #free-play line, or null when he hasn't picked one. */
@@ -324,6 +357,7 @@ export async function previewDailyCard(dateEt: string = todayEt()): Promise<Dail
 
   return {
     label,
+    intro: cardIntro(card, slate, label),
     card: assembleSections(card, label, "card").map(toPreview),
     free: free ? free.display?.line ?? slateLine(free) : null,
     slate: assembleSections(slate, label, "slate").map(toPreview),
@@ -378,22 +412,24 @@ export async function postDailyCardToDiscord(
     console.warn(`postCard: ${missing.length} selected play(s) no longer live, skipping:`, missing);
   }
 
-  // 👑 The card. Posts even when empty — "no card is a card" is a real signal,
-  // and silence would read as a broken bot.
+  // 👑 The card, led by the daily welcome. Posts even when empty — "no card is
+  // a card" is a real signal, and silence would read as a broken bot.
   const cardSections = assembleSections(card, label, "card");
+  const cardEmbeds = cardSections.length
+    ? sectionsToEmbeds(cardSections)
+    : [
+        {
+          author: mosesAuthor(),
+          title: `👑 Today's Card · ${label}`,
+          description: EMPTY_CARD,
+          color: ARCHR_GREEN,
+          footer: { text: RESEARCH_FOOTER },
+        },
+      ];
   await postWebhook(cardUrl, {
     username: "Moses, Leader of Many",
-    embeds: cardSections.length
-      ? sectionsToEmbeds(cardSections)
-      : [
-          {
-            author: mosesAuthor(),
-            title: `👑 Today's Card · ${label}`,
-            description: EMPTY_CARD,
-            color: ARCHR_GREEN,
-            footer: { text: RESEARCH_FOOTER },
-          },
-        ],
+    content: cardIntro(card, slate, label),
+    embeds: cardEmbeds,
   });
 
   // 🎯 The free play — selection + number, same as premium sees it. It carries
