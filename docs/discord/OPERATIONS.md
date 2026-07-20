@@ -51,6 +51,7 @@ All posts sign as **Moses, Leader of Many** (the webhook username).
 | **The free play** (one, with units) | same poster → `#free-play` | same tick |
 | **The slate** (everything unpicked, no units) | same poster → `#ev-slate` | same tick |
 | **Results** (both ledgers, streak/last-10) | `postResults.ts` → `#results` | results tick |
+| **`/value`** (price any play, any sport) | `valueCheck.ts` + `api/discord/interactions` | member slash command |
 
 ### Timing is event-driven, not clock-driven
 
@@ -92,15 +93,17 @@ at **`/deck`**. Both behind the site password.
 - `DISCORD_FREE_WEBHOOK_URL` — `#free-play`. Unset = the free play is skipped, the rest still posts.
 - `DISCORD_SLATE_WEBHOOK_URL` — `#ev-slate`. Unset = the slate is skipped, the rest still posts.
 - `DISCORD_RESULTS_WEBHOOK_URL` — `#results`. **Unset = dormant.**
+- `DISCORD_PUBLIC_KEY` — verifies `/value` interaction signatures. Unset = the endpoint 503s (dormant).
 - `CRON_SECRET` — also gates `/deck` (`?token=…`) and `/api/admin/*`.
 - `SITE_ACCESS_PASSWORD` — Basic Auth gate on the whole site (`/api/*` is exempt so Discord + crons work).
 
 Each channel is independently dormant, so the room can be brought up one surface
 at a time.
 
-**Local only (for the ops script below — never stored in prod):**
+**Local only (for the ops scripts below — never stored in prod):**
 - `DISCORD_BOT_TOKEN` — the bot token.
 - `DISCORD_GUILD_ID` — the server id.
+- `DISCORD_APP_ID` — the application id (command registration only).
 
 ## The script
 
@@ -119,6 +122,11 @@ DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-ser
 # Reconcile DOWN too — report, then delete, anything not in the plan:
 DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --prune
 DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --prune --apply
+```
+
+```bash
+# Register (or update) the /value slash command:
+DISCORD_APP_ID=… DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/register-discord-commands.ts
 ```
 
 The whole server spec — roles, channels, locks, and every pinned message — lives
@@ -148,6 +156,27 @@ all morning while prices move. Nothing is recorded until the poster fires, and i
 records the price that actually posted. A pick whose line vanishes before post
 time is skipped with a warning rather than posted at a stale number.
 
+## `/value` — how members price their own bets
+
+`/value play:<text> price:<american>` matches the text against **today's board**
+(every sport the engine priced), then re-prices that play at the member's number
+and answers with both lenses plus a better-number tip if we have one.
+
+The re-price works because EV and probability are the same fact in different
+clothes (`ev = p·decimal − 1`), so the implied probability recovers exactly from
+a play's EV at our quoted price, and its EV at any other price follows.
+
+Three deliberate behaviors:
+- **Replies are ephemeral.** A public reply would turn #value-check into a second
+  board showing our numbers on premium plays to anyone who can read the channel.
+- **Ambiguity is asked about, never guessed.** "yankees" matching three plays
+  lists them rather than confidently pricing the wrong one.
+- **Disagreeing lenses report "mixed",** not a false-confident verdict. Model and
+  market genuinely disagree sometimes, and collapsing that would misrepresent
+  how much we know.
+
+Bands: `GOOD_EV` (+2%) / `POOR_EV` (−2%) in `valueCheck.ts`.
+
 ## Tuning knobs
 
 - **`LEAD_HOURS`** — `schedule.ts` (3): how far ahead of the first event the card drops.
@@ -168,7 +197,6 @@ time is skipped with a warning rather than posted at a stale number.
 
 ## Deferred follow-ups
 
-- **`#value-check`** — the ask-the-bot EV lookup. Channel exists, bot doesn't yet.
 - **`#tips`** — no poster yet; the old rotating-lesson content was cut and needs rebuilding into its own channel.
 - Grade UFC leans (a win-rate ledger — they post but aren't recorded/graded yet).
 - Market-EV coverage for tennis/soccer in the card.
