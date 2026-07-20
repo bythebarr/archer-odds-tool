@@ -322,17 +322,26 @@ async function recordPlays(plays: Play[], stream: PlayStream): Promise<void> {
  * playing, so it reads right on a five-sport Saturday and on a one-match Tuesday.
  */
 export function cardIntro(card: Play[], slate: Play[], label: string): string {
-  const sports = [...new Set([...card, ...slate].map((p) => p.sportKey))]
-    .map((k) => SPORTS.find((a) => a.key === k)?.meta)
-    .filter((m): m is NonNullable<typeof m> => Boolean(m));
-  const sportList = sports.map((m) => `${m.icon} ${m.label}`).join(" · ");
+  const listSports = (plays: Play[]) =>
+    [...new Set(plays.map((p) => p.sportKey))]
+      .map((k) => SPORTS.find((a) => a.key === k)?.meta)
+      .filter((m): m is NonNullable<typeof m> => Boolean(m))
+      .map((m) => `${m.icon} ${m.label}`)
+      .join(" · ");
 
   if (!card.length) {
-    return sportList
-      ? `**Good morning — ${label}.**\nWe looked at ${sportList}. Nothing cleared the bar, so there's no card today. No card is a card.`
+    // Nothing staked — here the SLATE's sports are the honest subject, because
+    // what we looked at is the only thing there is to report.
+    const looked = listSports(slate);
+    return looked
+      ? `**Good morning — ${label}.**\nWe priced ${looked} today. Nothing cleared the bar, so there's no card. No card is a card.`
       : `**Good morning — ${label}.**\nNothing on the board today.`;
   }
 
+  // Sports on the CARD only. Listing the slate's sports here read as "we've got
+  // plays across four sports" on a card that held two — overselling the day, on
+  // the one post that has to be trustworthy.
+  const sportList = listSports(card);
   const units = card.reduce((sum, p) => sum + p.suggestedUnits, 0);
   const first = card.reduce((a, b) => (a.startUtc < b.startUtc ? a : b));
   return (

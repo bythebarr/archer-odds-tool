@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assembleSections, sectionsToEmbeds, slateLine, onlyTodaysEvents } from "./postCard";
+import { assembleSections, sectionsToEmbeds, slateLine, onlyTodaysEvents, cardIntro } from "./postCard";
 import { toPlay } from "@/lib/engine/adapters/mlb";
 import { ufcToPlay } from "@/lib/engine/adapters/ufc";
 import { mosesAuthor } from "./brand";
@@ -189,5 +189,36 @@ describe("event-timed surfacing — a sport appears only on its own day", () => 
       CARD_DATE
     );
     expect(kept).toHaveLength(1);
+  });
+});
+
+describe("cardIntro — describes the CARD, not the whole board", () => {
+  const mlb = { ...mlbPlays[0], sportKey: "mlb", playKey: "a" } as Play;
+  const tennis = { ...mlbPlays[0], sportKey: "tennis", playKey: "b" } as Play;
+  const ufc = { ...mlbPlays[0], sportKey: "ufc", playKey: "c" } as Play;
+  const soccer = { ...mlbPlays[0], sportKey: "soccer", playKey: "d" } as Play;
+
+  it("names only the sports actually on the card", () => {
+    // The bug: a 2-sport card announced 4 sports because the slate's were
+    // folded in — overselling the day on the post that must be trustworthy.
+    const intro = cardIntro([mlb, tennis], [ufc, soccer], "Jul 20");
+    expect(intro).toContain("MLB");
+    expect(intro).toContain("Tennis");
+    expect(intro).not.toContain("UFC");
+    expect(intro).not.toContain("Soccer");
+  });
+
+  it("counts only card plays", () => {
+    expect(cardIntro([mlb, tennis], [ufc, soccer], "Jul 20")).toContain("2 plays on the card");
+  });
+
+  it("on a dry day, reports what was priced instead", () => {
+    const intro = cardIntro([], [ufc, soccer], "Jul 20");
+    expect(intro).toContain("No card is a card");
+    expect(intro).toContain("UFC");
+  });
+
+  it("handles a completely empty board", () => {
+    expect(cardIntro([], [], "Jul 20")).toContain("Nothing on the board");
   });
 });
