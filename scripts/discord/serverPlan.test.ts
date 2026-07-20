@@ -36,6 +36,19 @@ describe("SERVER_PLAN integrity", () => {
     }
   });
 
+  it("the ✅ screening terms fit Discord's limits (5 entries, 300 chars each)", () => {
+    // Over either limit and the member-verification PATCH is rejected, which
+    // silently leaves the room with NO rules gate at all.
+    expect(SERVER_PLAN.screeningRules.length).toBeLessThanOrEqual(5);
+    for (const rule of SERVER_PLAN.screeningRules) {
+      expect(rule.length, `"${rule.slice(0, 40)}…" is ${rule.length} chars`).toBeLessThanOrEqual(300);
+    }
+  });
+
+  it("the screening terms carry the leak rule — the one that gets people banned", () => {
+    expect(SERVER_PLAN.screeningRules.join(" ").toLowerCase()).toContain("premium");
+  });
+
   it("every pinned message fits Discord's 2000-char cap", () => {
     // The provisioner posts each pinned entry as ONE message; Discord rejects
     // anything longer, and a rejected pin fails provisioning mid-run.

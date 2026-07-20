@@ -62,6 +62,14 @@ export interface CategoryPlan {
 export interface ServerPlan {
   roles: RolePlan[];
   categories: CategoryPlan[];
+  /** Blurb above the ✅ rules gate a new member must accept. */
+  screeningDescription: string;
+  /**
+   * The terms shown in that gate. Discord caps this at 5 entries of 300 chars,
+   * so these are short forms of the full house rules in #👋-start-here — same
+   * rules, stated tightly enough to fit and actually be read.
+   */
+  screeningRules: string[];
 }
 
 // --- permission-overwrite logic (pure, kept out of the IO script so it's testable) ---
@@ -268,6 +276,15 @@ const PURCHASES_RULE = [
  * instead, by naming each premium channel and its contents.
  */
 export const SERVER_PLAN: ServerPlan = {
+  screeningDescription:
+    "ARCHR is a research room, not a tout room. Read these before you're let in — the leak rule is the one that gets people banned.",
+  screeningRules: [
+    "I'm 21+ and of legal betting age where I live.",
+    "This is research and opinion, never betting advice. My action is my own and no outcome is guaranteed.",
+    "I will NEVER share, screenshot, relay, or DM premium plays to anyone outside premium. This is an instant permanent ban with no refund.",
+    "I'll only post slips after a play has settled — a live slip is a leaked pick.",
+    "No touting, no DM-selling, no harassment, no scam links.",
+  ],
   roles: [
     { name: "Premium", color: BRIGHT_GREEN, hoist: true, note: "Whop-synced paid role — unlocks the 👑 PREMIUM ring. The only member role." },
     { name: "Mod", color: MOD_BLUE, hoist: true, note: "Moderators — keys to the staff channel + moderation." },

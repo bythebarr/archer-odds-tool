@@ -239,6 +239,7 @@ async function main() {
   await repointCommunityChannels(chanByName, apply);
 
   await ensureImageOnlyRule(chanByName, roleId, apply);
+  await ensureMemberScreening(apply);
 
   if (PRUNE) await prune(await api<DiscordChannel[]>(`/guilds/${GUILD}/channels`), apply);
 
@@ -246,29 +247,26 @@ async function main() {
 }
 
 /**
- * Turn off Onboarding and leave Community mode.
+ * Community stays ON, because Membership Screening — the ✅ "agree to the rules
+ * before you can talk" gate — is a Community feature and the owner wants it.
  *
- * Both were switched on by the old `pro-upgrade` script for features this room
- * doesn't use (Welcome Screen, Onboarding, discovery, forums), and both actively
- * fight the plan:
- *   • Onboarding refuses any edit that leaves no channel writable by @everyone,
- *     which blocks locking #announcements and the ledger read-only (error 350005).
- *   • Community reserves rules/updates/safety channels and refuses to delete
- *     them (error 50074), stranding the old layout.
+ * What gets turned off is **Onboarding**, a different Community feature (the
+ * channel-picker flow). Onboarding refuses any edit that would leave no channel
+ * writable by @everyone (error 350005), which is what blocked locking
+ * #📣-announcements and #📊-the-ledger read-only. Nothing in this design uses
+ * the channel picker, and disabling it does NOT touch the rules gate.
  *
- * Idempotent: a server already out of Community with Onboarding off does nothing.
+ * Idempotent; a no-op on a non-Community server.
  */
 async function relaxCommunityGuards(apply: boolean): Promise<void> {
   const guild = await api<Guild>(`/guilds/${GUILD}`);
   if (!guild.features?.includes("COMMUNITY")) return;
 
   if (!apply) {
-    console.log("  community: WOULD disable Onboarding and leave Community mode");
+    console.log("  community: WOULD disable Onboarding (keeping Community + the rules gate)");
     return;
   }
 
-  // Onboarding first — it can't be enabled on a non-Community server, so the
-  // reverse order can leave the PUT rejected.
   try {
     await api(`/guilds/${GUILD}/onboarding`, "PUT", {
       prompts: [],
@@ -276,18 +274,51 @@ async function relaxCommunityGuards(apply: boolean): Promise<void> {
       enabled: false,
       mode: 0,
     });
-    console.log("  community: Onboarding disabled");
+    console.log("  community: Onboarding disabled (rules gate untouched)");
   } catch (err) {
     console.log(`  community: ✗ Onboarding — ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`);
   }
+}
+
+/**
+ * The ✅ gate: Membership Screening. A new member sees the rules and must accept
+ * them before they can post, react, or DM anyone in the server.
+ *
+ * Driven from SERVER_PLAN.screeningRules so the gate and the #👋-start-here pin
+ * can't drift — one edit updates both. Discord caps each term at 300 chars and
+ * the list at 5, which is why these are the short forms rather than the full
+ * house rules.
+ */
+async function ensureMemberScreening(apply: boolean): Promise<void> {
+  const guild = await api<Guild>(`/guilds/${GUILD}`);
+  if (!guild.features?.includes("COMMUNITY")) {
+    console.log("  screening: ⚠️ needs Community mode enabled — skipped");
+    return;
+  }
+
+  if (!apply) {
+    console.log("  screening: WOULD enforce the ✅ rules gate");
+    return;
+  }
 
   try {
-    await api(`/guilds/${GUILD}`, "PATCH", {
-      features: guild.features.filter((f) => f !== "COMMUNITY"),
+    await api(`/guilds/${GUILD}/member-verification`, "PATCH", {
+      enabled: true,
+      description: SERVER_PLAN.screeningDescription,
+      form_fields: [
+        {
+          field_type: "TERMS",
+          label: "Read and agree to the ARCHR house rules",
+          values: SERVER_PLAN.screeningRules,
+          required: true,
+        },
+      ],
     });
-    console.log("  community: left Community mode (reserved channels are now deletable)");
+    console.log("  screening: ✅ rules gate enabled — members must accept before they can talk");
   } catch (err) {
-    console.log(`  community: ✗ leaving Community — ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`  screening: ✗ ${msg.slice(0, 180)}`);
+    console.log("     (set by hand: Server Settings → Onboarding → Rules Screening)");
   }
 }
 
