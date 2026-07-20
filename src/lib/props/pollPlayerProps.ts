@@ -92,11 +92,10 @@ export async function pollAndStorePlayerProps(now: Date = new Date()): Promise<P
     try {
       const bulk = await fetchBulkPlayerProps("baseball_mlb");
       const { byEventId, skipped } = groupPropRows(bulk.rows);
-      if (skipped.dfs || skipped.noLine || skipped.noPrice) {
-        console.log(
-          `props: skipped ${skipped.dfs} DFS, ${skipped.noLine} no-line, ${skipped.noPrice} unpriced row(s)`
-        );
-      }
+      console.log(
+        `props: ${bulk.rows.length} rows · skipped ${skipped.dfs} DFS, ${skipped.noLine} no-line, ` +
+          `${skipped.noPrice} unpriced, ${skipped.unmappedMarket} unmapped-market, ${skipped.notAPlayer} not-a-player`
+      );
 
       for (const game of gamesToPoll) {
         const bookmakers = byEventId.get(game.oddsApiEventId!);

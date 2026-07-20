@@ -76,10 +76,13 @@ describe("groupPropRows", () => {
     expect(books.map((b) => b.key).sort()).toEqual(["draftkings", "fanduel"]);
   });
 
-  it("groups multiple markets under one book", () => {
-    const { byEventId } = groupPropRows([row(), row({ market_key: "player_strikeouts", line: 6.5 })]);
+  it("groups multiple markets under one book, translated to our keys", () => {
+    const { byEventId } = groupPropRows([
+      row(),
+      row({ market_key: "player_pitcher_strikeouts", player: "Tarik Skubal", line: 6.5 }),
+    ]);
     const [book] = byEventId.get("e1")!;
-    expect(book.markets.map((m) => m.key).sort()).toEqual(["player_home_runs", "player_strikeouts"]);
+    expect(book.markets.map((m) => m.key).sort()).toEqual(["batter_home_runs", "pitcher_strikeouts"]);
   });
 
   it("keeps different lines on the same market as separate outcomes", () => {
@@ -92,5 +95,63 @@ describe("groupPropRows", () => {
   it("separates events", () => {
     const { byEventId } = groupPropRows([row(), row({ event_id: "e2" })]);
     expect([...byEventId.keys()].sort()).toEqual(["e1", "e2"]);
+  });
+});
+
+describe("market vocabulary translation", () => {
+  it("maps unambiguous pitcher strikeouts", () => {
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_pitcher_strikeouts", player: "Tarik Skubal", line: 6.5 }),
+    ]);
+    expect(byEventId.get("e1")![0].markets[0].key).toBe("pitcher_strikeouts");
+  });
+
+  it("REFUSES the ambiguous bare player_strikeouts key", () => {
+    // This key carries pitcher lines, batter lines, and milestone rows in one
+    // bucket. Mapping it would corrupt pitcher Ks — the one backtested edge.
+    const { byEventId, skipped } = groupPropRows([
+      row({ market_key: "player_strikeouts", player: "Tarik Skubal", line: 6.5 }),
+    ]);
+    expect(byEventId.size).toBe(0);
+    expect(skipped.unmappedMarket).toBe(1);
+  });
+
+  it("keeps batter and pitcher strikeouts as different categories", () => {
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_pitcher_strikeouts", player: "Tarik Skubal", line: 6.5 }),
+      row({ market_key: "player_hitter_strikeouts", player: "Aaron Judge", line: 1.5 }),
+    ]);
+    const keys = byEventId.get("e1")![0].markets.map((m) => m.key).sort();
+    expect(keys).toEqual(["batter_strikeouts", "pitcher_strikeouts"]);
+  });
+
+  it("drops alt/milestone/combined markets — different bets, not over/unders", () => {
+    const { byEventId, skipped } = groupPropRows([
+      row({ market_key: "player_home_runs_alt" }),
+      row({ market_key: "player_hits_milestones" }),
+      row({ market_key: "player_combined_pitcher_strikeouts_thrown" }),
+      row({ market_key: "player_either_batter_hits" }),
+    ]);
+    expect(byEventId.size).toBe(0);
+    expect(skipped.unmappedMarket).toBe(4);
+  });
+
+  it("rejects rows whose player is a market label, not a person", () => {
+    const { byEventId, skipped } = groupPropRows([
+      row({ market_key: "player_hits", player: "7+ Strikeouts" }),
+    ]);
+    expect(byEventId.size).toBe(0);
+    expect(skipped.notAPlayer).toBe(1);
+  });
+
+  it("folds synonym keys onto one category", () => {
+    // Books disagree on naming; player_outs and player_pitching_outs are the
+    // same bet and must land in the same market, not two.
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_outs", player: "Tarik Skubal", line: 15.5 }),
+      row({ market_key: "player_pitching_outs", player: "Tarik Skubal", line: 15.5, bookmaker: "fanduel" }),
+    ]);
+    const allKeys = byEventId.get("e1")!.flatMap((b) => b.markets.map((m) => m.key));
+    expect(new Set(allKeys)).toEqual(new Set(["pitcher_outs"]));
   });
 });

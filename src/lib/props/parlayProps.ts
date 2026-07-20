@@ -1,4 +1,5 @@
 import type { ParlayPropRow, OddsApiBookmaker } from "@/lib/odds/oddsApiClient";
+import { normalizeParlayMarketKey, looksLikePlayerName } from "./propMarkets";
 
 /**
  * Reshape ParlayAPI's flat prop rows into the nested bookmakers → markets →
@@ -20,14 +21,14 @@ export interface GroupedProps {
   /** Parlay event id → the bookmakers for that event, TOA-shaped. */
   byEventId: Map<string, OddsApiBookmaker[]>;
   /** Rows dropped as unusable, by reason — reported, never silent. */
-  skipped: { dfs: number; noLine: number; noPrice: number };
+  skipped: { dfs: number; noLine: number; noPrice: number; unmappedMarket: number; notAPlayer: number };
 }
 
 export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
   // event → book → market → outcomes
   const events = new Map<string, Map<string, Map<string, OddsApiBookmaker["markets"][number]>>>();
   const titles = new Map<string, string>();
-  const skipped = { dfs: 0, noLine: 0, noPrice: 0 };
+  const skipped = { dfs: 0, noLine: 0, noPrice: 0, unmappedMarket: 0, notAPlayer: 0 };
 
   for (const row of rows) {
     // DFS pick-em books quote a flat payout, not a two-sided market. Their
@@ -45,14 +46,25 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
       skipped.noPrice++;
       continue;
     }
+    // Translate Parlay's vocabulary, and drop anything ambiguous or ungradeable
+    // — see PARLAY_MARKET_KEY_TO_ODDS_API_KEY for why this is an allowlist.
+    const marketKey = normalizeParlayMarketKey(row.market_key);
+    if (!marketKey) {
+      skipped.unmappedMarket++;
+      continue;
+    }
+    if (!looksLikePlayerName(row.player)) {
+      skipped.notAPlayer++;
+      continue;
+    }
 
     titles.set(row.bookmaker, row.bookmaker_title);
     const books = events.get(row.event_id) ?? new Map();
     events.set(row.event_id, books);
     const markets = books.get(row.bookmaker) ?? new Map();
     books.set(row.bookmaker, markets);
-    const market = markets.get(row.market_key) ?? { key: row.market_key, outcomes: [] };
-    markets.set(row.market_key, market);
+    const market = markets.get(marketKey) ?? { key: marketKey, outcomes: [] };
+    markets.set(marketKey, market);
 
     // `description` carries the player name — that's where the storage layer
     // looks, matching TOA's per-event props response.
