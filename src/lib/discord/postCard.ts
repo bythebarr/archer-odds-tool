@@ -361,12 +361,16 @@ export async function postWebhook(url: string, body: unknown): Promise<void> {
  * premium members would see the full board and could infer the card from what
  * was withheld.
  */
-export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promise<DiscordPostResult> {
+export async function postDailyCardToDiscord(
+  dateEt: string = todayEt(),
+  /** Pre-pulled board, so the scheduling tick doesn't collect it a second time. */
+  prefetched?: Play[]
+): Promise<DiscordPostResult> {
   const cardUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!cardUrl) return { posted: false, reason: "dormant: DISCORD_WEBHOOK_URL not set" };
 
   const label = prettyDate(dateEt);
-  const plays = await collectPlays(dateEt);
+  const plays = prefetched ?? (await collectPlays(dateEt));
   const selection = await getSelection(dateEt);
   const { card, free, slate, missing } = splitBySelection(plays, selection);
 

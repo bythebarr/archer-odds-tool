@@ -4,7 +4,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { getAdapter, postedPlayToPlay } from "@/lib/engine";
 import { gradeUfcMoneyline, tallyLedger, currentStreak, type PlayResult } from "./gradePlay";
 import { mosesAuthor } from "./brand";
-import type { PostedPlay } from "@/generated/prisma/client";
+import type { PostedPlay, PlayStream } from "@/generated/prisma/client";
 
 /**
  * The #results engine. Grades the plays the poster recorded (see postCard.ts)
@@ -21,6 +21,13 @@ import type { PostedPlay } from "@/generated/prisma/client";
  * UFC plays also settle out-of-band via settlePendingUfcPlays (called from the
  * UFC sync cron), since fight cards finish late and may miss the morning recap.
  *
+ * TWO ledgers, never merged (owner's 2026-07-20 call): the premium #todays-card
+ * handpicks and the single daily #free-play are graded into separate records, so
+ * the free play can neither flatter nor drag the premium number. Both are posted
+ * to #results, which free members can see — the premium record is the proof
+ * they're shopping. The unstaked #ev-slate is absent from both by construction:
+ * the poster never records it.
+ *
  * Dormant until DISCORD_RESULTS_WEBHOOK_URL is set.
  */
 
@@ -35,13 +42,17 @@ const RESULT_ICON: Record<Exclude<PlayResult, "void">, string> = { hit: "✅", m
 export interface ResultsPostResult {
   posted: boolean;
   reason?: string;
+  /** The premium card's day record ("3-1-0"). */
   dayRecord?: string;
   dayUnits?: number;
+  /** The free play's day record, tracked separately. */
+  freeRecord?: string;
+  freeUnits?: number;
   graded?: number;
 }
 
 /** Yesterday's ET date (games settle overnight; the recap runs the next morning). */
-function yesterdayEt(): string {
+export function yesterdayEt(): string {
   const d = new Date(`${todayEt()}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
@@ -107,7 +118,7 @@ export async function settlePendingUfcPlays(): Promise<number> {
  * final, a prop's game log not yet synced) — never a fake loss or premature void.
  * The per-sport grading rules now live inside the adapters (src/lib/engine).
  */
-async function gradePending(dateEt: string): Promise<number> {
+export async function gradePending(dateEt: string): Promise<number> {
   const pending = await prisma.postedPlay.findMany({
     where: { postedForDate: dateEt, gradedAt: null },
   });
@@ -128,6 +139,19 @@ async function gradePending(dateEt: string): Promise<number> {
   return graded;
 }
 
+/**
+ * The settle state of every tracked play for a date — what the results tick
+ * needs to decide "is the day done?" without pulling whole rows. Only staked
+ * streams exist in this table, so no stream filter is needed: the unstaked
+ * slate is never recorded in the first place.
+ */
+export async function trackedSettleStates(dateEt: string): Promise<Array<{ gradedAt: Date | null }>> {
+  return prisma.postedPlay.findMany({
+    where: { postedForDate: dateEt },
+    select: { gradedAt: true },
+  });
+}
+
 function ledgerInput(p: PostedPlay): { result: PlayResult; units: number; bestPrice: number } {
   const result: PlayResult = p.voided ? "void" : (p.result as PlayResult | null) ?? "void";
   return { result, units: p.units, bestPrice: p.bestPrice };
@@ -144,30 +168,36 @@ function settledProfit(p: PostedPlay): number {
   return tallyLedger([ledgerInput(p)]).netUnits;
 }
 
-export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<ResultsPostResult> {
-  const url = process.env.DISCORD_RESULTS_WEBHOOK_URL;
-  if (!url) return { posted: false, reason: "dormant: DISCORD_RESULTS_WEBHOOK_URL not set" };
+interface StreamRecap {
+  body: string;
+  dayRecord: string;
+  dayUnits: number;
+  /** Whether this stream has any settled history at all — an empty one is skipped. */
+  hasHistory: boolean;
+}
 
-  const graded = await gradePending(dateEt);
-
-  // Yesterday's settled card (exclude still-pending), most decisive first.
+/**
+ * Build one stream's recap block: the day's line, the running all-time ledger,
+ * last-10 once there's more history than the window, the hot/cold streak, and
+ * every settled play. Streams are queried independently — never summed — so the
+ * premium and free numbers stay honestly separate.
+ */
+async function recapForStream(stream: PlayStream, dateEt: string, label: string): Promise<StreamRecap> {
   const dayPlays = await prisma.postedPlay.findMany({
-    where: { postedForDate: dateEt, gradedAt: { not: null }, voided: false },
+    where: { stream, postedForDate: dateEt, gradedAt: { not: null }, voided: false },
     orderBy: { ev: "desc" },
   });
   const dayLedger = tallyLedger(dayPlays.map(ledgerInput));
 
-  // Running all-time ledger over every settled (non-void) play, in chronological
-  // order so the streak + last-10 read from the most recent plays.
+  // Chronological, so streak + last-10 read from the most recent plays.
   const allSettled = await prisma.postedPlay.findMany({
-    where: { gradedAt: { not: null }, voided: false },
+    where: { stream, gradedAt: { not: null }, voided: false },
     orderBy: [{ postedForDate: "asc" }, { gradedAt: "asc" }],
   });
   const allLedger = tallyLedger(allSettled.map(ledgerInput));
   const last10 = tallyLedger(allSettled.slice(-10).map(ledgerInput));
   const streak = currentStreak(allSettled.map((p) => ledgerInput(p).result));
 
-  const label = prettyDate(dateEt);
   const arrow = dayLedger.netUnits >= 0 ? "▲" : "▼";
   // The "hot hand": only surface a run of 3+ (a real heater or cold snap, not
   // noise). A cold streak is shown too — the record never hides a skid.
@@ -188,21 +218,58 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
   if (shown < rendered.length) lines += `\n_…+${rendered.length - shown} more_`;
 
   const header =
-    `**${label} card:** ${dayLedger.record}  ${arrow} ${fmtUnits(dayLedger.netUnits)}` +
+    `**${label}:** ${dayLedger.record}  ${arrow} ${fmtUnits(dayLedger.netUnits)}` +
     `\n**All-time:** ${allLedger.record}  ·  ${fmtUnits(allLedger.netUnits)}${streakTag}` +
-    // Last-10 only once there's more history than the window itself (else it's
-    // just the all-time line again).
     (allSettled.length > 10 ? `\n**Last 10:** ${last10.record}  ·  ${fmtUnits(last10.netUnits)}` : "");
-  const body = dayPlays.length
-    ? `${header}\n\n${lines}`
-    : `${header}\n\n_No settled plays for ${label}._`;
 
-  await postWebhook(url, {
-    username: "Moses, Leader of Many",
-    embeds: [{ author: mosesAuthor(), title: `📊 Results · ${label}`, description: body, color: ARCHR_GREEN, footer: { text: RESEARCH_FOOTER } }],
-  });
+  return {
+    body: dayPlays.length ? `${header}\n\n${lines}` : `${header}\n\n_No settled plays for ${label}._`,
+    dayRecord: dayLedger.record,
+    dayUnits: dayLedger.netUnits,
+    hasHistory: allSettled.length > 0 || dayPlays.length > 0,
+  };
+}
 
-  return { posted: true, dayRecord: dayLedger.record, dayUnits: dayLedger.netUnits, graded };
+export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<ResultsPostResult> {
+  const url = process.env.DISCORD_RESULTS_WEBHOOK_URL;
+  if (!url) return { posted: false, reason: "dormant: DISCORD_RESULTS_WEBHOOK_URL not set" };
+
+  const graded = await gradePending(dateEt);
+  const label = prettyDate(dateEt);
+
+  const card = await recapForStream("card", dateEt, label);
+  const free = await recapForStream("free", dateEt, label);
+
+  // The premium record always posts — it's the trust spine, and a silent day
+  // reads as a hidden day. The free block appears once it has any history.
+  const embeds: Record<string, unknown>[] = [
+    {
+      author: mosesAuthor(),
+      title: `👑 Premium Card · Results · ${label}`,
+      description: card.body,
+      color: ARCHR_GREEN,
+      ...(free.hasHistory ? {} : { footer: { text: RESEARCH_FOOTER } }),
+    },
+  ];
+  if (free.hasHistory) {
+    embeds.push({
+      title: `🎯 Free Play · Results · ${label}`,
+      description: `${free.body}\n\n_Tracked separately from the premium card — never merged._`,
+      color: ARCHR_GREEN,
+      footer: { text: RESEARCH_FOOTER },
+    });
+  }
+
+  await postWebhook(url, { username: "Moses, Leader of Many", embeds });
+
+  return {
+    posted: true,
+    dayRecord: card.dayRecord,
+    dayUnits: card.dayUnits,
+    freeRecord: free.dayRecord,
+    freeUnits: free.dayUnits,
+    graded,
+  };
 }
 
 async function postWebhook(url: string, body: unknown): Promise<void> {
