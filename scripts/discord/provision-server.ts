@@ -158,12 +158,20 @@ async function main() {
           continue;
         }
         if (parent) {
-          await api(`/channels/${existing.id}`, "PATCH", {
-            topic: ch.topic,
-            parent_id: parent.id,
-            permission_overwrites: overwritesFor(cat.visibility, Boolean(ch.readOnly), everyoneId, roleId),
-          });
-          console.log(`    #${ch.name} — healed (moved into ${cat.name}, permissions reapplied)`);
+          // Resilient, like prune: Discord can reject an individual edit (a
+          // Community server's Onboarding validation, for one), and aborting the
+          // whole pass would leave the rest of the layout half-provisioned.
+          try {
+            await api(`/channels/${existing.id}`, "PATCH", {
+              topic: ch.topic,
+              parent_id: parent.id,
+              permission_overwrites: overwritesFor(cat.visibility, Boolean(ch.readOnly), everyoneId, roleId),
+            });
+            console.log(`    #${ch.name} — healed (moved into ${cat.name}, permissions reapplied)`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.log(`    #${ch.name} — ✗ SKIPPED: ${msg.slice(0, 160)}`);
+          }
         }
         continue;
       }
