@@ -96,72 +96,208 @@ const GREEN = 0x06996b;
 const BRIGHT_GREEN = 0x2fd996;
 const MOD_BLUE = 0x4a6cf0;
 
+// --- pinned copy -------------------------------------------------------------
+// Each entry in a `pinned` array is ONE Discord message (hard cap 2000 chars),
+// posted and pinned in order on channel creation.
+
 /**
- * The door. Rules and the compliance disclaimer are folded in here rather than
- * living in their own channels — one pin a new member actually reads beats three
- * channels they scroll past.
+ * The pitch. The differentiator carries the whole room: these are self-built
+ * quant tools that generate their OWN model EV *and* shop the market for
+ * mispriced numbers — not a tout reselling somebody's opinion. That claim leads,
+ * everything else supports it.
  */
-const START_HERE = [
-  "# 🎯 ARCHR — every-sport +EV, one board.",
+const WELCOME_PITCH = [
+  "# 🏹 ARCHR — this is not a picks room.",
   "",
-  "This isn't a locks room. **Archer runs a model** across MLB and UFC — pricing every play against the market and surfacing where the number is actually in your favor. You get the plays, the edge, and the best book to get them at.",
+  "Every paid Discord you've been in sells you the same thing: a guy's opinion, a screenshot of his wins, and no way to check any of it.",
   "",
-  "**How the room works — three channels, that's it:**",
-  "• **#todays-card** — the day's card. Every play, the number, the best book. One post, mid-morning.",
-  "• **#results** — every posted play, graded daily, in units. Wins **and** losses.",
-  "• **#chat** — talk through the card.",
+  "**This is a system.** I built the tools behind this room myself — a quant stack that ingests every game, every price, every book, across every sport, and prices it independently of the market.",
   "",
-  "## House rules",
+  "That gets you two edges most rooms can't touch:",
+  "",
+  "🧠 **Model EV** — my own projections generate a fair price for a play. When my number and the market's number disagree badly enough, that's an edge the book is giving away. Almost nobody selling picks has this. It's the hard part.",
+  "",
+  "📊 **Market EV** — I shop every book at once and surface where a line is simply mispriced against the field. Same play, better number, more money.",
+  "",
+  "Most rooms are limited to one of those, if that. You get both, side by side, on every play — plus the best book to actually get the number at.",
+  "",
+  "**And the record is public.** Units on every tracked play, wins *and* losses, never deleted. If the system has a bad week you'll see the bad week. That's the point — a record you can audit is the only thing that separates this from the noise.",
+  "",
+  "👉 **Read the rules below, then head to #go-premium.**",
+].join("\n");
+
+const WELCOME_RULES = [
+  "# 📋 House rules",
+  "",
   "**1. 21+.** By being here you confirm you're of legal betting age in your jurisdiction.",
-  "**2. Research, not advice.** Every play is our opinion. You own your action. No outcome is guaranteed.",
+  "**2. Research, not advice.** Every play is analysis and opinion. You own your action. No outcome is guaranteed.",
   "**3. Units, never dollars.** Plays are staked in units (1u = your standard bet). We never tell you how much money to wager.",
-  "**4. No touting or DM-selling.** Selling picks, shilling other services, or DMing members to sell = instant ban.",
-  "**5. Be decent.** No harassment, bigotry, or scam links.",
-  "**6. Wins and losses both get posted.** We never hide a bad day, and neither should you.",
+  "**4. Never leak premium plays.** Posting, screenshotting, relaying, or DMing premium picks to anyone outside premium = **instant permanent ban**, no refund. This is the one rule with no second chance.",
+  "**5. Slips only after they settle.** Post your wins in #wins once the play is graded — never before. A live slip is a leaked pick.",
+  "**6. No touting or DM-selling.** Selling picks, shilling other services, or DMing members to sell = instant ban.",
+  "**7. Be decent.** No harassment, bigotry, or scam links.",
+  "**8. Wins and losses both get posted.** I never hide a bad day, and neither should you.",
+  "**9. Gamble responsibly.** If it stops being fun, step away. 1-800-522-4700.",
   "",
   "## The fine print",
   "**ARCHR provides sports information and analysis for research and entertainment only. Nothing here is betting, financial, or investment advice.**",
   "• We do not accept, place, or handle bets or funds. We are not a sportsbook or betting operator.",
   "• Odds, model projections, hit-rates, and EV figures are estimates, may be inaccurate or stale, and carry no warranty. Past performance does not predict future results.",
   "• You alone are responsible for your betting decisions and for complying with the laws of your jurisdiction.",
-  "• Gambling can be addictive. If you or someone you know has a problem, call or text the National Problem Gambling Helpline: **1-800-522-4700**. If it stops being fun, step away.",
+  "• Gambling can be addictive. If you or someone you know has a problem, call or text the National Problem Gambling Helpline: **1-800-522-4700**.",
 ].join("\n");
 
 /**
- * The spine: one play surface, one record, one room. Deliberately small — every
- * channel here either auto-fills daily or is the single place members talk. A
- * channel nobody fills reads as a dead room, so the bar for adding one back is
- * "something posts to it every day, or the room is asking for it."
+ * The paywall pitch. Also does the FOMO job that "visible but locked" channels
+ * would do unsafely — it names each premium channel and what's inside, so the
+ * free member knows exactly what they're missing without any leak surface.
+ */
+const GO_PREMIUM = [
+  "# 🔓 What premium actually gets you",
+  "",
+  "**Free members get:** one handpicked play a day (#free-play), the full public record for both free and premium plays (#results), and the daily tips (#tips).",
+  "",
+  "**Premium unlocks three channels:**",
+  "",
+  "**👑 #todays-card** — my handpicked plays for the day, with units on every one. This is the card the tracked record is built on. Posted ~3 hours before the day's first event, every day, across whatever sports are actually running.",
+  "",
+  "**📊 #ev-slate** — the firehose. *Every* positive-EV play my system finds that day, all sports, all markets, with both the model EV and the market EV on each one, plus the best book. No units — this is the full board to judge for yourself. Most days this is far more plays than any room hands out.",
+  "",
+  "**🤖 #value-check** — ask the bot about any play you're looking at, in any sport. It runs the same numbers and tells you whether the price you're getting is worth it. Not just my plays — *yours*.",
+  "",
+  "## How to join",
+  "",
+  "**1.** Hit the link below.",
+  "**2.** Pick a plan and check out — takes about a minute.",
+  "**3.** Connect your Discord when prompted. Your **@Premium** role is assigned automatically, usually within seconds.",
+  "**4.** The three channels above appear in your sidebar. That's it.",
+  "",
+  "Cancel any time — the role drops at the end of your billing period, no email required.",
+  "",
+  "👉 **[Checkout link goes here]**",
+  "",
+  "_21+ · research & entertainment only · not betting advice · 1-800-522-4700_",
+].join("\n");
+
+/** The full orientation, delivered once they're inside — one read, not six channels.
+ *  Split across two pinned messages to stay under Discord's 2000-char cap. */
+const HOW_THIS_WORKS = [
+  "# 🗺️ How this room works",
+  "",
+  "Everything here in one read. Two minutes.",
+  "",
+  "## The two kinds of plays — this is the important part",
+  "",
+  "**The slate** (#ev-slate, premium) is *every* play my system flags as positive EV that day. It's big. It carries no units and it is **not** part of the tracked record. It's the raw board — information, for you to judge.",
+  "",
+  "**The card** (#todays-card, premium) is the handful of plays **I personally pick** out of that slate each day. These carry units. **This is the only thing the record tracks.** When you see the ARCHR record, it's this.",
+  "",
+  "Why the split: the system finds far more edges than anyone should fire at in a day. The card is me choosing which ones I'd actually put money behind. You get both — the full board *and* my selections.",
+].join("\n");
+
+const HOW_THIS_WORKS_CHANNELS = [
+  "## The channels",
+  "",
+  "**📌 IMPORTANT**",
+  "• **#welcome-and-rules** — the pitch and the rules. Rule 4 (never leak premium plays) is the one that gets you banned.",
+  "• **#go-premium** — what premium unlocks and how to get it.",
+  "• **#announcements** — news, giveaways, anything big. From me, straight to you.",
+  "",
+  "**🎯 FREE — everyone**",
+  "• **#free-play** — one handpicked play a day, from me, free. Tracked on its own record.",
+  "• **#results** — the ledger. Units and W/L for the premium card *and*, separately, for the free plays. Wins and losses both. Posted once the day's last play settles.",
+  "• **#tips** — a bet-smarter tip most days. Units, CLV, staking, line shopping.",
+  "",
+  "**👑 PREMIUM**",
+  "• **#todays-card** · **#ev-slate** · **#value-check** — see #go-premium.",
+  "",
+  "**👥 COMMUNITY — everyone**",
+  "• **#wins** — winning slips only. Nothing else, no chatter. **Only after the play settles.**",
+  "• **#purchases** — what you bought with what you won. Brag away.",
+  "",
+  "## Timing",
+  "The card and the slate land about **3 hours before the first event of the day** — whatever sport that happens to be. Results post as soon as the day's last play is graded. No fixed clock, because the sports don't run on one.",
+  "",
+  "## Every sport, only when it's on",
+  "This is not a baseball room or a UFC room. The system covers every sport it can price, and a sport shows up on the card the day it's actually running — not before. Quiet days are quiet on purpose.",
+].join("\n");
+
+const WINS_RULE = [
+  "# 🎉 Wins",
+  "",
+  "**Winning slips only.** No chat, no questions, no takes — those get removed to keep this clean.",
+  "",
+  "⚠️ **Post only AFTER the play has settled.** A live slip is a leaked pick, and leaking premium plays is an instant permanent ban (rule 4). Once it's graded, flex all you want. 📸",
+].join("\n");
+
+const PURCHASES_RULE = [
+  "# 💸 Purchases",
+  "",
+  "What the winnings bought. Post the thing, not the picks.",
+  "",
+  "Same rule as #wins: **no live plays, no lines, no screenshots of the card.** Keep it to the payoff.",
+].join("\n");
+
+/**
+ * The room, as data. Structure follows the owner's 2026-07-20 spec: a public wall
+ * (pitch → rules → paywall), a free tier that shows the record it's missing out
+ * on, a premium tier of three earning channels, and two tightly-ruled community
+ * rooms. No verification gate — every non-premium channel is open on join, which
+ * avoids needing a third-party reaction-role bot.
+ *
+ * Premium channels are genuinely HIDDEN, not "visible but locked": Discord shows
+ * live messages to anyone who can view a channel, so a locked-but-visible
+ * #ev-slate would leak the very plays rule 4 bans. GO_PREMIUM does the FOMO job
+ * instead, by naming each premium channel and its contents.
  */
 export const SERVER_PLAN: ServerPlan = {
   roles: [
-    { name: "Premium", color: BRIGHT_GREEN, hoist: true, note: "Whop-synced paid role — unlocks the 👑 card ring. The only member role." },
+    { name: "Premium", color: BRIGHT_GREEN, hoist: true, note: "Whop-synced paid role — unlocks the 👑 PREMIUM ring. The only member role." },
     { name: "Mod", color: MOD_BLUE, hoist: true, note: "Moderators — keys to the staff channel + moderation." },
     { name: "Archer", color: GREEN, hoist: true, note: "The analyst voice (you)." },
   ],
   categories: [
     {
-      name: "🟢 START HERE",
+      name: "📌 IMPORTANT",
       visibility: "public",
       channels: [
-        { name: "start-here", topic: "What ARCHR is, how the room works, rules + disclaimer.", readOnly: true, pinned: [START_HERE] },
-        { name: "announcements", topic: "Server news and launch drops.", readOnly: true },
+        { name: "welcome-and-rules", topic: "What ARCHR is, and the rules. Read before anything else.", readOnly: true, pinned: [WELCOME_PITCH, WELCOME_RULES] },
+        { name: "go-premium", topic: "What premium unlocks + how to join.", readOnly: true, pinned: [GO_PREMIUM] },
+        { name: "announcements", topic: "News, giveaways, and drops — from Archer.", readOnly: true },
       ],
     },
     {
-      name: "👑 THE CARD",
+      name: "🎯 FREE",
+      visibility: "public",
+      channels: [
+        { name: "how-this-works", topic: "The whole room explained in one read.", readOnly: true, pinned: [HOW_THIS_WORKS, HOW_THIS_WORKS_CHANNELS] },
+        { name: "free-play", topic: "One handpicked play a day, free. Tracked on its own record.", readOnly: true },
+        { name: "results", topic: "The ledger — units + W/L for the premium card and the free plays, tracked separately. Wins AND losses.", readOnly: true },
+        { name: "tips", topic: "Bet smarter — units, CLV, staking, line shopping.", readOnly: true },
+      ],
+    },
+    {
+      name: "👑 PREMIUM",
       visibility: "premium",
       channels: [
-        { name: "todays-card", topic: "The card — every play, the number, the best book. Posted daily by Archer.", readOnly: true },
-        { name: "results", topic: "Every posted play, graded daily in units. Wins AND losses.", readOnly: true },
-        { name: "chat", topic: "Talk through the card." },
+        { name: "todays-card", topic: "Archer's handpicked plays, with units. The tracked record is built on this.", readOnly: true },
+        { name: "ev-slate", topic: "Every +EV play the system finds today — all sports, model EV + market EV, best book. No units, info only.", readOnly: true },
+        { name: "value-check", topic: "Ask the bot about any play, any sport — is the price worth it?" },
+      ],
+    },
+    {
+      name: "👥 COMMUNITY",
+      visibility: "public",
+      channels: [
+        { name: "wins", topic: "Winning slips only — and only after the play settles.", pinned: [WINS_RULE] },
+        { name: "purchases", topic: "What the winnings bought. No picks, no lines.", pinned: [PURCHASES_RULE] },
       ],
     },
     {
       name: "🛠️ STAFF",
       visibility: "staff",
       channels: [
-        { name: "command-deck", topic: "Archer's cockpit — curate and settle from here. Invisible to members." },
+        { name: "command-deck", topic: "Archer's cockpit — the daily handpick deck lands here. Invisible to members." },
       ],
     },
   ],

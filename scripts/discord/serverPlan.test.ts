@@ -17,6 +17,18 @@ describe("SERVER_PLAN integrity", () => {
     expect(new Set(chans).size).toBe(chans.length);
   });
 
+  it("every pinned message fits Discord's 2000-char cap", () => {
+    // The provisioner posts each pinned entry as ONE message; Discord rejects
+    // anything longer, and a rejected pin fails provisioning mid-run.
+    for (const cat of SERVER_PLAN.categories) {
+      for (const ch of cat.channels) {
+        for (const [i, msg] of (ch.pinned ?? []).entries()) {
+          expect(msg.length, `#${ch.name} pin ${i + 1} is ${msg.length} chars`).toBeLessThanOrEqual(2000);
+        }
+      }
+    }
+  });
+
   it("only uses known visibilities, and every gated category resolves to defined roles", () => {
     const roleNames = new Set(SERVER_PLAN.roles.map((r) => r.name));
     for (const cat of SERVER_PLAN.categories) {

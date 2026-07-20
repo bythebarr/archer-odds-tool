@@ -13,9 +13,16 @@
  *   # actually build it:
  *   DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... npx tsx scripts/discord/provision-server.ts --apply
  *
+ *   # ...and reconcile DOWN too — report/delete anything not in the plan:
+ *   DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... npx tsx scripts/discord/provision-server.ts --prune
+ *   DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... npx tsx scripts/discord/provision-server.ts --prune --apply
+ *
  * The bot must be in the server with Manage Roles + Manage Channels (Administrator
  * is simplest). Role/channel names are the idempotency key — don't rename in the
  * plan and expect a rename; it'll create a second one.
+ *
+ * Roles are never pruned: they carry member assignments (and Whop's mapping), so
+ * an accidental delete is unrecoverable in a way a channel isn't.
  */
 
 import { SERVER_PLAN, overwritesFor, type ChannelPlan } from "./serverPlan";
@@ -23,6 +30,21 @@ import { SERVER_PLAN, overwritesFor, type ChannelPlan } from "./serverPlan";
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const GUILD = process.env.DISCORD_GUILD_ID;
 const MODE = process.argv.includes("--apply") ? "apply" : process.argv.includes("--plan") ? "plan" : "dry";
+/**
+ * Reconcile *down* as well as up: delete every channel/category on the server
+ * that the plan doesn't describe. Off by default — provisioning must never be
+ * able to destroy something just because someone forgot a flag. Combined with
+ * the default dry run, `--prune` alone only ever REPORTS what it would remove;
+ * it takes `--prune --apply` to actually delete.
+ */
+const PRUNE = process.argv.includes("--prune");
+/**
+ * Channels we refuse to delete even when pruning, because prod points at them.
+ * #paper-log is the live DISCORD_WEBHOOK_URL target during the paper-logging
+ * run — deleting it silently kills the daily card. Add names here before
+ * repointing any webhook, not after.
+ */
+const PRUNE_PROTECTED = new Set(["paper-log"]);
 
 const CHANNEL_TEXT = 0;
 const CHANNEL_CATEGORY = 4;
@@ -145,7 +167,50 @@ async function main() {
     }
   }
 
+  if (PRUNE) await prune(existingChannels, apply);
+
   console.log(`\n${apply ? "✓ Provisioning complete." : "Dry run complete — re-run with --apply to build."}\n`);
+}
+
+/**
+ * Delete everything the plan doesn't describe — the other half of idempotency.
+ * Without this, editing the plan leaves orphans behind forever and "clean up the
+ * old layout" becomes manual work for a human, which is how a 25-channel room
+ * survives a cut down to 13. Categories are deleted after their children so
+ * Discord never re-parents an orphan to the guild root mid-run.
+ */
+async function prune(existing: DiscordChannel[], apply: boolean) {
+  const planned = new Set<string>();
+  for (const cat of SERVER_PLAN.categories) {
+    planned.add(`${CHANNEL_CATEGORY}:${cat.name}`);
+    for (const ch of cat.channels) planned.add(`${CHANNEL_TEXT}:${ch.name}`);
+  }
+
+  const orphans = existing.filter((c) => {
+    if (planned.has(`${c.type}:${c.name}`)) return false;
+    if (PRUNE_PROTECTED.has(c.name)) return false;
+    return c.type === CHANNEL_TEXT || c.type === CHANNEL_CATEGORY;
+  });
+  // Children first, then their (now-empty) categories.
+  orphans.sort((a, b) => (a.type === CHANNEL_CATEGORY ? 1 : 0) - (b.type === CHANNEL_CATEGORY ? 1 : 0));
+
+  console.log(`\n--- prune: ${orphans.length} channel(s) not in the plan ---`);
+  const skipped = existing.filter((c) => PRUNE_PROTECTED.has(c.name));
+  for (const s of skipped) console.log(`  #${s.name} — PROTECTED, keeping`);
+  if (!orphans.length) {
+    console.log("  nothing to remove — server matches the plan.");
+    return;
+  }
+  for (const o of orphans) {
+    const kind = o.type === CHANNEL_CATEGORY ? "category" : "channel";
+    if (!apply) {
+      console.log(`  ${kind} ${o.name} — WOULD DELETE`);
+      continue;
+    }
+    await api(`/channels/${o.id}`, "DELETE");
+    console.log(`  ${kind} ${o.name} — deleted`);
+  }
+  if (!apply) console.log("\n  (dry run — re-run with --prune --apply to actually delete)");
 }
 
 async function postPins(channelId: string, ch: ChannelPlan) {
