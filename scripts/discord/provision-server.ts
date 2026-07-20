@@ -518,6 +518,20 @@ async function prune(existing: DiscordChannel[], apply: boolean) {
       console.log(`  ${kind} ${o.name} — deleted`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // A channel that just lost a reserved Community slot stays undeletable for
+      // a moment while Discord catches up (50074). Without this retry the slot
+      // repoint and the delete can never both land in one run — you repoint,
+      // the delete fails, and you're told to run the whole thing again.
+      if (msg.includes("50074")) {
+        await sleep(4000);
+        try {
+          await api(`/channels/${o.id}`, "DELETE");
+          console.log(`  ${kind} ${o.name} — deleted (after the slot repoint settled)`);
+          continue;
+        } catch {
+          // fall through to the report below
+        }
+      }
       console.log(`  ${kind} ${o.name} — ✗ SKIPPED: ${msg.slice(0, 140)}`);
       failed.push(o.name);
     }
