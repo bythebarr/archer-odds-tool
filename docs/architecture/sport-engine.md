@@ -8,8 +8,9 @@
 > byte-for-byte parity test locking the poster's output. Tennis/soccer/F1 now
 > register as thin adapters (Phase 4 pulled forward for the nav/Slate collapse —
 > one pass, no backtracking), so **every** sport surface derives from the
-> registry. The `todays-board` / `tracked-plays` channel split + `/track` are a
-> deliberate follow-on (the board's output shape is preserved for now).
+> registry. (The planned `todays-board` / `tracked-plays` channel split and `/track`
+> were **cut** on 2026-07-20 — the Discord is one card channel now; see
+> `docs/discord/OPERATIONS.md`.)
 
 ## Why this exists
 

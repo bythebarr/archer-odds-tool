@@ -18,7 +18,7 @@ import { getUfcMatchupAsOf } from "@/lib/queries/ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import type { CalibrationSample } from "../calibration";
 import { unitsFor } from "@/lib/betting/kelly";
-import { ufcPlayLine, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
+import { ufcPlayLine, prettyEventDate } from "@/lib/card/line";
 import { gradeUfcMoneyline } from "@/lib/discord/gradePlay";
 import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
@@ -126,7 +126,6 @@ export function ufcToPlay(p: UfcBestPlay, eventDate: Date, eventTitle: string): 
       // the board keeps UFC's red Fight-Night section with no UFC branch. The
       // section title's dynamic half is the event + date.
       line: ufcPlayLine(p),
-      freeLean: ufcFreeLean(p),
       sectionLabel: `${eventTitle} · ${prettyEventDate(eventDate)}`,
     },
   };

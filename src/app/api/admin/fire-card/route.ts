@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       cardLine =
         `Dropped <strong>${r.premiumCount ?? 0}</strong> +EV play${r.premiumCount === 1 ? "" : "s"} to the premium channel` +
         `${r.ufcCount ? ` + ${r.ufcCount} UFC lean${r.ufcCount === 1 ? "" : "s"}` : ""}` +
-        `${r.freePosted ? ", plus the free lean" : ""}. Go check Discord.`;
+        `. Go check Discord.`;
     } else {
       title = "⚠️ Card didn't post";
       cardLine = `Reason: <code>${r.reason ?? "unknown"}</code>.`;

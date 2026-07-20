@@ -55,11 +55,6 @@ export function playLine(p: OddsPlay): string {
   return `\`${tagFor(p)}\` **${selectionDisplay(p)}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ${formatEv(p.modelEv)} Edge${units}${start}`;
 }
 
-/** The funnel tease for a game-line play — tag + selection only, no EV/book/units. */
-export function gameLineFreeLean(p: OddsPlay): string {
-  return `\`${tagFor(p)}\` **${selectionDisplay(p)}**`;
-}
-
 const FINISH_METHOD_LABEL: Record<string, string> = { ko: "KO/TKO", submission: "submission", decision: "decision" };
 
 /**
@@ -84,11 +79,6 @@ export function ufcPlayLine(p: UfcBestPlay): string {
     `${marker}**${p.pickName}** ${formatAmerican(p.bestPrice)} · ${p.bestBookName} · ` +
     `${formatEv(p.archerEv)} Edge · ${unitsFor(p.archerEv, p.bestPrice)}u · over ${p.opponentName} (${Math.round(p.prob * 100)}% model)${lean}`
   );
-}
-
-/** The funnel tease for a UFC play — pick over opponent, no EV/book/units. */
-export function ufcFreeLean(p: UfcBestPlay): string {
-  return `\`UFC\` **${p.pickName}** over ${p.opponentName}`;
 }
 
 /**

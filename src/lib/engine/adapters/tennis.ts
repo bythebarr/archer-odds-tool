@@ -14,7 +14,7 @@ import { normalizeName } from "@/lib/tennis/archive";
 import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
 import { calculateEv } from "@/lib/odds/devig";
 import { unitsFor } from "@/lib/betting/kelly";
-import { playLine, gameLineFreeLean } from "@/lib/card/line";
+import { playLine } from "@/lib/card/line";
 import { sportMetaByKey } from "../sportsMeta";
 import type { CalibrationSample } from "../calibration";
 import type {
@@ -142,7 +142,6 @@ function tennisToPlay(p: OddsPlay, postedForDate: string, modelEv: number): Play
       bestBookInitials: p.bestBookInitials,
       // Hand playLine an OddsPlay carrying our modelEv so it renders edge/units.
       line: playLine({ ...p, modelEv }),
-      freeLean: gameLineFreeLean(p),
     },
   };
 }

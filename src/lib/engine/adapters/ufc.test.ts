@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ufcToPlay, ufcAdapter } from "./ufc";
 import { unitsFor } from "@/lib/betting/kelly";
-import { ufcPlayLine, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
+import { ufcPlayLine, prettyEventDate } from "@/lib/card/line";
 import type { UfcBestPlay } from "@/lib/discord/ufcBestPlays";
 
 const EVENT_TITLE = "UFC Fight Night: Costa vs Osbourne";
@@ -48,14 +48,13 @@ describe("ufcToPlay (UfcBestPlay → normalized Play)", () => {
     });
   });
 
-  it("carries the fighter-math voice on display (line, free lean, section label)", () => {
+  it("carries the fighter-math voice on display (line, section label)", () => {
     const eventDate = new Date("2026-07-19T00:00:00Z");
     const p = bestPlay();
     const out = ufcToPlay(p, eventDate, EVENT_TITLE);
     // Rendered in the card's own formatters so the board keeps UFC's section
     // byte-for-byte without a UFC branch.
     expect(out.display?.line).toBe(ufcPlayLine(p));
-    expect(out.display?.freeLean).toBe(ufcFreeLean(p));
     expect(out.display?.sectionLabel).toBe(`${EVENT_TITLE} · ${prettyEventDate(eventDate)}`);
   });
 

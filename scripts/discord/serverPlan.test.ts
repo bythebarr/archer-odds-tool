@@ -20,10 +20,10 @@ describe("SERVER_PLAN integrity", () => {
   it("only uses known visibilities, and every gated category resolves to defined roles", () => {
     const roleNames = new Set(SERVER_PLAN.roles.map((r) => r.name));
     for (const cat of SERVER_PLAN.categories) {
-      expect(["public", "verified", "premium", "staff"]).toContain(cat.visibility);
+      expect(["public", "premium", "staff"]).toContain(cat.visibility);
     }
-    // Premium/Verified/Mod/Archer are referenced by the overwrite logic — ensure they exist.
-    for (const needed of ["Premium", "Verified", "Mod", "Archer"]) {
+    // Premium/Mod/Archer are referenced by the overwrite logic — ensure they exist.
+    for (const needed of ["Premium", "Mod", "Archer"]) {
       expect(roleNames.has(needed)).toBe(true);
     }
   });

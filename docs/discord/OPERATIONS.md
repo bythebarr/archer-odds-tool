@@ -1,89 +1,108 @@
 # ARCHR Discord — operations runbook
 
-Everything that runs the ARCHR Discord: what's live, the scripts that built it,
+Everything that runs the ARCHR Discord: what's live, the script that built it,
 the knobs to tune, and the manual steps left before opening. Companion to
-`launch-copy.md` (the paste-ready copy) and the server blueprint artifact.
+`launch-copy.md` (the paste-ready copy).
+
+## The shape
+
+Deliberately small: **6 channels, 3 roles, 2 posts a day.** The room was cut down
+from 25 channels / 4 daily posts because a room with more surfaces than content
+reads as dead. One play surface, one record, one place to talk.
+
+```
+🟢 START HERE   (public)   #start-here · #announcements
+👑 THE CARD     (premium)  #todays-card · #results · #chat
+🛠️ STAFF        (staff)    #command-deck
+```
+
+The bar for adding a channel back: **something posts to it every day, or the
+room is actively asking for it.** Not "it'd be nice to have."
 
 ## What's live
 
-All posts sign as **Moses, Leader of Many** (the webhook username). Moses's day, in order:
+Both posts sign as **Moses, Leader of Many** (the webhook username).
 
 | Piece | Where | Trigger |
 | --- | --- | --- |
-| **☀️ Morning slate drop** (today's board + fight-week flag) | `src/lib/discord/mosesDaily.ts` `postMorningDrop` | `post-morning` cron, 13:00 UTC / 9am ET |
-| **📚 Moses 101** (rotating glossary lesson) | `src/lib/discord/mosesDaily.ts` `postTeachingDrop` | `post-teaching` cron, 15:30 UTC / 11:30am ET |
+| **Archer's Best Plays** (the card — model +EV game lines + props, every positive play) | `src/lib/discord/postCard.ts` → `#todays-card` | `post-discord` cron, 14:30 UTC / 10:30am ET (early, to beat first pitch) |
+| **UFC fighter-math leans** | `src/lib/discord/ufcBestPlays.ts` → a second embed on the same post | same poster, on fight weeks (3-day lookahead) |
 | **#results grader** (recap + streak/last-10) | `src/lib/discord/postResults.ts` → `#results` | `post-results` cron, 15:00 UTC / 11am ET |
-| **Archer's Best Plays** (MLB model +EV card) | `src/lib/discord/postCard.ts` → `#full-card` (currently `#paper-log`) | `post-discord` cron, 14:30 UTC / 10:30am ET (early, to beat first pitch) |
-| **Free lean** (funnel tease) | same poster → `#todays-lean` | same cron (needs `DISCORD_FREE_WEBHOOK_URL`) |
-| **UFC fighter-math leans** | `src/lib/discord/ufcBestPlays.ts` → `#fight-night` | same poster, on fight weeks (3-day lookahead) |
-| **/betcheck** (ML · spread · total value grader) | `src/app/api/discord/interactions/route.ts` | slash command in the server |
 
-Preview the whole daily cadence (no posting) at **`/preview/discord`** — behind the site password.
+There is **no free lean and no second board** — the card is the only play surface.
+
+Preview the card (no posting) at **`/preview/discord`** — behind the site password.
 
 ## Env vars
 
 **Production (Vercel, `archr2` scope):**
-- `DISCORD_WEBHOOK_URL` — the premium card channel (today: `#paper-log`; repoint to `#full-card` at launch).
-- `DISCORD_RESULTS_WEBHOOK_URL` — the results recap channel.
-- `DISCORD_MOSES_WEBHOOK_URL` — Moses's daily rhythm (morning drop + Moses 101). **Unset = both dormant.** Point it at the room's main channel to light them up. Crons are already scheduled; they no-op until this is set.
-- `DISCORD_FREE_WEBHOOK_URL` — optional free-lean channel.
-- `DISCORD_PUBLIC_KEY` — verifies `/betcheck` interaction signatures. Unset = command endpoint returns 503 (dormant).
+- `DISCORD_WEBHOOK_URL` — the card channel (today: `#paper-log`; repoint to `#todays-card` at launch). **Unset = the card is dormant.**
+- `DISCORD_RESULTS_WEBHOOK_URL` — the results recap channel. **Unset = dormant.**
 - `SITE_ACCESS_PASSWORD` — Basic Auth gate on the whole site (`/api/*` is exempt so Discord + crons work).
 
-**Local only (for the ops scripts below — never stored in prod):**
-- `DISCORD_BOT_TOKEN` — the bot token. Used to provision/seed/register.
+**Local only (for the ops script below — never stored in prod):**
+- `DISCORD_BOT_TOKEN` — the bot token.
 - `DISCORD_GUILD_ID` — the server id.
-- `DISCORD_APP_ID` — the application id (command registration only).
 
-## The scripts
+## The script
 
-All idempotent and safe to re-run. Run from repo root.
+Idempotent and safe to re-run. Run from repo root.
 
 ```bash
 # Preview the whole server structure (no token needed):
 npx tsx scripts/discord/provision-server.ts --plan
 
-# Build/repair the server (roles, categories, channels, locks, pinned rules):
+# Dry run against the real server (reads only, shows the diff):
+DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts
+
+# Build/repair the server (roles, categories, channels, locks, the pinned #start-here):
 DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/provision-server.ts --apply
-
-# Seed welcome/how-to content into the bare channels (skips any with pins):
-DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/seed-content.ts
-
-# Elevate to a Community server — icon, Community mode, Welcome Screen, Onboarding,
-# :archr: emoji, Hall of Cashes forum, Fight Night event (idempotent, safe to re-run):
-DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/discord/pro-upgrade.ts
-
-# Register (or update) the /betcheck slash command to the server:
-DISCORD_APP_ID=… DISCORD_BOT_TOKEN=… DISCORD_GUILD_ID=… npx tsx scripts/register-discord-commands.ts
 ```
 
-The server spec lives in `scripts/discord/serverPlan.ts` (roles/channels/locks) and
-`scripts/discord/channelContent.ts` (pinned copy). Edit those, re-run the scripts —
-they fill gaps, never duplicate.
+The whole server spec — roles, channels, locks, and the pinned welcome/rules/
+disclaimer copy — lives in `scripts/discord/serverPlan.ts`. Edit it, re-run the
+script; it fills gaps and never duplicates.
+
+⚠️ The provisioner matches by **name** and only *creates what's missing* — it does
+not delete. Channels from the old 25-channel layout that already exist on the
+server have to be deleted by hand in Discord.
 
 ## Tuning knobs
 
-- **Best Plays band** — `postCard.ts`: `MIN_ARCHER_EV` (0.03), `MAX_ARCHER_EV` (0.20, drops miscalibrated extremes), `MAX_PLAYS` (8).
+- **Best Plays band** — `postCard.ts`: the card posts EVERY positive-EV play; conviction shows in the stake, not a filter. Staking is `@/lib/betting/kelly` (quarter-Kelly, per-price cap).
 - **UFC leans** — `ufcBestPlays.ts`: `MIN_CONFIDENCE` (0.60), `MAX_UFC_PLAYS` (6), `LOOKAHEAD_DAYS` (3).
-- **Bet Check verdict bands** — `betCheck.ts`: `SHARP_EV` (+0.02), `POOR_EV` (−0.02).
 
 ## Left to do (manual)
 
-1. **Whop** — in the Whop dashboard, connect Discord and map the product to the
-   **@Premium** role (auto-assign on payment, strip on cancel). Put the checkout
-   link in `#get-access`.
-2. **Verify + welcome bot** — add **Carl-bot** or **MEE6** for the ✅ rules-gate
-   (→ `@Verified`) and member greetings. Our ARCHR bot is HTTP-interactions only
-   (no persistent gateway), so it can't listen for reactions/joins — this is the
-   standard split, not a gap in the build. Until this exists, the `👥 COMMUNITY`
-   category is visible to `@Verified`/staff only.
-3. **Go live** — after ~2 weeks of private paper-logging, create a webhook on
-   `#full-card` and repoint `DISCORD_WEBHOOK_URL` from `#paper-log` → `#full-card`.
-   Seed the first 20 founders ($15/life), then flip to $25/mo once the room's alive.
+1. **Delete the old channels** — the provisioner won't. Remove anything not in
+   the 6-channel spine above.
+2. **Whop** — connect Discord in the Whop dashboard and map the product to the
+   **@Premium** role (auto-assign on payment, strip on cancel). The checkout link
+   goes in `#start-here` (there's no `#get-access` channel any more).
+3. **Go live** — after the private paper-logging run, create a webhook on
+   `#todays-card` and repoint `DISCORD_WEBHOOK_URL` from `#paper-log` → `#todays-card`.
 
 ## Deferred follow-ups
 
 - Grade UFC leans (a win-rate ledger — they post but aren't recorded/graded yet).
-- Exact alt-line grading in `/betcheck` (currently grades at the main line).
-- Automated leaderboard → `@Tail Captain`.
 - Market-EV coverage for tennis/soccer in the card.
+
+## Cut (2026-07-20) — deliberately, not lost
+
+Removed because the room was doing too much before it had a single member. All of
+it is in git history if it earns its way back:
+
+- **Channels:** `#rules`, `#disclaimer` (folded into `#start-here`), `#todays-lean`,
+  `#get-access`, `#general`, `#todays-board`, `#tracked-plays`, `#fight-night`,
+  `#bet-check`, `#by-sport`, `#tail-chat`, `#member-plays`, `#bankroll-101`,
+  `#leaderboard`, `#wins`, `#introductions`, `#sports-talk`, `#support`,
+  `#responsible-gaming`, `#mod-log`, `#staff-chat`.
+- **Roles:** `@Founders`, `@Tail Captain`, `@Verified`.
+- **Daily posts:** the morning slate drop (`post-morning`) and Moses 101
+  (`post-teaching`) crons + `mosesDaily.ts`; the free-lean tease and the whole
+  `freeLean` display field through the engine.
+- **Commands:** `/betcheck` + `betCheck.ts` + the interactions endpoint +
+  `register-discord-commands.ts`.
+- **Scripts:** `seed-content.ts`, `channelContent.ts`, `pro-upgrade.ts`
+  (Community mode, Welcome Screen, Onboarding, forum, recurring event).
+- **Admin:** the `fire-morning` bookmark route.

@@ -14,10 +14,8 @@ import { SPORTS, type Play } from "@/lib/engine";
  * branch. MLB carries the model (+EV) lens; UFC brings its fighter-math leans as
  * a second section. (sport-engine Phase 3 — the board wired to the registry.)
  *
- * Posts:
- *   • the curated Best Plays card → the PREMIUM channel (DISCORD_WEBHOOK_URL)
- *   • one "free lean" (selection only, no EV/book) → the FREE channel funnel
- *     (DISCORD_FREE_WEBHOOK_URL), if that webhook is set.
+ * Posts the curated Best Plays card → #todays-card (DISCORD_WEBHOOK_URL). That
+ * is the room's ONLY play surface: there is no free lean and no second board.
  *
  * Dormant-safe: with no DISCORD_WEBHOOK_URL set, nothing posts and the caller
  * returns cleanly — the post-discord cron becomes a no-op until you paste a
@@ -66,7 +64,6 @@ export interface DiscordPostResult {
   posted: boolean;
   reason?: string;
   premiumCount?: number;
-  freePosted?: boolean;
   ufcCount?: number;
 }
 
@@ -195,14 +192,6 @@ export function sectionsToEmbeds(sections: BoardSection[]): Record<string, unkno
   return embeds.slice(0, MAX_EMBEDS);
 }
 
-/** The single funnel tease — the top play, primary sport first (its own free lean). */
-export function freeLeanText(plays: Play[]): string | null {
-  const primaryKey = SPORTS[0]?.key;
-  const primaryTop = plays.find((p) => p.sportKey === primaryKey && p.display?.freeLean);
-  const anyTop = plays.find((p) => p.display?.freeLean);
-  return (primaryTop ?? anyTop)?.display?.freeLean ?? null;
-}
-
 /**
  * Persist the plays we just posted so #results can grade them (see postResults).
  * Upsert keyed on (postedForDate, playKey): a re-post of the same day leaves the
@@ -314,30 +303,5 @@ export async function postDailyCardToDiscord(dateEt: string = todayEt()): Promis
     console.error("recordPlays failed (card was still posted):", err);
   }
 
-  // Free channel: a single lean as the funnel tease — selection only, no EV, no
-  // best book. The value (the number + where to get it) stays behind the paywall.
-  // Prefer the top primary-sport (MLB) play; on an MLB-dry day, tease the next
-  // sport's top play so the funnel still fires when there's a card to sell.
-  let freePosted = false;
-  const freeUrl = process.env.DISCORD_FREE_WEBHOOK_URL;
-  const lean = freeLeanText(plays);
-  if (freeUrl && lean) {
-    await postWebhook(freeUrl, {
-      username: "Moses, Leader of Many",
-      embeds: [
-        {
-          author: mosesAuthor(),
-          title: `Free lean · ${label}`,
-          description:
-            `${lean}\n\n` +
-            "The full card — every play with the number and best book — is in premium. 🔒",
-          color: ARCHR_GREEN,
-          footer: { text: RESEARCH_FOOTER },
-        },
-      ],
-    });
-    freePosted = true;
-  }
-
-  return { posted: true, premiumCount, freePosted, ufcCount };
+  return { posted: true, premiumCount, ufcCount };
 }

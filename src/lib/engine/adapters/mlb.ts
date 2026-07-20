@@ -14,7 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { shiftEtDate } from "@/lib/dateEt";
 import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
 import { unitsFor } from "@/lib/betting/kelly";
-import { playLine, gameLineFreeLean } from "@/lib/card/line";
+import { playLine } from "@/lib/card/line";
 import { gradeGameLine, gradeProp } from "@/lib/discord/gradePlay";
 import { getTeamFormForGame } from "@/lib/queries/teamForm";
 import { computeArcherWinProbability } from "@/lib/archer/winProbability";
@@ -227,7 +227,6 @@ export function toPlay(p: OddsPlay, postedForDate: string): Play {
       booksCount: p.booksCount,
       // Pre-rendered here so the board concatenates lines with no MLB branch.
       line: playLine(p),
-      freeLean: gameLineFreeLean(p),
     },
   };
 }

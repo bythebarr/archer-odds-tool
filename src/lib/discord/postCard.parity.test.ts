@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { assembleSections, sectionsToEmbeds, freeLeanText } from "./postCard";
+import { assembleSections, sectionsToEmbeds } from "./postCard";
 import { toPlay } from "@/lib/engine/adapters/mlb";
 import { ufcToPlay } from "@/lib/engine/adapters/ufc";
 import { mosesAuthor } from "./brand";
 import { SITE_URL } from "@/lib/siteUrl";
-import { playLine, ufcPlayLine, gameLineFreeLean, ufcFreeLean, prettyEventDate } from "@/lib/card/line";
+import { playLine, ufcPlayLine, prettyEventDate } from "@/lib/card/line";
 import type { OddsPlay } from "@/lib/queries/oddsPool";
 import type { UfcBestPlay } from "./ufcBestPlays";
 
@@ -124,19 +124,5 @@ describe("board parity — registry-sourced embeds equal the old poster's", () =
 
   it("empty board → just the empty MLB card", () => {
     expect(embeds([])).toEqual([oracleMlbEmbed([])]);
-  });
-});
-
-describe("free-lean parity — MLB first, then the next sport", () => {
-  it("prefers the top MLB play's tease", () => {
-    expect(freeLeanText([...mlbPlays, ...ufcPlays])).toBe(gameLineFreeLean(mlbPicks[0]));
-  });
-
-  it("falls back to the top UFC lean on an MLB-dry day", () => {
-    expect(freeLeanText(ufcPlays)).toBe(ufcFreeLean(ufcBouts[0]));
-  });
-
-  it("no plays → no tease", () => {
-    expect(freeLeanText([])).toBeNull();
   });
 });

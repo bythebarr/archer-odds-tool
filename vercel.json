@@ -18,8 +18,6 @@
     { "path": "/api/cron/backfill-player-game-logs", "schedule": "20 9 * * *" },
     { "path": "/api/cron/backfill-ufc", "schedule": "45 9 * * *" },
     { "path": "/api/cron/backfill-f1", "schedule": "50 9 * * *" },
-    { "path": "/api/cron/post-morning", "schedule": "0 13 * * *" },
-    { "path": "/api/cron/post-teaching", "schedule": "30 15 * * *" },
     { "path": "/api/cron/post-discord", "schedule": "30 14 * * *" },
     { "path": "/api/cron/post-results", "schedule": "0 15 * * *" }
   ]

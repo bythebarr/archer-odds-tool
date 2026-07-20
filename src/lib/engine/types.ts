@@ -74,8 +74,6 @@ export interface PlayDisplay {
    * "is this MLB?" branch — a new sport brings its own line. See @/lib/card/line.
    */
   line?: string;
-  /** The funnel tease — selection only, no EV/book/units — for the free channel. */
-  freeLean?: string;
   /**
    * A dynamic suffix for this sport's board section title (UFC: "<event> · <date>").
    * Omitted → the section falls back to the card's date label (MLB).
