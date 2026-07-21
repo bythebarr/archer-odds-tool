@@ -1,15 +1,16 @@
 import "dotenv/config";
 import { syncMlbSchedule } from "@/lib/mlb/syncSchedule";
-
-function todayPlus(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+import { todayEt, shiftEtDate } from "@/lib/dateEt";
 
 async function main() {
-  const startDate = process.argv[2] ?? todayPlus(0);
-  const endDate = process.argv[3] ?? todayPlus(6);
+  // ET, not UTC. `toISOString()` rolls over at 7-8pm ET, so running this in the
+  // evening used to start the window on TOMORROW's date and skip the slate
+  // that was still being played — the same boundary the sync-results cron
+  // already guards with an ET lookback. Starting a day back also lets an
+  // in-progress slate finish syncing.
+  const today = todayEt();
+  const startDate = process.argv[2] ?? shiftEtDate(today, -1);
+  const endDate = process.argv[3] ?? shiftEtDate(today, 6);
 
   console.log(`Syncing MLB schedule ${startDate} → ${endDate}...`);
   const summary = await syncMlbSchedule(startDate, endDate);
