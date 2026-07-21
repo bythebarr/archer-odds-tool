@@ -40,6 +40,39 @@ function outcomeToSide(
 }
 
 /**
+ * Drops main-line CurrentOddsLine rows this poll didn't refresh.
+ *
+ * CurrentOddsLine was upsert-only and never pruned, which quietly broke the
+ * one thing the board promises — the best available price. Two ways:
+ *
+ *  - A book that stops offering a market keeps its last price forever, and
+ *    since "best price" is a max across books, a withdrawn number wins the
+ *    comparison indefinitely.
+ *  - `point` is part of the row's unique key, so every historical number
+ *    accumulates as its own "current" row. Measured on one WSH @ COL game:
+ *    seven distinct spreads (-2.5 through 4.5) and five totals (12 through
+ *    15.5) all live at once. Books never disagree by 3.5 runs on a main
+ *    total; most of those rows were simply old.
+ *
+ * `OddsSnapshot` remains append-only — the price history lives there, and this
+ * touches none of it. This is only about what "current" means.
+ *
+ * Alt lines are deliberately exempt: they're fetched for one game per poll
+ * (MAX_ALT_LINE_GAMES_PER_POLL), so pruning them on a poll that didn't request
+ * them would delete the whole ladder every time. They keep their own lifecycle.
+ *
+ * Only ever called for a fetch that actually carried the main markets — see
+ * `retireStale` in storeBookmakerOdds. The alt-lines fetch runs as a SECOND call
+ * for the same game moments later, and pruning on it would delete the main rows
+ * the first call just wrote.
+ */
+async function retireStaleCurrentLines(gameId: string, startedAt: Date): Promise<void> {
+  await prisma.currentOddsLine.deleteMany({
+    where: { gameId, isAlternate: false, polledAt: { lt: startedAt } },
+  });
+}
+
+/**
  * Writes every allowed book's odds for one game/match: an append-only
  * OddsSnapshot row per (book, market, side, point) plus an upserted
  * CurrentOddsLine for O(1) "what's the price right now" lookups. Sport-
@@ -51,9 +84,17 @@ export async function storeBookmakerOdds(
   gameId: string,
   homeCompetitorName: string,
   awayCompetitorName: string,
-  bookmakers: OddsApiBookmaker[]
+  bookmakers: OddsApiBookmaker[],
+  /**
+   * Whether this payload is the game's full main-line picture, so rows it
+   * doesn't refresh can be retired. False for the per-event ALT-lines fetch,
+   * which is a partial second call for a game already written this poll.
+   */
+  { retireStale = true }: { retireStale?: boolean } = {}
 ): Promise<number> {
   let snapshotsWritten = 0;
+  // Everything written by THIS call, so anything older can be retired below.
+  const startedAt = new Date();
 
   for (const bookmaker of bookmakers) {
     if (!isAllowedBook(bookmaker.key)) continue;
@@ -166,6 +207,8 @@ export async function storeBookmakerOdds(
       }
     }
   }
+
+  if (retireStale) await retireStaleCurrentLines(gameId, startedAt);
 
   return snapshotsWritten;
 }

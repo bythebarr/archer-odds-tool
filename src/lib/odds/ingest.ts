@@ -2,14 +2,39 @@ import { prisma } from "@/lib/prisma";
 import {
   fetchMlbOdds,
   fetchEventAlternateOdds,
+  activeOddsProvider,
   type OddsApiEvent,
   type OddsApiMarketKey,
 } from "./oddsApiClient";
 import { storeBookmakerOdds } from "./storeOdds";
+import { canonicalTeamName } from "./teamNameAliases";
+import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
 import type { Game } from "@/generated/prisma/client";
 
-/** Games are matched to Odds API events within this window around commence_time. */
-const MATCH_WINDOW_HOURS = 6;
+/**
+ * Games are matched to odds events by ET CALENDAR DATE, not by a clock window,
+ * because ParlayAPI's `commence_time` is not trustworthy.
+ *
+ * Measured 2026-07-21 against the authoritative MLB Stats API schedule: the feed
+ * is **exactly 6 hours early for every game starting at or after 00:00 UTC**, and
+ * exactly right for the rest.
+ *
+ *   MIN @ CLE   truth 22:40Z   feed 22:40Z   ok
+ *   PIT @ NYY   truth 23:05Z   feed 23:05Z   ok
+ *   DET @ CHC   truth 00:05Z   feed 18:05Z   6h early
+ *   WSH @ COL   truth 00:40Z   feed 18:40Z   6h early
+ *   STL @ LAA   truth 01:38Z   feed 19:38Z   6h early
+ *
+ * So roughly half of a normal slate is misdated by the provider. A time window
+ * can only be wrong here in one of two ways: narrow enough to reject the real
+ * game (7 of 15 events went unmatched at 3h), or wide enough to also reach a
+ * neighbouring game and merge two markets into one board.
+ *
+ * Every one of those games IS on the same ET date under both clocks — a 6h-early
+ * evening game lands in the same ET afternoon — and ET is already how the rest of
+ * this app dates a slate. So the ET day is the match key, and start time is kept
+ * only to order a doubleheader's two games within that day.
+ */
 
 /**
  * How many games get an alt-line fetch per poll, capped at a fixed number
@@ -29,34 +54,126 @@ const MATCH_WINDOW_HOURS = 6;
 const MAX_ALT_LINE_GAMES_PER_POLL = 1;
 
 /**
- * Finds the Game a given Odds API event refers to. Once matched, the event id
- * is cached on Game.oddsApiEventId so future polls skip the fuzzy lookup.
+ * Assigns each odds event to the Game it actually refers to, one-to-one.
+ *
+ * This replaces a per-event `candidates[0]` lookup that produced corrupted
+ * boards, measured 2026-07-21 on WSH @ COL: the stored game held two mutually
+ * exclusive markets from a single poll — FanDuel/Pinnacle/Novig pricing a
+ * pick'em (~-105 both sides) alongside BetMGM/Caesars/Parx pricing Washington
+ * at -275. Every book was internally coherent, so the overround guard in
+ * marketSanity couldn't see it; the books were simply pricing DIFFERENT GAMES.
+ *
+ * The cause was a split doubleheader. Two events, six hours apart, both fell
+ * inside the other's +/-6h window, and nothing stopped both from claiming the
+ * same row — the first-listed candidate won each time, and `oddsApiEventId` was
+ * simply overwritten. Best-price line shopping across two different games is
+ * worse than useless: it manufactures an enormous fake edge on every market.
+ *
+ * Two changes make that unrepresentable rather than unlikely:
+ *
+ *  1. **Closest start wins, assigned globally.** Every (event, candidate) pair
+ *     is ranked by start-time distance and assigned greedily, so an exact time
+ *     match always beats a six-hour-away one no matter what order the feed
+ *     lists events in. `candidates[0]` had no ordering at all.
+ *  2. **One game, one event.** A game already claimed this poll can't be
+ *     claimed again, so two events can never merge into one row.
+ *
+ * Events whose id is already cached on a Game keep that binding and are
+ * excluded from the assignment, which is both cheaper and stable across polls.
  */
-async function matchGameForEvent(event: OddsApiEvent) {
-  // sport: "mlb" everywhere here: this function is only ever called from the
-  // MLB odds poll flow (fetchMlbOdds) — tennis creates its own Game rows on
-  // the fly instead of matching pre-existing ones (see tennis/ingest.ts).
-  const existing = await prisma.game.findUnique({ where: { oddsApiEventId: event.id, sport: "mlb" } });
-  if (existing) return existing;
+async function assignEventsToGames(
+  events: OddsApiEvent[]
+): Promise<{ matches: Map<string, Game>; unmatched: OddsApiEvent[] }> {
+  const matches = new Map<string, Game>();
+  const claimedGameIds = new Set<string>();
 
-  const commenceTime = new Date(event.commence_time);
-  const windowStart = new Date(commenceTime.getTime() - MATCH_WINDOW_HOURS * 3_600_000);
-  const windowEnd = new Date(commenceTime.getTime() + MATCH_WINDOW_HOURS * 3_600_000);
-
-  const candidates = await prisma.game.findMany({
-    where: {
-      sport: "mlb",
-      scheduledStartUtc: { gte: windowStart, lte: windowEnd },
-      homeTeam: { name: event.home_team },
-      awayTeam: { name: event.away_team },
-    },
+  // sport: "mlb" everywhere here: only ever called from the MLB odds poll flow
+  // (fetchMlbOdds) — tennis/soccer/NFL create their own Game rows instead.
+  const eventDateById = new Map(events.map((e) => [e.id, etDateOf(new Date(e.commence_time))]));
+  const cached = await prisma.game.findMany({
+    where: { sport: "mlb", oddsApiEventId: { in: events.map((e) => e.id) } },
   });
+  for (const game of cached) {
+    const eventId = game.oddsApiEventId;
+    if (!eventId) continue;
+    // A cached binding is a shortcut, not an authority. Re-check it on the same
+    // ET-day rule, so a binding made by the old first-match-wins code (or one
+    // left on a rescheduled game) gets re-decided rather than persisting
+    // forever — that's how a wrong match used to become permanent.
+    if (eventDateById.get(eventId) !== etDateOf(game.scheduledStartUtc)) continue;
+    matches.set(eventId, game);
+    claimedGameIds.add(game.id);
+  }
 
-  const game = candidates[0];
-  if (!game) return null;
+  const unresolved = events.filter((e) => !matches.has(e.id));
+  if (!unresolved.length) return { matches, unmatched: [] };
 
-  await prisma.game.update({ where: { id: game.id }, data: { oddsApiEventId: event.id } });
-  return game;
+  // Build every plausible (event, game) pairing, then let the best ones win.
+  const pairs: { eventId: string; game: Game; deltaMs: number }[] = [];
+  for (const event of unresolved) {
+    const commenceTime = new Date(event.commence_time);
+    const { gte, lt } = etDayBoundsUtc(etDateOf(commenceTime));
+
+    const candidates = await prisma.game.findMany({
+      where: {
+        sport: "mlb",
+        scheduledStartUtc: { gte, lt },
+        // Feed names are reconciled to the schedule source's names first — see
+        // teamNameAliases (MLB's "Athletics" vs the feed's "Oakland Athletics").
+        homeTeam: { name: canonicalTeamName(event.home_team) },
+        awayTeam: { name: canonicalTeamName(event.away_team) },
+      },
+    });
+
+    for (const game of candidates) {
+      pairs.push({
+        eventId: event.id,
+        game,
+        // Only a tiebreak between two games of the same matchup on the same ET
+        // day (a doubleheader). It is NOT a validity test — the provider's clock
+        // is off by 6h on half the slate, so a large delta is normal, not wrong.
+        deltaMs: Math.abs(game.scheduledStartUtc.getTime() - commenceTime.getTime()),
+      });
+    }
+  }
+
+  for (const { eventId, game } of resolveClosestPairings(pairs, claimedGameIds)) {
+    matches.set(eventId, game);
+    await prisma.game.update({ where: { id: game.id }, data: { oddsApiEventId: eventId } });
+  }
+
+  return { matches, unmatched: unresolved.filter((e) => !matches.has(e.id)) };
+}
+
+/**
+ * Greedy one-to-one assignment: settle the tightest time agreement in the whole
+ * poll first, so a doubleheader's two events land on their own two rows rather
+ * than both piling onto whichever row happened to be listed first.
+ *
+ * Pure and exported for tests — this is the rule that keeps two games' prices
+ * out of one board, so it's worth pinning down independently of the DB.
+ */
+export function resolveClosestPairings<G extends { id: string }>(
+  pairs: { eventId: string; game: G; deltaMs: number }[],
+  alreadyClaimedGameIds: ReadonlySet<string> = new Set()
+): { eventId: string; game: G }[] {
+  const claimedGames = new Set(alreadyClaimedGameIds);
+  const takenEvents = new Set<string>();
+  const assigned: { eventId: string; game: G }[] = [];
+
+  // Sorted by closeness, then by ids purely so equal deltas resolve the same way
+  // on every run — a tie shouldn't make the board non-deterministic.
+  const ordered = [...pairs].sort(
+    (a, b) => a.deltaMs - b.deltaMs || a.eventId.localeCompare(b.eventId) || a.game.id.localeCompare(b.game.id)
+  );
+
+  for (const { eventId, game } of ordered) {
+    if (takenEvents.has(eventId) || claimedGames.has(game.id)) continue;
+    takenEvents.add(eventId);
+    claimedGames.add(game.id);
+    assigned.push({ eventId, game });
+  }
+  return assigned;
 }
 
 export interface PollOddsSummary {
@@ -97,12 +214,14 @@ export async function pollAndStoreOdds(
 
   const upcomingMatches: { event: OddsApiEvent; game: Game; minutesToStart: number }[] = [];
 
+  const { matches, unmatched } = await assignEventsToGames(events);
+  for (const event of unmatched) {
+    gamesUnmatched.push(`${event.away_team} @ ${event.home_team} (${event.commence_time})`);
+  }
+
   for (const event of events) {
-    const game = await matchGameForEvent(event);
-    if (!game) {
-      gamesUnmatched.push(`${event.away_team} @ ${event.home_team} (${event.commence_time})`);
-      continue;
-    }
+    const game = matches.get(event.id);
+    if (!game) continue;
     gamesMatched++;
 
     // The Odds API's odds endpoint includes in-play events by default, not
@@ -124,9 +243,22 @@ export async function pollAndStoreOdds(
     upcomingMatches.push({ event, game, minutesToStart });
   }
 
-  const altLineTargets = upcomingMatches
-    .sort((a, b) => a.minutesToStart - b.minutesToStart)
-    .slice(0, MAX_ALT_LINE_GAMES_PER_POLL);
+  // ParlayAPI serves no alternate game lines at all: the endpoint rejects both
+  // markets with INVALID_MARKET ("Valid values are: h2h, outrights, spreads,
+  // totals, or any player_*/batter_*/pitcher_* prop market"), confirmed live
+  // 2026-07-21. So this call has failed on EVERY poll since the provider switch,
+  // logging a stack trace and returning nothing. Skipping it is the honest
+  // behaviour — the alt-line ladder is a TOA capability we no longer have, and
+  // pretending otherwise just buries a real error in the logs every run.
+  //
+  // Kept (rather than deleted) because it still works on TOA, which ODDS_PROVIDER
+  // can select; delete it if TOA is retired for good.
+  const altLineTargets =
+    activeOddsProvider() === "parlay"
+      ? []
+      : upcomingMatches
+          .sort((a, b) => a.minutesToStart - b.minutesToStart)
+          .slice(0, MAX_ALT_LINE_GAMES_PER_POLL);
 
   for (const { event, game } of altLineTargets) {
     try {
@@ -135,7 +267,10 @@ export async function pollAndStoreOdds(
         game.id,
         altResult.event.home_team,
         altResult.event.away_team,
-        altResult.event.bookmakers
+        altResult.event.bookmakers,
+        // Partial payload for a game whose main lines were written moments ago —
+        // retiring "unrefreshed" rows here would delete exactly those.
+        { retireStale: false }
       );
       altLineGamesPolled++;
       if (altResult.creditsUsed !== null) creditsUsed += altResult.creditsUsed;
