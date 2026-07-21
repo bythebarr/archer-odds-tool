@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { assembleSections, sectionsToEmbeds, slateLine, onlyTodaysEvents, cardIntro } from "./postCard";
+import { assembleSections, sectionsToEmbeds, slateLine, onlyTodaysEvents, excludeSignalOnly, cardIntro } from "./postCard";
+import { SPORTS } from "@/lib/engine";
 import { toPlay } from "@/lib/engine/adapters/mlb";
 import { ufcToPlay } from "@/lib/engine/adapters/ufc";
 import { mosesAuthor } from "./brand";
@@ -190,6 +191,35 @@ describe("event-timed surfacing — a sport appears only on its own day", () => 
       CARD_DATE
     );
     expect(kept).toHaveLength(1);
+  });
+});
+
+describe("signal-only sports stay off the tracked play surface", () => {
+  function play(sportKey: string): Play {
+    return { ...mlbPlays[0], sportKey, playKey: `k-${sportKey}` };
+  }
+
+  it("drops tennis — our provider serves no tennis results, so it could never be graded", () => {
+    // The failure this prevents: a posted pick the room never sees settled, and
+    // a PostedPlay row stuck at "pending" forever.
+    expect(excludeSignalOnly([play("tennis")])).toEqual([]);
+  });
+
+  it("keeps the sports that DO have a results source", () => {
+    const kept = excludeSignalOnly([play("mlb"), play("ufc"), play("soccer")]);
+    expect(kept.map((p) => p.sportKey)).toEqual(["mlb", "ufc", "soccer"]);
+  });
+
+  it("filters only the signal-only sport out of a mixed board", () => {
+    const kept = excludeSignalOnly([play("mlb"), play("tennis"), play("ufc")]);
+    expect(kept.map((p) => p.sportKey)).toEqual(["mlb", "ufc"]);
+  });
+
+  it("derives from the registry, not a hardcoded sport list", () => {
+    // If a sport's signalOnly flag flips (a results feed lands), this filter must
+    // follow it with no edit here.
+    const signalOnly = SPORTS.filter((a) => a.meta.signalOnly).map((a) => a.key);
+    expect(excludeSignalOnly(signalOnly.map(play))).toEqual([]);
   });
 });
 

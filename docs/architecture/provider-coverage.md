@@ -73,5 +73,26 @@ So, per sport:
   a sport-specific results source. Do not promise props there.
 - **No coverage** → not a surface yet, whatever the roadmap says.
 
+## Acted on: tennis is signal-only (2026-07-21)
+
+The table said tennis has no scores; the code hadn't caught up. A
+`grade-outcomes-tennis` cron ran every 2 days, spent 2 credits on `/scores`, got
+nothing back, and graded nothing — and tennis plays were still posted to the card
+and written to `PostedPlay`, where they could only ever read "pending".
+
+So tennis now carries `signalOnly: true` in `SportMeta` (see
+`src/lib/engine/sportsMeta.ts`). That flag means **priceable but not settleable**,
+and it does three things: keeps the sport's page and Elo model running, keeps its
+plays off the tracked card via `excludeSignalOnly`, and says so on the page rather
+than leaving an empty record to be misread. The grading cron, its GitHub Actions
+step, and `src/lib/tennis/grading.ts` are deleted — not disabled, since they could
+not work against this provider at all.
+
+The tennis adapter's `grade` is deliberately kept: pre-existing PostedPlay rows
+still dispatch to it, and it's the grader the sport needs the day a results source
+lands. **Wiring one is a one-line reversal** — clear `signalOnly` and tennis is
+back on the card with no other change. That is the shape any future no-results
+sport should take.
+
 Adding a sport means checking this table first, not discovering the gap after
 building the adapter.

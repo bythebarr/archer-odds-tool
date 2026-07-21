@@ -225,6 +225,24 @@ export function onlyTodaysEvents(plays: Play[], dateEt: string): Play[] {
   return plays.filter((p) => etDateOf(p.startUtc) === dateEt);
 }
 
+/**
+ * Drop plays from sports we can price but can't settle (`meta.signalOnly`).
+ *
+ * Not a taste call about which sports "deserve" the card — the owner's rule is
+ * post EVERY edge. It's that a signal-only sport has no results feed at all, so
+ * its plays would be posted, recorded, and then never graded: the room sees a
+ * pick and never sees how it went, and the tracked record carries rows that can
+ * only ever read "pending". Silence about the outcome is worse than not posting.
+ *
+ * The sport keeps its own page and its model keeps running — this filter governs
+ * the tracked play surface only. Clearing `signalOnly` (i.e. wiring a results
+ * source) puts the sport back on the card with no change here.
+ */
+export function excludeSignalOnly(plays: Play[]): Play[] {
+  const signalOnly = new Set(SPORTS.filter((a) => a.meta.signalOnly).map((a) => a.key));
+  return plays.filter((p) => !signalOnly.has(p.sportKey));
+}
+
 /** All positive-EV plays across every registered sport, freshest data first. */
 export async function collectPlays(dateEt: string): Promise<Play[]> {
   // Best-effort freshness (UFC pokes its gated odds poll); a failure must not
@@ -240,10 +258,14 @@ export async function collectPlays(dateEt: string): Promise<Play[]> {
       }
     })
   );
-  const all = perSport.flat();
+  const all = excludeSignalOnly(perSport.flat());
+  const ungradable = perSport.flat().length - all.length;
+  if (ungradable) {
+    // No silent filtering — say what was held back and why.
+    console.log(`postCard: holding ${ungradable} play(s) from signal-only sports (no results source to grade them)`);
+  }
   const todays = onlyTodaysEvents(all, dateEt);
   if (todays.length !== all.length) {
-    // No silent filtering — say what was held back and why.
     const held = all.length - todays.length;
     const sports = [...new Set(all.filter((p) => !todays.includes(p)).map((p) => p.sportKey))];
     console.log(`postCard: holding ${held} play(s) whose event isn't today (${sports.join(", ")})`);

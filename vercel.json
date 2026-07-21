@@ -38,10 +38,6 @@
       "schedule": "5 9 * * *"
     },
     {
-      "path": "/api/cron/grade-outcomes-tennis",
-      "schedule": "10 9 * * *"
-    },
-    {
       "path": "/api/cron/poll-odds-soccer",
       "schedule": "0 0 * * *"
     },

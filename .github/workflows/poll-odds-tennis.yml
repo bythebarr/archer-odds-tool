@@ -16,10 +16,8 @@ jobs:
           curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds-tennis" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
-      # Costs credits (unlike MLB's free grade-outcomes) — the route's own
-      # internal 2-day guardrail makes this a no-op most days even though
-      # this workflow calls it daily. See the tennis plan doc's credit budget.
-      - name: Sync + grade tennis results (credit-throttled, every 2 days)
-        run: |
-          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes-tennis" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+      # There is deliberately NO grading step here. Tennis grading used to run
+      # off /scores, which our provider does not serve for tennis (zero results
+      # for ATP and WTA, measured twice — see docs/architecture/provider-coverage.md),
+      # so it spent credits every other day to grade nothing. Tennis is
+      # signal-only until it has a results source; see SportMeta.signalOnly.

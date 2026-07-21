@@ -197,10 +197,15 @@ async function listPlays(dateEt: string): Promise<Play[]> {
 }
 
 /**
- * Grade one tracked tennis play against its settled match. Tennis settlement lives
- * in GameOutcome (one h2h row per competitor, written by syncAndGradeTennisResults),
- * so the backed player's own outcome row IS the grade — hit | miss. Not final yet, or
- * not graded yet → "pending" (a later pass settles it); never a fabricated loss.
+ * Grade one tracked tennis play against its settled match, reading the backed
+ * player's own GameOutcome h2h row.
+ *
+ * Tennis is `signalOnly` (see sportsMeta): our provider serves no tennis scores,
+ * so nothing writes those outcome rows today and no NEW tennis play is ever
+ * tracked. This stays implemented anyway — PostedPlay rows from before that call
+ * still dispatch here, and returning "pending" for them is the honest answer
+ * (unsettled, not lost). It is also the whole grader the sport needs the day a
+ * results source lands: point one at GameOutcome and clear `signalOnly`.
  */
 async function grade(play: Play): Promise<PlayGrade> {
   const game = await prisma.game.findUnique({

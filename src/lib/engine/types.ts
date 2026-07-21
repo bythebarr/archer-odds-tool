@@ -36,6 +36,19 @@ export interface SportMeta {
    * instead of hardcoding "everything but F1".
    */
   resultsOnly?: boolean;
+  /**
+   * A sport we can PRICE but cannot SETTLE: odds exist, but no provider we use
+   * carries its results (tennis — ParlayAPI returns zero scores for ATP and WTA,
+   * measured twice; see docs/architecture/provider-coverage.md). Its model still
+   * runs and its page still shows signal, but its plays never join the tracked
+   * record, because a play that can never be graded would sit "pending" forever
+   * and quietly understate the posted count it was measured against.
+   *
+   * This is a DATA-SOURCE fact, not a product preference: clear it the moment the
+   * sport gets a results feed (as MLB has the Stats API, UFC has Cito, F1 has
+   * Jolpica), and the sport becomes tracked again with no other change.
+   */
+  signalOnly?: boolean;
 }
 
 /**

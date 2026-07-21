@@ -15,14 +15,15 @@ export type { SportMeta };
 
 // `as const` keeps the literals so the unions below derive; `satisfies` checks
 // each entry's shape. Order is display order (MLB primary first) — nav, the Home
-// launcher, and the SportRail all render in it. `resultsOnly` is set explicitly
-// on every entry (not just F1) so it's readable on the literal union at runtime.
+// launcher, and the SportRail all render in it. `resultsOnly` and `signalOnly`
+// are set explicitly on every entry (not just the sports that need them) so both
+// are readable on the literal union at runtime.
 export const SPORT_METAS = [
-  { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false },
-  { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false },
-  { sport: "tennis", label: "Tennis", icon: "🎾", href: "/tennis", accent: "#a3e635", carriesDate: false, resultsOnly: false },
-  { sport: "soccer", label: "Soccer", icon: "⚽", href: "/soccer", accent: "#10b981", carriesDate: false, resultsOnly: false },
-  { sport: "f1", label: "F1", icon: "🏁", href: "/f1", accent: "#e10600", carriesDate: false, resultsOnly: true },
+  { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false, signalOnly: false },
+  { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false, signalOnly: false },
+  { sport: "tennis", label: "Tennis", icon: "🎾", href: "/tennis", accent: "#a3e635", carriesDate: false, resultsOnly: false, signalOnly: true },
+  { sport: "soccer", label: "Soccer", icon: "⚽", href: "/soccer", accent: "#10b981", carriesDate: false, resultsOnly: false, signalOnly: false },
+  { sport: "f1", label: "F1", icon: "🏁", href: "/f1", accent: "#e10600", carriesDate: false, resultsOnly: true, signalOnly: false },
 ] as const satisfies readonly SportMeta[];
 
 /** Every registered sport's key — `"mlb" | "ufc" | "tennis" | "soccer" | "f1"`, derived. */
