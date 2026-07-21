@@ -39,7 +39,18 @@ export async function POST(request: Request) {
 
   try {
     const summary = await pollAndStorePlayerProps();
-    await recordPollLog(JOB_NAME, "ok", summary.creditsUsed, summary.creditsRemaining);
+
+    // A run that fetches a slate and stores NOTHING is a failure wearing a
+    // success badge. That exact shape — games considered, thousands of rows
+    // parsed, zero snapshots written — is how the ParlayAPI event-id mismatch
+    // stayed invisible for a day: /api/status showed a cheerful "ok" while
+    // props, the one backtested edge, were completely dark. Nothing downstream
+    // throws on empty, so the status has to carry it.
+    const wroteNothing = summary.gamesConsidered > 0 && summary.snapshotsWritten === 0;
+    const status = wroteNothing
+      ? `error: stored 0 props across ${summary.gamesConsidered} game(s) — feed matched nothing`
+      : "ok";
+    await recordPollLog(JOB_NAME, status, summary.creditsUsed, summary.creditsRemaining);
     return Response.json({ polled: true, ...decision, ...summary });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
