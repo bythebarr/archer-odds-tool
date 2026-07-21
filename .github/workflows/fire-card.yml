@@ -1,0 +1,37 @@
+name: Fire today's card (POSTS TO DISCORD)
+
+# Same trick as poll-player-props.yml: CRON_SECRET is write-only in Vercel, but
+# Actions already holds a copy, so this runs without anyone knowing the value.
+#
+# The difference is what it does. /api/admin/fire-card refreshes odds and then
+# POSTS THE CARD TO THE ROOM — a real, member-visible drop that can't be
+# unsent. So unlike the props poll, this one will not run on a stray click:
+# `confirm` defaults to false and the job stops before touching anything.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Yes, post the card to Discord now"
+        type: boolean
+        default: false
+
+jobs:
+  fire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse an unconfirmed fire
+        if: ${{ !inputs.confirm }}
+        run: |
+          echo "::error::Not confirmed — nothing was posted. Re-run and tick 'Yes, post the card to Discord now'."
+          exit 1
+
+      # The route answers with an HTML receipt naming the play count, whether
+      # the free play went, and any picks that fell off the board since they
+      # were selected. Tags are stripped so that lands readable in the summary
+      # rather than as raw markup.
+      - name: Fire the card
+        run: |
+          curl -sSL "${{ secrets.APP_URL }}/api/admin/fire-card" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            | sed -e 's/<[^>]*>/ /g' -e 's/  */ /g' \
+            | tee "$GITHUB_STEP_SUMMARY"
