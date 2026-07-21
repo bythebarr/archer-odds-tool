@@ -25,12 +25,19 @@ jobs:
           curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
-      # ── Paid-tier freshness (DORMANT) ──────────────────────────────────────
-      # Turn on 15-minute MLB odds refresh by setting repo variable
-      # ODDS_FRESH_ENABLED=true (Settings → Secrets and variables → Actions →
-      # Variables). Costs Odds API credits every run — enable only on a paid tier.
-      - name: Refresh MLB odds (15-min cadence — paid tier only)
-        if: ${{ vars.ODDS_FRESH_ENABLED == 'true' }}
+      # ── MLB odds freshness ─────────────────────────────────────────────────
+      # This TICKS the poller; it does not force a fetch. /api/cron/poll-odds
+      # runs decidePollOdds first, which self-throttles by proximity to first
+      # pitch (60 min far / 20 approaching / 5 imminent) and refuses outright on
+      # low credits. So a frequent tick costs nothing extra — it just lets that
+      # policy do the job it was written for.
+      #
+      # It was gated behind ODDS_FRESH_ENABLED back when odds credits were the
+      # scarce thing. After the ParlayAPI switch a poll is 6 credits and props
+      # got 48x cheaper, while the gate quietly left game lines refreshing TWICE
+      # A DAY — a 7pm game priced off a 9:30am snapshot, which reads as "the odds
+      # are wrong" because by then they are.
+      - name: Refresh MLB odds (ticks the self-throttling poller)
         run: |
           curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

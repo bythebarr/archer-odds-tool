@@ -27,7 +27,11 @@
     },
     {
       "path": "/api/cron/poll-odds",
-      "schedule": "30 22 * * *"
+      "schedule": "*/15 15-23 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds",
+      "schedule": "*/15 0-4 * * *"
     },
     {
       "path": "/api/cron/sync-schedule",
