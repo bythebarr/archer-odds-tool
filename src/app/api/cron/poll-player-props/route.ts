@@ -32,7 +32,17 @@ export async function POST(request: Request) {
   // manual trigger landing slightly early) — pollAndStorePlayerProps's own
   // per-game "already polled today" check is the primary guard; this is a
   // cheap extra check against a whole redundant run across the slate.
-  const decision = await decideFixedCadencePoll(JOB_NAME, 23 * 60);
+  //
+  // `?force=1` overrides it, because the 23h floor has a nasty failure mode:
+  // a BROKEN run still stamps lastPolledAt, so after a bad poll the next
+  // scheduled tick is refused as "not-due" and the fix can't take effect for
+  // another day. That's the exact hole the Parlay event-id mismatch fell
+  // into. Still behind CRON_SECRET — this shortens the wait, it doesn't open
+  // the route up.
+  const force = new URL(request.url).searchParams.get("force") === "1";
+  const decision = force
+    ? { shouldPoll: true, blockedReason: null, forced: true }
+    : await decideFixedCadencePoll(JOB_NAME, 23 * 60);
   if (!decision.shouldPoll) {
     return Response.json({ polled: false, ...decision });
   }
