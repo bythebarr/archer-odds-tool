@@ -28,6 +28,17 @@ function normalizeName(name: string): string {
     .trim();
 }
 
+/**
+ * Drops a generational suffix. Parlay's feed truncates them — one live pull
+ * quoted "Vladimir Guerrero", "Fernando Tatis", "Bobby Witt", "Jazz Chisholm"
+ * and "Michael Harris", none of which match the MlbPlayer rows that carry the
+ * Jr./II. Those are star bats, so the misses were expensive: every prop on them
+ * was silently dropped.
+ */
+function stripGenerationalSuffix(name: string): string {
+  return name.replace(/\s+(jr|sr|ii|iii|iv)\.?$/i, "").trim();
+}
+
 export type PlayerNameIndex = Map<string, string>;
 
 /**
@@ -42,6 +53,22 @@ export async function buildPlayerNameIndex(): Promise<PlayerNameIndex> {
   for (const player of players) {
     index.set(normalizeName(player.fullName), player.id);
   }
+
+  // Second pass adds suffix-stripped aliases, and only where they're unique.
+  // A father and son both on rosters would collide ("Vladimir Guerrero"), and
+  // an alias that could mean two players is worse than no alias at all — it
+  // would attach a prop to the wrong man's hit-rate history.
+  const aliasOwners = new Map<string, Set<string>>();
+  for (const player of players) {
+    const alias = stripGenerationalSuffix(normalizeName(player.fullName));
+    if (alias === normalizeName(player.fullName)) continue;
+    if (index.has(alias)) continue; // a real player already owns that exact name
+    (aliasOwners.get(alias) ?? aliasOwners.set(alias, new Set()).get(alias)!).add(player.id);
+  }
+  for (const [alias, owners] of aliasOwners) {
+    if (owners.size === 1) index.set(alias, [...owners][0]);
+  }
+
   return index;
 }
 

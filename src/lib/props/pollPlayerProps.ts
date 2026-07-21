@@ -3,8 +3,10 @@ import {
   fetchEventPlayerProps,
   fetchBulkPlayerProps,
   activeOddsProvider,
+  type OddsApiBookmaker,
 } from "@/lib/odds/oddsApiClient";
 import { groupPropRows } from "./parlayProps";
+import { matchPropEventsToGames } from "./eventMatch";
 import { hasCreditsHeadroom } from "@/lib/pollingPolicy";
 import { buildPlayerNameIndex, storePlayerPropOdds } from "./storePropOdds";
 import { ALL_PLAYER_PROP_MARKET_KEYS, PLAYER_PROP_REGIONS } from "./propMarkets";
@@ -47,14 +49,19 @@ export async function pollAndStorePlayerProps(now: Date = new Date()): Promise<P
   const lookahead = new Date(now.getTime() + 24 * 3_600_000);
   const todayStart = startOfUtcDay(now);
 
+  // No `oddsApiEventId` requirement any more. It used to be the join key, but
+  // props are matched by team now (eventMatch.ts), so demanding an id would
+  // only shrink coverage to games the game-lines feed happens to carry — on
+  // 2026-07-21 that was 5 of 15. A game with props and no moneyline is still a
+  // game we want props for.
   const candidateGames = await prisma.game.findMany({
     where: {
       sport: "mlb",
       status: "scheduled",
       scheduledStartUtc: { gte: now, lte: lookahead },
-      oddsApiEventId: { not: null },
     },
     orderBy: { scheduledStartUtc: "asc" },
+    include: { homeTeam: true, awayTeam: true },
   });
 
   const alreadyPolledToday = await prisma.playerPropSnapshot.findMany({
@@ -70,6 +77,17 @@ export async function pollAndStorePlayerProps(now: Date = new Date()): Promise<P
   const gamesToPoll = candidateGames
     .filter((game) => !alreadyPolledGameIds.has(game.id))
     .slice(0, MAX_GAMES_PER_RUN);
+
+  // Team names are the props matcher's only usable join key. A game missing
+  // either side can't be matched, so it's excluded rather than half-matched.
+  const matchableGames = gamesToPoll
+    .filter((game) => game.homeTeam && game.awayTeam)
+    .map((game) => ({
+      id: game.id,
+      homeTeamName: game.homeTeam!.name,
+      awayTeamName: game.awayTeam!.name,
+      scheduledStartUtc: game.scheduledStartUtc,
+    }));
 
   let gamesPolled = 0;
   let gamesSkippedLowCredits = 0;
@@ -91,16 +109,37 @@ export async function pollAndStorePlayerProps(now: Date = new Date()): Promise<P
   if (activeOddsProvider() === "parlay" && gamesToPoll.length > 0) {
     try {
       const bulk = await fetchBulkPlayerProps("baseball_mlb");
-      const { byEventId, skipped } = groupPropRows(bulk.rows);
+      const { byEventId, eventTeams, skipped } = groupPropRows(bulk.rows);
       console.log(
         `props: ${bulk.rows.length} rows · skipped ${skipped.dfs} DFS, ${skipped.noLine} no-line, ` +
           `${skipped.noPrice} unpriced, ${skipped.unmappedMarket} unmapped-market, ${skipped.notAPlayer} not-a-player, ${skipped.incoherent} implausible`
       );
 
-      for (const game of gamesToPoll) {
-        const bookmakers = byEventId.get(game.oddsApiEventId!);
-        if (!bookmakers) continue; // no props for this game in the feed
-        const result = await storePlayerPropOdds(game.id, bookmakers, playerNameIndex!);
+      // Bind by teams, NOT by id: the props feed and the game-lines feed don't
+      // share an event-id namespace, so `oddsApiEventId` matches nothing here.
+      // See eventMatch.ts for the evidence and the matching rules.
+      const { eventIdToGameId, unmatched } = matchPropEventsToGames(
+        [...eventTeams].map(([eventId, teams]) => ({ eventId, ...teams })),
+        matchableGames
+      );
+      if (unmatched.length) {
+        console.warn(
+          `props: ${unmatched.length} feed event(s) not bound to a game:`,
+          unmatched.map((u) => `${u.label} (${u.reason})`)
+        );
+      }
+
+      // One game can be named by several feed events — Parlay duplicates them —
+      // so collect every event's books per game before storing once.
+      const booksByGame = new Map<string, OddsApiBookmaker[]>();
+      for (const [eventId, gameId] of eventIdToGameId) {
+        const bookmakers = byEventId.get(eventId);
+        if (!bookmakers) continue;
+        booksByGame.set(gameId, [...(booksByGame.get(gameId) ?? []), ...bookmakers]);
+      }
+
+      for (const [gameId, bookmakers] of booksByGame) {
+        const result = await storePlayerPropOdds(gameId, bookmakers, playerNameIndex!);
         snapshotsWritten += result.snapshotsWritten;
         result.unmatchedPlayerNames.forEach((name) => unmatchedPlayerNames.add(name));
         gamesPolled++;
@@ -123,15 +162,19 @@ export async function pollAndStorePlayerProps(now: Date = new Date()): Promise<P
   }
 
   for (const game of gamesToPoll) {
+    // The per-event endpoint is addressed BY id, so this path still needs one.
+    // The candidate query no longer guarantees it (the bulk path matches on
+    // teams instead), so a game without one is skipped rather than assumed.
+    if (!game.oddsApiEventId) continue;
+
     if (!(await hasCreditsHeadroom())) {
       gamesSkippedLowCredits = gamesToPoll.length - gamesPolled;
       break;
     }
 
     try {
-      // oddsApiEventId is guaranteed non-null by the query filter above.
       const { event, creditsUsed: eventCreditsUsed, creditsRemaining: eventCreditsRemaining } =
-        await fetchEventPlayerProps(game.oddsApiEventId!, ALL_PLAYER_PROP_MARKET_KEYS, PLAYER_PROP_REGIONS);
+        await fetchEventPlayerProps(game.oddsApiEventId, ALL_PLAYER_PROP_MARKET_KEYS, PLAYER_PROP_REGIONS);
 
       const result = await storePlayerPropOdds(game.id, event.bookmakers, playerNameIndex!);
       snapshotsWritten += result.snapshotsWritten;

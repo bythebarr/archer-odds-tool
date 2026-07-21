@@ -4,7 +4,9 @@ import {
   normalizeParlayMarketKey,
   looksLikePlayerName,
   resolveStrikeoutsMarket,
+  milestonePoint,
   PARLAY_PITCHER_ONLY_MARKETS,
+  PARLAY_MILESTONE_MARKETS,
 } from "./propMarkets";
 
 /**
@@ -26,6 +28,12 @@ import {
 export interface GroupedProps {
   /** Parlay event id → the bookmakers for that event, TOA-shaped. */
   byEventId: Map<string, OddsApiBookmaker[]>;
+  /**
+   * Parlay event id → the teams it named. The props feed's ids don't match the
+   * game-lines feed's, so these are what actually bind an event to one of our
+   * games — see eventMatch.ts for why, and how dirty they are.
+   */
+  eventTeams: Map<string, { homeTeam: string | null; awayTeam: string | null }>;
   /** Rows dropped as unusable, by reason — reported, never silent. */
   skipped: {
     dfs: number;
@@ -42,6 +50,7 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
   // event → book → market → outcomes
   const events = new Map<string, Map<string, Map<string, OddsApiBookmaker["markets"][number]>>>();
   const titles = new Map<string, string>();
+  const eventTeams = new Map<string, { homeTeam: string | null; awayTeam: string | null }>();
   const skipped = { dfs: 0, noLine: 0, noPrice: 0, unmappedMarket: 0, notAPlayer: 0, incoherent: 0 };
 
   // First pass: learn who's pitching TODAY from the feed itself — anyone quoted
@@ -72,12 +81,25 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
     }
     // Translate Parlay's vocabulary, and drop anything ambiguous or ungradeable
     // — see PARLAY_MARKET_KEY_TO_ODDS_API_KEY for why this is an allowlist.
+    //
+    // Milestone rows ("1 Or More") are gradeable but arrive on the wrong grid,
+    // so they carry a shifted point and are over-only by construction — the
+    // "under" of "1 or more hits" is a bet the feed never quotes.
+    const milestoneCategory = PARLAY_MILESTONE_MARKETS[row.market_key];
     const marketKey =
-      row.market_key === "player_strikeouts"
+      milestoneCategory ??
+      (row.market_key === "player_strikeouts"
         ? resolveStrikeoutsMarket(row.line, knownPitchers.has(row.player.trim().toLowerCase()))
-        : normalizeParlayMarketKey(row.market_key);
+        : normalizeParlayMarketKey(row.market_key));
     if (!marketKey) {
       skipped.unmappedMarket++;
+      continue;
+    }
+    const point = milestoneCategory ? milestonePoint(row.line) : row.line;
+    // A shifted milestone can land at or below zero ("0 or more"), which is not
+    // a bet — it's a certainty, and would grade as a free win.
+    if (point <= 0) {
+      skipped.noLine++;
       continue;
     }
     if (!looksLikePlayerName(row.player)) {
@@ -88,6 +110,7 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
     // and has to add up like one. A one-sided quote passes — nothing to check
     // it against. See marketSanity for the measurements behind the bounds.
     if (
+      !milestoneCategory &&
       row.over_price != null &&
       row.under_price != null &&
       !isCoherentMarket([row.over_price, row.under_price])
@@ -97,6 +120,12 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
     }
 
     titles.set(row.bookmaker, row.bookmaker_title);
+    if (!eventTeams.has(row.event_id)) {
+      eventTeams.set(row.event_id, {
+        homeTeam: row.home_team ?? null,
+        awayTeam: row.away_team ?? null,
+      });
+    }
     const books = events.get(row.event_id) ?? new Map();
     events.set(row.event_id, books);
     const markets = books.get(row.bookmaker) ?? new Map();
@@ -110,15 +139,17 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
       market.outcomes.push({
         name: "Over",
         price: row.over_price,
-        point: row.line,
+        point,
         description: row.player,
       });
     }
-    if (row.under_price != null) {
+    // Never take the under of a milestone: "under 1 or more hits" isn't the bet
+    // the book is offering, and the shifted point wouldn't describe it.
+    if (row.under_price != null && !milestoneCategory) {
       market.outcomes.push({
         name: "Under",
         price: row.under_price,
-        point: row.line,
+        point,
         description: row.player,
       });
     }
@@ -136,5 +167,5 @@ export function groupPropRows(rows: ParlayPropRow[]): GroupedProps {
     );
   }
 
-  return { byEventId, skipped };
+  return { byEventId, eventTeams, skipped };
 }

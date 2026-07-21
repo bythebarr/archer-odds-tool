@@ -313,9 +313,16 @@ export interface FetchBulkPropsResult {
  * Every player prop for a sport, in ONE call. ParlayAPI only — TOA has no
  * equivalent bulk props endpoint, which is why the caller branches on provider.
  */
+const PROPS_PAGE_SIZE = 10000;
+
 export async function fetchBulkPlayerProps(sportKey: string): Promise<FetchBulkPropsResult> {
   const url = new URL(`${BASE_URL}/sports/${sportKey}/props`);
   url.searchParams.set("apiKey", oddsApiKey());
+  // Parlay's default page is 5000 rows and a full MLB slate exceeds that — a
+  // measured 6,157 on 2026-07-21, so the default silently dropped a fifth of
+  // the board, and the rows it dropped were the ones for later games. 10000 is
+  // their documented maximum.
+  url.searchParams.set("limit", String(PROPS_PAGE_SIZE));
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -323,8 +330,17 @@ export async function fetchBulkPlayerProps(sportKey: string): Promise<FetchBulkP
   }
   const used = res.headers.get("x-requests-used");
   const left = res.headers.get("x-requests-remaining");
+  const rows = (await res.json()) as ParlayPropRow[];
+  if (rows.length >= PROPS_PAGE_SIZE) {
+    // Their docs say to narrow with ?markets= rather than page past 10000, so
+    // this is a warning rather than a paging loop — but it must never pass
+    // unnoticed, because the symptom is silently missing props, not an error.
+    console.warn(
+      `props: hit the ${PROPS_PAGE_SIZE}-row page cap — the slate may be truncated. Narrow by markets.`
+    );
+  }
   return {
-    rows: (await res.json()) as ParlayPropRow[],
+    rows,
     creditsUsed: used ? Number(used) : null,
     creditsRemaining: left ? Number(left) : null,
   };

@@ -150,15 +150,43 @@ describe("market vocabulary translation", () => {
     expect(keys).toEqual(["batter_strikeouts", "pitcher_strikeouts"]);
   });
 
-  it("drops alt/milestone/combined markets — different bets, not over/unders", () => {
+  it("drops multi-player markets — a different bet, ungradeable against one stat line", () => {
     const { byEventId, skipped } = groupPropRows([
-      row({ market_key: "player_home_runs_alt" }),
       row({ market_key: "player_hits_milestones" }),
       row({ market_key: "player_combined_pitcher_strikeouts_thrown" }),
       row({ market_key: "player_either_batter_hits" }),
     ]);
     expect(byEventId.size).toBe(0);
-    expect(skipped.unmappedMarket).toBe(4);
+    expect(skipped.unmappedMarket).toBe(3);
+  });
+
+  it("shifts a milestone onto the over/under grid — '1 or more' is Over 0.5", () => {
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_hits_alt", player: "Alan Roden", line: 1, over_price: -135, under_price: null }),
+    ]);
+    const market = byEventId.get("e1")![0].markets[0];
+    expect(market.key).toBe("batter_hits");
+    // Stored at the line's face value this grades a 1-hit game as a loss on a
+    // bet that won — the whole reason for the shift.
+    expect(market.outcomes).toEqual([
+      { name: "Over", price: -135, point: 0.5, description: "Alan Roden" },
+    ]);
+  });
+
+  it("never takes the under of a milestone — the book isn't offering that bet", () => {
+    const { byEventId } = groupPropRows([
+      row({ market_key: "player_home_runs_alt", player: "Aaron Judge", line: 1, over_price: 900, under_price: -1400 }),
+    ]);
+    const outcomes = byEventId.get("e1")![0].markets[0].outcomes;
+    expect(outcomes.map((o) => o.name)).toEqual(["Over"]);
+  });
+
+  it("drops a milestone that shifts to a non-bet — '0 or more' is a certainty", () => {
+    const { byEventId, skipped } = groupPropRows([
+      row({ market_key: "player_runs_alt", line: 0, over_price: -5000, under_price: null }),
+    ]);
+    expect(byEventId.size).toBe(0);
+    expect(skipped.noLine).toBe(1);
   });
 
   it("rejects rows whose player is a market label, not a person", () => {

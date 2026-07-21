@@ -49,10 +49,12 @@ export const PLAYER_PROP_REGIONS = ["us"];
  *     label like "7+ Strikeouts". Mapping it would silently corrupt pitcher
  *     strikeouts, the one edge that survived backtesting. `player_pitcher_
  *     strikeouts` and `player_strikeouts_thrown` are unambiguous; we use those.
- *   • `*_alt` / `*_milestones` are different bet structures (alternate ladders,
- *     yes/no milestones), not the over/under our grader settles.
  *   • `*_combined_*` / `*_either_*` / `*_h2h` span two players — a different bet
  *     entirely, and ungradeable against one player's stat line.
+ *
+ * `*_alt` used to be refused here too, on the reading that alternate ladders
+ * aren't the over/under our grader settles. Half right: the live feed shows they
+ * ARE gradeable, but only after a line shift — see PARLAY_MILESTONE_MARKETS.
  *
  * Fewer correct props beats more wrong ones: an unmapped market is invisible,
  * but a mis-mapped one produces a graded record that lies.
@@ -82,6 +84,40 @@ export const PARLAY_MARKET_KEY_TO_ODDS_API_KEY: Record<string, string> = {
   player_pitcher_outs: "pitcher_outs",
   player_pitching_outs: "pitcher_outs",
 };
+
+/**
+ * Parlay's `*_alt` keys are MILESTONE markets, not alternate over/unders — the
+ * `market` label spells it out: "Player Hits Milestones 1 Or More", line 1.0,
+ * priced on the over side only.
+ *
+ * Taken at face value that line is a lie. "1 or more hits" wins on exactly one
+ * hit; stored as Over 1.0 our grader needs TWO, so every single-hit game would
+ * settle as a loss on a bet that won. The price says the same thing — bet365
+ * quoted that row -135, where a true Over 1.0 belongs nearer +180.
+ *
+ * The translation is a half-point shift: **"N or more" = Over (N - 0.5)**. That
+ * lands on the same over/under grid the standard markets use, so the ladder
+ * becomes ordinary extra lines rather than a second bet structure — and
+ * CurrentPlayerPropLine already carries `point` in its unique key, so the rungs
+ * store side by side instead of overwriting each other.
+ *
+ * Two `*_alt` keys are deliberately left out:
+ *   • `player_strikeouts_alt` — inherits the same pitcher/batter ambiguity as
+ *     `player_strikeouts`, and at 19 rows isn't worth the risk of polluting the
+ *     one edge that survived backtesting.
+ *   • `player_stolen_bases_alt` — no StatCategory to grade it against.
+ */
+export const PARLAY_MILESTONE_MARKETS: Record<string, string> = {
+  player_hits_alt: "batter_hits",
+  player_home_runs_alt: "batter_home_runs",
+  player_total_bases_alt: "batter_total_bases",
+  player_runs_alt: "batter_runs_scored",
+};
+
+/** Half-point shift turning a "N or more" milestone into an Over line. */
+export function milestonePoint(line: number): number {
+  return line - 0.5;
+}
 
 /**
  * Markets only a PITCHER can have. Used to learn who's pitching from the feed
@@ -138,7 +174,12 @@ export function normalizeParlayMarketKey(key: string): string | null {
  * than a person — milestone markets leaking through. A real name has no digits
  * or plus signs, so this rejects them before they reach player matching, where
  * they'd otherwise pile up as noise in `unmatchedPlayerNames`.
+ *
+ * Braces catch a second kind of leak: an UNRENDERED book template, seen live as
+ * "{optionTypeAbbr}{value} Hits". Those carry no digits, so the rule above
+ * waves them through.
  */
 export function looksLikePlayerName(name: string): boolean {
-  return name.trim().length > 2 && !/[0-9+]/.test(name);
+  const trimmed = name.trim();
+  return trimmed.length > 2 && !/[0-9+]/.test(trimmed) && !/[{}]/.test(trimmed);
 }
