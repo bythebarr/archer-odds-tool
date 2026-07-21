@@ -328,7 +328,14 @@ export async function fetchBulkPlayerProps(sportKey: string): Promise<FetchBulkP
   if (!res.ok) {
     throw new Error(`ParlayAPI props ${res.status}: ${(await res.text()).slice(0, 200)}`);
   }
-  const used = res.headers.get("x-requests-used");
+  // `x-requests-last` is THIS call's cost; `x-requests-used` is the account's
+  // lifetime total. This read the latter, so a 3-credit slate-wide props pull
+  // was logged as 91 — the running total dressed up as a per-poll cost, growing
+  // forever. Every other fetch here already uses -last; matching it keeps
+  // PollCreditLog comparable and stops props looking ~30x more expensive than
+  // they are (which is backwards — the one call for the whole slate is exactly
+  // why props became affordable enough to poll at all).
+  const used = res.headers.get("x-requests-last");
   const left = res.headers.get("x-requests-remaining");
   const rows = (await res.json()) as ParlayPropRow[];
   if (rows.length >= PROPS_PAGE_SIZE) {
