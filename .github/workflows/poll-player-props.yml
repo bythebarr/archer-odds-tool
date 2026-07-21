@@ -1,0 +1,34 @@
+name: Poll player props (manual — costs Parlay credits)
+
+# Manual lever for the props poll, which Vercel Cron otherwise runs once a day
+# at 10:40 UTC. Same shape as poll-odds.yml, and it exists for the same reason
+# that one is manual-only: when a poll goes wrong you need to re-run it NOW,
+# not on tomorrow's tick.
+#
+# The real motivation is the secret. Triggering /api/cron/* by hand needs
+# `Authorization: Bearer $CRON_SECRET`, and CRON_SECRET is write-only in Vercel
+# — `vercel env pull` returns it as an empty string, so once it's set there is
+# no way to read it back. Actions already holds its own copy as a repo secret,
+# so dispatching from here needs nobody to know the value.
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Skip the 23h cadence floor (use after a failed run)"
+        type: boolean
+        default: true
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      # -f writes no output on success, so the summary is piped through instead:
+      # a props run reports gamesPolled/snapshotsWritten in its JSON, and those
+      # counts are the only way to tell a real poll from one that matched
+      # nothing. A silent green check is exactly what hid the last failure.
+      - name: Poll player props
+        run: |
+          curl -sSL -X POST \
+            "${{ secrets.APP_URL }}/api/cron/poll-player-props?force=${{ inputs.force && '1' || '0' }}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            | tee "$GITHUB_STEP_SUMMARY"
