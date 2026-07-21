@@ -126,8 +126,17 @@ export async function gradePending(dateEt: string): Promise<number> {
   let graded = 0;
   for (const play of pending) {
     const adapter = getAdapter(play.sport);
-    if (!adapter) {
-      await settlePlay(play.id, "void"); // unknown sport — no-action
+    if (!adapter || adapter.meta.signalOnly) {
+      // Unknown sport, or one we can price but never settle (meta.signalOnly —
+      // no results feed exists for it). Either way there is no grade coming, so
+      // it's no-action: voided out of the record rather than left pending.
+      //
+      // The poster already refuses to RECORD signal-only plays, but rows banked
+      // before that filter landed still live here, and their adapters honestly
+      // answer "pending" — which would hold the whole day's recap forever, since
+      // a date posts only once its last tracked play settles. Voiding them is the
+      // same treatment tennis/soccer always got, and it unblocks the date.
+      await settlePlay(play.id, "void");
       graded++;
       continue;
     }
