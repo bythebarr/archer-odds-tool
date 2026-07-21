@@ -1,5 +1,5 @@
 import { checkCronAuth } from "@/lib/cronAuth";
-import { isPollOddsStale, recordPollLog, shouldPollNow } from "@/lib/pollingPolicy";
+import { isPollOddsStale, recordPollLog, shouldPollNow, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { prisma } from "@/lib/prisma";
 import { syncMlbSchedule, healStrandedGames, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
@@ -91,9 +91,17 @@ export async function POST(request: Request) {
     try {
       if (await isPollOddsStale(POLL_ODDS_JOB_NAME)) {
         selfHealSummary = await pollAndStoreOdds();
+        // Stamping an unconditional "ok" here was worse than not healing at
+        // all: it overwrites the REAL poll-odds status row, so a self-heal that
+        // matched zero games would paint the poller green on /api/status and
+        // hide the very staleness it was meant to fix.
         await recordPollLog(
           POLL_ODDS_JOB_NAME,
-          "ok (self-heal via sync-results)",
+          `${writeOutcomeStatus(
+            selfHealSummary.eventsFetched,
+            selfHealSummary.snapshotsWritten,
+            "snapshots"
+          )} (self-heal via sync-results)`,
           selfHealSummary.creditsUsed,
           selfHealSummary.creditsRemaining
         );

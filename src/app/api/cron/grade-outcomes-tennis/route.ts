@@ -1,5 +1,5 @@
 import { checkCronAuth } from "@/lib/cronAuth";
-import { decideFixedCadencePoll, recordPollLog } from "@/lib/pollingPolicy";
+import { decideFixedCadencePoll, recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { syncAndGradeTennisResults } from "@/lib/tennis/grading";
 
 const JOB_NAME = "grade-outcomes-tennis";
@@ -24,7 +24,17 @@ export async function POST(request: Request) {
 
   try {
     const summary = await syncAndGradeTennisResults();
-    await recordPollLog(JOB_NAME, "ok", summary.creditsUsed, summary.creditsRemaining);
+    // This one is already suspected broken: it looks matches up by an event id
+    // minted from /odds against results from /scores, and ParlayAPI's ids don't
+    // reliably agree between the two (measured: 8 of 14 matched, 6 didn't). So
+    // results can come back while nothing grades, forever, and the old bare
+    // "ok" would never have said so.
+    await recordPollLog(
+      JOB_NAME,
+      writeOutcomeStatus(summary.resultsFetched, summary.matchesGraded, "matches graded"),
+      summary.creditsUsed,
+      summary.creditsRemaining
+    );
     return Response.json({ graded: true, ...decision, ...summary });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

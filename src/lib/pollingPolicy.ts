@@ -163,6 +163,28 @@ export async function isPollOddsStale(jobName: string, now: Date = new Date()): 
   return elapsedMinutes >= POLL_ODDS_STALE_MINUTES;
 }
 
+/**
+ * Builds the `lastStatus` string for a job whose real failure mode is doing
+ * nothing quietly.
+ *
+ * Every silent breakage this codebase has hit looked the same from outside: the
+ * job ran, threw nothing, wrote zero rows, and stamped a cheerful "ok" onto
+ * /api/status. Props were dark a full day behind one (ParlayAPI's event ids
+ * don't line up across endpoints, so every lookup missed), and a failed ledger
+ * wipe showed a green check for the same reason. Nothing throws on empty, so
+ * the status line is the only place the truth can live.
+ *
+ * The distinction that matters is between "there was nothing to do" — an
+ * off-season sport, no slate today, a legitimate zero — and "there was work and
+ * none of it landed". Only the second is an error; conflating them would make
+ * the soccer poller cry wolf all winter.
+ */
+export function writeOutcomeStatus(considered: number, written: number, what: string): string {
+  if (considered === 0) return "ok (nothing to do)";
+  if (written === 0) return `error: considered ${considered} but wrote 0 ${what}`;
+  return `ok (${written} ${what} from ${considered})`;
+}
+
 export async function recordPollLog(
   jobName: string,
   lastStatus: string,
