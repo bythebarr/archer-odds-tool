@@ -13,8 +13,12 @@ name: Wipe the results ledger (DESTRUCTIVE)
 on:
   workflow_dispatch:
     inputs:
+      before:
+        description: "Keep cards from this ET date onward (YYYY-MM-DD). Blank = wipe EVERYTHING, including tonight's ungraded plays."
+        type: string
+        required: false
       confirm:
-        description: "Yes, permanently delete every recorded play"
+        description: "Yes, permanently delete those recorded plays"
         type: boolean
         default: false
 
@@ -30,7 +34,7 @@ jobs:
 
       - name: Wipe the ledger
         run: |
-          curl -sSL -X POST "${{ secrets.APP_URL }}/api/admin/reset-ledger" \
+          curl -sSL -X POST "${{ secrets.APP_URL }}/api/admin/reset-ledger?before=${{ inputs.before }}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             | sed -e 's/<[^>]*>/ /g' -e 's/  */ /g' \
             | tee "$GITHUB_STEP_SUMMARY"

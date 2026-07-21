@@ -39,11 +39,24 @@ export async function POST(request: Request) {
   const denied = checkAdminAuth(request);
   if (denied) return denied;
 
-  const { count } = await prisma.postedPlay.deleteMany({});
+  // `?before=YYYY-MM-DD` clears only the history BEFORE that card date, which
+  // is almost always what a "start the record clean" actually means: the old
+  // system's results go, and the night already in flight still counts. A blanket
+  // wipe deletes plays that haven't graded yet, so running one mid-slate silently
+  // throws away that night's results — it can't be recovered, the plays are gone
+  // before the grader ever sees them. postedForDate is an ET date string, so a
+  // string comparison is the right one here.
+  const before = new URL(request.url).searchParams.get("before");
+  const { count } = await prisma.postedPlay.deleteMany(
+    before ? { where: { postedForDate: { lt: before } } } : {}
+  );
+
   return page(
     "✅ Ledger wiped",
-    `Cleared <strong>${count}</strong> recorded play${count === 1 ? "" : "s"}. ` +
-      `The #results record now starts clean — the next 10:30&nbsp;AM card rebuilds it from scratch.`,
+    `Cleared <strong>${count}</strong> recorded play${count === 1 ? "" : "s"}` +
+      (before
+        ? ` from before <strong>${before}</strong>. Cards from ${before} onward are untouched and still grade normally.`
+        : `. The #results record now starts clean — the next card rebuilds it from scratch.`),
     ""
   );
 }
