@@ -1,7 +1,12 @@
 name: Wipe the results ledger (DESTRUCTIVE)
 
-# Clears every recorded PostedPlay — day cards, all-time record, streaks. The
-# poster rebuilds from the next card, so the record simply restarts clean.
+# Clears recorded PostedPlay history — all-time record, streaks. The poster
+# rebuilds from the next card, so the record simply restarts clean.
+#
+# Today's card is KEPT unless `before` says otherwise: a wipe that lands
+# mid-slate would delete plays the grader hasn't seen yet, and that night could
+# then never be recapped (it happened on 2026-07-20). Erasing today too is a
+# deliberate act — hit the route with `?all=1`, not this workflow.
 #
 # Here for the same reason as the other two: CRON_SECRET is write-only in
 # Vercel, and Actions holds its own copy. The route itself is already two-step
@@ -14,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       before:
-        description: "Keep cards from this ET date onward (YYYY-MM-DD). Blank = wipe EVERYTHING, including tonight's ungraded plays."
+        description: "Keep cards from this ET date onward (YYYY-MM-DD). Blank = keep today's card."
         type: string
         required: false
       confirm:
