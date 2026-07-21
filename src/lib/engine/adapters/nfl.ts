@@ -16,8 +16,10 @@
  * hasn't been run on live prices. Wiring it early is exactly the mistake the
  * project has made before.
  */
+import { prisma } from "@/lib/prisma";
 import { pollAndStoreNflOdds } from "@/lib/nfl/ingest";
 import { sportMetaByKey } from "../sportsMeta";
+import type { MarketType } from "@/generated/prisma/client";
 import type { IngestSummary, MarketSpec, Play, PlayGrade, SportAdapter } from "../types";
 
 /** Spreads and totals lead for NFL; the moneyline is the secondary market, unlike MLB. */
@@ -48,9 +50,51 @@ async function listPlays(): Promise<Play[]> {
   return [];
 }
 
-/** NFL produces no tracked plays yet, so this never runs; void is the safe default. */
-async function grade(): Promise<PlayGrade> {
-  return "void";
+/**
+ * Grade one tracked NFL play against its settled game.
+ *
+ * Settlement lives in GameOutcome, written by the shared `gradeGame` off ESPN's
+ * free scoreboard (see nfl/results.ts) — the same table and the same grader MLB
+ * uses, so h2h/spreads/totals all settle without NFL-specific math. Not final,
+ * or final but not yet graded → "pending"; a later pass settles it, and a
+ * fabricated loss is never returned.
+ */
+async function grade(play: Play): Promise<PlayGrade> {
+  const game = await prisma.game.findUnique({
+    where: { id: play.eventRef },
+    select: { status: true, homeTeamId: true, awayTeamId: true },
+  });
+  if (!game || game.status !== "final") return "pending";
+
+  // Totals are graded once per game from the Over's perspective and stored
+  // against both teams, so either team's row answers an over/under ask; the
+  // home row is picked arbitrarily for that market.
+  const teamId =
+    play.selection.kind === "total"
+      ? game.homeTeamId
+      : play.selection.side === "home"
+        ? game.homeTeamId
+        : game.awayTeamId;
+  if (!teamId) return "void";
+
+  const outcome = await prisma.gameOutcome.findUnique({
+    where: {
+      gameId_teamId_marketType: {
+        gameId: play.eventRef,
+        teamId,
+        marketType: play.selection.market as MarketType,
+      },
+    },
+  });
+  if (!outcome) return "pending"; // not graded yet — leave it for a later pass
+
+  // A totals play stored from the Over's perspective must be flipped for Unders.
+  if (play.selection.kind === "total" && play.selection.side === "under") {
+    if (outcome.result === "hit") return "miss";
+    if (outcome.result === "miss") return "hit";
+    return "push";
+  }
+  return outcome.result as PlayGrade; // hit | miss | push
 }
 
 export const nflAdapter = {

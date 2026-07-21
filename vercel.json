@@ -38,6 +38,14 @@
       "schedule": "5 9 * * *"
     },
     {
+      "path": "/api/cron/sync-results-nfl",
+      "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-results-nfl",
+      "schedule": "30 14 * * *"
+    },
+    {
       "path": "/api/cron/poll-odds-nfl",
       "schedule": "15 9 * * *"
     },

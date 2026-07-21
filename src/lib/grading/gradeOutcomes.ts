@@ -76,23 +76,33 @@ async function upsertOutcome(
   });
 }
 
+/** Team-pair sports this grades. Tennis grades through its own adapter (player-pair rows). */
+const GRADABLE_TEAM_SPORTS = new Set(["mlb", "nfl"]);
+
 /**
  * Grades a single final game across all three v1 markets. Idempotent (safe to
  * re-run). Totals convention: GameOutcome.result for market "totals" always
  * means "did the Over hit" — the hit-rate query flips this for "under" asks.
+ *
+ * Sport-agnostic across team-pair sports: the spread and total math is just
+ * arithmetic on a final score, so NFL reuses it unchanged. The one real
+ * difference is the moneyline, which CAN push in the NFL — see below.
  */
 export async function gradeGame(game: Game): Promise<void> {
   if (game.homeScore === null || game.awayScore === null) return;
-  // MLB-only for now — tennis grading is a separate, gated phase (see the
-  // tennis plan doc). The DB CHECK constraint guarantees homeTeamId/
-  // awayTeamId are non-null whenever sport is "mlb", so these guard clauses
-  // are unreachable in practice, not just type-narrowing noise.
-  if (game.sport !== "mlb" || game.homeTeamId === null || game.awayTeamId === null) return;
+  // The DB CHECK constraint guarantees homeTeamId/awayTeamId are non-null for
+  // these sports, so the id guards are unreachable in practice rather than just
+  // type-narrowing noise.
+  if (!GRADABLE_TEAM_SPORTS.has(game.sport) || game.homeTeamId === null || game.awayTeamId === null) return;
 
-  // Moneyline: no push in baseball.
+  // Moneyline. Baseball plays until someone wins, but an NFL game CAN end tied
+  // (once or twice a season), and a tie pushes the moneyline — bets are
+  // refunded, not lost. Grading that as a loss for both sides would quietly
+  // understate the record on exactly the games people remember.
+  const tie = game.homeScore === game.awayScore;
   const homeWon = game.homeScore > game.awayScore;
-  await upsertOutcome(game.id, game.homeTeamId, "h2h", homeWon ? "hit" : "miss");
-  await upsertOutcome(game.id, game.awayTeamId, "h2h", homeWon ? "miss" : "hit");
+  await upsertOutcome(game.id, game.homeTeamId, "h2h", tie ? "push" : homeWon ? "hit" : "miss");
+  await upsertOutcome(game.id, game.awayTeamId, "h2h", tie ? "push" : homeWon ? "miss" : "hit");
 
   // Spread (run line): grade each side against its own closing point.
   const homeSpread = await captureClosingLine(game, "spreads", "home");

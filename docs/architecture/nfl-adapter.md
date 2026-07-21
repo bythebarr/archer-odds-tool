@@ -123,11 +123,37 @@ across 34 games. Not a bug — books haven't hung the numbers yet. The board lea
 with the spread and falls back to the moneyline per game, so this degrades
 cleanly. Re-check in preseason before drawing any conclusion from it.
 
-### What phase 2 still needs
+## Phase 2 as built (2026-07-21): NFL is tracked
 
-- **A results source.** This is the only thing standing between NFL and a tracked
-  record; the adapter's `grade` and the `signalOnly` flag are both waiting on it.
-  ESPN's public scoreboard remains the candidate, still unverified. Match on team
-  names, never on `event_id` (provider-coverage.md).
-- Alt-line ladders (MLB-only today) and the props vocabulary — unchanged from the
-  plan above.
+**ESPN's public scoreboard is the results authority** — free, unkeyed, and
+verified live against a completed 2025 slate: full team display names matching
+our allowlist exactly, final scores, and an explicit per-team `winner` flag. It
+sits in the same role MLB Stats API plays for baseball, Cito for UFC, Jolpica for
+F1. `signalOnly` is cleared; NFL grades like MLB.
+
+Matching is on **normalized team names plus ET date** — never an id (the
+provider's own ids agree across its endpoints on only 12 of 16 NFL games) and
+never a raw UTC clock (the odds feed is 6h early for every game starting at or
+after 00:00 UTC; see `src/lib/odds/ingest.ts`). ET date is the one key both
+sources agree on.
+
+`gradeGame` was generalised rather than duplicated: spread and total grading is
+arithmetic on a final score, so NFL reuses MLB's unchanged. The one real
+difference is that **an NFL game can end tied**, which pushes the moneyline —
+grading a tie as a loss for both sides would understate the record on exactly
+the games people remember.
+
+End-to-end verified: 10 of 10 real completed games finalized and graded, winners
+correct. Results that match no Game row are counted and named in the summary
+rather than dropped silently — the failure mode that let tennis report "ok" for
+weeks while grading nothing.
+
+### What's left
+
+- **Props** — the market vocabulary and hit-rate backfill (step 3 above). This is
+  where the calibration work says the edge actually is, and NFL carries more prop
+  markets than MLB.
+- **Alt-line ladders** — not a phase-2 gap but a provider one: ParlayAPI rejects
+  `alternate_spreads`/`alternate_totals` outright, so the ladder needs a second
+  odds source, not more code.
+- **Model EV** — still last, and still only if a CLV backtest clears it.
