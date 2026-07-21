@@ -28,7 +28,7 @@ jobs:
       # nothing. A silent green check is exactly what hid the last failure.
       - name: Poll player props
         run: |
-          curl -sSL -X POST \
+          curl -sSL --fail-with-body -X POST \
             "${{ secrets.APP_URL }}/api/cron/poll-player-props?force=${{ inputs.force && '1' || '0' }}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             | tee "$GITHUB_STEP_SUMMARY"

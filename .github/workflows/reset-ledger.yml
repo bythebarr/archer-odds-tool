@@ -34,7 +34,7 @@ jobs:
 
       - name: Wipe the ledger
         run: |
-          curl -sSL -X POST "${{ secrets.APP_URL }}/api/admin/reset-ledger?before=${{ inputs.before }}" \
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/admin/reset-ledger?before=${{ inputs.before }}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             | sed -e 's/<[^>]*>/ /g' -e 's/  */ /g' \
             | tee "$GITHUB_STEP_SUMMARY"

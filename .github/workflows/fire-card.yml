@@ -31,7 +31,7 @@ jobs:
       # rather than as raw markup.
       - name: Fire the card
         run: |
-          curl -sSL "${{ secrets.APP_URL }}/api/admin/fire-card" \
+          curl -sSL --fail-with-body "${{ secrets.APP_URL }}/api/admin/fire-card" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             | sed -e 's/<[^>]*>/ /g' -e 's/  */ /g' \
             | tee "$GITHUB_STEP_SUMMARY"
