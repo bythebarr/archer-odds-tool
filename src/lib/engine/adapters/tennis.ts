@@ -200,12 +200,14 @@ async function listPlays(dateEt: string): Promise<Play[]> {
  * Grade one tracked tennis play against its settled match, reading the backed
  * player's own GameOutcome h2h row.
  *
- * Tennis is `signalOnly` (see sportsMeta): our provider serves no tennis scores,
- * so nothing writes those outcome rows today and no NEW tennis play is ever
- * tracked. This stays implemented anyway — PostedPlay rows from before that call
- * still dispatch here, and returning "pending" for them is the honest answer
- * (unsettled, not lost). It is also the whole grader the sport needs the day a
- * results source lands: point one at GameOutcome and clear `signalOnly`.
+ * Those rows are written by src/lib/tennis/results.ts off ESPN's free scoreboard.
+ * The odds provider still serves no tennis scores — this grader sat returning
+ * "pending" for exactly as long as that was our only source, which is what
+ * `signalOnly` described. ESPN filled the gap, the flag is cleared, and nothing
+ * in here had to change: it was written against GameOutcome all along.
+ *
+ * "pending" is still the right answer for a match ESPN hasn't posted yet — the
+ * next sync pass settles it, and a re-run regrades to the same value.
  */
 async function grade(play: Play): Promise<PlayGrade> {
   const game = await prisma.game.findUnique({

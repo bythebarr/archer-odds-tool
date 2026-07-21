@@ -57,12 +57,12 @@ export default async function TennisPage() {
         description={
           <>
             Odds line-shopping — moneyline only, one tournament tracked at a time.{" "}
-            {/* Said out loud rather than left to be inferred from an empty record:
-                our odds provider serves no tennis results, so nothing here settles.
-                See SportMeta.signalOnly. */}
+            {/* The old "prices only, nothing settles" caveat is gone: ESPN's free
+                scoreboard settles matches now, so tennis is tracked like MLB.
+                See SportMeta.signalOnly and src/lib/tennis/results.ts. */}
             <span className="text-muted-foreground/80">
-              Prices only — we have no results feed for tennis, so these aren&apos;t
-              graded or counted in the tracked record.
+              Results come from ESPN&apos;s public scoreboard, so tennis plays grade
+              and count in the tracked record.
             </span>
           </>
         }

@@ -106,5 +106,34 @@ lands. **Wiring one is a one-line reversal** — clear `signalOnly` and tennis i
 back on the card with no other change. That is the shape any future no-results
 sport should take.
 
+## Reversed same day: tennis grades again (2026-07-21)
+
+The reversal above happened within hours, and it went exactly as advertised — one
+flag, no other change to the card, the model, or the grader.
+
+The results source is ESPN's free public tennis scoreboard
+(`site.api.espn.com/apis/site/v2/sports/tennis/{atp,wta}/scoreboard`), the same
+unkeyed API already grading the NFL. `src/lib/tennis/results.ts` finalizes our
+Game rows from it and writes the player-keyed h2h `GameOutcome` rows the tennis
+adapter has always read; `/api/cron/sync-results-tennis` runs it five times a day
+(tennis spans every time zone, and ESPN costs nothing to ask).
+
+What that feed is actually like, since none of it is guessable:
+
+- It nests **events → groupings → competitions** — an event is a whole tournament,
+  a grouping a draw, a competition one match. `?dates=YYYYMMDD` picks which
+  tournament was running, then returns *all* of it; filtering to a day is on us.
+- The **ATP and WTA endpoints both return combined events in full**, so fetching
+  both double-reports every Wimbledon match. Deduped on ESPN's competition id.
+- **Retirements settle, walkovers push.** Both report `completed: true`; only the
+  walkover means no ball was struck, and books refund those.
+- **Doubles carry `athlete: null`**, which is what keeps them out of a singles feed.
+- **Per-set `winner` flags lie** (a real 7-6 set came back `false` for both
+  players). Only the competitor-level `winner` flag is trusted.
+
+Matching is on **player names plus ET date**, never an id — same rule that governs
+NFL, for the same reason. Verified end to end against Wimbledon 2026: all 10 stored
+matches matched, finalized, and graded, with home/away orientation preserved.
+
 Adding a sport means checking this table first, not discovering the gap after
 building the adapter.

@@ -199,20 +199,57 @@ describe("signal-only sports stay off the tracked play surface", () => {
     return { ...mlbPlays[0], sportKey, playKey: `k-${sportKey}` };
   }
 
-  it("drops tennis — our provider serves no tennis results, so it could never be graded", () => {
+  // Named sports deliberately do NOT appear in these assertions. Tennis used to
+  // be the hardcoded example here, and when its ESPN results feed landed and the
+  // flag cleared, these tests failed on a change that was entirely correct — the
+  // filter must track the registry, so the tests have to as well.
+  const signalOnlyKeys = SPORTS.filter((a) => a.meta.signalOnly).map((a) => a.key);
+  const gradableKeys = SPORTS.filter((a) => !a.meta.signalOnly).map((a) => a.key);
+
+  /**
+   * Registers a throwaway signal-only sport for one assertion.
+   *
+   * Needed because as of 2026-07-21 every registered sport can be settled, so a
+   * registry-derived test has nothing to drop and passes on an empty array —
+   * `excludeSignalOnly` could be deleted outright and these tests would still be
+   * green. The filter has to stay guarded through the periods when no sport
+   * happens to be flagged, since the next unsettleable sport is the one that
+   * would sit "pending" forever.
+   */
+  function withSignalOnlySport(run: (key: string) => void): void {
+    const key = "__test_only_unsettleable";
+    SPORTS.push({ key, meta: { sport: key, signalOnly: true } } as unknown as (typeof SPORTS)[number]);
+    try {
+      run(key);
+    } finally {
+      SPORTS.pop();
+    }
+  }
+
+  it("drops any sport we can price but never settle", () => {
     // The failure this prevents: a posted pick the room never sees settled, and
     // a PostedPlay row stuck at "pending" forever.
-    expect(excludeSignalOnly([play("tennis")])).toEqual([]);
+    withSignalOnlySport((key) => {
+      expect(excludeSignalOnly([play(key)])).toEqual([]);
+      expect(excludeSignalOnly(signalOnlyKeys.map(play))).toEqual([]);
+    });
+  });
+
+  it("filters the unsettleable sport out of a mixed board, keeping the rest", () => {
+    withSignalOnlySport((key) => {
+      const kept = excludeSignalOnly([...gradableKeys, key].map(play));
+      expect(kept.map((p) => p.sportKey)).toEqual(gradableKeys);
+    });
   });
 
   it("keeps the sports that DO have a results source", () => {
-    const kept = excludeSignalOnly([play("mlb"), play("ufc"), play("soccer")]);
-    expect(kept.map((p) => p.sportKey)).toEqual(["mlb", "ufc", "soccer"]);
+    const kept = excludeSignalOnly(gradableKeys.map(play));
+    expect(kept.map((p) => p.sportKey)).toEqual(gradableKeys);
   });
 
-  it("filters only the signal-only sport out of a mixed board", () => {
-    const kept = excludeSignalOnly([play("mlb"), play("tennis"), play("ufc")]);
-    expect(kept.map((p) => p.sportKey)).toEqual(["mlb", "ufc"]);
+  it("filters only the signal-only sports out of a mixed board", () => {
+    const mixed = [...gradableKeys, ...signalOnlyKeys].map(play);
+    expect(excludeSignalOnly(mixed).map((p) => p.sportKey)).toEqual(gradableKeys);
   });
 
   it("derives from the registry, not a hardcoded sport list", () => {
