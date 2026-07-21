@@ -1,0 +1,36 @@
+name: Wipe the results ledger (DESTRUCTIVE)
+
+# Clears every recorded PostedPlay — day cards, all-time record, streaks. The
+# poster rebuilds from the next card, so the record simply restarts clean.
+#
+# Here for the same reason as the other two: CRON_SECRET is write-only in
+# Vercel, and Actions holds its own copy. The route itself is already two-step
+# (GET shows a confirm page, POST does the delete) and this hits POST directly,
+# so the tick-box below IS the confirmation step. It cannot be undone.
+#
+# This does NOT touch Discord. Messages already posted in #results stay up —
+# clearing those is scripts/discord/purge.ts --channel=results, a separate job.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Yes, permanently delete every recorded play"
+        type: boolean
+        default: false
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse an unconfirmed wipe
+        if: ${{ !inputs.confirm }}
+        run: |
+          echo "::error::Not confirmed — the ledger was NOT touched."
+          exit 1
+
+      - name: Wipe the ledger
+        run: |
+          curl -sSL -X POST "${{ secrets.APP_URL }}/api/admin/reset-ledger" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            | sed -e 's/<[^>]*>/ /g' -e 's/  */ /g' \
+            | tee "$GITHUB_STEP_SUMMARY"
