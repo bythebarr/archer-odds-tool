@@ -16,13 +16,16 @@ describe("getAdapter (grading dispatch lookup)", () => {
     expect(getAdapter("mlb")?.key).toBe("mlb");
     expect(getAdapter("ufc")?.key).toBe("ufc");
     // Thin adapters (Phase 3d) — registered so nav/Slate derive from one list.
+    expect(getAdapter("nfl")?.key).toBe("nfl");
     expect(getAdapter("tennis")?.key).toBe("tennis");
     expect(getAdapter("soccer")?.key).toBe("soccer");
     expect(getAdapter("f1")?.key).toBe("f1");
   });
 
   it("returns undefined for an unregistered sport (the void path)", () => {
-    expect(getAdapter("nfl")).toBeUndefined();
+    // Was "nfl" until NFL was actually registered. Use a sport we have no
+    // provider coverage for at all, so this doesn't quietly become a live key again.
+    expect(getAdapter("cricket")).toBeUndefined();
   });
 
   it("a thin sport resolves but grades to void (no tracked plays yet)", async () => {

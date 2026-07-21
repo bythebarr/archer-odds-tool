@@ -83,6 +83,7 @@ export interface OddsPool {
 
 const HREF: Record<Exclude<SlateSport, "ufc">, (id: string) => string> = {
   mlb: (id) => `/games/${id}`,
+  nfl: (id) => `/nfl/${id}`,
   tennis: (id) => `/tennis/${id}`,
   soccer: (id) => `/soccer/${id}`,
 };

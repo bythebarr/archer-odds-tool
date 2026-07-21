@@ -73,6 +73,18 @@ So, per sport:
   a sport-specific results source. Do not promise props there.
 - **No coverage** → not a surface yet, whatever the roadmap says.
 
+## Correction: the NFL sport key also serves CFL (2026-07-21)
+
+The audit counted `americanfootball_nfl` events without checking what they were.
+Building the NFL feed found the answer: **8 of them were CFL clubs** (Elks,
+Roughriders, Stampeders, Blue Bombers, Argonauts, BC Lions, Tiger-Cats,
+Alouettes). Nothing in the response marks them as a different league.
+
+So the "odds events" column is a count of *events under a key*, not a count of
+that sport's games — and any new sport must verify what the key actually contains
+before trusting the number. NFL filters through a 32-team allowlist
+(`src/lib/nfl/teams.ts`); see docs/architecture/nfl-adapter.md.
+
 ## Acted on: tennis is signal-only (2026-07-21)
 
 The table said tennis has no scores; the code hadn't caught up. A

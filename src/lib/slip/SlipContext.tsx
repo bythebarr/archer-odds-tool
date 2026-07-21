@@ -3,7 +3,7 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
 import type { MarketType } from "@/generated/prisma/client";
 
-export type SlipSport = "mlb" | "tennis" | "soccer";
+export type SlipSport = "mlb" | "nfl" | "tennis" | "soccer";
 
 export interface SlipPick {
   id: string;

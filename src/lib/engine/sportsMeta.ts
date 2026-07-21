@@ -20,6 +20,10 @@ export type { SportMeta };
 // are readable on the literal union at runtime.
 export const SPORT_METAS = [
   { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false, signalOnly: false },
+  // signalOnly until a results feed lands (the adapter doc's ESPN scoreboard
+  // candidate). NFL has the provider's best odds coverage but, like tennis, no
+  // scores we trust — so it shops lines and prices nothing tracked.
+  { sport: "nfl", label: "NFL", icon: "🏈", href: "/nfl", accent: "#f59e0b", carriesDate: false, resultsOnly: false, signalOnly: true },
   { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false, signalOnly: false },
   { sport: "tennis", label: "Tennis", icon: "🎾", href: "/tennis", accent: "#a3e635", carriesDate: false, resultsOnly: false, signalOnly: true },
   { sport: "soccer", label: "Soccer", icon: "⚽", href: "/soccer", accent: "#10b981", carriesDate: false, resultsOnly: false, signalOnly: false },

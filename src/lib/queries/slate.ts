@@ -145,6 +145,33 @@ async function soccerItems(gte: Date, lt: Date): Promise<SlateItem[]> {
 }
 
 /**
+ * NFL — same shape as soccer (team-pair Game rows), which is the whole point of
+ * the shared engine: a new team sport joins the Slate without new machinery.
+ * `modelProb` stays null even though `src/lib/nfl/model.ts` exists — see the
+ * adapter for why an unvalidated model prices nothing.
+ */
+async function nflItems(gte: Date, lt: Date): Promise<SlateItem[]> {
+  const games = await prisma.game.findMany({
+    where: { sport: "nfl", scheduledStartUtc: { gte, lt } },
+    orderBy: { scheduledStartUtc: "asc" },
+    include: { homeTeam: true, awayTeam: true },
+  });
+
+  return games.map((g) => ({
+    key: `nfl:${g.id}`,
+    sport: "nfl" as const,
+    startUtc: g.scheduledStartUtc,
+    status: g.status,
+    href: `/nfl/${g.id}`,
+    title: null,
+    home: { name: g.homeTeam?.name ?? "TBD", meta: g.homeTeam?.abbreviation },
+    away: { name: g.awayTeam?.name ?? "TBD", meta: g.awayTeam?.abbreviation },
+    modelProb: null, // SEAM: the Elo model plugs in here once CLV-validated
+    ev: null, // SEAM: paid EV
+  }));
+}
+
+/**
  * UFC — event-based rather than a Game row, so it's matched by calendar date
  * (eventDate is date-only, so a plain UTC date-string compare is the right
  * granularity here). Carries the free fighter-math win probability — the same
@@ -218,20 +245,21 @@ export function getUfcSlateItems(dateEt: string): Promise<SlateItem[]> {
 export const getSlateForDate = cache(async function getSlateForDate(dateEt: string): Promise<Slate> {
   const { gte, lt } = etDayBoundsUtc(dateEt);
 
-  const [mlb, tennis, soccer, ufc] = await Promise.all([
+  const [mlb, nfl, tennis, soccer, ufc] = await Promise.all([
     mlbItems(dateEt),
+    nflItems(gte, lt),
     tennisItems(gte, lt),
     soccerItems(gte, lt),
     ufcItems(dateEt),
   ]);
 
-  const items = [...mlb, ...tennis, ...soccer, ...ufc].sort(
+  const items = [...mlb, ...nfl, ...tennis, ...soccer, ...ufc].sort(
     (a, b) => a.startUtc.getTime() - b.startUtc.getTime()
   );
 
   return {
     date: dateEt,
     items,
-    counts: { mlb: mlb.length, tennis: tennis.length, soccer: soccer.length, ufc: ufc.length },
+    counts: { mlb: mlb.length, nfl: nfl.length, tennis: tennis.length, soccer: soccer.length, ufc: ufc.length },
   };
 });

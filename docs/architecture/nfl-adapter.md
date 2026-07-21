@@ -1,5 +1,10 @@
 # NFL adapter — what it needs
 
+> **Phase 1 shipped 2026-07-21** (feed + line shopping). Registered adapter,
+> odds poll, `/nfl` board and game pages, Slate presence. `signalOnly` until a
+> results source lands. What was actually learned doing it is in "Phase 1 as
+> built" at the bottom — read that before phase 2.
+
 Sketch, not a commitment. Written 2026-07-21 off the coverage audit
 (`provider-coverage.md`), which found NFL already carrying 11 bettable books,
 Pinnacle, and 67–82 prop markets on a provider we're paying nothing for.
@@ -84,3 +89,45 @@ burned this project before.
 Re-run `npx tsx scripts/odds/audit-coverage.ts` in preseason. If NFL book depth
 doesn't hold above single digits once games are live, phase 2 isn't worth
 shipping and this plan should be reconsidered rather than followed.
+
+## Phase 1 as built (2026-07-21)
+
+Measured on the first live poll: **38 events, 394 snapshots, 6 credits.**
+
+**The feed carries CFL games under the NFL sport key.** Not anticipated above,
+and the most important thing learned. `americanfootball_nfl` returned Edmonton
+Elks, Saskatchewan Roughriders, Calgary Stampeders, Winnipeg Blue Bombers,
+Toronto Argonauts, BC Lions, Hamilton Tiger-Cats, and Montreal Alouettes —
+Canadian football, different scoring, different sport. Nothing in the response
+distinguishes them; the sport key is simply wrong.
+
+The fix is `src/lib/nfl/teams.ts`: a closed 32-team allowlist, matched on a
+normalized name, that both filters the feed and supplies real abbreviations,
+conferences, and divisions. Unrecognized competitors are skipped **and named in
+the poll log**, because that line has two meanings — expected CFL clubs, or a
+real NFL team whose name drifted past the allowlist, which would silently cost
+games. This reverses the doc's earlier call against a 32-row constant: the
+alternative turned out to be storing another league as NFL.
+
+Synthesized abbreviations were also a mistake worth recording — first-letter
+initials produced `C` for Carolina, Chicago, Cincinnati *and* Cleveland, and `NY`
+for both the Giants and the Jets. The allowlist removed the whole class.
+
+**Book depth held up.** A Week 1 game (BAL @ IND) priced across 10 books
+including Pinnacle, with the away moneyline ranging −184 (Pinnacle) to −210
+(Parx) — a 26-cent spread on one side of one game. That is the line-shopping
+thesis behaving exactly as the coverage audit predicted, in the off-season.
+
+**Spreads are thin in July, as expected**: 6 spread rows against 22 total rows
+across 34 games. Not a bug — books haven't hung the numbers yet. The board leads
+with the spread and falls back to the moneyline per game, so this degrades
+cleanly. Re-check in preseason before drawing any conclusion from it.
+
+### What phase 2 still needs
+
+- **A results source.** This is the only thing standing between NFL and a tracked
+  record; the adapter's `grade` and the `signalOnly` flag are both waiting on it.
+  ESPN's public scoreboard remains the candidate, still unverified. Match on team
+  names, never on `event_id` (provider-coverage.md).
+- Alt-line ladders (MLB-only today) and the props vocabulary — unchanged from the
+  plan above.

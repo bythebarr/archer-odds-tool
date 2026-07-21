@@ -52,14 +52,20 @@ enum Sport {
   tennis
   soccer
   ufc // graded Discord plays only (fighter-math moneyline) — UFC never uses the Game table
+  nfl // team sport on the shared Game table, like MLB; teams upserted by oddsApiName like soccer's
 }
 
-/// mlbTeamId is MLB-only (nullable so soccer rows can omit it); soccer teams
-/// are instead upserted by oddsApiName, mirroring Player's pattern, since
-/// there's no free authoritative team-id source for international soccer the
-/// way MLB Stats API provides. abbreviation/league/division are still
-/// required but hold synthesized placeholder values for soccer (no real
-/// crest/league data source yet) — see soccer/ingest.ts's upsertTeam.
+/// mlbTeamId is MLB-only (nullable so soccer/NFL rows can omit it); soccer and
+/// NFL teams are instead upserted by oddsApiName, mirroring Player's pattern,
+/// since there's no free authoritative team-id source for them the way MLB Stats
+/// API provides. abbreviation/league/division are still required but hold
+/// synthesized or placeholder values there (no real crest/league data source yet)
+/// — see soccer/ingest.ts and nfl/ingest.ts's upsertTeam.
+///
+/// There is deliberately no `sport` column: oddsApiName is the natural key and
+/// full team names don't collide across leagues (Arizona Cardinals vs St. Louis
+/// Cardinals, New York Giants vs San Francisco Giants). Scope by joining through
+/// Game.sport, which is indexed, rather than duplicating the discriminator here.
 model Team {
   id           String  @id @default(cuid())
   mlbTeamId    Int?    @unique

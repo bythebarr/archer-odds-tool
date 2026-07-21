@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 // around 12:35pm ET" instead of dead air. Cadence strings are the real
 // vercel.json schedules converted to ET (approximate — DST shifts them an hour,
 // hence "around").
-export type FeedKey = "mlbOdds" | "props" | "tennisOdds" | "soccerOdds" | "f1";
+export type FeedKey = "mlbOdds" | "nflOdds" | "props" | "tennisOdds" | "soccerOdds" | "f1";
 
 interface FeedDef {
   /** PollLog.jobName that best represents this feed's last refresh. */
@@ -20,6 +20,7 @@ interface FeedDef {
 
 const FEEDS: Record<FeedKey, FeedDef> = {
   mlbOdds: { jobName: "poll-odds", label: "MLB odds", cadence: "around 12:35pm & 6:30pm ET" },
+  nflOdds: { jobName: "poll-odds-nfl", label: "NFL odds", cadence: "around 5:15am & 5:15pm ET" },
   props: { jobName: "sync-player-game-logs", label: "prop stats", cadence: "overnight, around 5:30am ET" },
   tennisOdds: { jobName: "poll-odds-tennis", label: "tennis odds", cadence: "each morning, around 5am ET" },
   soccerOdds: { jobName: "poll-odds-soccer", label: "soccer odds", cadence: "every few hours" },

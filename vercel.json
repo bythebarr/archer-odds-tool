@@ -38,6 +38,14 @@
       "schedule": "5 9 * * *"
     },
     {
+      "path": "/api/cron/poll-odds-nfl",
+      "schedule": "15 9 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds-nfl",
+      "schedule": "15 21 * * *"
+    },
+    {
       "path": "/api/cron/poll-odds-soccer",
       "schedule": "0 0 * * *"
     },
