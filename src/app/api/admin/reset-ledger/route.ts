@@ -47,9 +47,9 @@ export async function POST(request: Request) {
   // before the grader ever sees them. postedForDate is an ET date string, so a
   // string comparison is the right one here.
   const before = new URL(request.url).searchParams.get("before");
-  const { count } = await prisma.postedPlay.deleteMany(
-    before ? { where: { postedForDate: { lt: before } } } : {}
-  );
+  const { count } = before
+    ? await prisma.postedPlay.deleteMany({ where: { postedForDate: { lt: before } } })
+    : await prisma.postedPlay.deleteMany();
 
   return page(
     "✅ Ledger wiped",
