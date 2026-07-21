@@ -1,8 +1,67 @@
 import { prisma } from "@/lib/prisma";
 import type { MarketType, Side } from "@/generated/prisma/client";
-import type { OddsApiBookmaker } from "./oddsApiClient";
-import { isCoherentMarket, overround } from "./marketSanity";
+import type { OddsApiBookmaker, OddsApiMarket } from "./oddsApiClient";
+import { impliedProbability, isCoherentMarket, overround } from "./marketSanity";
 import { ALLOWED_BOOK_KEYS } from "./bookAllowlist";
+
+/**
+ * Collapse a book that quotes the SAME market twice in one payload, keeping the
+ * worse price on every outcome.
+ *
+ * ParlayAPI does this routinely: measured 2026-07-21, FanDuel appeared twice
+ * with two different h2h blocks on 5 of 15 MLB games — Yankees at -138 in one
+ * and -168 in the other, a 30-cent spread on the same book, same game, same
+ * market. Nothing in the payload says which is live. Before this, the loop below
+ * simply processed both and whichever landed last won, so a third of games
+ * carried an arbitrary FanDuel number, and "the odds don't match the book" was
+ * the visible symptom.
+ *
+ * Taking the WORSE side of the ambiguity is the deliberate choice. The failure
+ * we can't afford is advertising a price a member then can't get: that invents
+ * edge, and an EV number built on a phantom price is worse than no number. The
+ * opposite error — quoting someone a slightly short price — costs us a play we
+ * could have had, and is recoverable. So: highest implied probability wins,
+ * which is the same rule for American, positive or negative.
+ *
+ * Freshness is taken from the OLDER block for the same reason — given two
+ * timestamps and no way to tell which quote is current, claiming the newer one
+ * overstates what we actually know.
+ *
+ * Exported for tests. A book quoting a market once (the normal case) passes
+ * through untouched, including its object identity.
+ */
+export function collapseDuplicateMarkets(markets: OddsApiMarket[]): OddsApiMarket[] {
+  const byKey = new Map<string, OddsApiMarket[]>();
+  for (const market of markets) {
+    byKey.set(market.key, [...(byKey.get(market.key) ?? []), market]);
+  }
+
+  return [...byKey.values()].map((blocks) => {
+    if (blocks.length === 1) return blocks[0];
+
+    // Outcomes are only "the same bet" at the same number — Over 8.5 and Over
+    // 9.5 are different rungs and must not collapse into each other.
+    const worst = new Map<string, { outcome: OddsApiMarket["outcomes"][number]; prob: number }>();
+    for (const block of blocks) {
+      for (const outcome of block.outcomes) {
+        // A suspended market comes back priceless; it can't be compared, and it
+        // must not win by default (see oddsApiClient on ParlayAPI's null prices).
+        if (typeof outcome.price !== "number" || !Number.isFinite(outcome.price)) continue;
+        const key = `${outcome.name}|${outcome.point ?? "ml"}`;
+        const prob = impliedProbability(outcome.price);
+        const held = worst.get(key);
+        if (!held || prob > held.prob) worst.set(key, { outcome, prob });
+      }
+    }
+
+    const lastUpdates = blocks.map((b) => b.last_update).filter((u): u is string => Boolean(u));
+    return {
+      ...blocks[0],
+      last_update: lastUpdates.length ? lastUpdates.sort()[0] : blocks[0].last_update,
+      outcomes: [...worst.values()].map((w) => w.outcome),
+    };
+  });
+}
 
 function isAllowedBook(key: string): boolean {
   return (ALLOWED_BOOK_KEYS as readonly string[]).includes(key);
@@ -111,7 +170,7 @@ export async function storeBookmakerOdds(
     // order, so a genuine main-line row is always the one that "creates"
     // a given point (see the upsert below, which only sets isAlternate
     // on create) — enforced here in code, not left to request-param order.
-    const orderedMarkets = [...bookmaker.markets].sort(
+    const orderedMarkets = collapseDuplicateMarkets(bookmaker.markets).sort(
       (a, b) => Number(isAlternateMarketKey(a.key)) - Number(isAlternateMarketKey(b.key))
     );
 
