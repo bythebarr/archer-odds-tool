@@ -1,0 +1,40 @@
+name: Run the results tick (and report why it skipped)
+
+# The #results recap posts itself the moment a date's LAST tracked play settles
+# (see src/app/api/cron/post-results). When a recap doesn't show up, the reason
+# is in that route's JSON — "no-plays", "still-pending" with a count, or an
+# error — and there is otherwise no way to read it from outside the deployment,
+# since CRON_SECRET is write-only in Vercel but Actions holds its own copy.
+#
+# Safe to run any time: the route posts only when the day is fully settled and
+# marks itself so it can't double-post. Ticking it early just prints the reason.
+on:
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      # No -L: a redirect to another host makes curl drop the Authorization
+      # header, which reads as a bogus 401. Fail loudly instead.
+      - name: Tick post-results
+        run: |
+          {
+            echo '## post-results'
+            echo '```json'
+            curl -sS --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/post-results" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+            echo
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The admin routes take the same secret. A 401 here while the cron call
+      # above succeeds means the request never reached the route with its header
+      # intact (redirect/SSO host), not that the secret is wrong.
+      - name: Probe admin auth
+        if: always()
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "${{ secrets.APP_URL }}/api/admin/reset-ledger" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "admin GET (authorized) → HTTP $code" | tee -a "$GITHUB_STEP_SUMMARY"
