@@ -9,6 +9,8 @@ import {
 import { storeBookmakerOdds } from "./storeOdds";
 import { canonicalTeamName } from "./teamNameAliases";
 import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
+import { oddsProviderForSport } from "@/lib/odds/providers/registry";
+import { fetchOddsBlazeGameOdds } from "@/lib/odds/providers/oddsblaze";
 import type { Game } from "@/generated/prisma/client";
 
 /**
@@ -201,6 +203,14 @@ export interface PollOddsSummary {
 export async function pollAndStoreOdds(
   markets: OddsApiMarketKey[] = ["h2h", "spreads", "totals"]
 ): Promise<PollOddsSummary> {
+  // Per-sport provider registry: MLB routes to OddsBlaze when opted in via
+  // MLB_ODDS_PROVIDER=oddsblaze, else stays on the incumbent path below. The
+  // OddsBlaze branch is a wholly separate function so the Parlay/TOA flow — and
+  // its 6h-early ET-date matching — is untouched.
+  if (oddsProviderForSport("mlb") === "oddsblaze") {
+    return pollAndStoreOddsViaOddsBlaze();
+  }
+
   const { events, creditsUsed: mainCreditsUsed, creditsRemaining: mainCreditsRemaining } =
     await fetchMlbOdds(markets);
 
@@ -280,6 +290,86 @@ export async function pollAndStoreOdds(
       // the main line for this game already landed above.
       console.error(`Alt-line fetch failed for event ${event.id}:`, error);
     }
+  }
+
+  return {
+    eventsFetched: events.length,
+    gamesMatched,
+    gamesUnmatched,
+    snapshotsWritten,
+    altLineGamesPolled,
+    creditsUsed,
+    creditsRemaining,
+  };
+}
+
+/**
+ * MLB odds via OddsBlaze — the MLB_ODDS_PROVIDER=oddsblaze path.
+ *
+ * Two things it does differently from the Parlay/TOA flow, both wins the provider
+ * eval turned up:
+ *
+ *  1. Matches on mlbGameId. OddsBlaze carries the MLB Stats API gamePk on every
+ *     event (mappings.MLB.id), so games join on a stable id — no ET-date +
+ *     team-name reconciliation, no doubleheader-merge risk. This is why OddsBlaze
+ *     surfaces tomorrow's slate the night before where Parlay lags: the whole
+ *     matching problem assignEventsToGames exists to solve simply isn't here.
+ *  2. Alt lines come free in the same fan-out. OddsBlaze returns the full ladder
+ *     per book in one call, so there's no separate per-event alt fetch and no
+ *     MAX_ALT_LINE_GAMES_PER_POLL cap — storeBookmakerOdds writes main + alts in
+ *     one go, with retireStaleAlternates so withdrawn rungs don't linger.
+ *
+ * skipLive drops in-play games at the source; the start-time guard covers a game
+ * that flips to started between fetch and write, same as the Parlay path.
+ */
+async function pollAndStoreOddsViaOddsBlaze(): Promise<PollOddsSummary> {
+  const { events, creditsUsed, creditsRemaining } = await fetchOddsBlazeGameOdds("mlb", {
+    skipLive: true,
+  });
+  const now = new Date();
+
+  // Resolve every game by gamePk in one query, rather than per-event.
+  const gamePks = events
+    .map((e) => e.mlbGameId)
+    .filter((pk): pk is number => typeof pk === "number");
+  const games = gamePks.length
+    ? await prisma.game.findMany({ where: { sport: "mlb", mlbGameId: { in: gamePks } } })
+    : [];
+  const gameByPk = new Map<number, Game>();
+  for (const g of games) if (g.mlbGameId != null) gameByPk.set(g.mlbGameId, g);
+
+  let gamesMatched = 0;
+  let snapshotsWritten = 0;
+  let altLineGamesPolled = 0;
+  const gamesUnmatched: string[] = [];
+
+  for (const event of events) {
+    const game = event.mlbGameId != null ? gameByPk.get(event.mlbGameId) : undefined;
+    if (!game) {
+      // No scheduled Game row for this gamePk yet (schedule not synced), or the
+      // event carried no MLB mapping — same "unmatched" bucket as the Parlay flow.
+      gamesUnmatched.push(`${event.away_team} @ ${event.home_team} (${event.commence_time})`);
+      continue;
+    }
+    gamesMatched++;
+
+    // Never overwrite a shoppable pregame line with an in-play price.
+    if (game.scheduledStartUtc.getTime() < now.getTime()) continue;
+
+    const hasAlternates = event.bookmakers.some((b) =>
+      b.markets.some((m) => m.key === "alternate_spreads" || m.key === "alternate_totals")
+    );
+
+    snapshotsWritten += await storeBookmakerOdds(
+      game.id,
+      event.home_team,
+      event.away_team,
+      event.bookmakers,
+      // One payload = the whole picture (main + full alt ladder), so retire stale
+      // rows on BOTH main and alt lines — see retireStaleAlternates in storeOdds.
+      { retireStale: true, retireStaleAlternates: true }
+    );
+    if (hasAlternates) altLineGamesPolled++;
   }
 
   return {

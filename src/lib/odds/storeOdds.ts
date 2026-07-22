@@ -116,18 +116,29 @@ function outcomeToSide(
  * `OddsSnapshot` remains append-only — the price history lives there, and this
  * touches none of it. This is only about what "current" means.
  *
- * Alt lines are deliberately exempt: they're fetched for one game per poll
- * (MAX_ALT_LINE_GAMES_PER_POLL), so pruning them on a poll that didn't request
- * them would delete the whole ladder every time. They keep their own lifecycle.
+ * Alt lines are exempt BY DEFAULT: on TOA/Parlay they're fetched for one game per
+ * poll (MAX_ALT_LINE_GAMES_PER_POLL) in a separate per-event call, so pruning them
+ * on a poll that didn't request them would delete the whole ladder every time. A
+ * caller whose single payload DID carry the full alt ladder (OddsBlaze does) passes
+ * `includeAlternates` to prune stale alt rungs too — otherwise a book's withdrawn
+ * alt line would win the best-price max forever, the same bug this fixes for mains.
  *
  * Only ever called for a fetch that actually carried the main markets — see
  * `retireStale` in storeBookmakerOdds. The alt-lines fetch runs as a SECOND call
  * for the same game moments later, and pruning on it would delete the main rows
  * the first call just wrote.
  */
-async function retireStaleCurrentLines(gameId: string, startedAt: Date): Promise<void> {
+async function retireStaleCurrentLines(
+  gameId: string,
+  startedAt: Date,
+  includeAlternates: boolean
+): Promise<void> {
   await prisma.currentOddsLine.deleteMany({
-    where: { gameId, isAlternate: false, polledAt: { lt: startedAt } },
+    where: {
+      gameId,
+      ...(includeAlternates ? {} : { isAlternate: false }),
+      polledAt: { lt: startedAt },
+    },
   });
 }
 
@@ -145,11 +156,17 @@ export async function storeBookmakerOdds(
   awayCompetitorName: string,
   bookmakers: OddsApiBookmaker[],
   /**
-   * Whether this payload is the game's full main-line picture, so rows it
-   * doesn't refresh can be retired. False for the per-event ALT-lines fetch,
-   * which is a partial second call for a game already written this poll.
+   * retireStale: whether this payload is the game's full main-line picture, so
+   *   rows it doesn't refresh can be retired. False for the per-event ALT-lines
+   *   fetch, which is a partial second call for a game already written this poll.
+   * retireStaleAlternates: also retire stale ALT rungs — only for a payload that
+   *   carried the whole ladder in one call (OddsBlaze). Left false for TOA/Parlay,
+   *   whose alts arrive separately and must keep their own lifecycle.
    */
-  { retireStale = true }: { retireStale?: boolean } = {}
+  {
+    retireStale = true,
+    retireStaleAlternates = false,
+  }: { retireStale?: boolean; retireStaleAlternates?: boolean } = {}
 ): Promise<number> {
   let snapshotsWritten = 0;
   // Everything written by THIS call, so anything older can be retired below.
@@ -186,20 +203,31 @@ export async function storeBookmakerOdds(
       // Reject the whole market if its sides don't add up to a plausible book.
       // Grouped by point, since a totals/spreads market is only two-way AT a
       // given number — 8.5 and 9.5 are separate markets, not one four-way.
-      const byPoint = new Map<number | null, number[]>();
-      for (const o of market.outcomes) {
-        if (typeof o.price !== "number" || !Number.isFinite(o.price)) continue;
-        const key = o.point ?? null;
-        byPoint.set(key, [...(byPoint.get(key) ?? []), o.price]);
-      }
-      const incoherentPoints = new Set(
-        [...byPoint.entries()].filter(([, prices]) => !isCoherentMarket(prices)).map(([point]) => point)
-      );
-      if (incoherentPoints.size) {
-        console.warn(
-          `storeOdds: dropping ${bookmaker.key} ${market.key} — implausible market ` +
-            [...incoherentPoints].map((pt) => `${pt ?? "ml"}:${overround(byPoint.get(pt) ?? []).toFixed(3)}`).join(", ")
-        );
+      //
+      // MAIN markets only. A full ALTERNATE spread ladder is two-directional —
+      // both teams appear at ±X (Rockies +4.5 AND Nats +4.5) — so grouping by raw
+      // point pairs non-complementary sides and every rung reads as incoherent,
+      // dropping the whole ladder. The guard exists to keep fake EV off the card's
+      // PRIMARY board (see marketSanity); alt rungs are a secondary shopping
+      // surface and can't be point-paired this way, so they skip the check. The
+      // per-outcome null-price skip below still applies to them.
+      const incoherentPoints = new Set<number | null>();
+      if (!isAlternate) {
+        const byPoint = new Map<number | null, number[]>();
+        for (const o of market.outcomes) {
+          if (typeof o.price !== "number" || !Number.isFinite(o.price)) continue;
+          const key = o.point ?? null;
+          byPoint.set(key, [...(byPoint.get(key) ?? []), o.price]);
+        }
+        for (const [point, prices] of byPoint) {
+          if (!isCoherentMarket(prices)) incoherentPoints.add(point);
+        }
+        if (incoherentPoints.size) {
+          console.warn(
+            `storeOdds: dropping ${bookmaker.key} ${market.key} — implausible market ` +
+              [...incoherentPoints].map((pt) => `${pt ?? "ml"}:${overround(byPoint.get(pt) ?? []).toFixed(3)}`).join(", ")
+          );
+        }
       }
 
       for (const outcome of market.outcomes) {
@@ -267,7 +295,7 @@ export async function storeBookmakerOdds(
     }
   }
 
-  if (retireStale) await retireStaleCurrentLines(gameId, startedAt);
+  if (retireStale) await retireStaleCurrentLines(gameId, startedAt, retireStaleAlternates);
 
   return snapshotsWritten;
 }
