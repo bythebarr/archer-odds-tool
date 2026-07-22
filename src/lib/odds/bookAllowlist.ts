@@ -29,11 +29,11 @@ export const BETTABLE_BOOK_KEYS = [
   "bet365",
   "hardrock",
   "parx",
-  // Exchanges: peer-to-peer, near-zero vig, so they frequently hold the best
-  // number on the board. Verified as coherent two-way markets in the live feed
-  // (e.g. -120/+125, implying slightly UNDER 100% — the no-vig signature).
-  "novig",
-  "prophetx",
+  // NOTE: the peer-to-peer EXCHANGES (novig, prophetx) were removed 2026-07-22 by
+  // owner call — they, like the prediction markets, had been distorting the board.
+  // They're coherent near-zero-vig two-way markets, but they're out on preference,
+  // not data. Re-add here (one line each) to reverse; the allowlist is the single
+  // switch, so it applies to every provider at once.
 ] as const;
 
 /**
@@ -54,8 +54,10 @@ export const SHARP_BOOK_KEYS = ["pinnacle"] as const;
  *   • kalshi — its quotes came back incoherent in the live feed (both sides
  *     positive, e.g. +4900/+133, implying ~40% total). That's a thin order book,
  *     not a two-way market, and a stray +4900 would read as an enormous edge and
- *     manufacture fantasy EV. Revisit if the data firms up; prediction markets
- *     are otherwise exactly what we want.
+ *     manufacture fantasy EV.
+ *   • prediction markets / exchanges in general — excluded by owner preference
+ *     (2026-07-22): even the coherent ones (novig, prophetx) were muddying the
+ *     board, so the whole category stays off, sportsbooks only.
  */
 export const ALLOWED_BOOK_KEYS = [...BETTABLE_BOOK_KEYS, ...SHARP_BOOK_KEYS] as const;
 
@@ -71,8 +73,6 @@ export const BOOK_INITIALS: Record<string, string> = {
   bet365: "365",
   hardrock: "HR",
   parx: "PARX",
-  novig: "NVG",
-  prophetx: "PX",
   pinnacle: "PIN",
 };
 
@@ -88,7 +88,5 @@ export const BOOK_COLORS: Record<string, string> = {
   bet365: "#027B5B",
   hardrock: "#7B1E26",
   parx: "#0B4DA2",
-  novig: "#6C5CE7",
-  prophetx: "#00B894",
   pinnacle: "#E4472B",
 };
