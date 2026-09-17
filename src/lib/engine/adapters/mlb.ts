@@ -25,6 +25,7 @@ import { STAT_CATEGORY_LABELS } from "@/lib/props/format";
 import { syncMlbSchedule, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { sportMetaByKey } from "../sportsMeta";
+import { buildIngestSummary, classifyFetchStore, summaryForCaughtError } from "../ingestResult";
 import type { StatCategory } from "@/generated/prisma/client";
 import type {
   IngestSummary,
@@ -301,19 +302,32 @@ async function grade(play: Play): Promise<PlayGrade> {
  * inputs to the Archer model and the pool. Mirrors the sync-schedule cron; odds
  * polling stays a shared step outside the adapter (it serves every sport). In
  * Phase 3 the cron becomes a thin wrapper over this.
+ *
+ * Status is driven by the schedule window alone (games fetched vs. upserted) —
+ * pitchers/purge ride along as detail, not the ok/empty/unusable decision,
+ * since a probable-pitcher gap is normal for most of the forward window and
+ * shouldn't paint the whole ingest "unusable". Zero games fetched for the
+ * window is a legitimate empty slate (off-season) — never a fake failure.
  */
 async function ingest(dateEt: string): Promise<IngestSummary> {
-  const schedule = await syncMlbSchedule(shiftEtDate(dateEt, -7), shiftEtDate(dateEt, 6));
-  const pitchers = await syncProbablePitchers(dateEt, shiftEtDate(dateEt, 6));
-  const purge = await purgePreseasonGames();
-  return {
-    sportKey: "mlb",
-    ok: true,
-    detail: `${schedule.gamesUpserted} games, ${pitchers.pitchersUpserted} pitchers`,
-    schedule,
-    pitchers,
-    purge,
-  };
+  try {
+    const schedule = await syncMlbSchedule(shiftEtDate(dateEt, -7), shiftEtDate(dateEt, 6));
+    const pitchers = await syncProbablePitchers(dateEt, shiftEtDate(dateEt, 6));
+    const purge = await purgePreseasonGames();
+    const { status, detail } = classifyFetchStore(
+      { fetched: schedule.gamesFetched, stored: schedule.gamesUpserted },
+      { noun: "games" }
+    );
+    return buildIngestSummary(
+      "mlb",
+      status,
+      `${detail}; ${pitchers.pitchersUpserted} pitchers upserted`,
+      { fetched: schedule.gamesFetched, stored: schedule.gamesUpserted },
+      { schedule, pitchers, purge }
+    );
+  } catch (error) {
+    return summaryForCaughtError("mlb", error);
+  }
 }
 
 async function listPlays(dateEt: string): Promise<Play[]> {

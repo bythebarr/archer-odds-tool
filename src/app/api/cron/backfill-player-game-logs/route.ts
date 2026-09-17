@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { backfillMissingPlayerGameLogs } from "@/lib/props/syncGameLogs";
+import { classifyFetchStore, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "backfill-player-game-logs";
 
@@ -26,14 +27,22 @@ export async function POST(request: Request) {
 
   try {
     const summary = await backfillMissingPlayerGameLogs(BATCH_LIMIT);
+    // The query only selects games with zero existing log rows, so a zero
+    // batch is genuinely "fully caught up" — legitimate empty, not a failure.
+    // Games ingested but zero rows written is a real problem.
+    const fetched = summary.gamesIngested + summary.gamesFailed;
+    const { status, detail } = classifyFetchStore(
+      { fetched, stored: summary.rowsWritten, rejected: summary.gamesFailed },
+      { noun: "rows" }
+    );
     // Remaining count surfaced in lastStatus (visible via /api/status) since
     // this cron's response body otherwise isn't observable from outside a
     // running deployment during the multi-call historical catch-up.
-    await recordPollLog(JOB_NAME, `ok (remaining: ${summary.remaining})`);
-    return Response.json(summary);
+    await recordPollLog(JOB_NAME, pollLogStatus({ status, detail: `${detail}, remaining: ${summary.remaining}` }));
+    return Response.json({ status, detail, ...summary }, { status: ingestHttpStatus(status) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ error: message }, { status: 502 });
+    const summary = summaryForCaughtError("mlb", error);
+    await recordPollLog(JOB_NAME, pollLogStatus(summary));
+    return Response.json(summary, { status: ingestHttpStatus(summary.status) });
   }
 }

@@ -10,6 +10,7 @@
  */
 import { pollAndStoreSoccerOdds } from "@/lib/soccer/ingest";
 import { sportMetaByKey } from "../sportsMeta";
+import { buildIngestSummary, classifyFetchStore, summaryForCaughtError } from "../ingestResult";
 import type { IngestSummary, MarketSpec, Play, PlayGrade, SportAdapter } from "../types";
 
 /** Soccer is 3-way (home/draw/away) plus totals; devig generalizes in full Phase 4. */
@@ -18,15 +19,38 @@ const SOCCER_MARKETS: MarketSpec[] = [
   { market: "totals", kind: "total", label: "Total Goals" },
 ];
 
-/** Pull soccer odds into the shared Game/odds tables (mirrors the soccer odds poll). */
+/**
+ * Pull soccer odds into the shared Game/odds tables (mirrors the soccer odds
+ * poll). `sportKeyPolled === null` means no allowlisted competition is in
+ * season this cycle — a legitimate empty slate, not a failure. A resolved
+ * competition that returns events but stores zero matches is "unusable".
+ */
 async function ingest(): Promise<IngestSummary> {
-  const summary = await pollAndStoreSoccerOdds();
-  return {
-    sportKey: "soccer",
-    ok: true,
-    detail: `${summary.matchesStored} matches, ${summary.snapshotsWritten} snapshots`,
-    ...summary,
-  };
+  try {
+    const summary = await pollAndStoreSoccerOdds();
+    if (summary.sportKeyPolled === null) {
+      return buildIngestSummary(
+        "soccer",
+        "empty",
+        "no allowlisted competition in season this cycle",
+        { fetched: 0, stored: 0 },
+        { ...summary }
+      );
+    }
+    const { status, detail } = classifyFetchStore(
+      { fetched: summary.eventsFetched, stored: summary.matchesStored },
+      { noun: "matches" }
+    );
+    return buildIngestSummary(
+      "soccer",
+      status,
+      detail,
+      { fetched: summary.eventsFetched, stored: summary.matchesStored },
+      { ...summary }
+    );
+  } catch (error) {
+    return summaryForCaughtError("soccer", error);
+  }
 }
 
 /** No ARCHR soccer model yet → no +EV board plays. Lights up with the paid-EV lens. */

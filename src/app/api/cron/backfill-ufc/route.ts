@@ -2,6 +2,7 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 import { settlePendingUfcPlays } from "@/lib/discord/postResults";
+import { classifyUfcIngest, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "backfill-ufc";
 
@@ -41,17 +42,30 @@ export async function POST(request: Request) {
       console.error("settlePendingUfcPlays failed (sync still succeeded):", err);
     }
 
+    // Zero new/updated events is the normal case most ticks (syncRecentUfcEvents
+    // stops at the first already-settled event) — not a failure. events vs.
+    // bouts is NOT a same-unit fetched/stored pair (an event's bout count
+    // increments before its bouts are even looked at), so this uses the
+    // UFC-specific classifier rather than the generic fetched/stored one —
+    // see classifyUfcIngest's doc for why.
+    const eventsProcessed = recent.eventsProcessed + upcoming.eventsProcessed;
+    const boutsProcessed = recent.boutsProcessed + upcoming.boutsProcessed;
+    const rejected = recent.skippedBouts.length + upcoming.skippedBouts.length;
+    const outcome = classifyUfcIngest({ eventsProcessed, boutsProcessed, rejected });
     await recordPollLog(
       JOB_NAME,
-      `ok (recent events: ${recent.eventsProcessed}, upcoming events: ${upcoming.eventsProcessed}, ` +
-        `bouts: ${recent.boutsProcessed + upcoming.boutsProcessed}, ` +
-        `skipped: ${recent.skippedBouts.length + upcoming.skippedBouts.length}, ` +
-        `ufc plays settled: ${ufcPlaysSettled})`
+      pollLogStatus({
+        status: outcome.status,
+        detail: `${outcome.detail}, ufc plays settled: ${ufcPlaysSettled}`,
+      })
     );
-    return Response.json({ recent, upcoming, ufcPlaysSettled });
+    return Response.json(
+      { status: outcome.status, detail: outcome.detail, recent, upcoming, ufcPlaysSettled },
+      { status: ingestHttpStatus(outcome.status) }
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ error: message }, { status: 502 });
+    const summary = summaryForCaughtError("ufc", error);
+    await recordPollLog(JOB_NAME, pollLogStatus(summary));
+    return Response.json(summary, { status: ingestHttpStatus(summary.status) });
   }
 }

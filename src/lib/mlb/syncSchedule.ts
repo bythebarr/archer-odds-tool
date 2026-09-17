@@ -11,6 +11,8 @@ const REGULAR_SEASON_START_ET = "2026-03-25";
 
 export interface SyncScheduleSummary {
   teamsUpserted: number;
+  /** Games the MLB Stats API returned for the window, before the team-match filter below. */
+  gamesFetched: number;
   gamesUpserted: number;
 }
 
@@ -77,7 +79,7 @@ export async function syncMlbSchedule(startDate: string, endDate: string): Promi
     gamesUpserted++;
   }
 
-  return { teamsUpserted: teams.length, gamesUpserted };
+  return { teamsUpserted: teams.length, gamesFetched: games.length, gamesUpserted };
 }
 
 /**

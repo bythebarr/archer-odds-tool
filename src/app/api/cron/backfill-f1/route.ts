@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { backfillF1History } from "@/lib/f1/backfillF1";
+import { ingestHttpStatus, pollLogStatus, summaryForCaughtError, type IngestStatus } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "backfill-f1";
 
@@ -27,14 +28,25 @@ export async function POST(request: Request) {
 
   try {
     const summary = await backfillF1History();
-    await recordPollLog(
-      JOB_NAME,
-      `ok (seasons: ${summary.seasonsProcessed}, races: ${summary.racesProcessed}, results: ${summary.resultsWritten})`
-    );
-    return Response.json(summary);
+    // NOTE: `resultsWritten` is not a reliable "did this work" signal on its
+    // own — the write path is idempotent (skipDuplicates), so a healthy daily
+    // re-run over already-backfilled seasons routinely writes 0 new rows.
+    // That means this route (unlike the odds/schedule polls) can't currently
+    // tell "wrote nothing because everything was already there" from "wrote
+    // nothing because something's wrong" — see the Step 2 remediation note in
+    // docs/architecture/EDGE-BASELINE-AUDIT.md. Classifying on `racesProcessed`
+    // (did Jolpica give us anything at all for the window) is the honest
+    // signal available without changing the write path's counting.
+    const status: IngestStatus = summary.racesProcessed === 0 ? "empty" : "ok";
+    const detail =
+      status === "empty"
+        ? "no races with results in the backfill window"
+        : `processed ${summary.racesProcessed} races across ${summary.seasonsProcessed} seasons, ${summary.resultsWritten} new result rows`;
+    await recordPollLog(JOB_NAME, pollLogStatus({ status, detail }));
+    return Response.json({ status, detail, ...summary }, { status: ingestHttpStatus(status) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ error: message }, { status: 502 });
+    const summary = summaryForCaughtError("f1", error);
+    await recordPollLog(JOB_NAME, pollLogStatus(summary));
+    return Response.json(summary, { status: ingestHttpStatus(summary.status) });
   }
 }

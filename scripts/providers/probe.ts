@@ -201,8 +201,13 @@ async function fingerprint(varName: string, key: string, lastErrors: string[]): 
   return null;
 }
 
+/** Minimal shape probe reads off an Odds-API-style event — just enough to count book coverage. */
+interface ProbeOddsEvent {
+  bookmakers?: { key: string }[];
+}
+
 /** Book coverage for an Odds-API-shaped payload, split by what the books actually are. */
-function coverage(events: any[]): { events: number; byBook: Map<string, number> } {
+function coverage(events: ProbeOddsEvent[]): { events: number; byBook: Map<string, number> } {
   const byBook = new Map<string, number>();
   for (const e of events) {
     for (const b of e.bookmakers ?? []) byBook.set(b.key, (byBook.get(b.key) ?? 0) + 1);
@@ -225,6 +230,12 @@ function reportCoverage(title: string, events: number, byBook: Map<string, numbe
   console.log(`    → mainstream books present: ${main.length}, best coverage ${best}/${events}`);
 }
 
+/** A provider's "extras" row shape is per-endpoint; this is just enough to probe Parlay's flat prop rows. */
+interface ProbeExtraRow {
+  bookmaker?: string;
+  event_id?: string;
+}
+
 async function profile(c: Probe, key: string): Promise<void> {
   console.log(`\n${"─".repeat(70)}\n${c.label}`);
 
@@ -238,7 +249,7 @@ async function profile(c: Probe, key: string): Promise<void> {
       c.request(key, `/sports/${c.sportKey}/odds`, { markets: "h2h,spreads,totals", oddsFormat: "american", regions: "us" })
     );
     if (main?.res.ok && Array.isArray(main.body)) {
-      const { events, byBook } = coverage(main.body);
+      const { events, byBook } = coverage(main.body as ProbeOddsEvent[]);
       reportCoverage("GAME LINES", events, byBook);
       console.log(`    credits this call: ${quotaFrom(main.res)}`);
     } else {
@@ -255,16 +266,20 @@ async function profile(c: Probe, key: string): Promise<void> {
       console.log(`\n  ${name}: HTTP ${out.res.status} — ${JSON.stringify(out.body).slice(0, 200)}`);
       continue;
     }
-    const rows = out.body as any[];
+    const rows = out.body as ProbeExtraRow[];
     if (!Array.isArray(rows)) { console.log(`\n  ${name}: ok, non-array shape (needs mapping)`); continue; }
     if (name === "props" && rows.length && rows[0].bookmaker) {
       // Parlay's flat prop row shape: one row per (event, book, player, market).
       const byBook = new Map<string, Set<string>>();
       for (const r of rows) {
-        if (!byBook.has(r.bookmaker)) byBook.set(r.bookmaker, new Set());
-        byBook.get(r.bookmaker)!.add(r.event_id);
+        // Guarded by the `rows[0].bookmaker` check above — every row in this
+        // branch is Parlay's flat prop shape, so both fields are present.
+        const bookmaker = r.bookmaker!;
+        const eventId = r.event_id!;
+        if (!byBook.has(bookmaker)) byBook.set(bookmaker, new Set());
+        byBook.get(bookmaker)!.add(eventId);
       }
-      const total = new Set(rows.map((r) => r.event_id)).size;
+      const total = new Set(rows.map((r) => r.event_id!)).size;
       reportCoverage("PLAYER PROPS", total, new Map([...byBook].map(([b, s]) => [b, s.size])));
     } else {
       console.log(`\n  ${name}: ok — ${rows.length} rows`);

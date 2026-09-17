@@ -16,6 +16,7 @@ import { calculateEv } from "@/lib/odds/devig";
 import { unitsFor } from "@/lib/betting/kelly";
 import { playLine } from "@/lib/card/line";
 import { sportMetaByKey } from "../sportsMeta";
+import { buildIngestSummary, classifyFetchStore, summaryForCaughtError } from "../ingestResult";
 import type { CalibrationSample } from "../calibration";
 import type {
   IngestSummary,
@@ -100,15 +101,40 @@ const TENNIS_MODEL: SportModel = {
   },
 };
 
-/** Pull tennis odds into the shared Game/odds tables (mirrors the poll-odds-tennis cron). */
+/**
+ * Pull tennis odds into the shared Game/odds tables (mirrors the
+ * poll-odds-tennis cron). `sportKeyPolled === null` means no allowlisted
+ * tournament is active this cycle — a legitimate empty slate, not a failure.
+ * A resolved tournament that returns events but stores zero matches is
+ * "unusable" (this is exactly the name-drift/mapping risk the odds feed
+ * carries — see nfl.ts's identical concern).
+ */
 async function ingest(): Promise<IngestSummary> {
-  const summary = await pollAndStoreTennisOdds();
-  return {
-    sportKey: "tennis",
-    ok: true,
-    detail: `${summary.matchesStored} matches, ${summary.snapshotsWritten} snapshots`,
-    ...summary,
-  };
+  try {
+    const summary = await pollAndStoreTennisOdds();
+    if (summary.sportKeyPolled === null) {
+      return buildIngestSummary(
+        "tennis",
+        "empty",
+        "no allowlisted tournament active this cycle",
+        { fetched: 0, stored: 0 },
+        { ...summary }
+      );
+    }
+    const { status, detail } = classifyFetchStore(
+      { fetched: summary.eventsFetched, stored: summary.matchesStored },
+      { noun: "matches" }
+    );
+    return buildIngestSummary(
+      "tennis",
+      status,
+      detail,
+      { fetched: summary.eventsFetched, stored: summary.matchesStored },
+      { ...summary }
+    );
+  } catch (error) {
+    return summaryForCaughtError("tennis", error);
+  }
 }
 
 /**

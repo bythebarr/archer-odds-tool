@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { decideFixedCadencePoll, recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { pollAndStorePlayerProps } from "@/lib/props/pollPlayerProps";
+import { classifyFetchStore, ingestHttpStatus, sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "poll-player-props";
 
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   if (authError) return authError;
 
   if (process.env.PLAYER_PROPS_ODDS_ENABLED !== "true") {
-    return Response.json({ polled: false, reason: "disabled" });
+    return Response.json({ polled: false, status: "skipped", reason: "disabled" });
   }
 
   // Once/day cadence dedup (23h floor, matching tennis's tolerance for a
@@ -57,10 +58,17 @@ export async function POST(request: Request) {
       summary.creditsUsed,
       summary.creditsRemaining
     );
-    return Response.json({ polled: true, ...decision, ...summary });
+    const outcome = classifyFetchStore(
+      { fetched: summary.gamesConsidered, stored: summary.snapshotsWritten },
+      { noun: "props" }
+    );
+    return Response.json(
+      { polled: true, status: outcome.status, ...decision, ...summary },
+      { status: ingestHttpStatus(outcome.status) }
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
     await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ polled: false, ...decision, error: message }, { status: 502 });
+    return Response.json({ polled: false, status: "error", ...decision, error: message }, { status: 502 });
   }
 }

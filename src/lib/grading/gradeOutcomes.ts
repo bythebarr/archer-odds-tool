@@ -88,12 +88,21 @@ const GRADABLE_TEAM_SPORTS = new Set(["mlb", "nfl"]);
  * arithmetic on a final score, so NFL reuses it unchanged. The one real
  * difference is the moneyline, which CAN push in the NFL — see below.
  */
-export async function gradeGame(game: Game): Promise<void> {
-  if (game.homeScore === null || game.awayScore === null) return;
+/**
+ * Returns the number of `GameOutcome` rows written, so a caller can tell "graded"
+ * from "considered but produced nothing" — the same distinction
+ * `gradeUngradedGames` needs to report truthfully (see its own doc comment and
+ * docs/architecture/EDGE-BASELINE-AUDIT.md's Step 2 section). Any existing
+ * caller that ignores the return value (NFL's `results.ts`) is unaffected.
+ */
+export async function gradeGame(game: Game): Promise<number> {
+  if (game.homeScore === null || game.awayScore === null) return 0;
   // The DB CHECK constraint guarantees homeTeamId/awayTeamId are non-null for
   // these sports, so the id guards are unreachable in practice rather than just
   // type-narrowing noise.
-  if (!GRADABLE_TEAM_SPORTS.has(game.sport) || game.homeTeamId === null || game.awayTeamId === null) return;
+  if (!GRADABLE_TEAM_SPORTS.has(game.sport) || game.homeTeamId === null || game.awayTeamId === null) return 0;
+
+  let outcomesWritten = 0;
 
   // Moneyline. Baseball plays until someone wins, but an NFL game CAN end tied
   // (once or twice a season), and a tie pushes the moneyline — bets are
@@ -103,6 +112,7 @@ export async function gradeGame(game: Game): Promise<void> {
   const homeWon = game.homeScore > game.awayScore;
   await upsertOutcome(game.id, game.homeTeamId, "h2h", tie ? "push" : homeWon ? "hit" : "miss");
   await upsertOutcome(game.id, game.awayTeamId, "h2h", tie ? "push" : homeWon ? "miss" : "hit");
+  outcomesWritten += 2;
 
   // Spread (run line): grade each side against its own closing point.
   const homeSpread = await captureClosingLine(game, "spreads", "home");
@@ -110,12 +120,14 @@ export async function gradeGame(game: Game): Promise<void> {
     const margin = game.homeScore - game.awayScore + homeSpread.point;
     const result: OutcomeResult = margin > 0 ? "hit" : margin < 0 ? "miss" : "push";
     await upsertOutcome(game.id, game.homeTeamId, "spreads", result);
+    outcomesWritten++;
   }
   const awaySpread = await captureClosingLine(game, "spreads", "away");
   if (awaySpread?.point != null) {
     const margin = game.awayScore - game.homeScore + awaySpread.point;
     const result: OutcomeResult = margin > 0 ? "hit" : margin < 0 ? "miss" : "push";
     await upsertOutcome(game.id, game.awayTeamId, "spreads", result);
+    outcomesWritten++;
   }
 
   // Total: symmetric for both teams, canonically graded from the Over's perspective.
@@ -126,18 +138,38 @@ export async function gradeGame(game: Game): Promise<void> {
       actualTotal > over.point ? "hit" : actualTotal < over.point ? "miss" : "push";
     await upsertOutcome(game.id, game.homeTeamId, "totals", result);
     await upsertOutcome(game.id, game.awayTeamId, "totals", result);
+    outcomesWritten += 2;
   }
+
+  return outcomesWritten;
 }
 
-/** Grades every final game that doesn't have outcomes recorded yet. Returns how many were graded. */
-export async function gradeUngradedGames(): Promise<number> {
+export interface GradeUngradedGamesSummary {
+  /** Final MLB games with no outcomes yet, found this run. */
+  considered: number;
+  /** Of those, how many actually got at least one `GameOutcome` row written. */
+  graded: number;
+}
+
+/**
+ * Grades every final MLB game that doesn't have outcomes recorded yet.
+ * `considered` vs `graded` lets a caller tell "nothing was ungraded" (both 0 —
+ * a legitimate empty run, e.g. this tick right after the previous one caught
+ * everything) from "found ungraded games but wrote no outcomes for any of
+ * them" (considered > 0, graded === 0 — a real problem: `gradeGame` only
+ * skips a game when its scores are missing or its sport isn't gradable,
+ * neither of which should be true for a `status: "final"` MLB row).
+ */
+export async function gradeUngradedGames(): Promise<GradeUngradedGamesSummary> {
   const ungraded = await prisma.game.findMany({
     where: { sport: "mlb", status: "final", outcomes: { none: {} } },
   });
 
+  let graded = 0;
   for (const game of ungraded) {
-    await gradeGame(game);
+    const outcomesWritten = await gradeGame(game);
+    if (outcomesWritten > 0) graded++;
   }
 
-  return ungraded.length;
+  return { considered: ungraded.length, graded };
 }

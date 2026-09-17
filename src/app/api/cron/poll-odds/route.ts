@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { decidePollOdds, recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { pollAndStoreOdds } from "@/lib/odds/ingest";
+import { classifyFetchStore, ingestHttpStatus, sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "poll-odds";
 
@@ -33,12 +34,22 @@ export async function POST(request: Request) {
       summary.creditsUsed,
       summary.creditsRemaining
     );
-    return Response.json({ polled: true, ...decision, ...summary });
+    // Same classification `writeOutcomeStatus` encodes as text, surfaced here
+    // as a structured field so a caller doesn't have to parse the PollLog
+    // string, and so the HTTP status reflects a genuine "unusable" outcome.
+    const outcome = classifyFetchStore(
+      { fetched: summary.eventsFetched, stored: summary.snapshotsWritten, rejected: summary.gamesUnmatched.length },
+      { noun: "snapshots" }
+    );
+    return Response.json(
+      { polled: true, status: outcome.status, ...decision, ...summary },
+      { status: ingestHttpStatus(outcome.status) }
+    );
   } catch (error) {
     // Don't let a transient Odds API failure (rate limit, outage, bad key)
     // crash the cron tick — log it so the next tick can retry.
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
     await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ polled: false, ...decision, error: message }, { status: 502 });
+    return Response.json({ polled: false, status: "error", ...decision, error: message }, { status: 502 });
   }
 }

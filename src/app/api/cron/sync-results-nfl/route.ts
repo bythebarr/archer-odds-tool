@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { syncAndGradeNflResults } from "@/lib/nfl/results";
+import { classifyFetchStore, ingestHttpStatus, sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "sync-results-nfl";
 
@@ -24,10 +25,17 @@ export async function POST(request: Request) {
     // match a Game row — the exact silent failure mode that let tennis "succeed"
     // for weeks while grading nothing.
     await recordPollLog(JOB_NAME, writeOutcomeStatus(summary.resultsFetched, summary.gamesGraded, "games graded"));
-    return Response.json({ ok: true, ...summary });
+    const outcome = classifyFetchStore(
+      { fetched: summary.resultsFetched, stored: summary.gamesGraded },
+      { noun: "games graded" }
+    );
+    return Response.json(
+      { ok: outcome.status === "ok" || outcome.status === "empty", status: outcome.status, ...summary },
+      { status: ingestHttpStatus(outcome.status) }
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
     await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ ok: false, error: message }, { status: 502 });
+    return Response.json({ ok: false, status: "error", error: message }, { status: 502 });
   }
 }
