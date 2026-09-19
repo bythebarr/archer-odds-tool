@@ -36,18 +36,26 @@ export default async function CfbPage({
   const asOfUtc = etDayBoundsUtc(date).gte; // start of the browsed ET day — one shared, conservative, leakage-safe cutoff for every game shown
   const season = seasonForDate(date);
 
-  // Nothing behind this page can fabricate a slate on failure (no DB, no
-  // cache of a prior good response) — an ESPN outage must render an honest
-  // "couldn't load" state, not crash into Next's generic error boundary or
-  // silently show stale/empty data as if it were today's real slate.
-  let slate: Awaited<ReturnType<typeof fetchCfbDateSlate>> | null = null;
-  let seasonGames: Awaited<ReturnType<typeof fetchCfbSeasonThrough>> = [];
-  let fetchFailed = false;
-  try {
-    [slate, seasonGames] = await Promise.all([fetchCfbDateSlate(date), fetchCfbSeasonThrough(season, asOfUtc)]);
-  } catch {
-    fetchFailed = true;
-  }
+  // Nothing behind this page can fabricate data on failure (no DB, no cache
+  // of a prior good response), so each of the two independent ESPN fetches
+  // is tracked separately (allSettled, not Promise.all) rather than folded
+  // into one generic "fetch failed" flag:
+  //   - the daily slate failing means there's nothing to render at all — an
+  //     honest "couldn't load" empty state, not Next's generic error page.
+  //   - the season-history fetch failing is a DIFFERENT, more subtle case: the
+  //     slate can still render (real teams/kickoffs/scores), but
+  //     buildTeamRatings([], ...) produces the exact same empty ratings map a
+  //     genuinely early, historyless season would — so without flagging it
+  //     explicitly, a transient history-fetch failure would silently render
+  //     as if it were normal early-season sparsity instead of a fetch error.
+  const [slateResult, seasonGamesResult] = await Promise.allSettled([
+    fetchCfbDateSlate(date),
+    fetchCfbSeasonThrough(season, asOfUtc),
+  ]);
+  const slateFetchFailed = slateResult.status === "rejected";
+  const slate = slateResult.status === "fulfilled" ? slateResult.value : [];
+  const historyFetchFailed = seasonGamesResult.status === "rejected";
+  const seasonGames = seasonGamesResult.status === "fulfilled" ? seasonGamesResult.value : [];
 
   const { ratings, leagueAvgPoints } = buildTeamRatings(seasonGames, asOfUtc);
 
@@ -70,17 +78,24 @@ export default async function CfbPage({
 
       <DateNav basePath="/cfb" date={date} />
 
-      {fetchFailed ? (
-        <EmptyState title="Couldn't load today's CFB schedule" arrow="miss" supportContext="cfb-fetch-failed">
+      {slateFetchFailed ? (
+        <EmptyState title="Couldn't load today's CFB schedule" arrow="miss" supportContext="cfb-slate-fetch-failed">
           ESPN&apos;s scoreboard didn&apos;t respond. This is a live fetch failure, not an empty slate — try
           reloading in a moment rather than assuming there are no games today.
         </EmptyState>
-      ) : slate === null || slate.length === 0 ? (
+      ) : slate.length === 0 ? (
         <EmptyState title="No FBS games on this date" arrow="miss" supportContext="cfb-empty">
           Try a Saturday during the season — CFB plays mostly on Saturdays, with a few Tuesday/Wednesday/Friday games.
         </EmptyState>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
+          {historyFetchFailed ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              Couldn&apos;t load season history from ESPN — the projections below are NOT genuine early-season
+              estimates, they&apos;re a fetch failure showing as zero-sample defaults. Reload to retry; today&apos;s
+              schedule above is unaffected.
+            </div>
+          ) : null}
           {slate.map((game) => {
             const homeRating = ratingOrDefault(ratings, game.home.espnTeamId);
             const awayRating = ratingOrDefault(ratings, game.away.espnTeamId);

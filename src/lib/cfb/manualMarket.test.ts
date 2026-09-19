@@ -75,6 +75,21 @@ describe("validateSpread / validateTotal", () => {
     expect(validateTotal(NaN)).toBeNull();
     expect(validateTotal(Infinity)).toBeNull();
   });
+
+  it("never coerces null, undefined, or a blank string into a fabricated 0 spread", () => {
+    // JS coerces Number(null) === 0 and Number("") === 0 — a naive
+    // `Number(raw)` cast would silently turn "no spread entered" into a real,
+    // valid-looking pick'em (0) spread. Every absent-input form must return
+    // null, not 0.
+    expect(validateSpread(null)).toBeNull();
+    expect(validateSpread(undefined)).toBeNull();
+    expect(validateSpread("")).toBeNull();
+  });
+
+  it("still accepts an explicitly entered numeric 0 as a valid pick'em spread", () => {
+    expect(validateSpread(0)).toBe(0);
+    expect(validateSpread("0")).toBe(0);
+  });
 });
 
 describe("serializeStore / parseStore", () => {
@@ -84,6 +99,20 @@ describe("serializeStore / parseStore", () => {
     };
     const raw = serializeStore(store);
     expect(parseStore(raw)).toEqual(store);
+  });
+
+  it("preserves a null spread as null through a full serialize -> parse round trip, never fabricating a 0", () => {
+    const store: ManualMarketStore = {
+      "401869940": { homeSpread: null, marketTotal: 54.5, homeMoneyline: null, awayMoneyline: null },
+    };
+    const roundTripped = parseStore(serializeStore(store));
+    expect(roundTripped["401869940"].homeSpread).toBeNull();
+    expect(roundTripped).toEqual(store);
+  });
+
+  it("preserves an explicitly entered 0 spread as 0 (not null) through a round trip", () => {
+    const store: ManualMarketStore = { "401869940": { homeSpread: 0, marketTotal: null, homeMoneyline: null, awayMoneyline: null } };
+    expect(parseStore(serializeStore(store))["401869940"].homeSpread).toBe(0);
   });
 
   it("returns an empty store for null, corrupt JSON, or a non-object payload", () => {

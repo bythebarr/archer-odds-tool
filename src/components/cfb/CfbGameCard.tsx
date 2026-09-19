@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { compareToModel, validateAmericanOdds, validateSpread, validateTotal } from "@/lib/cfb/manualMarket";
 import type { CfbGamePrediction, CfbGameStatus, CfbTeamRef, ManualMarketEntry } from "@/lib/cfb/types";
 import { useManualMarketEntry } from "./manualMarketStore";
+import { resyncDraft } from "./lineFieldSync";
 
 const STATUS_LABEL: Record<CfbGameStatus, string> = {
   scheduled: "Scheduled",
@@ -88,6 +89,20 @@ interface CfbGameCardProps {
  * which would otherwise produce duplicate `id`s across different games'
  * cards on the same `/cfb` page — invalid HTML, and it breaks the
  * label/input association for assistive tech.
+ *
+ * The typed `draft` and the committed `value` prop are deliberately two
+ * separate pieces of state (so a keystroke isn't validated/rejected
+ * mid-type), but they must still track each other whenever `value` changes
+ * for a reason OTHER than this field's own typing — Clear, a store update
+ * hydrating from `localStorage` after mount, or a cross-tab `storage` event.
+ * Re-syncing only in a `useEffect` would show a stale value for one extra
+ * render (a visible flash of wrong data); instead this compares against the
+ * value `draft` was last synced FROM, during render itself (the pattern
+ * React's own docs recommend for exactly this "adjust state when a prop
+ * changes" case) — it fires only when `value` itself actually moves, so it
+ * never fights an in-progress, uncommitted keystroke. The decision itself is
+ * `resyncDraft` (./lineFieldSync.ts) — pulled out pure so it's unit-testable
+ * without a DOM.
  */
 function LineField({
   fieldId,
@@ -103,6 +118,12 @@ function LineField({
   placeholder: string;
 }) {
   const [draft, setDraft] = useState<string>(value === null ? "" : String(value));
+  const [syncedValue, setSyncedValue] = useState(value);
+  const resync = resyncDraft(value, syncedValue);
+  if (resync) {
+    setSyncedValue(resync.syncedValue);
+    setDraft(resync.draft);
+  }
   return (
     <div className="flex flex-col gap-1">
       <Label htmlFor={fieldId} className="text-[11px] uppercase tracking-wide text-muted-foreground">

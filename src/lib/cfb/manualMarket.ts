@@ -24,8 +24,20 @@ export function validateAmericanOdds(raw: unknown): number | null {
   return n;
 }
 
-/** A point spread: any finite number within a sane blowout bound (a 100-point CFB spread would be a data-entry typo, not a real line). */
+/**
+ * A point spread: any finite number within a sane blowout bound (a 100-point
+ * CFB spread would be a data-entry typo, not a real line).
+ *
+ * `null`/`undefined`/`""` must stay `null`, never a fabricated pick'em (0)
+ * spread — `Number(null) === 0` and `Number("") === 0` in JS, so without this
+ * explicit check, an *absent* line and an *entered* "0" (a real, valid
+ * pick'em spread) would be indistinguishable. That's not just a display bug:
+ * `sanitizeEntry` re-runs this validator on every value read back out of
+ * `localStorage`, so a game with no spread entered — stored as `null` — would
+ * silently become a fabricated 0 spread on every reload.
+ */
 export function validateSpread(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
   const n = typeof raw === "number" ? raw : Number(raw);
   if (!Number.isFinite(n) || Math.abs(n) > 100) return null;
   return n;

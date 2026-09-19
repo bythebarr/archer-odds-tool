@@ -137,6 +137,22 @@ describe("parseScoreboard", () => {
     expect(parseScoreboard({ events: [event({ date: "not-a-date" })] })).toHaveLength(0);
   });
 
+  it("rejects an event with a missing or empty ESPN event id rather than falling back to an empty string", () => {
+    // A shared "" id across every id-less event would collide on React keys,
+    // ratings dedup, and the localStorage manual-market key — reject instead.
+    expect(parseScoreboard({ events: [event({ id: undefined })] })).toHaveLength(0);
+    expect(parseScoreboard({ events: [event({ id: "" })] })).toHaveLength(0);
+  });
+
+  it("does not let two id-less events collide once rejected — the surviving event keeps its own real id", () => {
+    const idLess1 = event({ id: undefined });
+    const idLess2 = event({ id: "" });
+    const real = finalEvent();
+    const games = parseScoreboard({ events: [idLess1, idLess2, real] });
+    expect(games).toHaveLength(1);
+    expect(games[0].espnEventId).toBe("401756853");
+  });
+
   it("rejects a completed game with a non-numeric score", () => {
     const malformed = finalEvent();
     (malformed.competitions[0].competitors[0] as { score: string }).score = "TBD";

@@ -114,15 +114,25 @@ function toTeamRef(c: EspnCfbCompetitor | undefined): CfbTeamRef | null {
 /**
  * Parses one scoreboard payload into games. Deliberately strict — matching
  * NFL's and tennis's grading rationale: anything with a missing team, an
- * unparseable score on a completed game, fewer than two competitors, or an
- * unparseable date is dropped rather than guessed at. Exported so parsing is
- * testable against captured payloads with zero network calls.
+ * unparseable score on a completed game, fewer than two competitors, a
+ * missing/empty event id, or an unparseable date is dropped rather than
+ * guessed at. Exported so parsing is testable against captured payloads with
+ * zero network calls.
  */
 export function parseScoreboard(payload: unknown): CfbScheduleGame[] {
   const body = payload as EspnScoreboardResponse | null | undefined;
   const out: CfbScheduleGame[] = [];
 
   for (const event of body?.events ?? []) {
+    // The event id is the identity every downstream layer keys off: React
+    // list keys, ratings dedup, and the localStorage manual-market store.
+    // Falling back to "" here (as an earlier version did) would let every
+    // id-less event on a slate collide on that same empty-string key —
+    // silently dropping games as "duplicates" and letting one game's manual
+    // market entry bleed onto another's. Reject instead.
+    const espnEventId = event.id;
+    if (!espnEventId) continue;
+
     const competition = event.competitions?.[0];
     const competitors = competition?.competitors ?? [];
     if (competitors.length !== 2) continue;
@@ -160,7 +170,7 @@ export function parseScoreboard(payload: unknown): CfbScheduleGame[] {
     const scoresApply = status !== "scheduled";
 
     out.push({
-      espnEventId: event.id ?? "",
+      espnEventId,
       startUtc,
       status,
       neutralSite: competition?.neutralSite === true,
