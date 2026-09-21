@@ -947,3 +947,177 @@ model Feedback {
   @@index([createdAt])
   @@index([resolved])
 }
+
+// ---------------------------------------------------------------------------
+// Model prediction history — generic, sport-agnostic, append-only persistence
+// for every model's point-in-time output. Added before any sport writes to
+// it (no CFB/MLB/NFL writer exists yet); see
+// docs/architecture/MODEL-PREDICTION-LIFECYCLE.md for the full design
+// rationale and why this is deliberately separate from PostedPlay (which
+// records what was POSTED to Discord — a small, owner-curated, mutable-until-
+// graded subset — not what a model PREDICTED).
+// ---------------------------------------------------------------------------
+
+/// A model's lifecycle stage at the moment a run was generated — frozen onto
+/// the run itself (never a live lookup), so a later promotion/demotion can
+/// never silently reinterpret what an old run claimed to be. Read-side gates
+/// (see src/lib/engine/trust.ts's isModelTrusted) are the intended consumer
+/// of this once a sport is wired; nothing reads it yet.
+///
+/// A real Prisma enum, deliberately unlike sportKey/modelKey/marketKey/
+/// selectionKey above and below — those are open strings specifically so a
+/// new sport/model/market needs no migration to start writing here (see
+/// PostedPlay's own precedent). Lifecycle is the opposite kind of field: a
+/// small, deliberately closed vocabulary that gates real product behavior
+/// (see MODEL-PREDICTION-LIFECYCLE.md's "Lifecycle meanings"), where a typo
+/// silently reading as "not production" (or worse, a fourth ad hoc string
+/// value nobody's read-side code recognizes) is a real risk worth a
+/// migration to add a new value to.
+enum ModelLifecycle {
+  experimental
+  validated
+  production
+}
+
+/// One point-in-time execution of one versioned model — the "batch" a set of
+/// individual predictions were generated under. Immutable once written:
+/// nothing on this row is ever updated in place. A later run for the same
+/// event/market/selection is a NEW row, never an overwrite of an old one —
+/// see ModelPrediction's docstring.
+model PredictionRun {
+  id String @id @default(cuid())
+
+  /// Open string, NOT the `Sport` enum — mirrors PostedPlay.sport's own
+  /// precedent (schema.prisma's PostedPlay docstring) so a new sport, or one
+  /// with no Game/Team rows at all (e.g. CFB v0, see docs/architecture/
+  /// CFB-V0.md), can write here with no enum migration.
+  sportKey String
+  /// Stable identifier for the model itself (e.g. "cfb-srs", "mlb-archer"),
+  /// independent of modelVersion — lets every version of the same model be
+  /// queried together.
+  modelKey String
+  /// Explicit version of the model that produced this run (e.g. a git SHA or
+  /// a bumped literal in source). Required — a run can never be silently
+  /// attributed to "whatever the model currently is."
+  modelVersion String
+  /// The model's lifecycle stage AT THE TIME this run was generated — see
+  /// the enum's docstring for why this is frozen rather than a live join.
+  lifecycle ModelLifecycle
+  /// When this run was executed. The storage boundary (src/lib/predictions)
+  /// requires this to be strictly before every one of this run's
+  /// predictions' scheduledStartUtc — enforced in application code, not a DB
+  /// constraint (a cross-row check spanning two tables isn't expressible as
+  /// a Postgres CHECK here, the same reason Game's single-pair invariant is
+  /// a hand-added migration CHECK rather than a Prisma-DSL one).
+  generatedAt DateTime
+  /// Strict "as of" cutoff the model's inputs were restricted to. Subject to
+  /// the same before-kickoff requirement as generatedAt, PLUS its own rule:
+  /// the storage boundary requires dataAsOfUtc <= generatedAt (a run cannot
+  /// claim to have used data "as of" a moment later than when it ran;
+  /// equality is fine — the cutoff can be the moment of generation).
+  dataAsOfUtc DateTime
+  /// Frozen copy of the calibration/trust snapshot active when this run was
+  /// generated (see CalibrationSnapshot in src/lib/engine/types.ts) — NOT a
+  /// live join, so a later re-baked calibration can never retroactively
+  /// change what an old run claims its trust state was. Optional: a
+  /// brand-new model may have no calibration snapshot yet.
+  calibrationSnapshot Json?
+  /// Version tag for the shape of the feature/input snapshot each of this
+  /// run's predictions carries — lets a future reader know which schema to
+  /// expect in ModelPrediction.featureSnapshot without inferring it from the
+  /// JSON shape itself.
+  featureSchemaVersion String
+  /// Freeform, run-level metadata (e.g. a backtest window, a free-text note
+  /// on what changed since the last run). Never read by validation/storage
+  /// logic — display/debugging only.
+  runMetadata Json?
+
+  createdAt DateTime @default(now())
+
+  predictions ModelPrediction[]
+
+  @@index([sportKey, modelKey])
+  @@index([generatedAt])
+}
+
+/// One immutable prediction, belonging to exactly one PredictionRun. See
+/// docs/architecture/MODEL-PREDICTION-LIFECYCLE.md for why this is a
+/// separate table from PostedPlay: PostedPlay records what actually went to
+/// Discord (a small, owner-curated subset, upserted, later mutated by
+/// grading); this table records what a model SAID, for every prediction a
+/// run produces, before any human curation and before any outcome exists.
+///
+/// Deliberately no settlement/outcome fields — a later settlement record
+/// attaches separately (own table, own writer) so these rows never need to
+/// be touched again after creation. See the lifecycle doc's "future
+/// settlement record direction" section.
+model ModelPrediction {
+  id    String        @id @default(cuid())
+  runId String
+  /// Restrict, not Cascade: nothing in this codebase deletes a PredictionRun
+  /// today, and this FK should not make it EASIER to. A history table's whole
+  /// purpose is to survive; Cascade would let one accidental `PredictionRun`
+  /// delete silently wipe every prediction under it. Restrict forces that
+  /// deletion to fail loudly instead — deleting prediction history, if it's
+  /// ever genuinely needed, should be a deliberate, explicit, reviewed
+  /// operation, not a side effect of deleting the row one level up.
+  run PredictionRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  /// Open string identifying the event this prediction is about — an ESPN
+  /// event id, a Game.id, a UfcBout.id, etc. Opaque to this table on
+  /// purpose, same posture as Play.eventRef (src/lib/engine/types.ts).
+  eventRef String
+  /// The event's scheduled kickoff/start, as known at generation time — the
+  /// anchor the storage boundary checks generatedAt/dataAsOfUtc against.
+  scheduledStartUtc DateTime
+  /// Open string market identifier (e.g. "h2h", "spreads", "player_hits") —
+  /// not the `MarketType` enum, so a market that doesn't map to
+  /// h2h/spreads/totals (see EDGE-BASELINE-AUDIT.md §9) can be recorded here
+  /// with no enum migration.
+  marketKey String
+  /// Open string selection/side identifier (e.g. "home", "over", a player
+  /// id) — mirrors SelectionSpec.side's open-string posture.
+  selectionKey String
+
+  /// The model's probability for this selection, when the model produces
+  /// one. Null for a purely descriptive projection with no probability
+  /// attached (e.g. a raw projected score with no derived win-prob).
+  probability Float?
+  /// Projected value(s) or a distribution — e.g. { margin, total } or a full
+  /// distribution payload. Shape is model-specific; this table doesn't
+  /// interpret it.
+  projection Json?
+  /// The exact feature/input values the model actually used to produce this
+  /// prediction, frozen at generation time — the field that closes the
+  /// live/backtest divergence docs/architecture/MLB-MODEL-INVENTORY.md §5
+  /// and §7 describe: a later query against live tables can never silently
+  /// substitute current aggregates for what this prediction actually saw.
+  featureSnapshot Json
+  /// Which inputs were missing/unavailable/stale when this prediction was
+  /// generated (e.g. { probablePitcherConfirmed: false }), so a downstream
+  /// consumer can discount a prediction made on an incomplete picture
+  /// without needing a separate side-channel.
+  missingInputs Json?
+  /// The market line(s) available at generation time, if any were known
+  /// (e.g. a manually entered CFB line, or a polled odds snapshot) — frozen
+  /// here rather than joined live, for the same reason as featureSnapshot.
+  marketSnapshot Json?
+
+  createdAt DateTime @default(now())
+
+  /// Guards against a duplicate selection within the SAME run being written
+  /// twice (an accidental retry of one run's write, or a caller bug that
+  /// includes the same selection twice in one batch) — the storage
+  /// boundary's pre-write duplicate check (src/lib/predictions/validate.ts)
+  /// is the primary defense; this is the DB-level backstop. Does NOT
+  /// restrict separate runs from predicting the same event/market/selection
+  /// again — that's the whole point of this table (see PredictionRun's
+  /// docstring).
+  @@unique([runId, eventRef, marketKey, selectionKey])
+  @@index([eventRef, marketKey, selectionKey])
+  @@index([runId])
+  /// Supports "predictions for games starting in this window" lookups —
+  /// the third expected axis (alongside sport/model on PredictionRun and
+  /// event/market/selection above) once a reader is built.
+  @@index([scheduledStartUtc])
+}
