@@ -3,10 +3,10 @@
 > This document covers the generic `PredictionRun`/`ModelPrediction` tables
 > (`prisma/schema.prisma`, `src/lib/predictions/*`). See
 > docs/architecture/MLB-MODEL-INVENTORY.md for the audit that identified this
-> gap. CFB v0 is now the first (and, as of this writing, only) writer — see
-> docs/architecture/CFB-V0.md's "Forward-prediction capture" section and
-> `src/lib/cfb/predictionCapture.ts`/`capturePredictions.ts` for its specific
-> use of this generic foundation. MLB has no writer yet.
+> gap. CFB v0 and NFL's experimental Elo research slice are the two writers
+> onto this foundation so far — see docs/architecture/CFB-V0.md's
+> "Forward-prediction capture" and docs/architecture/NFL-RESEARCH.md for each
+> one's specific use of it. MLB has no writer yet.
 
 ## Why `PostedPlay` is not prediction history
 
@@ -238,3 +238,63 @@ prediction against; no market validation of any kind; no claim that the
 model's spread/total accuracy has been checked; no lifecycle above
 `experimental`; no paid provider or API key was added or is required for
 this writer (ESPN only, free/unkeyed).
+
+## The NFL research writer (implemented)
+
+The second writer onto this foundation, and the first to reuse an ALREADY
+production-validated model layer (`src/lib/nfl/elo.ts`/`model.ts`, unchanged
+by this writer) rather than a brand-new one. See
+docs/architecture/NFL-RESEARCH.md for the full description; in this
+document's vocabulary:
+
+- **Pure builder + shared prediction function:**
+  `src/lib/nfl/research/predictionCapture.ts` — `computeNflGamePrediction`
+  is the ONE place win probability/expected margin/warnings are computed,
+  called identically by the display page and the storage path (so a
+  rendered card and a stored prediction can never disagree); `buildNflResearchSlate`/
+  `buildNflResearchPredictionRun` assemble the run. No Prisma, no network.
+- **As-of reconstruction:** `src/lib/nfl/research/eloAsOf.ts`'s
+  `buildNflEloAsOf` replays nflverse history through the EXISTING `NflElo`
+  class — no reimplemented formula.
+- **Explicit identity validation:** `src/lib/nfl/research/teamIdentity.ts` —
+  found and fixed a real ESPN-to-nflverse mismatch (the Rams: `"LA"`, not
+  this codebase's own `"LAR"`) by checking against real fetched data rather
+  than assuming a display abbreviation is also the data-source's key.
+- **Thin orchestration:** `src/lib/nfl/research/captureSnapshot.ts`'s
+  `captureNflResearchSnapshot` — fetches ESPN + nflverse, builds the slate,
+  checks the retry guard, calls `createPredictionRun`.
+- **Execution surface:** a Server Action (`src/app/nfl/research/actions.ts`),
+  triggered only by a button on `/nfl/research` — no CLI script, no cron,
+  matching this writer's "deliberate user action" requirement more directly
+  than a command-line invocation would.
+- **Model identity:** `src/lib/nfl/research/modelIdentity.ts` — `nfl-elo` /
+  `v0.1.0` / `experimental`, hand-bumped, distinct from `NFL_MODEL`
+  (`src/lib/nfl/model.ts`)'s calibration-harness identity.
+
+Same "count distinct runs, not rows" rule as CFB: two `ModelPrediction` rows
+per game (`home`/`away`, same `marketKey: "h2h"`, complementary
+probabilities). Same retry-guard posture as CFB: no DB-level idempotency
+key, a soft database-backed check-then-confirm gate instead (see
+`captureSnapshot.ts`'s `shouldBlockRerun` docstring), with the same honest
+scope note — it catches a retry after an earlier finished attempt, not two
+truly simultaneous ones.
+
+**What's different from CFB, and why:** CFB's guard buckets by a
+caller-supplied calendar date; NFL research has no per-invocation date
+parameter (it always operates on "the current week"), so it instead checks
+the EXACT set of ESPN `eventRef`s in the current eligible slate — a prior
+run only blocks a new one if it actually recorded a prediction for one of
+THIS slate's specific games (an earlier version matched by a kickoff-time
+date range instead, found by adversarial review to be over-broad around bye
+weeks — see `captureSnapshot.ts`'s own docstring on `findExistingRunForEvents`).
+The Server Action takes no untrusted prediction payload from the client; it
+re-derives everything server-side from a single boolean (`confirmRerun`),
+per Next.js's own Server Actions security guidance that every action is an
+untrusted, unauthenticated entry point.
+
+**What this does NOT unlock:** identical list to CFB's above — no CLV, no
+market validation, no lifecycle above `experimental`, no paid provider. Plus
+one NFL-specific fact: the underlying model's own CLV backtest is not just
+"not yet run" (CFB's situation) but **already run and negative**
+(`docs/architecture/calibration.md`) — this writer does not change that
+verdict, and nothing it stores should be read as contradicting it.

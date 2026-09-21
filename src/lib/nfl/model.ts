@@ -12,7 +12,7 @@ import type { CalibrationSample } from "@/lib/engine/calibration";
 import type { SportModel } from "@/lib/engine/types";
 
 /** Below this many games for either team, Elo has too little signal to price. */
-const MIN_GAMES_FOR_SIGNAL = 8;
+export const MIN_GAMES_FOR_SIGNAL = 8;
 
 /**
  * Lookahead-safe backtest sampler for the NFL Elo model. Replays the whole free
