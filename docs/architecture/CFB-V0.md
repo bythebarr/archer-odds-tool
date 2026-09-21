@@ -291,6 +291,119 @@ moneyline, away moneyline. Entries:
   render sees before hydration (the same pattern `src/lib/slip/SlipContext.tsx`
   already uses), so there's no hydration mismatch.
 
+## Forward-prediction capture (manual, append-only — separate from the live board)
+
+The board above (`/cfb`) still computes and discards on every request, exactly
+as described in "Architecture" — nothing about it changed. A **separate,
+optional** path now exists to durably preserve CFB v0's predictions ahead of
+kickoff, so a real, honest track record can start accumulating before any new
+model feature is added. See `docs/architecture/MODEL-PREDICTION-LIFECYCLE.md`
+for the full generic design; this section covers CFB's specific use of it.
+
+**What's stored.** `src/lib/cfb/predictionCapture.ts` is a pure function
+(no Prisma, no network) that turns an already-fetched slate plus an
+already-built `CfbRatingBook` into a `PredictionRunInput` (see
+`src/lib/predictions/types.ts`). For every eligible game it writes **two**
+`ModelPrediction` rows — `selectionKey: "home"` and `"away"`, both under
+`marketKey: "h2h"` — carrying:
+
+- the model's win probability for that side (the pair always sums to 1)
+- the full game-level projection (`projectedHomeScore/AwayScore/Margin/Total`,
+  `confidence`, `minGamesPlayed`) — identical on both rows, deliberately
+  duplicated so one row is self-contained; **do not count "games predicted"
+  by counting rows** — two rows share one game, count distinct
+  `(eventRef, marketKey)` pairs instead
+- the exact feature snapshot: ESPN event id, scheduled start, neutral-site
+  flag, league-average points, both teams' full ratings (offense/defense/net/
+  games played/SOS), the home-field points actually applied, the data-as-of
+  cutoff, and every named heuristic constant from "Heuristic constants" below
+  needed to reproduce the number
+- which side(s), if any, had no prior rating (`homeTeamUnrated`/
+  `awayTeamUnrated`) — the only "missing input" v0's own feature schema can
+  legitimately report; weather/injuries/recruiting/coaching are never
+  reported missing, since they're not part of v0's declared inputs yet
+
+**No market line is ever stored or fabricated.** CFB has no server-side odds
+feed (see "Manual market workflow" above — lines live only in the owner's own
+browser). `marketSnapshot` is always absent, and no spread-cover or
+over/under probability is computed or stored, because there's no known line
+to compute one against — doing so would misrepresent a fabricated number as a
+real market comparison. `projectedMargin`/`projectedTotal` ARE preserved, as
+plain model output values, never paired with a probability.
+
+**Model identity** (`src/lib/cfb/modelIdentity.ts`): `modelKey: "cfb-srs"`,
+`modelVersion: "v0.1.0"`, `lifecycle: "experimental"` — hand-bumped, never
+derived from a git commit (a commit SHA identifies a checkout, not "which
+version of this specific model" — see that file's own docstring). Never
+`validated` or `production` until this model has actually cleared that bar
+(see "Validation plan" below).
+
+**How to run it.** Manual only — no cron, no schedule, per this feature's own
+scope:
+
+```
+npm run capture:cfb:predictions                          # today, ET
+npm run capture:cfb:predictions -- --date=2026-09-27      # a specific future date
+npm run capture:cfb:predictions -- --date=2026-09-27 --confirm-rerun
+```
+
+Requires only `DATABASE_URL` (this project's existing Postgres) — the free,
+unkeyed ESPN endpoint is the only network call. No paid provider, no new API
+key, no live odds integration. Prints the model identity, `generatedAt`/
+`dataAsOfUtc`, eligible-game count, exclusions by reason, the run id, and
+rows written; exits nonzero on a provider/validation/database error, and
+exits 0 with a truthful "nothing eligible" message on a genuinely empty or
+fully-excluded slate (it never writes an empty `PredictionRun`).
+
+**Temporal integrity.** Only `"scheduled"`-status games whose kickoff is
+strictly after the capture's `generatedAt` are eligible — live, final,
+postponed, and unrecognized-status games are excluded and counted by reason,
+as is any nominally-scheduled game whose kickoff has already passed. Ratings
+come from a separately-fetched, separately-cutoff-bounded completed-games
+list, so a target game's own result can never leak into its own prediction.
+
+**As-of cutoff: same mechanism as `/cfb`, a deliberately different value.**
+Capture calls the identical `buildTeamRatings`/`predictGame`/`ratingOrDefault`
+functions the live board uses — same constants, same rating defaults, same
+strict-`<`-before-cutoff enforcement inside `buildTeamRatings` itself (see
+`ratings.test.ts`'s "enforces a strict as-of cutoff", and
+`predictionCapture.test.ts`'s "live-page parity" block, which proves this by
+running both paths over identical inputs and asserting byte-identical
+output). What's NOT the same, on purpose: the live page pins `asOfUtc` to
+"start of the BROWSED date" — one shared, display-convenient cutoff for
+every game shown that day, regardless of when you're actually viewing it
+(see `page.tsx`'s own comment). Capture instead uses "the actual instant the
+script ran." Pinning capture to "start of the target date" would let a
+prediction generated days in advance implicitly see information that didn't
+exist yet when it actually ran — a real causality violation, not a harmless
+display simplification. `dataAsOfUtc`, as stored, is always exactly the
+value `buildTeamRatings` was actually called with — never a separately
+re-derived approximation, and never claimed to be stricter than it is.
+
+**Retry protection — a deliberate, documented limitation, not a schema
+change.** There is no database-level idempotency key for "one CFB capture
+attempt." Before writing, the script checks whether this exact model/version
+already produced a prediction for a game inside the target date; if so, it
+refuses and requires an explicit `--confirm-rerun` to proceed as a new,
+additional revision. This is a soft, human-confirmed gate, not an enforced
+constraint — a confirmed rerun writes a normal, fully valid additional run,
+and nothing about the storage layer's own ability to hold legitimate
+revisions is weakened. See `src/lib/cfb/capturePredictions.ts`'s
+`shouldBlockRerun` docstring for why a hard, automatic key was deliberately
+not built (any time-bucket size would be an arbitrary line between "retry"
+and "legitimate same-day revision"). **Honest scope:** the check queries the
+real, shared database, so it correctly catches a retry after an EARLIER
+process has already finished (including from another machine) — but the
+check-then-write is not atomic, so two invocations running at the literal
+same instant could both pass the check before either writes. Accepted, not
+fixed: this is a manual, single-operator CLI, never a cron or a multi-worker
+job.
+
+**No Discord, no production eligibility.** This writes only to
+`PredictionRun`/`ModelPrediction`. Nothing reads these tables yet — the board,
+the sport registry, Discord, and the card/deck pipeline are completely
+untouched, exactly as before this feature existed.
+
 ## Missing factors (known, not yet incorporated)
 
 Injuries and player availability, weather, transfers/returning production,
@@ -310,6 +423,24 @@ Before any number here is described as calibrated:
 3. Compare against closing lines specifically (CLV), the same bar every other
    sport's model is held to before being called signal (see
    `docs/architecture/calibration.md`).
+
+**What forward capture (above) changes about this plan, precisely:**
+
+- **Now possible:** honest, point-in-time **outcome** calibration — once
+  enough `ModelPrediction` rows exist and a settlement record is built (see
+  `MODEL-PREDICTION-LIFECYCLE.md`'s "future settlement record direction"),
+  the model's win-probability calls can be scored against real final
+  outcomes the same way `calibration.ts` scores every other sport, without
+  any lookahead risk, because the prediction was frozen before kickoff.
+- **Still blocked:** CLV and spread/total-market evaluation (item 3 above,
+  and any spread-cover/over-under calibration) — those require real,
+  point-in-time market lines, and CFB v0 collects none server-side (see
+  "Forward-prediction capture" above and `docs/architecture/
+  MODEL-DATA-REQUIREMENTS.md`'s CFB row). Nothing changes here until a real
+  market-line source is evaluated and wired.
+- This plan's numbered steps 1–3 are unchanged and still describe the
+  eventual bar; forward capture is what makes step 1's *live* half honestly
+  collectible starting now, not a replacement for the historical backtest.
 
 ## Upgrade roadmap
 

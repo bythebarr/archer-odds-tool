@@ -1,10 +1,12 @@
 # Model prediction lifecycle — persistence foundation
 
 > This document covers the generic `PredictionRun`/`ModelPrediction` tables
-> added by this task (`prisma/schema.prisma`, `src/lib/predictions/*`). No
-> sport writes to these tables yet. See docs/architecture/CFB-V0.md and
+> (`prisma/schema.prisma`, `src/lib/predictions/*`). See
 > docs/architecture/MLB-MODEL-INVENTORY.md for the audit that identified this
-> gap; this doc covers the foundation, not a CFB or MLB writer.
+> gap. CFB v0 is now the first (and, as of this writing, only) writer — see
+> docs/architecture/CFB-V0.md's "Forward-prediction capture" section and
+> `src/lib/cfb/predictionCapture.ts`/`capturePredictions.ts` for its specific
+> use of this generic foundation. MLB has no writer yet.
 
 ## Why `PostedPlay` is not prediction history
 
@@ -107,7 +109,13 @@ inventing a new shape.
   call. Nothing in this module claims otherwise; if a future caller needs
   retry-safety across whole runs (not just within one), that's a deliberate
   addition to design and test for at that point, not something to assume
-  exists today.
+  exists today. **CFB is the first caller to need this**, and deliberately
+  does NOT add a schema-level key here — see CFB-V0.md's "Retry protection"
+  and `capturePredictions.ts`'s `shouldBlockRerun` for why an
+  application-level, confirmable check (not a database constraint) was the
+  right call for that specific use case, and why a future caller with
+  different needs should make its own decision rather than assume this one
+  generalizes.
 - **Stable event identity does not depend on any display name.**
   `ModelPrediction.eventRef`/`marketKey`/`selectionKey` are opaque
   identifiers (an ESPN event id, a stable market/side key) — there is no
@@ -161,19 +169,27 @@ against what now exists:
 | Can a later formula change reinterpret an old prediction? | N/A — nothing was stored to reinterpret | No — rows are immutable; a changed model writes new rows under a new `modelVersion`, never edits old ones |
 | Is the calibration/trust state at generation time knowable later? | No — `CalibrationSnapshot` is a single mutable field, overwritten on every re-bake | `calibrationSnapshot` is copied onto the run at creation, not joined live |
 
-## What this commit intentionally does not wire
+## What this still intentionally does not wire
 
-- **No sport writes to this yet.** CFB v0 still computes and discards on every
-  request (CFB-V0.md); MLB's live path still reads live tables. Nothing calls
-  `createPredictionRun` in production code.
+- **CFB v0's own `/cfb` board is completely untouched.** It still computes
+  and discards on every request, exactly as before (CFB-V0.md
+  "Architecture") — capture is a wholly separate, manual, opt-in path
+  (`scripts/capture-cfb-predictions.ts`) that runs alongside it, never inside
+  its render path. MLB's live path still reads live tables and has no writer
+  yet.
 - **No settlement/outcome fields, and no settlement writer.** See "Future
-  settlement record direction" below.
-- **No lifecycle gating.** `src/lib/engine/trust.ts` is untouched.
-- **No UI.** Nothing renders these tables anywhere.
-- **No cron.** No scheduled job calls `createPredictionRun`.
+  settlement record direction" below — still not built.
+- **No lifecycle gating.** `src/lib/engine/trust.ts` is untouched; CFB's
+  `lifecycle: "experimental"` is stored but read by nothing yet.
+- **No UI.** Nothing renders `PredictionRun`/`ModelPrediction` anywhere.
+- **No cron or schedule.** `capture:cfb:predictions` is manual-only, run by
+  hand — no Vercel Cron entry, no GitHub Actions workflow.
 - **No CFB registry change.** CFB-V0.md's own stated exit condition — "CFB
   joins the registry only after a full adapter/storage/grading strategy for it
-  is approved" — is not met by this task alone.
+  is approved" — is still not met. CFB has no `Sport` enum entry, no `Game`
+  row, and no Discord/deck eligibility of any kind; `PredictionRun.sportKey`
+  is a plain `"cfb"` string, same posture as every other open identity field
+  in this module.
 
 ## Future settlement record direction
 
@@ -186,12 +202,39 @@ outcome, and a graded-at timestamp — written by a later job, never by editing
 the original `ModelPrediction` row. This keeps every prediction row exactly as
 frozen after settlement as before it.
 
-## Future CFB writer — the next task
+## The CFB writer (implemented)
 
-Once this foundation lands, the smallest next step (per the prior
-investigation's recommended sequence) is wiring CFB v0's existing
-`predictGame`/`buildTeamRatings` (`src/lib/cfb/`, already pure functions,
-CFB-V0.md "Architecture") to call `createPredictionRun` once per game per day,
-from a new, explicitly separate script/cron — without touching `/cfb`'s live
-render path, and without registering CFB in the sport engine yet. That task is
-out of scope here.
+CFB v0 is the first writer onto this foundation. See CFB-V0.md's
+"Forward-prediction capture" section for the full description of what's
+stored and how to run it; the short version, in terms of this document's own
+vocabulary:
+
+- **Pure builder:** `src/lib/cfb/predictionCapture.ts`'s
+  `buildCfbPredictionRun` — no Prisma, no network, exhaustively unit-tested
+  (`predictionCapture.test.ts`).
+- **Thin orchestration:** `src/lib/cfb/capturePredictions.ts`'s
+  `captureCfbPredictions` — fetches ESPN, builds the rating book, calls the
+  pure builder, then `createPredictionRun`.
+- **Execution surface:** `scripts/capture-cfb-predictions.ts`
+  (`npm run capture:cfb:predictions`) — manual only, no cron.
+- **Model identity:** `src/lib/cfb/modelIdentity.ts` — `cfb-srs` / `v0.1.0` /
+  `experimental`, hand-bumped.
+
+`src/lib/predictions` itself has no CFB (or any sport-specific) import
+anywhere — the dependency runs one way, CFB depends on the generic module,
+never the reverse.
+
+**A concrete instance of the "count distinct runs, not rows" rule above:**
+CFB writes TWO `ModelPrediction` rows per game (`selectionKey: "home"` and
+`"away"`, same `marketKey: "h2h"`, complementary probabilities summing to 1)
+— see `buildCfbPredictionRun`'s own docstring. A future calibration pass over
+this data must count distinct `(eventRef, marketKey)` pairs, not rows, or it
+will silently double-count every CFB game as two independent samples.
+
+**What this does NOT unlock, stated plainly (nothing here changes with this
+writer existing):** no CLV or spread/total-market evaluation — CFB collects
+no server-side market line at all, so there is nothing to compare a
+prediction against; no market validation of any kind; no claim that the
+model's spread/total accuracy has been checked; no lifecycle above
+`experimental`; no paid provider or API key was added or is required for
+this writer (ESPN only, free/unkeyed).
