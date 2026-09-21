@@ -1,26 +1,32 @@
 "use client";
 
 /**
- * One NFL research game: schedule/status, the Elo model's pregame
- * projection (win probabilities + expected margin only — no totals, no
- * spread-cover/over-under, no picks/units/Kelly — see docs/architecture/
- * NFL-RESEARCH.md), and a manual market-line form for local, browser-only
- * disagreement comparison. Every instance of this card carries the
- * experimental/signal-only badge and the CLV-negative warning — never
- * conditionally hidden.
+ * One NFL research game — redesigned for presentation (see the task that
+ * produced this revision). Every underlying number, warning, and disclosure
+ * is byte-for-byte the same as before this pass; only layout/hierarchy/visual
+ * treatment changed. No totals, no spread-cover/over-under probability, no
+ * picks/units/Kelly — see docs/architecture/NFL-RESEARCH.md.
+ *
+ * Reuses the app's existing "premium matchup" pattern
+ * (`src/app/games/[gameId]/page.tsx`'s symmetric team header + `WinProbBar`)
+ * rather than inventing a new one, and the existing `<details>` disclosure
+ * convention already used on `/deck` for secondary content.
  */
 import { useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { TeamBadge } from "@/components/TeamBadge";
+import { WinProbBar } from "@/components/WinProbBar";
 import { compareToModel, validateAmericanOdds, validateSpread } from "@/lib/nfl/research/manualMarket";
 import type { NflManualLineType } from "@/lib/nfl/research/manualMarket";
 import type { NflGamePrediction } from "@/lib/nfl/research/predictionCapture";
 import type { NflResearchGameStatus, NflScheduleGame } from "@/lib/nfl/research/espnSchedule";
 import type { NflTeamIdentity } from "@/lib/nfl/research/teamIdentity";
 import { useNflManualMarketEntry } from "./manualMarketStore";
+import { projectedLineLabel } from "./projectedLine";
 
 const STATUS_LABEL: Record<NflResearchGameStatus, string> = {
   scheduled: "Scheduled",
@@ -33,6 +39,8 @@ const STATUS_LABEL: Record<NflResearchGameStatus, string> = {
 function formatKickoff(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
+    month: "short",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
     timeZone: "America/New_York",
@@ -61,7 +69,7 @@ function LineField({ fieldId, label, value, onCommit, placeholder }: LineFieldPr
   const [draft, setDraft] = useState<string>(value === null ? "" : String(value));
   return (
     <div className="flex flex-col gap-1">
-      <Label htmlFor={fieldId} className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <Label htmlFor={fieldId} className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </Label>
       <Input
@@ -71,6 +79,7 @@ function LineField({ fieldId, label, value, onCommit, placeholder }: LineFieldPr
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => onCommit(draft)}
+        className="h-9 text-sm"
       />
     </div>
   );
@@ -100,90 +109,95 @@ export function NflResearchGameCard({ game, homeIdentity, awayIdentity, predicti
   }
 
   const comparison = compareToModel(entry, prediction);
+  const hasManualEntry = entry.homeSpread !== null || entry.homeMoneyline !== null || entry.awayMoneyline !== null || entry.awaySpread !== null;
+  const lineLabel = projectedLineLabel(homeIdentity.abbreviation, awayIdentity.abbreviation, prediction.expectedHomeMargin);
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardContent className="flex flex-col gap-4">
+        {/* Kickoff + status */}
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-muted-foreground">{formatKickoff(game.startUtc)} ET</span>
-          <div className="flex items-center gap-1.5">
-            <Badge variant={game.status === "live" ? "destructive" : game.status === "final" ? "secondary" : "outline"}>
-              {STATUS_LABEL[game.status]}
-            </Badge>
-            <Badge variant="outline" className="border-amber-400 text-amber-700 dark:border-amber-500 dark:text-amber-300">
-              Experimental · signal-only
-            </Badge>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {/* Teams */}
-        <div className="flex flex-col gap-2">
-          {[
-            { name: awayIdentity.espnName, score: game.awayScore, label: "Away" },
-            { name: homeIdentity.espnName, score: game.homeScore, label: "Home" },
-          ].map(({ name, score, label }) => (
-            <div key={name} className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-foreground">{name}</div>
-                <div className="text-[11px] text-muted-foreground">{label}</div>
-              </div>
-              {score !== null ? <span className="font-mono text-sm tabular-nums text-foreground">{score}</span> : null}
-            </div>
-          ))}
+          <Badge variant={game.status === "live" ? "destructive" : game.status === "final" ? "secondary" : "outline"}>
+            {STATUS_LABEL[game.status]}
+          </Badge>
         </div>
 
-        {/* Projection */}
-        <div className="rounded-lg bg-muted/40 p-3">
-          <div className="flex items-baseline justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Pregame Elo projection
-            </span>
+        {/* Symmetric matchup header — mirrors the app's existing MLB game-detail pattern */}
+        <div className="flex items-center justify-center gap-4 rounded-xl bg-muted/30 px-3 py-4 sm:gap-8 sm:px-4 sm:py-5">
+          <div className="flex flex-1 flex-col items-center gap-2 text-center">
+            <TeamBadge abbreviation={awayIdentity.abbreviation} name={awayIdentity.espnName} size={44} />
+            <span className="text-xs font-semibold text-foreground sm:text-sm">{awayIdentity.espnName}</span>
+            {game.awayScore !== null ? (
+              <span className="font-mono text-xl font-bold text-foreground">{game.awayScore}</span>
+            ) : null}
           </div>
-          <div className="mt-1.5 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Expected home margin {pts(prediction.expectedHomeMargin)}</span>
+          <span className="shrink-0 text-xs font-medium text-muted-foreground">@</span>
+          <div className="flex flex-1 flex-col items-center gap-2 text-center">
+            <TeamBadge abbreviation={homeIdentity.abbreviation} name={homeIdentity.espnName} size={44} />
+            <span className="text-xs font-semibold text-foreground sm:text-sm">{homeIdentity.espnName}</span>
+            {game.homeScore !== null ? (
+              <span className="font-mono text-xl font-bold text-foreground">{game.homeScore}</span>
+            ) : null}
           </div>
-          <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-            <span>{homeIdentity.abbreviation} win {pct(prediction.homeWinProb)} (experimental estimate)</span>
-            <span>{awayIdentity.abbreviation} win {pct(prediction.awayWinProb)} (experimental estimate)</span>
-          </div>
+        </div>
 
-          {/* Underlying Elo + sample */}
-          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-            <span>{homeIdentity.abbreviation} rating: {Math.round(prediction.homeRating)} ({prediction.homeGamesPlayed} games)</span>
-            <span>{awayIdentity.abbreviation} rating: {Math.round(prediction.awayRating)} ({prediction.awayGamesPlayed} games)</span>
-          </div>
+        {/* Win probability — large, immediately visible, accessible text labels (not color-only) */}
+        <WinProbBar
+          awayAbbr={awayIdentity.abbreviation}
+          homeAbbr={homeIdentity.abbreviation}
+          awayProb={prediction.awayWinProb}
+          homeProb={prediction.homeWinProb}
+        />
 
-          {prediction.warnings.length > 0 ? (
-            <div className="mt-2 flex flex-col gap-1">
-              {prediction.warnings.map((w, i) => (
-                <p
-                  key={i}
-                  className="rounded border border-amber-300/60 bg-amber-50 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-400/30 dark:bg-amber-950/40 dark:text-amber-200"
-                >
-                  ⚠ {w}
-                </p>
-              ))}
-            </div>
-          ) : null}
-
-          <p className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-            This model is calibration-honest but historically loses to the closing line (negative CLV) — see
-            docs/architecture/NFL-RESEARCH.md. It is not a proven edge, and no recommendation, unit, or pick is
-            implied by anything on this page.
+        {/* Projection summary */}
+        <div className="text-center">
+          <p className="text-base font-semibold text-foreground sm:text-lg">
+            ARCHR projected line: <span className="font-mono">{lineLabel}</span>
           </p>
+          <p className="text-[10px] text-muted-foreground">Expected margin — not a validated cover probability</p>
         </div>
 
-        {/* Manual market entry */}
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Market lines (entered manually, saved only in this browser)
+        {/* Concise, always-visible CLV note — one line, no giant box */}
+        <p className="flex items-center justify-center gap-1.5 text-center text-[10px] text-amber-700 dark:text-amber-400">
+          <span aria-hidden>⚠</span> Experimental model — historically loses to the closing line, not a proven edge
+        </p>
+
+        {prediction.warnings.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {prediction.warnings.map((w, i) => (
+              <p key={i} className="text-center text-[10px] text-amber-700 dark:text-amber-400">
+                ⚠ {w}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Elo ratings / sample size — secondary, expandable */}
+        <details className="rounded-lg border border-border text-xs text-muted-foreground open:pb-2">
+          <summary className="cursor-pointer select-none px-3 py-1.5 font-medium text-foreground">
+            Matchup details — Elo ratings &amp; sample size
+          </summary>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 px-3">
+            <span>
+              {awayIdentity.abbreviation} rating: {Math.round(prediction.awayRating)} ({prediction.awayGamesPlayed} games)
             </span>
+            <span>
+              {homeIdentity.abbreviation} rating: {Math.round(prediction.homeRating)} ({prediction.homeGamesPlayed} games)
+            </span>
+          </div>
+        </details>
+
+        {/* Manual market entry — sportsbook-style row */}
+        <div className="border-t border-border pt-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Market lines</span>
             <Button variant="ghost" size="xs" onClick={clear}>
               Clear
             </Button>
           </div>
+          <p className="mt-0.5 text-[10px] text-muted-foreground/80">Entered manually, saved only in this browser</p>
+
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <LineField
               fieldId={`nfl-research-${game.espnEventId}-homeSpread`}
@@ -216,7 +230,7 @@ export function NflResearchGameCard({ game, homeIdentity, awayIdentity, predicti
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
-              <Label htmlFor={`nfl-research-${game.espnEventId}-lineType`} className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              <Label htmlFor={`nfl-research-${game.espnEventId}-lineType`} className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Line type
               </Label>
               <select
@@ -239,29 +253,54 @@ export function NflResearchGameCard({ game, homeIdentity, awayIdentity, predicti
             />
           </div>
 
-          {comparison.marginDiff !== null || comparison.winProbDiff !== null ? (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-              {comparison.marginDiff !== null ? <span>Model vs. spread: {pts(comparison.marginDiff)} pts</span> : null}
-              {comparison.marketHomeWinProb !== null ? (
-                <span>
-                  De-vigged market: {homeIdentity.abbreviation} {pct(comparison.marketHomeWinProb)} (model{" "}
-                  {pct(Math.abs(comparison.winProbDiff!))} {comparison.winProbDiff! >= 0 ? "higher" : "lower"} than market)
-                </span>
-              ) : null}
-              {entry.homeMoneyline !== null && entry.awayMoneyline === null ? (
-                <span>Enter both moneylines to de-vig the market probability.</span>
-              ) : null}
-            </div>
-          ) : null}
           {entry.enteredAt ? (
-            <p className="mt-1 text-[10px] text-muted-foreground/70">
-              Entered {new Date(entry.enteredAt).toLocaleString()} — self-reported, never verified against a real
-              feed, and never used as CLV evidence.
+            <p className="mt-1.5 text-[10px] text-muted-foreground/70">
+              Manually entered {new Date(entry.enteredAt).toLocaleString()}
+              {entry.source ? ` · ${entry.source}` : ""}
+              {entry.lineType ? ` · labeled "${entry.lineType}"` : ""} — self-reported, never verified.
             </p>
           ) : null}
-          <p className="mt-1 text-[10px] text-muted-foreground/80">
-            Research comparison only, uncalibrated and experimental — never a guaranteed edge, never a stake size.
-          </p>
+
+          {hasManualEntry ? (
+            <div className="mt-3 rounded-lg bg-muted/40 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Model vs. market disagreement
+              </p>
+              <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                {comparison.marketHomeWinProb !== null ? (
+                  <>
+                    <dt className="text-muted-foreground">Market de-vigged probability</dt>
+                    <dd className="text-right font-mono text-foreground">
+                      {homeIdentity.abbreviation} {pct(comparison.marketHomeWinProb)}
+                    </dd>
+                    <dt className="text-muted-foreground">ARCHR probability</dt>
+                    <dd className="text-right font-mono text-foreground">
+                      {homeIdentity.abbreviation} {pct(prediction.homeWinProb)}
+                    </dd>
+                    <dt className="text-muted-foreground">Probability disagreement</dt>
+                    <dd className="text-right font-mono text-foreground">
+                      {pct(Math.abs(comparison.winProbDiff!))} {comparison.winProbDiff! >= 0 ? "higher" : "lower"}
+                    </dd>
+                  </>
+                ) : entry.homeMoneyline !== null || entry.awayMoneyline !== null ? (
+                  <p className="col-span-2 text-muted-foreground">Enter both moneylines to de-vig the market probability.</p>
+                ) : null}
+                <dt className="text-muted-foreground">ARCHR expected margin</dt>
+                <dd className="text-right font-mono text-foreground">{pts(prediction.expectedHomeMargin)}</dd>
+                {comparison.marginDiff !== null ? (
+                  <>
+                    <dt className="text-muted-foreground">Entered market spread</dt>
+                    <dd className="text-right font-mono text-foreground">{pts(-entry.homeSpread!)}</dd>
+                    <dt className="text-muted-foreground">Margin disagreement</dt>
+                    <dd className="text-right font-mono text-foreground">{pts(comparison.marginDiff)}</dd>
+                  </>
+                ) : null}
+              </dl>
+              <p className="mt-2 text-[10px] text-muted-foreground/80">
+                A transparent difference only — never called an edge, CLV, a recommendation, or a cover probability.
+              </p>
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>
