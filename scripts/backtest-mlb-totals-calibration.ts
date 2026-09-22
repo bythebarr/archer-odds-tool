@@ -136,6 +136,14 @@ async function collectMlbTotalsSamples({
       inningsPitched: outs / 3,
       last10Starts: startSplitFrom(prior.slice(-RECENT_STARTS_LONG_WINDOW)),
       last5Starts: startSplitFrom(prior.slice(-RECENT_STARTS_SHORT_WINDOW)),
+      // The platoon shift can't be reconstructed historically at all — the
+      // MLB Stats API splits endpoint is a live rolling aggregate with no
+      // time series to snapshot-and-replay for a past date (see
+      // archer/pitcherPlatoon.ts's header comment). Left unset here rather
+      // than faking a value; this backtest simply can't score that feature.
+      pitchHand: null,
+      platoonVsLeft: null,
+      platoonVsRight: null,
     };
   };
 
@@ -204,6 +212,10 @@ async function collectMlbTotalsSamples({
       awayForm,
       homeBullpen,
       awayBullpen,
+      // See asOfPitcher's comment above — no historical time series exists
+      // for this feature, so it's never reconstructed in this backtest.
+      homeLineupMix: null,
+      awayLineupMix: null,
     };
 
     const runs = computeExpectedRuns(matchup);

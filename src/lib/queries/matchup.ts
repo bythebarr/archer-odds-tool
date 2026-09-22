@@ -1,7 +1,16 @@
 import { prisma } from "@/lib/prisma";
+import type { Handedness } from "@/generated/prisma/client";
 import { getTeamFormForGame, getTeamFormBatch, type TeamForm } from "./teamForm";
 import { getBullpenFormForGame, getBullpenFormBatch, type BullpenSplit } from "./bullpenForm";
-import { getPitcherStartSplits, type PitcherStartSplit, type PitcherStartSplits } from "./pitcherForm";
+import {
+  getPitcherStartSplits,
+  getPitcherHandednessSplits,
+  type PitcherStartSplit,
+  type PitcherStartSplits,
+  type PitcherHandednessSplits,
+} from "./pitcherForm";
+import { getTeamHandednessMix, type LineupHandednessMix } from "./lineupHandedness";
+import type { PitcherHandSplit } from "@/lib/archer/pitcherPlatoon";
 
 export interface PitcherInfo {
   fullName: string;
@@ -14,6 +23,11 @@ export interface PitcherInfo {
   /** This pitcher's own last-10/last-5-start ERA split — see archer/pitcherRecency.ts. Blended with season era in winProbability.ts/expectedRuns.ts so a hot or cold recent stretch moves the model, not just the season aggregate. Null only when the pitcher has no starts logged yet this season/before this cutoff. */
   last10Starts: PitcherStartSplit | null;
   last5Starts: PitcherStartSplit | null;
+  /** This pitcher's own throwing hand — see archer/pitcherPlatoon.ts / lineupHandedness.ts. */
+  pitchHand: Handedness | null;
+  /** This pitcher's own vs-LHB/vs-RHB rate-stat split — see archer/pitcherPlatoon.ts. Null until this season's MLB Stats API splits sync has data for him. */
+  platoonVsLeft: PitcherHandSplit | null;
+  platoonVsRight: PitcherHandSplit | null;
 }
 
 export interface GameMatchup {
@@ -24,11 +38,18 @@ export interface GameMatchup {
   /** Each team's own trailing bullpen split — see archer/bullpenRate.ts. Null only when the team has no relief-appearance sample yet (expectedRuns.ts falls back to league average). */
   homeBullpen: BullpenSplit | null;
   awayBullpen: BullpenSplit | null;
+  /** Each team's OWN season batting-handedness mix — see archer/lineupHandedness.ts. Used when THAT team is batting (i.e. homeLineupMix pairs with awayPitcher in expectedRuns.ts, not homePitcher). */
+  homeLineupMix: LineupHandednessMix | null;
+  awayLineupMix: LineupHandednessMix | null;
 }
 
 interface PitcherWithStats {
+  /** The real-world MLB Advanced Media person id — the only identity this table shares with MlbPlayer/PlayerGameLog (they're separate tables with unrelated internal ids). Use this, never Pitcher.id, to look up anything keyed off PlayerGameLog (e.g. getPitcherStartSplits). */
+  mlbPersonId: number;
+  /** Pitcher.id itself — safe to use for anything keyed directly off the Pitcher table (e.g. getPitcherHandednessSplits, whose FK already resolves through Pitcher, not MlbPlayer). */
   id: string;
   fullName: string;
+  pitchHand: Handedness | null;
   seasonStats: {
     season: number;
     wins: number;
@@ -42,7 +63,8 @@ interface PitcherWithStats {
 function toPitcherInfo(
   pitcher: PitcherWithStats | null,
   season: number,
-  starts: PitcherStartSplits | undefined
+  starts: PitcherStartSplits | undefined,
+  platoon: PitcherHandednessSplits | undefined
 ): PitcherInfo | null {
   if (!pitcher) return null;
   const stats = pitcher.seasonStats.find((s) => s.season === season);
@@ -55,6 +77,9 @@ function toPitcherInfo(
     inningsPitched: stats?.inningsPitched ?? null,
     last10Starts: starts?.last10Starts ?? null,
     last5Starts: starts?.last5Starts ?? null,
+    pitchHand: pitcher.pitchHand,
+    platoonVsLeft: platoon?.vsLeft ?? null,
+    platoonVsRight: platoon?.vsRight ?? null,
   };
 }
 
@@ -83,17 +108,34 @@ export async function getGameMatchup(gameId: string): Promise<GameMatchup | null
     game.season
   );
   const startsByPitcherId = await getPitcherStartSplits(
+    [game.homeProbablePitcher?.mlbPersonId, game.awayProbablePitcher?.mlbPersonId],
+    game.season
+  );
+  const platoonByPitcherId = await getPitcherHandednessSplits(
     [game.homeProbablePitcher?.id, game.awayProbablePitcher?.id],
     game.season
   );
+  const lineupMixByTeam = await getTeamHandednessMix([game.homeTeamId, game.awayTeamId], game.season);
 
   return {
-    homePitcher: toPitcherInfo(game.homeProbablePitcher, game.season, startsByPitcherId[game.homeProbablePitcher?.id ?? ""]),
-    awayPitcher: toPitcherInfo(game.awayProbablePitcher, game.season, startsByPitcherId[game.awayProbablePitcher?.id ?? ""]),
+    homePitcher: toPitcherInfo(
+      game.homeProbablePitcher,
+      game.season,
+      startsByPitcherId[String(game.homeProbablePitcher?.mlbPersonId ?? "")],
+      platoonByPitcherId[game.homeProbablePitcher?.id ?? ""]
+    ),
+    awayPitcher: toPitcherInfo(
+      game.awayProbablePitcher,
+      game.season,
+      startsByPitcherId[String(game.awayProbablePitcher?.mlbPersonId ?? "")],
+      platoonByPitcherId[game.awayProbablePitcher?.id ?? ""]
+    ),
     homeForm,
     awayForm,
     homeBullpen,
     awayBullpen,
+    homeLineupMix: lineupMixByTeam[game.homeTeamId] ?? null,
+    awayLineupMix: lineupMixByTeam[game.awayTeamId] ?? null,
   };
 }
 
@@ -119,18 +161,33 @@ export async function getGameMatchupsBatch(gameIds: string[]): Promise<Record<st
   // A batch call is always scoped to one ET calendar date's slate, so every game shares one season.
   const formByTeam = await getTeamFormBatch([...teamIds], games[0].season);
   const bullpenByTeam = await getBullpenFormBatch([...teamIds], games[0].season);
+  const lineupMixByTeam = await getTeamHandednessMix([...teamIds], games[0].season);
+  const pitcherMlbPersonIds = games.flatMap((g) => [g.homeProbablePitcher?.mlbPersonId, g.awayProbablePitcher?.mlbPersonId]);
+  const startsByPitcherId = await getPitcherStartSplits(pitcherMlbPersonIds, games[0].season);
   const pitcherIds = games.flatMap((g) => [g.homeProbablePitcher?.id, g.awayProbablePitcher?.id]);
-  const startsByPitcherId = await getPitcherStartSplits(pitcherIds, games[0].season);
+  const platoonByPitcherId = await getPitcherHandednessSplits(pitcherIds, games[0].season);
 
   for (const game of games) {
     if (game.homeTeamId === null || game.awayTeamId === null) continue;
     result[game.id] = {
-      homePitcher: toPitcherInfo(game.homeProbablePitcher, game.season, startsByPitcherId[game.homeProbablePitcher?.id ?? ""]),
-      awayPitcher: toPitcherInfo(game.awayProbablePitcher, game.season, startsByPitcherId[game.awayProbablePitcher?.id ?? ""]),
+      homePitcher: toPitcherInfo(
+        game.homeProbablePitcher,
+        game.season,
+        startsByPitcherId[String(game.homeProbablePitcher?.mlbPersonId ?? "")],
+        platoonByPitcherId[game.homeProbablePitcher?.id ?? ""]
+      ),
+      awayPitcher: toPitcherInfo(
+        game.awayProbablePitcher,
+        game.season,
+        startsByPitcherId[String(game.awayProbablePitcher?.mlbPersonId ?? "")],
+        platoonByPitcherId[game.awayProbablePitcher?.id ?? ""]
+      ),
       homeForm: formByTeam[game.homeTeamId],
       awayForm: formByTeam[game.awayTeamId],
       homeBullpen: bullpenByTeam[game.homeTeamId] ?? null,
       awayBullpen: bullpenByTeam[game.awayTeamId] ?? null,
+      homeLineupMix: lineupMixByTeam[game.homeTeamId] ?? null,
+      awayLineupMix: lineupMixByTeam[game.awayTeamId] ?? null,
     };
   }
   return result;

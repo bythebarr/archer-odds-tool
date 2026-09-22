@@ -47,6 +47,10 @@ function pitcher(
     inningsPitched: gamesStarted * 5.5,
     last10Starts: startSplit(recency.last10Era ?? era, Math.min(gamesStarted, 10)),
     last5Starts: startSplit(recency.last5Era ?? era, Math.min(gamesStarted, 5)),
+    // computeArcherWinProbability never reads platoon data — unset here, mechanical only.
+    pitchHand: null,
+    platoonVsLeft: null,
+    platoonVsRight: null,
   };
 }
 
@@ -56,9 +60,11 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     awayPitcher: pitcher(4.2),
     homeForm: form(),
     awayForm: form(),
-    // computeArcherWinProbability never reads bullpen data — unset here, mechanical only.
+    // computeArcherWinProbability never reads bullpen/lineup data — unset here, mechanical only.
     homeBullpen: null,
     awayBullpen: null,
+    homeLineupMix: null,
+    awayLineupMix: null,
     ...overrides,
   };
 }

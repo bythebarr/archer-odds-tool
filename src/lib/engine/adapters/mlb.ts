@@ -155,6 +155,12 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
       inningsPitched: outs / 3,
       last10Starts: startSplitFrom(prior.slice(-RECENT_STARTS_LONG_WINDOW)),
       last5Starts: startSplitFrom(prior.slice(-RECENT_STARTS_SHORT_WINDOW)),
+      // Moneyline pricing (computeArcherWinProbability) never reads platoon
+      // data — only computeExpectedRuns does — so this backtest leaves it
+      // unset rather than reconstructing it for no consumer.
+      pitchHand: null,
+      platoonVsLeft: null,
+      platoonVsRight: null,
     };
   };
 
@@ -178,6 +184,8 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
       // unset rather than reconstructing it for no consumer.
       homeBullpen: null,
       awayBullpen: null,
+      homeLineupMix: null,
+      awayLineupMix: null,
     };
     const proj = computeArcherWinProbability(matchup);
     if (proj.homeProb === null || proj.awayProb === null) continue; // too thin to price

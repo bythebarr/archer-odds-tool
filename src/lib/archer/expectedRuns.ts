@@ -2,20 +2,27 @@ import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { RunsSplit, TeamForm } from "@/lib/queries/teamForm";
 import type { BullpenSplit } from "@/lib/archer/bullpenRate";
 import { startSplitEraPerNine } from "@/lib/archer/pitcherRecency";
+import { platoonRunsShift } from "@/lib/archer/pitcherPlatoon";
+import type { LineupHandednessMix } from "@/lib/archer/lineupHandedness";
 import { weightedAverage, sampleConfidence, shrinkToward } from "@/lib/stats/weightedAverage";
 
 /**
  * The "Archer Runs" model: projects each team's expected runs scored in a
  * game from their own recent scoring, the opponent's recent runs allowed,
- * the opposing starter's ERA, and the opposing bullpen's own trailing
- * quality. It's the shared primitive behind both the totals and spread
- * flavors of Archer EV (see runProbability.ts) — one projection per team,
- * rather than two independent formulas, so a pitcher/form signal that moves
- * the total also moves the spread lean consistently.
+ * the opposing starter's ERA, the opposing bullpen's own trailing quality,
+ * and a platoon-matchup shift from the opposing starter's own
+ * vs-handedness splits against tonight's specific lineup composition. It's
+ * the shared primitive behind both the totals and spread flavors of Archer
+ * EV (see runProbability.ts) — one projection per team, rather than two
+ * independent formulas, so a pitcher/form signal that moves the total also
+ * moves the spread lean consistently.
  *
  * Same "transparent v1 heuristic, not a fitted model" caveat as
  * winProbability.ts — every constant below is a documented guess, not
- * backtested, with no opponent-quality/park/lineup adjustment.
+ * backtested, with no opponent-quality/park adjustment. The platoon shift
+ * (see archer/pitcherPlatoon.ts) is a stronger version of this caveat: it
+ * cannot be backtested with today's data model at all, not just "hasn't
+ * been yet."
  */
 
 /** Modern-era MLB average runs scored per team per game — the shrinkage anchor for every rate below (offense, defense, and pitcher ERA are all treated on this one scale). Recalibrate if league-wide scoring shifts materially. */
@@ -129,6 +136,20 @@ function blendExpectedRuns(
   ]);
 }
 
+/**
+ * Additive platoon-matchup shift on top of the blended projection above —
+ * see archer/pitcherPlatoon.ts for the full mechanism and its important
+ * "cannot be backtested" caveat. `pitcher` is who the BATTING team (whose
+ * projection this shift feeds into) is facing; `battingTeamMix` is that
+ * batting team's own season handedness composition. Zero (never null)
+ * whenever the pitcher or lineup-mix data isn't available, so this can
+ * only ever nudge an existing projection, never null one out.
+ */
+function opposingPlatoonShift(pitcher: PitcherInfo | null, battingTeamMix: LineupHandednessMix | null): number {
+  if (!pitcher) return 0;
+  return platoonRunsShift(pitcher.pitchHand, pitcher.platoonVsLeft, pitcher.platoonVsRight, battingTeamMix);
+}
+
 export interface ExpectedRuns {
   home: number | null;
   away: number | null;
@@ -143,8 +164,11 @@ export function computeExpectedRuns(matchup: GameMatchup): ExpectedRuns {
   const homePitcherRuns = pitcherExpectedRuns(matchup.homePitcher, matchup.homeBullpen);
   const awayPitcherRuns = pitcherExpectedRuns(matchup.awayPitcher, matchup.awayBullpen);
 
+  const home = blendExpectedRuns(homeOffense, awayDefense, awayPitcherRuns);
+  const away = blendExpectedRuns(awayOffense, homeDefense, homePitcherRuns);
+
   return {
-    home: blendExpectedRuns(homeOffense, awayDefense, awayPitcherRuns),
-    away: blendExpectedRuns(awayOffense, homeDefense, homePitcherRuns),
+    home: home === null ? null : home + opposingPlatoonShift(matchup.awayPitcher, matchup.homeLineupMix),
+    away: away === null ? null : away + opposingPlatoonShift(matchup.homePitcher, matchup.awayLineupMix),
   };
 }

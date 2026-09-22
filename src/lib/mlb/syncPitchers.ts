@@ -1,10 +1,17 @@
 import { prisma } from "@/lib/prisma";
-import { fetchMlbProbablePitchers, fetchPitcherSeasonStats } from "./statsApi";
+import {
+  fetchMlbProbablePitchers,
+  fetchPitcherSeasonStats,
+  fetchPitcherHandednessSplits,
+  fetchMlbPersonHandedness,
+} from "./statsApi";
+import type { Handedness } from "@/generated/prisma/client";
 
 export interface SyncPitchersSummary {
   gamesUpdated: number;
   pitchersUpserted: number;
   statsUpserted: number;
+  handednessSplitsUpserted: number;
 }
 
 /**
@@ -28,13 +35,22 @@ export async function syncProbablePitchers(startDate: string, endDate: string): 
     if (p.awayProbable) pitchersSeen.set(p.awayProbable.mlbPersonId, p.awayProbable.fullName);
   }
 
+  // Reuses the existing fetchMlbPersonHandedness (already used for MlbPlayer
+  // in props/gameLogIngest.ts) — Pitcher's own throwing hand is needed to
+  // resolve a switch-hitter's effective batting side for the platoon
+  // matchup shift (archer/pitcherPlatoon.ts), and this is the one place
+  // that already resolves mlbPersonId -> Pitcher.id, so it's fetched here
+  // rather than adding a second identity-resolution path.
+  const handedness = await fetchMlbPersonHandedness([...pitchersSeen.keys()]);
+
   let pitchersUpserted = 0;
   const pitcherIdByMlbId = new Map<number, string>();
   for (const [mlbPersonId, fullName] of pitchersSeen) {
+    const pitchHand = (handedness.get(mlbPersonId)?.pitchHand as Handedness | undefined) ?? null;
     const row = await prisma.pitcher.upsert({
       where: { mlbPersonId },
-      create: { mlbPersonId, fullName },
-      update: { fullName },
+      create: { mlbPersonId, fullName, pitchHand },
+      update: { fullName, pitchHand },
     });
     pitcherIdByMlbId.set(mlbPersonId, row.id);
     pitchersUpserted++;
@@ -88,5 +104,20 @@ export async function syncProbablePitchers(startDate: string, endDate: string): 
     }
   }
 
-  return { gamesUpdated, pitchersUpserted, statsUpserted };
+  let handednessSplitsUpserted = 0;
+  if (season !== undefined && pitchersSeen.size > 0) {
+    const splits = await fetchPitcherHandednessSplits([...pitchersSeen.keys()], season);
+    for (const s of splits) {
+      const pitcherId = pitcherIdByMlbId.get(s.mlbPersonId);
+      if (!pitcherId) continue;
+      await prisma.pitcherHandednessSplit.upsert({
+        where: { pitcherId_season_vsHand: { pitcherId, season, vsHand: s.vsHand } },
+        create: { pitcherId, season, vsHand: s.vsHand, battersFaced: s.battersFaced, obp: s.obp, slg: s.slg },
+        update: { battersFaced: s.battersFaced, obp: s.obp, slg: s.slg },
+      });
+      handednessSplitsUpserted++;
+    }
+  }
+
+  return { gamesUpdated, pitchersUpserted, statsUpserted, handednessSplitsUpserted };
 }

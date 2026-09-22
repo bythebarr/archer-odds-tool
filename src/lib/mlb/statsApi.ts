@@ -210,6 +210,74 @@ export async function fetchPitcherSeasonStats(
   });
 }
 
+export interface MlbPitcherHandednessSplit {
+  mlbPersonId: number;
+  /** "L" or "R" only — the batter's side; MLB never returns a switch-hitter sitCode here (there's no such thing as "batting vs. switch"). */
+  vsHand: "L" | "R";
+  battersFaced: number;
+  obp: number | null;
+  slg: number | null;
+}
+
+interface MlbHandednessStatSplit {
+  split: { code: string }; // "vl" | "vr"
+  stat: { battersFaced?: number; obp?: string; slg?: string };
+}
+
+interface MlbPersonWithSplitStats {
+  id: number;
+  stats?: { splits: MlbHandednessStatSplit[] }[];
+}
+
+const SIT_CODE_TO_HAND: Record<string, "L" | "R"> = { vl: "L", vr: "R" };
+
+/** Parses an MLB rate-stat string (e.g. ".285") to a number; null on a non-numeric placeholder (e.g. "-.--" for a split with no qualifying plate appearances) — same "null on parse failure" convention as era above, rather than trusting NaN downstream. */
+function parseRateStat(raw: string | undefined): number | null {
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Batched vs-LHB/vs-RHB rate-stat splits for many pitchers in one call, same
+ * batching shape as fetchPitcherSeasonStats. No era/earnedRuns field exists
+ * at this split (confirmed live against the real API) — a run isn't
+ * attributable to one batter's handedness, so the league doesn't track ERA
+ * this way. obp/slg (→ OPS = obp + slg) are the closest rate-stat proxy for
+ * "how hard is this pitcher to hit" against each hand. A pitcher with too
+ * few career/season innings this year (rookie call-ups, injury returns)
+ * simply has no splits entries — reported as [], not an error.
+ */
+export async function fetchPitcherHandednessSplits(
+  personIds: number[],
+  season: number
+): Promise<MlbPitcherHandednessSplit[]> {
+  if (personIds.length === 0) return [];
+
+  const url = `${BASE_URL}/people?personIds=${personIds.join(",")}&hydrate=stats(group=pitching,type=statSplits,sitCodes=[vl,vr],season=${season})`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`MLB Stats API people/statSplits request failed: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { people?: MlbPersonWithSplitStats[] };
+
+  const result: MlbPitcherHandednessSplit[] = [];
+  for (const p of data.people ?? []) {
+    for (const split of p.stats?.[0]?.splits ?? []) {
+      const vsHand = SIT_CODE_TO_HAND[split.split.code];
+      if (!vsHand) continue; // an unrecognized sitCode — skip rather than guess
+      result.push({
+        mlbPersonId: p.id,
+        vsHand,
+        battersFaced: split.stat.battersFaced ?? 0,
+        obp: parseRateStat(split.stat.obp),
+        slg: parseRateStat(split.stat.slg),
+      });
+    }
+  }
+  return result;
+}
+
 export interface MlbBattingLine {
   atBats: number;
   plateAppearances: number;

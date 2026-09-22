@@ -50,6 +50,12 @@ function pitcher(
     inningsPitched,
     last10Starts: startSplit(recency.last10Era ?? era, Math.min(gamesStarted, 10)),
     last5Starts: startSplit(recency.last5Era ?? era, Math.min(gamesStarted, 5)),
+    // Neutral platoon defaults — null splits always produce a zero shift
+    // (see pitcherPlatoon.test.ts), so every existing test's expected
+    // values are unaffected without needing a "matching" fixture value.
+    pitchHand: "R",
+    platoonVsLeft: null,
+    platoonVsRight: null,
   };
 }
 
@@ -69,6 +75,11 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     awayForm: averageForm(),
     homeBullpen: bullpen(),
     awayBullpen: bullpen(),
+    // Neutral default — a null lineup mix always produces a zero platoon
+    // shift regardless of the pitcher's own splits (belt-and-suspenders
+    // with pitcher()'s own null platoon defaults above).
+    homeLineupMix: null,
+    awayLineupMix: null,
     ...overrides,
   };
 }
@@ -234,6 +245,34 @@ describe("computeExpectedRuns", () => {
         matchup({ awayPitcher: { ...pitcher(4.2), last10Starts: null, last5Starts: null } })
       );
       expect(withNullRecency.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
+    });
+  });
+
+  describe("pitcher-vs-lineup handedness (platoon)", () => {
+    function platoonSplit(ops: number, battersFaced = 200) {
+      return { obp: ops / 2, slg: ops / 2, battersFaced };
+    }
+    const allLeftMix = { leftPA: 1000, rightPA: 0, switchPA: 0 };
+
+    it("projects more runs when tonight's lineup leans toward the hand the opposing starter struggles against", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const toughMatchup = computeExpectedRuns(
+        matchup({
+          awayPitcher: {
+            ...pitcher(4.2),
+            pitchHand: "R",
+            platoonVsLeft: platoonSplit(0.9),
+            platoonVsRight: platoonSplit(0.6),
+          },
+          homeLineupMix: allLeftMix,
+        })
+      );
+      expect(toughMatchup.home!).toBeGreaterThan(baseline.home!);
+    });
+
+    it("is unaffected when the opposing starter has no platoon split synced yet", () => {
+      const withoutSplit = computeExpectedRuns(matchup({ homeLineupMix: allLeftMix }));
+      expect(withoutSplit.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
     });
   });
 });

@@ -250,13 +250,19 @@ model LineupSlot {
 }
 
 model Pitcher {
-  id          String @id @default(cuid())
-  mlbPersonId Int    @unique
+  id          String      @id @default(cuid())
+  mlbPersonId Int         @unique
   fullName    String
+  /// This pitcher's own throwing hand — needed to resolve a switch-hitter's
+  /// effective batting side for the platoon matchup shift (archer/pitcherPlatoon.ts).
+  /// Lives here, not just on MlbPlayer, so PitcherInfo never needs a second
+  /// cross-table lookup for a value it already has everything else about.
+  pitchHand   Handedness?
 
   seasonStats       PitcherSeasonStats[]
-  homeProbableGames Game[]               @relation("HomeProbablePitcher")
-  awayProbableGames Game[]               @relation("AwayProbablePitcher")
+  handednessSplits  PitcherHandednessSplit[]
+  homeProbableGames Game[]                   @relation("HomeProbablePitcher")
+  awayProbableGames Game[]                   @relation("AwayProbablePitcher")
 }
 
 /// Upsert-latest season pitching line (wins/losses/ERA), refreshed on every
@@ -275,6 +281,32 @@ model PitcherSeasonStats {
   updatedAt      DateTime @updatedAt
 
   @@unique([pitcherId, season])
+}
+
+/// This pitcher's rolling-season rate stats allowed, split by the batter's
+/// handedness — MLB Stats API's statSplits/sitCodes=[vl,vr] hydration (free,
+/// unauthenticated, confirmed live). No era/earnedRuns field exists at this
+/// split — a run isn't attributable to one batter's handedness, so the
+/// league doesn't track it — hence obp/slg (→ OPS) instead of an ERA-shaped
+/// stat. A LIVE rolling aggregate, not a point-in-time snapshot: refreshed
+/// on every pitcher sync like PitcherSeasonStats, no history kept, and
+/// there is deliberately no attempt to backtest against this table (see
+/// archer/pitcherPlatoon.ts's header comment) — nothing to replay for a past date.
+model PitcherHandednessSplit {
+  id           String     @id @default(cuid())
+  pitcherId    String
+  pitcher      Pitcher    @relation(fields: [pitcherId], references: [id])
+  season       Int
+  /// The BATTER's side being split on (L or R only — switch-hitters are
+  /// resolved to whichever side they'd actually bat at USE time, by the
+  /// opposing starter's own hand — see lineupHandedness.ts).
+  vsHand       Handedness
+  battersFaced Int
+  obp          Float?
+  slg          Float?
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([pitcherId, season, vsHand])
 }
 
 enum Handedness {
