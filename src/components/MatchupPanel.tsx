@@ -83,6 +83,17 @@ function formatRuns(runs: number | null): string {
   return runs !== null ? runs.toFixed(1) : "—";
 }
 
+/** Signed one-decimal formatter for shift/edge driver values — same shape as CFB's own `pts()` helper (CfbGameCard.tsx), reused here for visual consistency across sports. */
+function pts(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+}
+
+/** A [0,1] score centered on 0.5 (teamFormScore/pitcherQualityScore), read as a signed point edge off that midpoint. Null when the underlying data isn't available yet. */
+function scoreEdge(score: number | null): string {
+  return score !== null ? pts((score - 0.5) * 100) : "—";
+}
+
 /**
  * The user's own manual handicapping comparison ("the Archer method"):
  * probable starters' record/ERA, plus each team's home/away and recent-form
@@ -171,10 +182,36 @@ export function MatchupPanel({ game, matchup, archerProb, archerRuns, marketProb
           </div>
         )}
 
+        <div className="mt-4 rounded-md border border-border bg-muted/40 p-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What&apos;s driving this</h3>
+          <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <StatRow label="Weighted offense rate" value={formatRuns(archerRuns.drivers.away.offenseRuns)} />
+              <StatRow label="Opp. bullpen quality (runs/9)" value={formatRuns(archerRuns.drivers.away.opponentBullpenRunRate)} />
+              <StatRow label="Opp. pitcher runs contribution" value={formatRuns(archerRuns.drivers.away.opponentPitcherRuns)} />
+              <StatRow label="Platoon shift" value={pts(archerRuns.drivers.away.platoonShift)} />
+              <StatRow label="Form edge" value={scoreEdge(archerProb.drivers.away.formScore)} />
+              <StatRow label="Pitcher-quality edge" value={scoreEdge(archerProb.drivers.away.pitcherQualityScore)} />
+            </div>
+            <div className="space-y-1">
+              <StatRow label="Weighted offense rate" value={formatRuns(archerRuns.drivers.home.offenseRuns)} />
+              <StatRow label="Opp. bullpen quality (runs/9)" value={formatRuns(archerRuns.drivers.home.opponentBullpenRunRate)} />
+              <StatRow label="Opp. pitcher runs contribution" value={formatRuns(archerRuns.drivers.home.opponentPitcherRuns)} />
+              <StatRow label="Platoon shift" value={pts(archerRuns.drivers.home.platoonShift)} />
+              <StatRow label="Form edge" value={scoreEdge(archerProb.drivers.home.formScore)} />
+              <StatRow label="Pitcher-quality edge" value={scoreEdge(archerProb.drivers.home.pitcherQualityScore)} />
+            </div>
+          </div>
+          <div className="mt-2 border-t border-border/60 pt-2">
+            <StatRow label="Weather shift (shared, both teams)" value={pts(archerRuns.drivers.home.weatherShift)} />
+          </div>
+        </div>
+
         <p className="mt-3 text-xs text-muted-foreground">
-          ARCHR Edge probability/runs are a v1 heuristic from pitcher ERA + recent form only — directional,
-          not a rigorous projection. They power the ARCHR Edge column on every tab below (win probability
-          for Moneyline, expected-runs-derived cover probability for Spread/Total).
+          ARCHR Edge probability/runs are a v1 heuristic from pitcher ERA, recent form, opposing bullpen quality,
+          starter platoon splits, and park weather — directional, not a rigorous projection. They power the ARCHR
+          Edge column on every tab below (win probability for Moneyline, expected-runs-derived cover probability
+          for Spread/Total).
         </p>
       </CardContent>
     </Card>

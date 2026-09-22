@@ -195,6 +195,45 @@ describe("computeExpectedRuns", () => {
     expect(result.away).toBeNull();
   });
 
+  describe("drivers", () => {
+    it("carries the same weather shift value in both sides' drivers, matching what was actually added to the final numbers", () => {
+      const withWeather = computeExpectedRuns(
+        matchup({
+          weather: {
+            temperatureF: 95,
+            windMph: 15,
+            windFromDeg: 180,
+            venueAzimuthDeg: 0,
+            roofType: "Open",
+          },
+        })
+      );
+      const noWeather = computeExpectedRuns(matchup());
+      const actualShift = withWeather.home! - noWeather.home!;
+      expect(withWeather.drivers.home.weatherShift).toBeCloseTo(actualShift, 6);
+      expect(withWeather.drivers.away.weatherShift).toBeCloseTo(actualShift, 6);
+    });
+
+    it("routes the opposing bullpen's own runs/9 into opponentBullpenRunRate, distinct from the starter blend", () => {
+      const result = computeExpectedRuns(matchup({ awayBullpen: bullpen(6.0) }));
+      expect(result.drivers.home.opponentBullpenRunRate).toBeCloseTo(6.0, 6);
+    });
+
+    it("reports each side's own offense rate and the opponent's defense/pitcher rates, not its own", () => {
+      const result = computeExpectedRuns(
+        matchup({
+          homeForm: averageForm({
+            runsSeason: runsSplit(200, 129, 30),
+            runsLast10: runsSplit(70, 43, 10),
+            runsLast5: runsSplit(35, 21, 5),
+          }),
+        })
+      );
+      expect(result.drivers.home.offenseRuns).toBeGreaterThan(4.3);
+      expect(result.drivers.away.offenseRuns).toBeCloseTo(4.3, 1);
+    });
+  });
+
   describe("bullpen quality", () => {
     it("projects more runs against a worse (higher-runs-allowed) opposing bullpen, holding the starter fixed", () => {
       const baseline = computeExpectedRuns(matchup());

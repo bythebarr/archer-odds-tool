@@ -142,6 +142,21 @@ describe("computeArcherWinProbability", () => {
     expect(result.awayProb).toBeNull();
   });
 
+  describe("drivers", () => {
+    it("reports pitcherQualityScore above 0.5 for a better-than-average starter and formScore centered near 0.5 for an even matchup", () => {
+      const result = computeArcherWinProbability(matchup({ homePitcher: pitcher(2.5) }));
+      expect(result.drivers.home.pitcherQualityScore!).toBeGreaterThan(0.5);
+      expect(result.drivers.away.pitcherQualityScore!).toBeCloseTo(0.5, 1);
+    });
+
+    it("nulls out pitcherQualityScore (not formScore) when a probable pitcher isn't set, matching usedPitcher", () => {
+      const result = computeArcherWinProbability(matchup({ homePitcher: null, awayPitcher: null }));
+      expect(result.drivers.home.pitcherQualityScore).toBeNull();
+      expect(result.drivers.away.pitcherQualityScore).toBeNull();
+      expect(result.drivers.home.formScore).not.toBeNull();
+    });
+  });
+
   describe("pitcher ERA recency", () => {
     it("gives an edge to a starter who's been pitching better recently than his season ERA suggests", () => {
       const baseline = computeArcherWinProbability(matchup());

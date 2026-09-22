@@ -225,9 +225,27 @@ function opposingPlatoonShift(pitcher: PitcherInfo | null, battingTeamMix: Lineu
   return platoonRunsShift(pitcher.pitchHand, pitcher.platoonVsLeft, pitcher.platoonVsRight, battingTeamMix);
 }
 
+/** One side's named inputs to its expected-runs projection — the "why" panel's raw material. All opponent-facing fields describe what THIS side's offense is up against. */
+export interface ExpectedRunsSideDrivers {
+  offenseRuns: number | null;
+  opponentDefenseRuns: number | null;
+  opponentPitcherRuns: number | null;
+  /** Opposing bullpen's own trailing runs/9 alone (quality only — fatigue is currently disabled, see BULLPEN_FATIGUE_RUNS_PER_WORKLOAD_RATIO). Always defined: falls back to LEAGUE_AVG_RUNS_PER_GAME like bullpenExpectedRunRate itself. */
+  opponentBullpenRunRate: number;
+  platoonShift: number;
+  /** Shared park condition — identical value on both sides' drivers, same as the shift itself. */
+  weatherShift: number;
+}
+
+export interface ExpectedRunsDrivers {
+  home: ExpectedRunsSideDrivers;
+  away: ExpectedRunsSideDrivers;
+}
+
 export interface ExpectedRuns {
   home: number | null;
   away: number | null;
+  drivers: ExpectedRunsDrivers;
 }
 
 /** Computes each team's expected runs scored for one game, the shared input to both the Archer total and Archer spread-cover probabilities. */
@@ -238,6 +256,8 @@ export function computeExpectedRuns(matchup: GameMatchup): ExpectedRuns {
   const awayDefense = weightedRunsRate(matchup.awayForm, "against");
   const homePitcherRuns = pitcherExpectedRuns(matchup.homePitcher, matchup.homeBullpen, matchup.homeBullpenRecentWorkload);
   const awayPitcherRuns = pitcherExpectedRuns(matchup.awayPitcher, matchup.awayBullpen, matchup.awayBullpenRecentWorkload);
+  const homeBullpenRunRate = bullpenExpectedRunRate(matchup.homeBullpen, matchup.homeBullpenRecentWorkload);
+  const awayBullpenRunRate = bullpenExpectedRunRate(matchup.awayBullpen, matchup.awayBullpenRecentWorkload);
 
   const home = blendExpectedRuns(homeOffense, awayDefense, awayPitcherRuns);
   const away = blendExpectedRuns(awayOffense, homeDefense, homePitcherRuns);
@@ -245,9 +265,31 @@ export function computeExpectedRuns(matchup: GameMatchup): ExpectedRuns {
   // Weather is shared, not per-team — same park, same conditions, affect
   // both offenses equally (unlike every other shift in this function).
   const weather = weatherRunsShift(matchup.weather);
+  const homePlatoonShift = opposingPlatoonShift(matchup.awayPitcher, matchup.homeLineupMix);
+  const awayPlatoonShift = opposingPlatoonShift(matchup.homePitcher, matchup.awayLineupMix);
+
+  const drivers: ExpectedRunsDrivers = {
+    home: {
+      offenseRuns: homeOffense,
+      opponentDefenseRuns: awayDefense,
+      opponentPitcherRuns: awayPitcherRuns,
+      opponentBullpenRunRate: awayBullpenRunRate,
+      platoonShift: homePlatoonShift,
+      weatherShift: weather,
+    },
+    away: {
+      offenseRuns: awayOffense,
+      opponentDefenseRuns: homeDefense,
+      opponentPitcherRuns: homePitcherRuns,
+      opponentBullpenRunRate: homeBullpenRunRate,
+      platoonShift: awayPlatoonShift,
+      weatherShift: weather,
+    },
+  };
 
   return {
-    home: home === null ? null : home + opposingPlatoonShift(matchup.awayPitcher, matchup.homeLineupMix) + weather,
-    away: away === null ? null : away + opposingPlatoonShift(matchup.homePitcher, matchup.awayLineupMix) + weather,
+    home: home === null ? null : home + homePlatoonShift + weather,
+    away: away === null ? null : away + awayPlatoonShift + weather,
+    drivers,
   };
 }
