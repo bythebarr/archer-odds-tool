@@ -38,6 +38,8 @@
     "matchup:batterpark": "tsx scripts/matchup-batter-park.ts",
     "matchup:sb": "tsx scripts/matchup-sb.ts",
     "matchup:rest": "tsx scripts/matchup-rest.ts",
+    "matchup:bullpenprops": "tsx scripts/matchup-bullpen-props.ts",
+    "matchup:weatherprops": "tsx scripts/matchup-weather-props.ts",
     "capture:cfb:predictions": "tsx scripts/capture-cfb-predictions.ts",
     "discord:plan": "tsx scripts/discord/provision-server.ts --plan",
     "discord:dry": "tsx scripts/discord/provision-server.ts --prune",
