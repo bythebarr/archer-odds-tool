@@ -275,7 +275,7 @@ export function readColumn(row: GameLogRow, column: string): number | null {
  * shift. Light aggregates only; BF ≈ outs + hits + walks allowed (see
  * opposingStarter.ts). Pools everything strictly before the board date.
  */
-async function opposingStarterKRatesAsOf(personIds: number[], seasonStart: Date, before: Date) {
+export async function opposingStarterKRatesAsOf(personIds: number[], seasonStart: Date, before: Date) {
   const dateFilter = { gte: seasonStart, lt: before };
   const players = personIds.length
     ? await prisma.mlbPlayer.findMany({ where: { mlbPersonId: { in: personIds } }, select: { id: true, mlbPersonId: true } })
@@ -422,7 +422,7 @@ async function buildBatterBoard(dateEt: string, statKey: string): Promise<PropBo
  * Two light aggregate queries (no row load): correct for a "today" projection
  * because it pools everything strictly before the board date.
  */
-async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: Date) {
+export async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: Date) {
   const dateFilter = { gte: seasonStart, lt: before };
   const [league, byTeam] = await Promise.all([
     prisma.playerGameLog.aggregate({
@@ -452,7 +452,7 @@ async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: 
  * is one light aggregate per park (≤15 on a full slate, no row load), each summing
  * every batter line in games at that park strictly before the board date.
  */
-async function parkKRatesAsOf(parkIds: string[], seasonStart: Date, before: Date) {
+export async function parkKRatesAsOf(parkIds: string[], seasonStart: Date, before: Date) {
   const dateFilter = { gte: seasonStart, lt: before };
   const rateByPark = new Map<string, number>();
   await Promise.all(
