@@ -1,5 +1,6 @@
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { RecordSplit, TeamForm } from "@/lib/queries/teamForm";
+import { startSplitEraPerNine } from "@/lib/archer/pitcherRecency";
 import { weightedAverage, sampleConfidence, shrinkToward } from "@/lib/stats/weightedAverage";
 
 /**
@@ -24,6 +25,20 @@ const LEAGUE_AVERAGE_ERA = 4.2;
 const ERA_QUALITY_SPREAD = 1.4;
 /** Starts needed before a pitcher's season ERA is trusted at full strength; below this the score is shrunk toward neutral (0.5) proportionally, since a handful of starts is too noisy to weight the same as a full sample. */
 const PITCHER_FULL_CONFIDENCE_STARTS = 8;
+
+/** Recency weights for a pitcher's ERA — season/last10-starts/last5-starts, mirroring FORM_WEIGHTS's shape (last10 leads) at "start" granularity instead of "game." Renormalized over whichever windows actually have starts logged (see blendedPitcherEra). Same values as teamForm's runs blend — no fitted study exists for pitcher-ERA recency specifically, so this reuses the codebase's one established recency-weighting convention rather than inventing a second one. */
+const PITCHER_ERA_WEIGHTS = { season: 0.35, last10: 0.4, last5: 0.25 } as const;
+
+/** Blends a pitcher's season ERA with their trailing last-10/last-5-start ERA, so a hot or cold recent stretch moves the score — not just the season aggregate. Falls back to season ERA alone if no recency split is available yet (early season). Caller must already have checked pitcher.era !== null. */
+function blendedPitcherEra(pitcher: PitcherInfo): number {
+  return (
+    weightedAverage([
+      [pitcher.era, PITCHER_ERA_WEIGHTS.season],
+      [startSplitEraPerNine(pitcher.last10Starts), PITCHER_ERA_WEIGHTS.last10],
+      [startSplitEraPerNine(pitcher.last5Starts), PITCHER_ERA_WEIGHTS.last5],
+    ]) ?? pitcher.era!
+  );
+}
 
 /** Recency weights for team-form components; renormalized over whichever splits actually have games played (see teamFormScore). Last10 leads so a hot/cold streak reads as such, rather than being diluted by the season-long split. */
 const FORM_WEIGHTS = { split: 0.35, last10: 0.4, last5: 0.25 } as const;
@@ -83,10 +98,10 @@ function teamFormScore(form: TeamForm, isHome: boolean): number | null {
   ]);
 }
 
-/** Pitcher quality in the same [0,1] units as teamFormScore: 0.5 at league-average ERA. Shrunk toward 0.5 when gamesStarted is below the full-confidence threshold, since an ERA over a handful of starts is too noisy to trust outright. Null if no probable starter or no ERA yet. */
+/** Pitcher quality in the same [0,1] units as teamFormScore: 0.5 at league-average ERA (blended with recent-start recency — see blendedPitcherEra). Shrunk toward 0.5 when gamesStarted is below the full-confidence threshold, since an ERA over a handful of starts is too noisy to trust outright. Null if no probable starter or no ERA yet. */
 function pitcherQualityScore(pitcher: PitcherInfo | null): number | null {
   if (!pitcher || pitcher.era === null) return null;
-  const rawScore = logistic((LEAGUE_AVERAGE_ERA - pitcher.era) / ERA_QUALITY_SPREAD);
+  const rawScore = logistic((LEAGUE_AVERAGE_ERA - blendedPitcherEra(pitcher)) / ERA_QUALITY_SPREAD);
   const confidence = sampleConfidence(pitcher.gamesStarted, PITCHER_FULL_CONFIDENCE_STARTS);
   return shrinkToward(rawScore, 0.5, confidence);
 }

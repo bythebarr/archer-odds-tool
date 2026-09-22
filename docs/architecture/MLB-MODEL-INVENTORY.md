@@ -147,11 +147,14 @@ weightedRunsRate(form, side) =
                        [ runsPerGame(last5, side),  0.25 ])
     shrinkToward(raw, 4.3, confidence = min(gamesSeason / 15, 1))
 
-pitcherExpectedRuns(pitcher) =
+pitcherExpectedRuns(pitcher, bullpen) =
     shrunkEra = shrinkToward(era, 4.3, confidence = min(gamesStarted / 8, 1))
     starterShare = clamp(avgInningsPerStart / 9, 0, 1)   // avgIP = inningsPitched / gamesStarted, else 5.5
     bullpenShare = 1 − starterShare
-    shrunkEra · starterShare + 4.3 · bullpenShare        // ← bullpen term is a FLAT LEAGUE CONSTANT, see §6/§8
+    bullpenRate = shrinkToward(9·bullpen.earnedRuns / (bullpen.outsRecorded/3), 4.3,
+                                confidence = min(relieverInnings / 60, 1))   // 4.3 if no sample yet
+    shrunkEra · starterShare + bullpenRate · bullpenShare   // bullpen is now the PITCHER'S OWN team's
+                                                             // trailing relief rate, not a flat constant — see §8 outcome
 
 expectedRuns(team) =
     weightedAvg([ ownOffenseRate,        0.45 ],
@@ -440,7 +443,7 @@ obtainable from MLB Stats API/Statcast in general.
 | 4 | Lineup handedness composition | Same-handed lineup vs. opposite-handed starter shifts scoring beyond raw ERA | Batter handedness (have) + pitcher vs-hand splits (don't have) | Half | `batSide` free/ingested; pitcher splits not ingested (statsapi.mlb.com exposes a splits hydrate this repo has never called) | Low if season-to-date | High — split samples are a fraction of full-season ERA sample | Directly related to item 5 and to the already-shelved player-level `matchup:platoon` finding (PA confound) — a team-aggregate version has not been separately tested | **Research** |
 | 5 | Pitcher performance vs LHB/RHB | A pitcher's platoon split matters more against a hand-skewed lineup | Per-pitcher vs-hand rate stats | No | Plausible provider-level source, zero ingestion code today | Low if season-to-date | High (same as item 4) | Same feature as item 4, opposite side — should be built together | **Research** |
 | 6 | Pitcher pitch mix vs. hitter pitch-type performance | A fine-grained "stuff matchup" beyond platoon | Pitch-level (Statcast) tracking data | No — not even close | None; would need a wholly new ingestion tier | Low if trailing, but complex to guarantee | Very high — multiplies dimensionality fast | Extends items 4/5's platoon idea to a finer grain | **Research only** |
-| 7 | Bullpen quality | `expectedRuns.ts`'s own bullpen-share term already uses a **flat league-average constant** in place of any team-specific bullpen data | Team relief-pitching ERA/runs-allowed (derivable from existing `PlayerGameLog` `isStarter: false` rows) | Half — raw logs exist, no aggregate computed | **Yes, entirely, from data already ingested** | Low if trailing, same pattern as `weightedRunsRate` | Moderate — team-level bullpen sample across many relievers is less noisy than one starter's ERA | Cleanly replaces a named placeholder constant (`LEAGUE_AVG_RUNS_PER_GAME`) with no other overlap | **Now** — see §8 |
+| 7 | Bullpen quality | `expectedRuns.ts`'s own bullpen-share term already uses a **flat league-average constant** in place of any team-specific bullpen data | Team relief-pitching ERA/runs-allowed (derivable from existing `PlayerGameLog` `isStarter: false` rows) | Half — raw logs exist, no aggregate computed | **Yes, entirely, from data already ingested** | Low if trailing, same pattern as `weightedRunsRate` | Moderate — team-level bullpen sample across many relievers is less noisy than one starter's ERA | Cleanly replaces a named placeholder constant (`LEAGUE_AVG_RUNS_PER_GAME`) with no other overlap | **Built — see §8 outcome** (Brier acceptance gate not yet run against real data, see note) |
 | 8 | Recent bullpen workload (fatigue) | An overworked bullpen underperforms its season rate | Appearance frequency (derivable) + true pitch counts (not stored) | Partial | Appearance frequency yes; pitch counts no (boxscore has them, `statsApi.ts` doesn't parse them) | Low if trailing | High — a second-order refinement, premature before item 7 exists | Strict refinement of item 7 | **Later** (sequenced after 7) |
 | 9 | Catcher effects (framing/game-calling) | Some catchers meaningfully affect pitching-staff runs allowed | Which player caught (not stored — no position field) + a framing metric (Statcast-only) | No, on both counts | None | Low if season-to-date, but metric itself isn't computable here | High — a small effect on an already-thin sample | `props-matchup.md` already names catcher-level granularity as the reason the stolen-base study was shelved | **Reject** (for now) |
 | 10 | Defense (fielding quality / DIPS-adjacent) | Better defense converts more balls in play to outs, beyond what a pitcher's own K/BB numbers show | A crude proxy (derivable from existing `outsRecorded`/`hitsAllowed`/`strikeoutsPitching`) or true OAA/DRS (not derivable) | Half | Crude proxy yes; real metric no | Low if trailing | Moderate | Overlaps conceptually with the existing `opponentDefenseRate` term (runsAgainst) — must be tested as an incremental residual term, same bar as the wired K-terms | **Research** |
@@ -527,6 +530,24 @@ runs-allowed estimate.**
 (Item 15 in §6 — reusing the already-validated pitcher workload ramp inside the game-line
 model — is an even lower-lift change with zero new computation, and is a natural candidate to
 sequence alongside this experiment rather than instead of it.)
+
+**Outcome (2026-09-22).** Built as designed: `src/lib/archer/bullpenRate.ts` +
+`src/lib/queries/bullpenForm.ts` compute each team's trailing relief-pitching runs/9,
+shrunk toward league average by relief-innings sample size (`BULLPEN_FULL_CONFIDENCE_INNINGS
+= 60`); `pitcherExpectedRuns` now takes the pitcher's own team's bullpen split instead of the
+flat constant. A dedicated backtest (`scripts/backtest-mlb-totals-calibration.ts`,
+`npm run backtest:mlb:totals`) was built to score this change's real out-of-sample Brier
+delta on totals and spreads — the acceptance gate this section describes — reusing the
+existing `gradeGameLine` grader and `GameClosingLine` table rather than inventing new
+grading logic. **The acceptance gate has not been run against real data yet**: the
+development database this was built against has zero ingested games for any sport (a fresh
+local Postgres, not a data gap specific to this change — `npm run backtest:mlb`, the
+existing moneyline backtest, hits the same 0-sample `THIN` result here). Unit tests
+(`expectedRuns.test.ts`, `bullpenRate.test.ts`) cover the formula's directional correctness
+and the null/thin-sample fallback to today's exact prior behavior; `npx tsc --noEmit` and the
+full `npm run test` suite (784 tests) both pass. Running `npm run backtest:mlb:totals`
+against a database with real settled MLB games, `GameClosingLine` rows, and relief
+`PlayerGameLog` history is the remaining step before this can be marked trusted or reverted.
 
 ---
 

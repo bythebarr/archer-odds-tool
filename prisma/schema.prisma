@@ -373,6 +373,7 @@ model PlayerGameLog {
   @@unique([mlbPlayerId, gameId])
   @@index([mlbPlayerId, gameDate])
   @@index([mlbPlayerId, opposingStarterHand, gameDate])
+  @@index([teamId, gameDate])
 }
 
 model Sportsbook {

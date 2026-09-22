@@ -18,6 +18,7 @@
     "poll:odds:soccer": "tsx scripts/poll-odds-soccer.ts",
     "backtest:ufc": "tsx scripts/backtest-ufc-calibration.ts",
     "backtest:mlb": "tsx scripts/backtest-mlb-calibration.ts",
+    "backtest:mlb:totals": "tsx scripts/backtest-mlb-totals-calibration.ts",
     "backtest:tennis": "tsx scripts/backtest-tennis-calibration.ts",
     "backtest:nfl": "tsx scripts/backtest-nfl-calibration.ts",
     "backtest:soccer": "tsx scripts/backtest-soccer-calibration.ts",
