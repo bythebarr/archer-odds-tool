@@ -531,23 +531,37 @@ runs-allowed estimate.**
 model — is an even lower-lift change with zero new computation, and is a natural candidate to
 sequence alongside this experiment rather than instead of it.)
 
-**Outcome (2026-09-22).** Built as designed: `src/lib/archer/bullpenRate.ts` +
-`src/lib/queries/bullpenForm.ts` compute each team's trailing relief-pitching runs/9,
-shrunk toward league average by relief-innings sample size (`BULLPEN_FULL_CONFIDENCE_INNINGS
-= 60`); `pitcherExpectedRuns` now takes the pitcher's own team's bullpen split instead of the
-flat constant. A dedicated backtest (`scripts/backtest-mlb-totals-calibration.ts`,
-`npm run backtest:mlb:totals`) was built to score this change's real out-of-sample Brier
-delta on totals and spreads — the acceptance gate this section describes — reusing the
-existing `gradeGameLine` grader and `GameClosingLine` table rather than inventing new
-grading logic. **The acceptance gate has not been run against real data yet**: the
-development database this was built against has zero ingested games for any sport (a fresh
-local Postgres, not a data gap specific to this change — `npm run backtest:mlb`, the
-existing moneyline backtest, hits the same 0-sample `THIN` result here). Unit tests
-(`expectedRuns.test.ts`, `bullpenRate.test.ts`) cover the formula's directional correctness
-and the null/thin-sample fallback to today's exact prior behavior; `npx tsc --noEmit` and the
-full `npm run test` suite (784 tests) both pass. Running `npm run backtest:mlb:totals`
-against a database with real settled MLB games, `GameClosingLine` rows, and relief
-`PlayerGameLog` history is the remaining step before this can be marked trusted or reverted.
+**Outcome (2026-09-22, updated after a real backtest run).** Built as designed:
+`src/lib/archer/bullpenRate.ts` + `src/lib/queries/bullpenForm.ts` compute each team's
+trailing relief-pitching runs/9, shrunk toward league average by relief-innings sample size
+(`BULLPEN_FULL_CONFIDENCE_INNINGS = 60`); `pitcherExpectedRuns` takes the pitcher's own
+team's bullpen split instead of the flat constant. `npm run backtest:mlb:totals` was then
+run against a real copy of production data (2,430 MLB games, 470-489 graded totals/spreads
+with closing lines) — the actual acceptance gate this section describes.
+
+**Result: the gate did not clear on the first run.** With the originally-shipped recent-
+workload fatigue term active, totals Brier moved the WRONG way (Δ −0.0005) and spreads
+moved the right way but far short of the required margin (Δ +0.0004) — both `FAIL` against
+the ≥0.002 bar. A follow-up retune against the same real data (see `BULLPEN_FATIGUE_RUNS_
+PER_WORKLOAD_RATIO`'s comment in `expectedRuns.ts`) isolated the two signals: disabling the
+fatigue term alone fixed the totals regression (Δ −0.0005 → +0.0002) and left spreads
+unchanged (+0.0004); amplifying the quality term 2×/3×/4× improved spreads further (up to
++0.0010 at 4×) but made totals worse again past ~2× — diminishing, then reversing, returns
+that would mean curve-fitting this one sample rather than finding real signal. Settled on:
+**bullpen quality kept at its natural, unscaled weight; recent-workload fatigue disabled
+(ratio = 0, mechanism kept, not reverted) pending a larger archive.** Final state: totals
+Δ +0.0002, spreads Δ +0.0004 — both still technically `FAIL` the strict 0.002 bar, but no
+longer regressing either market, consistent with the same real-data finding from the
+independent player-props check below (bullpen quality: real but marginal, same tier as the
+already-shelved park-factor signal; fatigue: no signal, confirmed by two separate checks
+agreeing). Unit tests and the full suite pass; `npx tsc --noEmit` clean.
+
+**Honest bottom line:** bullpen quality is more accurate information than the flat constant
+it replaced, and doesn't hurt either market — but it hasn't earned "trusted" status on
+team-total games by this codebase's own bar, only "kept because it's honestly better than a
+guess," the same standing several props signals already hold. Revisit both the fatigue
+term and a properly-fitted (not hand-amplified) quality weighting once a larger, multi-
+season archive exists.
 
 ---
 

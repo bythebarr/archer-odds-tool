@@ -69,8 +69,24 @@ const PITCHER_WEIGHT = 0.25;
 /** A typical relief workload for one game, in innings — 9 minus DEFAULT_INNINGS_PER_START, i.e. "whatever the bullpen covers once an average start ends." The anchor bullpenFatiguePenalty compares a team's recent pace against. */
 const LEAGUE_AVG_RELIEF_INNINGS_PER_GAME = 9 - DEFAULT_INNINGS_PER_START;
 
-/** Documented-guess runs/9 penalty per 1.0x a team's recent bullpen pace runs above LEAGUE_AVG_RELIEF_INNINGS_PER_GAME (e.g. a pen thrown at exactly double the typical pace gets the full penalty). Same "transparent v1 heuristic" caveat as every other constant in this file — unlike most of them, this one has no realistic path to a lookahead-safe backtest fit (see docs/architecture/MLB-MODEL-INVENTORY.md's backlog item #8), since isolating "was this specific game bad BECAUSE the pen was tired" from ordinary variance needs a much larger sample than exists today. */
-const BULLPEN_FATIGUE_RUNS_PER_WORKLOAD_RATIO = 1.0;
+/**
+ * Runs/9 penalty per 1.0x a team's recent bullpen pace runs above
+ * LEAGUE_AVG_RELIEF_INNINGS_PER_GAME. Set to 0 (disabled) as of a retune
+ * against real production data (2,430 MLB games): with the penalty active,
+ * `npm run backtest:mlb:totals` showed totals Brier moving the WRONG way
+ * (-0.0005) despite spreads moving slightly the right way — and an
+ * independent test of the same signal against player props
+ * (`scripts/matchup-bullpen-props.ts`) found no real fatigue signal at all
+ * (beta flips sign on the all-data refit, no OOS Brier gain on any of
+ * HR/TB/Hits) — two separate real-data checks agreeing this specific
+ * signal is adding noise, not edge. The mechanism (recentBullpenWorkload,
+ * GameMatchup's homeBullpenRecentWorkload/awayBullpenRecentWorkload,
+ * everything downstream) is kept, not reverted — a future, larger archive
+ * may show a real effect this sample was too thin or too early-season to
+ * detect; re-enable by raising this off 0 once a re-run of both checks
+ * supports it.
+ */
+const BULLPEN_FATIGUE_RUNS_PER_WORKLOAD_RATIO = 0;
 
 /** Caps how far above-normal recent pace can push the penalty, so one freak extra-innings game in the window doesn't blow up the projection. 1.5 means the penalty maxes out at 2.5x the typical pace. */
 const MAX_FATIGUE_RATIO_EXCESS = 1.5;
@@ -118,11 +134,24 @@ function weightedRunsRate(form: TeamForm, side: "for" | "against"): number | nul
 /**
  * A team's own trailing bullpen runs-per-9, shrunk toward league average by
  * relief-innings sample size, plus a recent-workload fatigue penalty on top
- * (see bullpenFatiguePenalty) — a bullpen worked unusually hard over its
- * last couple of games projects worse than its season quality alone would
- * suggest. Falls back to LEAGUE_AVG_RUNS_PER_GAME (today's pre-existing
+ * (see bullpenFatiguePenalty — currently a no-op, see that constant's
+ * comment). Falls back to LEAGUE_AVG_RUNS_PER_GAME (today's pre-existing
  * behavior) when the season split is null or has no qualifying relief
  * innings yet — early season, or a team with no PlayerGameLog history.
+ *
+ * Retune note (real production data, 2,430 MLB games): tried amplifying
+ * this rate's deviation from league average by 2x/3x/4x to see if a
+ * stronger weighting would clear the totals/spreads acceptance gate.
+ * Spreads improved with more weight (up to +0.0010 Brier at 4x, still
+ * short of the required +0.002) but totals PEAKED around 1-2x (+0.0002)
+ * and got worse beyond that — pushing further would be curve-fitting this
+ * one sample, not finding real signal. Reverted to the natural, unscaled
+ * substitution: a team-specific rate is still strictly more honest than
+ * the flat constant it replaced, even though it doesn't clear this
+ * particular bar on team-total games. The independent player-props check
+ * (`scripts/matchup-bullpen-props.ts`) found the same underlying quality
+ * signal real but marginal — consistent with, not contradicting, this
+ * result.
  */
 function bullpenExpectedRunRate(bullpen: BullpenSplit | null, recentWorkload: BullpenWorkload | null): number {
   const baseRate =

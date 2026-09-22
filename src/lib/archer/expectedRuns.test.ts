@@ -288,32 +288,17 @@ describe("computeExpectedRuns", () => {
     });
   });
 
-  describe("bullpen recent-workload fatigue", () => {
-    it("projects more runs against a bullpen worked well above its typical recent pace", () => {
+  describe("bullpen recent-workload fatigue (currently disabled — see BULLPEN_FATIGUE_RUNS_PER_WORKLOAD_RATIO's comment: a real-data retune found this signal added noise, not edge, on both the game-line backtest and an independent props check)", () => {
+    it("has no effect on the projection at its current weight, regardless of workload", () => {
       const baseline = computeExpectedRuns(matchup());
-      const tired = computeExpectedRuns(
-        matchup({ awayBullpenRecentWorkload: bullpenWorkload(7.0, 2) }) // double the 3.5 IP/game typical pace
+      const heavilyWorked = computeExpectedRuns(
+        matchup({ awayBullpenRecentWorkload: bullpenWorkload(20, 2) }) // would have been capped-max under the old weight
       );
-      expect(tired.home!).toBeGreaterThan(baseline.home!);
-    });
-
-    it("does not reward a well-rested or typically-used bullpen with a bonus", () => {
-      const baseline = computeExpectedRuns(matchup());
       const rested = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(1.0, 2) }));
-      const typical = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(3.5, 2) }));
+      const noData = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: null }));
+      expect(heavilyWorked.home!).toBeCloseTo(baseline.home!, 6);
       expect(rested.home!).toBeCloseTo(baseline.home!, 6);
-      expect(typical.home!).toBeCloseTo(baseline.home!, 6);
-    });
-
-    it("caps the penalty so one extreme recent workload doesn't blow up the projection", () => {
-      const extreme = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(20, 2) }));
-      const cappedAt = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(8.75, 2) })); // 2.5x typical pace, right at the cap
-      expect(extreme.home!).toBeCloseTo(cappedAt.home!, 6);
-    });
-
-    it("is unaffected when no recent-workload data is available yet", () => {
-      const result = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: null }));
-      expect(result.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
+      expect(noData.home!).toBeCloseTo(baseline.home!, 6);
     });
   });
 

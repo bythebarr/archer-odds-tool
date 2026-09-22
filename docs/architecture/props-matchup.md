@@ -71,6 +71,8 @@ relative to the residual spread.
 | Opposing-team SB-allowed (SB o0.5) | `matchup:sb` | Real + PA-clean, but OOS Brier just −0.0001. Team-level proxy too coarse — steals hinge on the specific catcher's arm, which we don't log per game. |
 | Batter hits vs opposing starter | `matchup:batter` | No OOS gain (DIPS: pitchers barely control BABIP). Only the batter-K half of that study wired. |
 | Pitcher days of rest | `matchup:rest` | Standard rest (5 vs 6 days, ~87% of starts) is flat over ramp+opponent+park. Extended rest (≥7 days, n=293) shows a consistent +3–4.6pt and *does* improve OOS Brier (−0.0010, same order as wired terms) — a genuine lead. **But not wireable yet:** the obvious confound (extended rest clustering around the All-Star break / deliberate ace-skips) is **untestable on current data** — the archive is a single partial season (2026, Mar 26–Jul 7) that ends before the break. Revisit once multi-season / post-break data lands. |
+| Opposing bullpen quality (HR/TB/Hits) | `matchup:bullpenprops` | Run against real production data (2026-09-22, ~49k batter-games). Real, correctly-directioned, PA-clean signal (Δ0.01–0.06 PA/g, nothing like platoon's 0.44) — but OOS Brier gain is only −0.0001 to −0.0002, *smaller* than even the already-marginal park-factor signal. Same underlying quality signal was also tried, unscaled, in the game-line totals/spreads backtest (see `MLB-MODEL-INVENTORY.md` §8) — real there too, same marginal tier. |
+| Opposing bullpen recent-workload fatigue (HR/TB/Hits) | `matchup:bullpenprops` | Run same session as above. No OOS Brier gain on any of the three stats; the all-data beta flips sign on TB/HR (noise, not signal). Confirms the same finding independently reached by disabling this term in the game-line totals backtest — this specific signal doesn't hold up on real data. |
 
 **Meta-finding:** batting-side matchup context is consistently marginal (OOS Brier
 −0.0001 to −0.0006) versus the pitcher-K terms (−0.0013 to −0.0036). **Pitcher
@@ -80,17 +82,16 @@ free-data matchup space is now well-explored.
 
 ## Queued — built, not yet run
 
-Two new candidates, written the same session the game-line model gained team
-bullpen quality/fatigue and park weather — neither has ever been tested against
-props (they're new signals, not a re-test of anything above). Both scripts are
-complete and typecheck; they haven't been run because this environment's database
-has no historical archive. Run once real data is available; wire only if they
-clear the same bar as everything above.
+One new candidate, written the same session the game-line model gained park
+weather — never tested against props. Complete and typechecks; hasn't been run
+because it needs the `Venue`/`Game.venueId` schema, which didn't exist in
+production at the time this doc was last updated (rides the same
+`syncMlbSchedule` deploy that resolved `matchup:bullpenprops` above). Run once
+that schema is live; wire only if it clears the same bar as everything above.
 
 | Investigation | Script | What it tests |
 |---|---|---|
-| Opposing bullpen quality + recent fatigue | `matchup:bullpenprops` | Does a worse or recently-overworked opposing bullpen raise a batter's HR/TB/Hits probability, the same way it already raises the team's expected runs (`archer/bullpenRate.ts`, `expectedRuns.ts`)? Two signals tested in one pass; each gets its own PA-confound check (does a leaky opposing pen inflate the batter's own team's PA that game?). |
-| Park weather (temperature + direction-aware wind) | `matchup:weatherprops` | Does `weatherRunsShift` (`archer/weatherEffect.ts`, reused unchanged) predict batter HR/TB residuals? Requires a historical `Venue`/`Game.venueId` backfill (free — rides the existing `syncMlbSchedule`) plus real historical weather from Open-Meteo's archive API (also free, confirmed live) — unlike the game-line platoon signal, this one genuinely CAN be backtested, since Open-Meteo has real historical data where the MLB Stats API splits endpoint has none. |
+| Park weather (temperature + direction-aware wind) | `matchup:weatherprops` | Does `weatherRunsShift` (`archer/weatherEffect.ts`, reused unchanged) predict batter HR/TB residuals? Needs real historical weather from Open-Meteo's archive API (free, confirmed live) — unlike the game-line platoon signal, this one genuinely CAN be backtested, since Open-Meteo has real historical data where the MLB Stats API splits endpoint has none. |
 
 **Explicitly not queued:** a props version of the new pitcher-vs-lineup platoon
 signal (`archer/pitcherPlatoon.ts`). It can't be backtested at all — the MLB Stats
