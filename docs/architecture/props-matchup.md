@@ -73,6 +73,7 @@ relative to the residual spread.
 | Pitcher days of rest | `matchup:rest` | Standard rest (5 vs 6 days, ~87% of starts) is flat over ramp+opponent+park. Extended rest (≥7 days, n=293) shows a consistent +3–4.6pt and *does* improve OOS Brier (−0.0010, same order as wired terms) — a genuine lead. **But not wireable yet:** the obvious confound (extended rest clustering around the All-Star break / deliberate ace-skips) is **untestable on current data** — the archive is a single partial season (2026, Mar 26–Jul 7) that ends before the break. Revisit once multi-season / post-break data lands. |
 | Opposing bullpen quality (HR/TB/Hits) | `matchup:bullpenprops` | Run against real production data (2026-09-22, ~49k batter-games). Real, correctly-directioned, PA-clean signal (Δ0.01–0.06 PA/g, nothing like platoon's 0.44) — but OOS Brier gain is only −0.0001 to −0.0002, *smaller* than even the already-marginal park-factor signal. Same underlying quality signal was also tried, unscaled, in the game-line totals/spreads backtest (see `MLB-MODEL-INVENTORY.md` §8) — real there too, same marginal tier. |
 | Opposing bullpen recent-workload fatigue (HR/TB/Hits) | `matchup:bullpenprops` | Run same session as above. No OOS Brier gain on any of the three stats; the all-data beta flips sign on TB/HR (noise, not signal). Confirms the same finding independently reached by disabling this term in the game-line totals backtest — this specific signal doesn't hold up on real data. |
+| Park weather (temperature + direction-aware wind, HR/TB/Hits) | `matchup:weatherprops` | Run against real production data (2026-09-22, ~36k batter-games at open-air venues, real historical weather from Open-Meteo's archive API — 1,702 distinct venue+hours fetched). The residual pattern is genuinely directionally correct on all three stats (cold/wind-in games negative, hot/wind-out positive — largest spread on HR at 2.1pt, exactly the physical hypothesis), and PA-clean (Δ0.04 PA/g). But OOS Brier shows no real gain (flat to 4 decimals on HR/Hits, negligible on TB) and f=1 ROI gets WORSE applying the fitted beta out-of-sample (HR: −10.1% → −11.6%; TB: −4.7% → −5.1%) — the in-sample pattern doesn't generalize. Same bucket as bullpen quality: a real, physically-sensible signal that doesn't clear the bar on the batting side. |
 
 **Meta-finding:** batting-side matchup context is consistently marginal (OOS Brier
 −0.0001 to −0.0006) versus the pitcher-K terms (−0.0013 to −0.0036). **Pitcher
@@ -80,20 +81,7 @@ strikeouts are the prop edge.** Remaining unexplored matchup factors need data w
 don't have — day-of (weather, umpire) or finer-grained (catcher-level) — so the
 free-data matchup space is now well-explored.
 
-## Queued — built, not yet run
-
-One new candidate, written the same session the game-line model gained park
-weather — never tested against props. Complete and typechecks; hasn't been run
-because it needs the `Venue`/`Game.venueId` schema, which didn't exist in
-production at the time this doc was last updated (rides the same
-`syncMlbSchedule` deploy that resolved `matchup:bullpenprops` above). Run once
-that schema is live; wire only if it clears the same bar as everything above.
-
-| Investigation | Script | What it tests |
-|---|---|---|
-| Park weather (temperature + direction-aware wind) | `matchup:weatherprops` | Does `weatherRunsShift` (`archer/weatherEffect.ts`, reused unchanged) predict batter HR/TB residuals? Needs real historical weather from Open-Meteo's archive API (free, confirmed live) — unlike the game-line platoon signal, this one genuinely CAN be backtested, since Open-Meteo has real historical data where the MLB Stats API splits endpoint has none. |
-
-**Explicitly not queued:** a props version of the new pitcher-vs-lineup platoon
+**Explicitly not tested:** a props version of the new pitcher-vs-lineup platoon
 signal (`archer/pitcherPlatoon.ts`). It can't be backtested at all — the MLB Stats
 API's handedness-split endpoint is a live rolling aggregate with no historical
 time series to replay, the same limitation documented in `weatherEffect.ts`'s
