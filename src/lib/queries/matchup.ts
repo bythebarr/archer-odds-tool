@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import type { Handedness } from "@/generated/prisma/client";
 import { getTeamFormForGame, getTeamFormBatch, type TeamForm } from "./teamForm";
-import { getBullpenFormForGame, getBullpenFormBatch, type BullpenSplit } from "./bullpenForm";
+import {
+  getBullpenFormForGame,
+  getBullpenFormBatch,
+  getBullpenRecentWorkload,
+  type BullpenSplit,
+  type BullpenWorkload,
+} from "./bullpenForm";
 import {
   getPitcherStartSplits,
   getPitcherHandednessSplits,
@@ -38,6 +44,9 @@ export interface GameMatchup {
   /** Each team's own trailing bullpen split — see archer/bullpenRate.ts. Null only when the team has no relief-appearance sample yet (expectedRuns.ts falls back to league average). */
   homeBullpen: BullpenSplit | null;
   awayBullpen: BullpenSplit | null;
+  /** Each team's own recent bullpen workload (last couple of games) — see archer/bullpenRate.ts's recentBullpenWorkload. Null only when the team has no relief-appearance sample in that window (expectedRuns.ts applies no fatigue penalty). */
+  homeBullpenRecentWorkload: BullpenWorkload | null;
+  awayBullpenRecentWorkload: BullpenWorkload | null;
   /** Each team's OWN season batting-handedness mix — see archer/lineupHandedness.ts. Used when THAT team is batting (i.e. homeLineupMix pairs with awayPitcher in expectedRuns.ts, not homePitcher). */
   homeLineupMix: LineupHandednessMix | null;
   awayLineupMix: LineupHandednessMix | null;
@@ -107,6 +116,10 @@ export async function getGameMatchup(gameId: string): Promise<GameMatchup | null
     game.awayTeamId,
     game.season
   );
+  const recentWorkloadByTeam = await getBullpenRecentWorkload(
+    [game.homeTeamId, game.awayTeamId],
+    game.season
+  );
   const startsByPitcherId = await getPitcherStartSplits(
     [game.homeProbablePitcher?.mlbPersonId, game.awayProbablePitcher?.mlbPersonId],
     game.season
@@ -134,6 +147,8 @@ export async function getGameMatchup(gameId: string): Promise<GameMatchup | null
     awayForm,
     homeBullpen,
     awayBullpen,
+    homeBullpenRecentWorkload: recentWorkloadByTeam[game.homeTeamId] ?? null,
+    awayBullpenRecentWorkload: recentWorkloadByTeam[game.awayTeamId] ?? null,
     homeLineupMix: lineupMixByTeam[game.homeTeamId] ?? null,
     awayLineupMix: lineupMixByTeam[game.awayTeamId] ?? null,
   };
@@ -161,6 +176,7 @@ export async function getGameMatchupsBatch(gameIds: string[]): Promise<Record<st
   // A batch call is always scoped to one ET calendar date's slate, so every game shares one season.
   const formByTeam = await getTeamFormBatch([...teamIds], games[0].season);
   const bullpenByTeam = await getBullpenFormBatch([...teamIds], games[0].season);
+  const recentWorkloadByTeam = await getBullpenRecentWorkload([...teamIds], games[0].season);
   const lineupMixByTeam = await getTeamHandednessMix([...teamIds], games[0].season);
   const pitcherMlbPersonIds = games.flatMap((g) => [g.homeProbablePitcher?.mlbPersonId, g.awayProbablePitcher?.mlbPersonId]);
   const startsByPitcherId = await getPitcherStartSplits(pitcherMlbPersonIds, games[0].season);
@@ -186,6 +202,8 @@ export async function getGameMatchupsBatch(gameIds: string[]): Promise<Record<st
       awayForm: formByTeam[game.awayTeamId],
       homeBullpen: bullpenByTeam[game.homeTeamId] ?? null,
       awayBullpen: bullpenByTeam[game.awayTeamId] ?? null,
+      homeBullpenRecentWorkload: recentWorkloadByTeam[game.homeTeamId] ?? null,
+      awayBullpenRecentWorkload: recentWorkloadByTeam[game.awayTeamId] ?? null,
       homeLineupMix: lineupMixByTeam[game.homeTeamId] ?? null,
       awayLineupMix: lineupMixByTeam[game.awayTeamId] ?? null,
     };

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeExpectedRuns } from "./expectedRuns";
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { RecordSplit, RunsSplit, TeamForm } from "@/lib/queries/teamForm";
-import type { BullpenSplit } from "@/lib/archer/bullpenRate";
+import type { BullpenSplit, BullpenWorkload } from "@/lib/archer/bullpenRate";
 import type { PitcherStartSplit } from "@/lib/archer/pitcherRecency";
 
 function record(wins: number, losses: number): RecordSplit {
@@ -67,6 +67,11 @@ function bullpen(runsPerNine = 4.3, relieverInnings = 60): BullpenSplit {
   return { earnedRuns: (runsPerNine * outsRecorded) / 27, outsRecorded };
 }
 
+/** A recent bullpen workload at exactly the league-typical pace (3.5 IP/game over `games` games) — the neutral fixture, zero fatigue penalty. */
+function bullpenWorkload(inningsPerGame: number, games: number): BullpenWorkload {
+  return { outsRecorded: inningsPerGame * games * 3, games };
+}
+
 function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
   return {
     homePitcher: avgPitcher,
@@ -75,6 +80,10 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     awayForm: averageForm(),
     homeBullpen: bullpen(),
     awayBullpen: bullpen(),
+    // Neutral default — null always produces a zero fatigue penalty (see
+    // bullpenFatiguePenalty's null guard), same as a matching-pace fixture.
+    homeBullpenRecentWorkload: null,
+    awayBullpenRecentWorkload: null,
     // Neutral default — a null lineup mix always produces a zero platoon
     // shift regardless of the pitcher's own splits (belt-and-suspenders
     // with pitcher()'s own null platoon defaults above).
@@ -273,6 +282,35 @@ describe("computeExpectedRuns", () => {
     it("is unaffected when the opposing starter has no platoon split synced yet", () => {
       const withoutSplit = computeExpectedRuns(matchup({ homeLineupMix: allLeftMix }));
       expect(withoutSplit.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
+    });
+  });
+
+  describe("bullpen recent-workload fatigue", () => {
+    it("projects more runs against a bullpen worked well above its typical recent pace", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const tired = computeExpectedRuns(
+        matchup({ awayBullpenRecentWorkload: bullpenWorkload(7.0, 2) }) // double the 3.5 IP/game typical pace
+      );
+      expect(tired.home!).toBeGreaterThan(baseline.home!);
+    });
+
+    it("does not reward a well-rested or typically-used bullpen with a bonus", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const rested = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(1.0, 2) }));
+      const typical = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(3.5, 2) }));
+      expect(rested.home!).toBeCloseTo(baseline.home!, 6);
+      expect(typical.home!).toBeCloseTo(baseline.home!, 6);
+    });
+
+    it("caps the penalty so one extreme recent workload doesn't blow up the projection", () => {
+      const extreme = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(20, 2) }));
+      const cappedAt = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(8.75, 2) })); // 2.5x typical pace, right at the cap
+      expect(extreme.home!).toBeCloseTo(cappedAt.home!, 6);
+    });
+
+    it("is unaffected when no recent-workload data is available yet", () => {
+      const result = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: null }));
+      expect(result.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
     });
   });
 });

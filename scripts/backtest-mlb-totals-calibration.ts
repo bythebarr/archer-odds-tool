@@ -3,7 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { getTeamFormForGame } from "@/lib/queries/teamForm";
 import { computeExpectedRuns } from "@/lib/archer/expectedRuns";
 import { archerTotalOverProb, archerSpreadCoverProb } from "@/lib/archer/runProbability";
-import { buildBullpenRunRateModel, trailingBullpenSplit, type BullpenRunRateModel } from "@/lib/archer/bullpenRate";
+import {
+  buildBullpenRunRateModel,
+  trailingBullpenSplit,
+  recentBullpenWorkload,
+  RECENT_BULLPEN_WORKLOAD_GAMES,
+  type BullpenRunRateModel,
+} from "@/lib/archer/bullpenRate";
 import { RECENT_STARTS_LONG_WINDOW, RECENT_STARTS_SHORT_WINDOW } from "@/lib/archer/pitcherRecency";
 import { gradeGameLine } from "@/lib/discord/gradePlay";
 import {
@@ -204,6 +210,19 @@ async function collectMlbTotalsSamples({
       useBullpen && bullpenModel ? trailingBullpenSplit(bullpenModel, `${g.season}:${g.homeTeamId}`, before) : null;
     const awayBullpen =
       useBullpen && bullpenModel ? trailingBullpenSplit(bullpenModel, `${g.season}:${g.awayTeamId}`, before) : null;
+    // Reuses the same bullpenModel as the quality split above — no new
+    // query. Bundled with the same useBullpen toggle rather than a separate
+    // one: un-bundling would need new backtest ceremony this session has
+    // deliberately not built, and both features stay representative of the
+    // live model together this way.
+    const homeBullpenRecentWorkload =
+      useBullpen && bullpenModel
+        ? recentBullpenWorkload(bullpenModel, `${g.season}:${g.homeTeamId}`, RECENT_BULLPEN_WORKLOAD_GAMES, before)
+        : null;
+    const awayBullpenRecentWorkload =
+      useBullpen && bullpenModel
+        ? recentBullpenWorkload(bullpenModel, `${g.season}:${g.awayTeamId}`, RECENT_BULLPEN_WORKLOAD_GAMES, before)
+        : null;
 
     const matchup: GameMatchup = {
       homePitcher: asOfPitcher(g.season, starters?.get(g.homeTeamId!), before),
@@ -212,6 +231,8 @@ async function collectMlbTotalsSamples({
       awayForm,
       homeBullpen,
       awayBullpen,
+      homeBullpenRecentWorkload,
+      awayBullpenRecentWorkload,
       // See asOfPitcher's comment above — no historical time series exists
       // for this feature, so it's never reconstructed in this backtest.
       homeLineupMix: null,

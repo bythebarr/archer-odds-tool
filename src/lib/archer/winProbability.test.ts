@@ -63,6 +63,8 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     // computeArcherWinProbability never reads bullpen/lineup data — unset here, mechanical only.
     homeBullpen: null,
     awayBullpen: null,
+    homeBullpenRecentWorkload: null,
+    awayBullpenRecentWorkload: null,
     homeLineupMix: null,
     awayLineupMix: null,
     ...overrides,

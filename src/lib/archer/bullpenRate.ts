@@ -33,6 +33,15 @@ export interface BullpenSplit {
   outsRecorded: number;
 }
 
+/** Raw recent-workload totals — outs recorded and how many team-days they came from, over the last RECENT_BULLPEN_WORKLOAD_GAMES. No earned-runs component: this is about how much the pen has been USED, not how well it's pitched (that's BullpenSplit's job). */
+export interface BullpenWorkload {
+  outsRecorded: number;
+  games: number;
+}
+
+/** How many of a team's most recent bullpen-days count toward its recent-workload figure — shared by the live query and the totals backtest so the window size lives in one place. 2 smooths a single extra-innings anomaly while still meaning "the last day or two," matching the fatigue signal's intent (see expectedRuns.ts's bullpenFatiguePenalty). */
+export const RECENT_BULLPEN_WORKLOAD_GAMES = 2;
+
 interface BullpenGame {
   date: Date;
   earnedRuns: number;
@@ -95,4 +104,32 @@ export function trailingBullpenSplit(
     outsRecorded += g.outsRecorded;
   }
   return { earnedRuns, outsRecorded };
+}
+
+/**
+ * A team's recent bullpen workload — total outs recorded over its most
+ * recent `windowGames` team-days strictly before `before` (or the whole
+ * series' tail when `before` is omitted — the live "as of now" case).
+ * Mirrors pitcherRecency.ts's trailingPitcherStartsSplit "most recent N"
+ * windowing exactly, applied to bullpen-days instead of pitcher-starts.
+ * Null only when the key is unknown to the model; a known key with fewer
+ * than `windowGames` qualifying days returns whatever it has (possibly
+ * zeroed) rather than padding — same convention as trailingPitcherStartsSplit.
+ */
+export function recentBullpenWorkload(
+  model: BullpenRunRateModel,
+  key: string | null | undefined,
+  windowGames: number,
+  before?: Date
+): BullpenWorkload | null {
+  if (!key) return null;
+  const arr = model.series.get(key);
+  if (!arr) return null;
+
+  const prior = before ? arr.filter((g) => g.date < before) : arr; // arr is date-sorted ascending
+  const windowed = prior.slice(Math.max(0, prior.length - windowGames));
+
+  let outsRecorded = 0;
+  for (const g of windowed) outsRecorded += g.outsRecorded;
+  return { outsRecorded, games: windowed.length };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBullpenRunRateModel, trailingBullpenSplit } from "./bullpenRate";
+import { buildBullpenRunRateModel, trailingBullpenSplit, recentBullpenWorkload } from "./bullpenRate";
 
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
 
@@ -65,5 +65,38 @@ describe("trailingBullpenSplit", () => {
     expect(trailingBullpenSplit(model, "ZZ", d("2026-05-01"))).toBeNull();
     expect(trailingBullpenSplit(model, null, d("2026-05-01"))).toBeNull();
     expect(trailingBullpenSplit(model, undefined, d("2026-05-01"))).toBeNull();
+  });
+});
+
+describe("recentBullpenWorkload", () => {
+  const days = ["2026-04-01", "2026-04-02", "2026-04-03", "2026-04-04", "2026-04-05"];
+  const model = buildBullpenRunRateModel(teamRows("A", days)); // 3 outs/day
+
+  it("windows to the most recent N team-days strictly before the asked date (lookahead-safe)", () => {
+    // Before 2026-04-04: days 1-3 exist; last 2 of them = days 2-3.
+    expect(recentBullpenWorkload(model, "A", 2, d("2026-04-04"))).toEqual({ outsRecorded: 6, games: 2 });
+  });
+
+  it("excludes earlier days once more than the window size are available", () => {
+    // Before 2026-05-01: all 5 days exist; last 2 excludes days 1-3.
+    expect(recentBullpenWorkload(model, "A", 2, d("2026-05-01"))).toEqual({ outsRecorded: 6, games: 2 });
+  });
+
+  it("uses the tail of the whole series when before is omitted (live 'as of now' read)", () => {
+    expect(recentBullpenWorkload(model, "A", 2)).toEqual({ outsRecorded: 6, games: 2 });
+  });
+
+  it("returns whatever it has (fewer than the window) rather than padding", () => {
+    // Before 2026-04-02: only day 1 exists.
+    expect(recentBullpenWorkload(model, "A", 2, d("2026-04-02"))).toEqual({ outsRecorded: 3, games: 1 });
+  });
+
+  it("returns a zeroed workload for a known key with no qualifying days yet", () => {
+    expect(recentBullpenWorkload(model, "A", 2, d("2026-04-01"))).toEqual({ outsRecorded: 0, games: 0 });
+  });
+
+  it("returns null for an unknown or missing key", () => {
+    expect(recentBullpenWorkload(model, "ZZ", 2, d("2026-05-01"))).toBeNull();
+    expect(recentBullpenWorkload(model, null, 2, d("2026-05-01"))).toBeNull();
   });
 });

@@ -184,6 +184,8 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
       // unset rather than reconstructing it for no consumer.
       homeBullpen: null,
       awayBullpen: null,
+      homeBullpenRecentWorkload: null,
+      awayBullpenRecentWorkload: null,
       homeLineupMix: null,
       awayLineupMix: null,
     };

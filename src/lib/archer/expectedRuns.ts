@@ -1,6 +1,6 @@
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { RunsSplit, TeamForm } from "@/lib/queries/teamForm";
-import type { BullpenSplit } from "@/lib/archer/bullpenRate";
+import type { BullpenSplit, BullpenWorkload } from "@/lib/archer/bullpenRate";
 import { startSplitEraPerNine } from "@/lib/archer/pitcherRecency";
 import { platoonRunsShift } from "@/lib/archer/pitcherPlatoon";
 import type { LineupHandednessMix } from "@/lib/archer/lineupHandedness";
@@ -9,9 +9,10 @@ import { weightedAverage, sampleConfidence, shrinkToward } from "@/lib/stats/wei
 /**
  * The "Archer Runs" model: projects each team's expected runs scored in a
  * game from their own recent scoring, the opponent's recent runs allowed,
- * the opposing starter's ERA, the opposing bullpen's own trailing quality,
- * and a platoon-matchup shift from the opposing starter's own
- * vs-handedness splits against tonight's specific lineup composition. It's
+ * the opposing starter's ERA, the opposing bullpen's own trailing quality
+ * AND recent-workload fatigue, and a platoon-matchup shift from the
+ * opposing starter's own vs-handedness splits against tonight's specific
+ * lineup composition. It's
  * the shared primitive behind both the totals and spread flavors of Archer
  * EV (see runProbability.ts) — one projection per team, rather than two
  * independent formulas, so a pitcher/form signal that moves the total also
@@ -62,6 +63,37 @@ const OFFENSE_WEIGHT = 0.45;
 const DEFENSE_WEIGHT = 0.3;
 const PITCHER_WEIGHT = 0.25;
 
+/** A typical relief workload for one game, in innings — 9 minus DEFAULT_INNINGS_PER_START, i.e. "whatever the bullpen covers once an average start ends." The anchor bullpenFatiguePenalty compares a team's recent pace against. */
+const LEAGUE_AVG_RELIEF_INNINGS_PER_GAME = 9 - DEFAULT_INNINGS_PER_START;
+
+/** Documented-guess runs/9 penalty per 1.0x a team's recent bullpen pace runs above LEAGUE_AVG_RELIEF_INNINGS_PER_GAME (e.g. a pen thrown at exactly double the typical pace gets the full penalty). Same "transparent v1 heuristic" caveat as every other constant in this file — unlike most of them, this one has no realistic path to a lookahead-safe backtest fit (see docs/architecture/MLB-MODEL-INVENTORY.md's backlog item #8), since isolating "was this specific game bad BECAUSE the pen was tired" from ordinary variance needs a much larger sample than exists today. */
+const BULLPEN_FATIGUE_RUNS_PER_WORKLOAD_RATIO = 1.0;
+
+/** Caps how far above-normal recent pace can push the penalty, so one freak extra-innings game in the window doesn't blow up the projection. 1.5 means the penalty maxes out at 2.5x the typical pace. */
+const MAX_FATIGUE_RATIO_EXCESS = 1.5;
+
+/**
+ * Runs/9 penalty from a team's recent bullpen workload — how much they've
+ * been used over their last RECENT_BULLPEN_WORKLOAD_GAMES games, not their
+ * season-long quality (that's bullpenExpectedRunRate's job; this is purely
+ * additive on top of it). Only penalizes ABOVE-normal recent usage — a
+ * well-rested pen isn't assumed better than its season quality, just not
+ * additionally worse, since rest doesn't make a mediocre bullpen great, it
+ * just means it isn't further degraded. Zero (never negative) whenever the
+ * workload data is unavailable or the team's recent pace wasn't unusual.
+ * No confidence-shrink-by-sample-size here (unlike every season-scale
+ * signal in this file): the window is capped at RECENT_BULLPEN_WORKLOAD_GAMES
+ * by design, so there's no real sample-size gradient — the data is either
+ * present (1-2 games) or absent.
+ */
+function bullpenFatiguePenalty(workload: BullpenWorkload | null): number {
+  if (!workload || workload.games === 0) return 0;
+  const recentInningsPerGame = workload.outsRecorded / 3 / workload.games;
+  const ratioExcess = recentInningsPerGame / LEAGUE_AVG_RELIEF_INNINGS_PER_GAME - 1;
+  const cappedExcess = Math.min(Math.max(ratioExcess, 0), MAX_FATIGUE_RATIO_EXCESS);
+  return BULLPEN_FATIGUE_RUNS_PER_WORKLOAD_RATIO * cappedExcess;
+}
+
 function runsPerGame(split: RunsSplit, side: "for" | "against"): number | null {
   if (split.gamesFound === 0) return null;
   return (side === "for" ? split.runsFor : split.runsAgainst) / split.gamesFound;
@@ -82,16 +114,23 @@ function weightedRunsRate(form: TeamForm, side: "for" | "against"): number | nul
 
 /**
  * A team's own trailing bullpen runs-per-9, shrunk toward league average by
- * relief-innings sample size. Falls back to LEAGUE_AVG_RUNS_PER_GAME (today's
- * pre-existing behavior) when the split is null or has no qualifying relief
+ * relief-innings sample size, plus a recent-workload fatigue penalty on top
+ * (see bullpenFatiguePenalty) — a bullpen worked unusually hard over its
+ * last couple of games projects worse than its season quality alone would
+ * suggest. Falls back to LEAGUE_AVG_RUNS_PER_GAME (today's pre-existing
+ * behavior) when the season split is null or has no qualifying relief
  * innings yet — early season, or a team with no PlayerGameLog history.
  */
-function bullpenExpectedRunRate(bullpen: BullpenSplit | null): number {
-  if (!bullpen || bullpen.outsRecorded === 0) return LEAGUE_AVG_RUNS_PER_GAME;
-  const relieverInnings = bullpen.outsRecorded / 3;
-  const rawRunsPerNine = (9 * bullpen.earnedRuns) / relieverInnings;
-  const confidence = sampleConfidence(relieverInnings, BULLPEN_FULL_CONFIDENCE_INNINGS);
-  return shrinkToward(rawRunsPerNine, LEAGUE_AVG_RUNS_PER_GAME, confidence);
+function bullpenExpectedRunRate(bullpen: BullpenSplit | null, recentWorkload: BullpenWorkload | null): number {
+  const baseRate =
+    !bullpen || bullpen.outsRecorded === 0
+      ? LEAGUE_AVG_RUNS_PER_GAME
+      : shrinkToward(
+          (9 * bullpen.earnedRuns) / (bullpen.outsRecorded / 3),
+          LEAGUE_AVG_RUNS_PER_GAME,
+          sampleConfidence(bullpen.outsRecorded / 3, BULLPEN_FULL_CONFIDENCE_INNINGS)
+        );
+  return baseRate + bullpenFatiguePenalty(recentWorkload);
 }
 
 /**
@@ -108,7 +147,11 @@ function bullpenExpectedRunRate(bullpen: BullpenSplit | null): number {
  * ERA yet. `bullpen` is THIS pitcher's own team's trailing bullpen split
  * (see computeExpectedRuns) — the team that relieves them, not the opponent.
  */
-function pitcherExpectedRuns(pitcher: PitcherInfo | null, bullpen: BullpenSplit | null): number | null {
+function pitcherExpectedRuns(
+  pitcher: PitcherInfo | null,
+  bullpen: BullpenSplit | null,
+  bullpenRecentWorkload: BullpenWorkload | null
+): number | null {
   if (!pitcher || pitcher.era === null) return null;
   const confidence = sampleConfidence(pitcher.gamesStarted, PITCHER_FULL_CONFIDENCE_STARTS);
   const shrunkEraRunsPerNine = shrinkToward(blendedPitcherEra(pitcher), LEAGUE_AVG_RUNS_PER_GAME, confidence);
@@ -120,7 +163,7 @@ function pitcherExpectedRuns(pitcher: PitcherInfo | null, bullpen: BullpenSplit 
   const starterShare = Math.min(Math.max(avgInningsPerStart / 9, 0), 1);
   const bullpenShare = 1 - starterShare;
 
-  return shrunkEraRunsPerNine * starterShare + bullpenExpectedRunRate(bullpen) * bullpenShare;
+  return shrunkEraRunsPerNine * starterShare + bullpenExpectedRunRate(bullpen, bullpenRecentWorkload) * bullpenShare;
 }
 
 /** Blends one team's offense with the opponent's defense (runs allowed) and the opposing starter's expected runs allowed, falling back to whichever components are actually available. Null only if none are. */
@@ -161,8 +204,8 @@ export function computeExpectedRuns(matchup: GameMatchup): ExpectedRuns {
   const awayOffense = weightedRunsRate(matchup.awayForm, "for");
   const homeDefense = weightedRunsRate(matchup.homeForm, "against");
   const awayDefense = weightedRunsRate(matchup.awayForm, "against");
-  const homePitcherRuns = pitcherExpectedRuns(matchup.homePitcher, matchup.homeBullpen);
-  const awayPitcherRuns = pitcherExpectedRuns(matchup.awayPitcher, matchup.awayBullpen);
+  const homePitcherRuns = pitcherExpectedRuns(matchup.homePitcher, matchup.homeBullpen, matchup.homeBullpenRecentWorkload);
+  const awayPitcherRuns = pitcherExpectedRuns(matchup.awayPitcher, matchup.awayBullpen, matchup.awayBullpenRecentWorkload);
 
   const home = blendExpectedRuns(homeOffense, awayDefense, awayPitcherRuns);
   const away = blendExpectedRuns(awayOffense, homeDefense, homePitcherRuns);
