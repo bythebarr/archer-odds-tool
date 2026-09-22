@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { archerTotalOverProb, archerTotalUnderProb, archerSpreadCoverProb } from "./runProbability";
-import type { ExpectedRuns } from "./expectedRuns";
+import type { ExpectedRuns, ExpectedRunsSideDrivers } from "./expectedRuns";
 
-const nullRuns: ExpectedRuns = { home: null, away: null };
-const evenRuns: ExpectedRuns = { home: 4.5, away: 4.5 }; // mean total 9, mean margin 0
-const homeFavored: ExpectedRuns = { home: 5.5, away: 3.5 }; // mean margin +2
+// This suite only exercises runProbability.ts's math over final home/away
+// numbers — drivers are irrelevant here, so every fixture shares one no-op stub.
+const noDrivers: ExpectedRunsSideDrivers = {
+  offenseRuns: null,
+  opponentDefenseRuns: null,
+  opponentPitcherRuns: null,
+  opponentBullpenRunRate: 4.3,
+  platoonShift: 0,
+  weatherShift: 0,
+};
+const drivers = { home: noDrivers, away: noDrivers };
+
+const nullRuns: ExpectedRuns = { home: null, away: null, drivers };
+const evenRuns: ExpectedRuns = { home: 4.5, away: 4.5, drivers }; // mean total 9, mean margin 0
+const homeFavored: ExpectedRuns = { home: 5.5, away: 3.5, drivers }; // mean margin +2
 
 describe("archerTotalOverProb / archerTotalUnderProb", () => {
   it("are complements of each other", () => {

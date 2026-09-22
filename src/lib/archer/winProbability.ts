@@ -107,11 +107,22 @@ function pitcherQualityScore(pitcher: PitcherInfo | null): number | null {
 }
 
 /** Blends pitcher quality and form into one team-strength score, falling back to whichever component is actually available. */
-function teamStrength(pitcher: PitcherInfo | null, form: TeamForm, isHome: boolean): number | null {
+function teamStrength(formScore: number | null, pitcherScore: number | null): number | null {
   return weightedAverage([
-    [teamFormScore(form, isHome), FORM_WEIGHT],
-    [pitcherQualityScore(pitcher), PITCHER_WEIGHT],
+    [formScore, FORM_WEIGHT],
+    [pitcherScore, PITCHER_WEIGHT],
   ]);
+}
+
+/** One side's named inputs to its team-strength score — the "why" panel's raw material. Both in the same [0,1] scale centered on 0.5 (see teamFormScore/pitcherQualityScore). */
+export interface ArcherWinProbabilitySideDrivers {
+  formScore: number | null;
+  pitcherQualityScore: number | null;
+}
+
+export interface ArcherWinProbabilityDrivers {
+  home: ArcherWinProbabilitySideDrivers;
+  away: ArcherWinProbabilitySideDrivers;
 }
 
 export interface ArcherWinProbability {
@@ -120,24 +131,32 @@ export interface ArcherWinProbability {
   homeStrength: number | null;
   awayStrength: number | null;
   usedPitcher: { home: boolean; away: boolean };
+  drivers: ArcherWinProbabilityDrivers;
 }
 
 /** Computes the Archer method's home/away win probability for one game from probable-pitcher + team-form data alone. */
 export function computeArcherWinProbability(matchup: GameMatchup): ArcherWinProbability {
-  const homeStrength = teamStrength(matchup.homePitcher, matchup.homeForm, true);
-  const awayStrength = teamStrength(matchup.awayPitcher, matchup.awayForm, false);
-  const usedPitcher = {
-    home: pitcherQualityScore(matchup.homePitcher) !== null,
-    away: pitcherQualityScore(matchup.awayPitcher) !== null,
+  const homeFormScore = teamFormScore(matchup.homeForm, true);
+  const awayFormScore = teamFormScore(matchup.awayForm, false);
+  const homePitcherScore = pitcherQualityScore(matchup.homePitcher);
+  const awayPitcherScore = pitcherQualityScore(matchup.awayPitcher);
+
+  const drivers: ArcherWinProbabilityDrivers = {
+    home: { formScore: homeFormScore, pitcherQualityScore: homePitcherScore },
+    away: { formScore: awayFormScore, pitcherQualityScore: awayPitcherScore },
   };
 
+  const homeStrength = teamStrength(homeFormScore, homePitcherScore);
+  const awayStrength = teamStrength(awayFormScore, awayPitcherScore);
+  const usedPitcher = { home: homePitcherScore !== null, away: awayPitcherScore !== null };
+
   if (homeStrength === null || awayStrength === null) {
-    return { homeProb: null, awayProb: null, homeStrength, awayStrength, usedPitcher };
+    return { homeProb: null, awayProb: null, homeStrength, awayStrength, usedPitcher, drivers };
   }
 
   const rawHomeProb = logistic(
     (homeStrength - awayStrength) * STRENGTH_SENSITIVITY * STRENGTH_CALIBRATION_SHRINK + HOME_FIELD_LOGIT
   );
   const homeProb = Math.min(Math.max(rawHomeProb, PROB_FLOOR), PROB_CEILING);
-  return { homeProb, awayProb: 1 - homeProb, homeStrength, awayStrength, usedPitcher };
+  return { homeProb, awayProb: 1 - homeProb, homeStrength, awayStrength, usedPitcher, drivers };
 }
