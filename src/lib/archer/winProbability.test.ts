@@ -67,6 +67,7 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     awayBullpenRecentWorkload: null,
     homeLineupMix: null,
     awayLineupMix: null,
+    weather: null,
     ...overrides,
   };
 }

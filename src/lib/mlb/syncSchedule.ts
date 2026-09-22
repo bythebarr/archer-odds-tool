@@ -51,11 +51,49 @@ export async function syncMlbSchedule(startDate: string, endDate: string): Promi
   const teamRows = await prisma.team.findMany();
   const teamIdByMlbId = new Map(teamRows.map((t) => [t.mlbTeamId, t.id]));
 
+  // Upsert every distinct venue seen once, same as-encountered-by-mlbVenueId
+  // pattern syncPitchers.ts already uses for Pitcher — venue geography rides
+  // the schedule sync instead of a separate one, since it's on the same
+  // response the schedule call already fetches.
+  const venuesSeen = new Map<number, NonNullable<(typeof games)[number]["venue"]>>();
+  for (const g of games) {
+    if (g.venue) venuesSeen.set(g.venue.mlbVenueId, g.venue);
+  }
+  const venueIdByMlbId = new Map<number, string>();
+  for (const [mlbVenueId, venue] of venuesSeen) {
+    // Skip upserting a venue MLB reported without coordinates — nothing
+    // downstream (weather) can use it anyway, and a real geography value
+    // should never be silently overwritten by a defaulted 0/0 later.
+    if (venue.latitude === null || venue.longitude === null || venue.azimuthDeg === null) continue;
+    const row = await prisma.venue.upsert({
+      where: { mlbVenueId },
+      create: {
+        mlbVenueId,
+        name: venue.name,
+        latitude: venue.latitude,
+        longitude: venue.longitude,
+        elevationFt: venue.elevationFt ?? 0,
+        azimuthDeg: venue.azimuthDeg,
+        roofType: venue.roofType ?? "Open",
+      },
+      update: {
+        name: venue.name,
+        latitude: venue.latitude,
+        longitude: venue.longitude,
+        elevationFt: venue.elevationFt ?? 0,
+        azimuthDeg: venue.azimuthDeg,
+        roofType: venue.roofType ?? "Open",
+      },
+    });
+    venueIdByMlbId.set(mlbVenueId, row.id);
+  }
+
   let gamesUpserted = 0;
   for (const game of games) {
     const homeTeamId = teamIdByMlbId.get(game.homeTeamId);
     const awayTeamId = teamIdByMlbId.get(game.awayTeamId);
     if (!homeTeamId || !awayTeamId) continue; // e.g. spring training / all-star exhibitions vs non-MLB teams
+    const venueId = game.venue ? (venueIdByMlbId.get(game.venue.mlbVenueId) ?? null) : null;
 
     await prisma.game.upsert({
       where: { mlbGameId: game.mlbGameId },
@@ -68,12 +106,17 @@ export async function syncMlbSchedule(startDate: string, endDate: string): Promi
         awayTeamId,
         homeScore: game.homeScore,
         awayScore: game.awayScore,
+        venueId,
       },
       update: {
         scheduledStartUtc: game.scheduledStartUtc,
         status: mapDetailedStateToStatus(game.detailedState),
         homeScore: game.homeScore,
         awayScore: game.awayScore,
+        // Only overwrite venueId when this sync actually resolved one — a
+        // transient hiccup dropping venue data for one call should never
+        // silently null out an already-known venue on an existing game.
+        ...(venueId ? { venueId } : {}),
       },
     });
     gamesUpserted++;

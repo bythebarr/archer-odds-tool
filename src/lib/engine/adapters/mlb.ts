@@ -188,6 +188,7 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
       awayBullpenRecentWorkload: null,
       homeLineupMix: null,
       awayLineupMix: null,
+      weather: null,
     };
     const proj = computeArcherWinProbability(matchup);
     if (proj.homeProb === null || proj.awayProb === null) continue; // too thin to price

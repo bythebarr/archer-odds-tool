@@ -24,6 +24,17 @@ interface MlbScheduleTeam {
   probablePitcher?: { id: number; fullName: string };
 }
 
+interface MlbScheduleVenue {
+  id: number;
+  name: string;
+  location?: {
+    defaultCoordinates?: { latitude: number; longitude: number };
+    azimuthAngle?: number;
+    elevation?: number;
+  };
+  fieldInfo?: { roofType?: string };
+}
+
 interface MlbScheduleGame {
   gamePk: number;
   gameDate: string;
@@ -36,6 +47,7 @@ interface MlbScheduleGame {
     home: MlbScheduleTeam;
     away: MlbScheduleTeam;
   };
+  venue?: MlbScheduleVenue;
 }
 
 interface MlbScheduleResponse {
@@ -43,6 +55,17 @@ interface MlbScheduleResponse {
     date: string;
     games: MlbScheduleGame[];
   }[];
+}
+
+/** A ballpark's geography — sourced from the schedule's own venue(location,fieldInfo) hydrate, confirmed live to already include everything the weather model needs (no separate venue lookup, no hand-built table). Null fields mean MLB didn't report that piece for this venue (rare) — never guessed. */
+export interface MlbVenue {
+  mlbVenueId: number;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  elevationFt: number | null;
+  azimuthDeg: number | null;
+  roofType: string | null;
 }
 
 export interface MlbGame {
@@ -54,6 +77,7 @@ export interface MlbGame {
   awayTeamId: number;
   homeScore: number | null;
   awayScore: number | null;
+  venue: MlbVenue | null;
 }
 
 /** MLB Stats API's own detailedState strings, mapped down to our GameStatus enum. */
@@ -79,7 +103,7 @@ export async function fetchMlbSchedule(startDate: string, endDate: string): Prom
   // season + every postseason round. Without it the API also returns spring
   // training (S), exhibition (E), and All-Star (A) games, which were being
   // stored as regular-season finals and polluting team form + player hit-rates.
-  const url = `${BASE_URL}/schedule?sportId=${MLB_SPORT_ID}&startDate=${startDate}&endDate=${endDate}&gameType=R,F,D,L,W`;
+  const url = `${BASE_URL}/schedule?sportId=${MLB_SPORT_ID}&startDate=${startDate}&endDate=${endDate}&gameType=R,F,D,L,W&hydrate=venue(location,fieldInfo)`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`MLB Stats API schedule request failed: ${res.status} ${res.statusText}`);
@@ -96,6 +120,17 @@ export async function fetchMlbSchedule(startDate: string, endDate: string): Prom
       awayTeamId: g.teams.away.team.id,
       homeScore: g.teams.home.score ?? null,
       awayScore: g.teams.away.score ?? null,
+      venue: g.venue
+        ? {
+            mlbVenueId: g.venue.id,
+            name: g.venue.name,
+            latitude: g.venue.location?.defaultCoordinates?.latitude ?? null,
+            longitude: g.venue.location?.defaultCoordinates?.longitude ?? null,
+            elevationFt: g.venue.location?.elevation ?? null,
+            azimuthDeg: g.venue.location?.azimuthAngle ?? null,
+            roofType: g.venue.fieldInfo?.roofType ?? null,
+          }
+        : null,
     }))
   );
 }

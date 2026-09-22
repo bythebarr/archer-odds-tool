@@ -58,6 +58,14 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/poll-weather",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron/poll-weather",
+      "schedule": "0 21 * * *"
+    },
+    {
       "path": "/api/cron/poll-odds-tennis",
       "schedule": "5 9 * * *"
     },

@@ -214,6 +214,11 @@ model Game {
   awayProbablePitcherId String?
   awayProbablePitcher   Pitcher? @relation("AwayProbablePitcher", fields: [awayProbablePitcherId], references: [id])
 
+  /// MLB only — where the game is/was played. Nullable: set by syncMlbSchedule
+  /// from the schedule's venue hydrate; absent for sports that don't sync a venue.
+  venueId String?
+  venue   Venue?  @relation(fields: [venueId], references: [id])
+
   oddsSnapshots          OddsSnapshot[]
   currentLines           CurrentOddsLine[]
   closingLines           GameClosingLine[]
@@ -222,10 +227,52 @@ model Game {
   playerPropSnapshots    PlayerPropSnapshot[]
   currentPlayerPropLines CurrentPlayerPropLine[]
   lineupSlots            LineupSlot[]
+  weather                GameWeather?
 
   @@index([scheduledStartUtc])
   @@index([status])
   @@index([sport])
+}
+
+/// An MLB ballpark — geography needed for the weather model (archer/weatherEffect.ts),
+/// sourced free from the MLB Stats API's own schedule hydrate (venue(location,fieldInfo)),
+/// confirmed live to already include lat/long, elevation, home-plate-to-center-field
+/// compass bearing (azimuthAngle), and roof type. Upserted by syncMlbSchedule, the
+/// same as-encountered pattern Pitcher already uses — no separate venue sync needed.
+model Venue {
+  id          String  @id @default(cuid())
+  mlbVenueId  Int     @unique
+  name        String
+  latitude    Float
+  longitude   Float
+  elevationFt Int
+  /// Home-plate-to-center-field compass bearing in degrees (MLB's own
+  /// azimuthAngle) — lets wind direction resolve to "blowing out" vs.
+  /// "blowing in" relative to the field, not just a raw compass reading.
+  azimuthDeg  Float
+  /// MLB's own reported value ("Open", "Retractable", ...) — trusted as-is.
+  /// weatherRunsShift only applies weather when this is exactly "Open";
+  /// whether a retractable roof is actually open on a given day isn't
+  /// reliably knowable in advance from any free source.
+  roofType    String
+  games       Game[]
+}
+
+/// Latest-forecast weather for one game — upserted on every poll-weather sync,
+/// no snapshot history kept (same "informational, refreshed on every sync"
+/// choice as PitcherSeasonStats/PitcherHandednessSplit, for the same reason:
+/// this feeds live pricing, it isn't graded/tracked over time).
+model GameWeather {
+  id            String   @id @default(cuid())
+  gameId        String   @unique
+  game          Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  temperatureF  Float
+  windMph       Float
+  /// Meteorological convention: the direction the wind is coming FROM, in
+  /// compass degrees — see weatherEffect.ts for how this combines with the
+  /// venue's own azimuthDeg to resolve "blowing out" vs. "blowing in."
+  windFromDeg   Float
+  capturedAt    DateTime @updatedAt
 }
 
 /**

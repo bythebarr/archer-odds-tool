@@ -89,6 +89,9 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     // with pitcher()'s own null platoon defaults above).
     homeLineupMix: null,
     awayLineupMix: null,
+    // Neutral default — null always produces a zero weather shift (see
+    // weatherRunsShift's null guard).
+    weather: null,
     ...overrides,
   };
 }
@@ -310,6 +313,26 @@ describe("computeExpectedRuns", () => {
 
     it("is unaffected when no recent-workload data is available yet", () => {
       const result = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: null }));
+      expect(result.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
+    });
+  });
+
+  describe("weather", () => {
+    it("raises BOTH teams' expected runs equally on a hot, wind-blowing-out day — shared, not per-team", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const hotAndWindyOut = computeExpectedRuns(
+        matchup({
+          weather: { temperatureF: 95, windMph: 15, windFromDeg: 180, venueAzimuthDeg: 0, roofType: "Open" },
+        })
+      );
+      expect(hotAndWindyOut.home!).toBeGreaterThan(baseline.home!);
+      expect(hotAndWindyOut.away!).toBeGreaterThan(baseline.away!);
+      // Same shift applied to both sides, so the gap between them is unchanged.
+      expect(hotAndWindyOut.home! - hotAndWindyOut.away!).toBeCloseTo(baseline.home! - baseline.away!, 6);
+    });
+
+    it("is unaffected when no weather data is available yet", () => {
+      const result = computeExpectedRuns(matchup({ weather: null }));
       expect(result.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
     });
   });

@@ -4,26 +4,29 @@ import type { BullpenSplit, BullpenWorkload } from "@/lib/archer/bullpenRate";
 import { startSplitEraPerNine } from "@/lib/archer/pitcherRecency";
 import { platoonRunsShift } from "@/lib/archer/pitcherPlatoon";
 import type { LineupHandednessMix } from "@/lib/archer/lineupHandedness";
+import { weatherRunsShift } from "@/lib/archer/weatherEffect";
 import { weightedAverage, sampleConfidence, shrinkToward } from "@/lib/stats/weightedAverage";
 
 /**
  * The "Archer Runs" model: projects each team's expected runs scored in a
  * game from their own recent scoring, the opponent's recent runs allowed,
  * the opposing starter's ERA, the opposing bullpen's own trailing quality
- * AND recent-workload fatigue, and a platoon-matchup shift from the
- * opposing starter's own vs-handedness splits against tonight's specific
- * lineup composition. It's
- * the shared primitive behind both the totals and spread flavors of Archer
- * EV (see runProbability.ts) — one projection per team, rather than two
+ * AND recent-workload fatigue, a platoon-matchup shift from the opposing
+ * starter's own vs-handedness splits against tonight's specific lineup
+ * composition, and a shared park-weather shift (temperature + direction-
+ * aware wind, see archer/weatherEffect.ts). It's the shared primitive
+ * behind both the totals and spread flavors of Archer EV (see
+ * runProbability.ts) — one projection per team, rather than two
  * independent formulas, so a pitcher/form signal that moves the total also
  * moves the spread lean consistently.
  *
  * Same "transparent v1 heuristic, not a fitted model" caveat as
  * winProbability.ts — every constant below is a documented guess, not
- * backtested, with no opponent-quality/park adjustment. The platoon shift
- * (see archer/pitcherPlatoon.ts) is a stronger version of this caveat: it
- * cannot be backtested with today's data model at all, not just "hasn't
- * been yet."
+ * backtested, with no opponent-quality/park-factor adjustment beyond
+ * weather. The platoon shift (see archer/pitcherPlatoon.ts) cannot be
+ * backtested with today's data model at all; the weather shift could be in
+ * principle (Open-Meteo has a true historical archive) but isn't yet —
+ * both are validated live for now, not fitted.
  */
 
 /** Modern-era MLB average runs scored per team per game — the shrinkage anchor for every rate below (offense, defense, and pitcher ERA are all treated on this one scale). Recalibrate if league-wide scoring shifts materially. */
@@ -210,8 +213,12 @@ export function computeExpectedRuns(matchup: GameMatchup): ExpectedRuns {
   const home = blendExpectedRuns(homeOffense, awayDefense, awayPitcherRuns);
   const away = blendExpectedRuns(awayOffense, homeDefense, homePitcherRuns);
 
+  // Weather is shared, not per-team — same park, same conditions, affect
+  // both offenses equally (unlike every other shift in this function).
+  const weather = weatherRunsShift(matchup.weather);
+
   return {
-    home: home === null ? null : home + opposingPlatoonShift(matchup.awayPitcher, matchup.homeLineupMix),
-    away: away === null ? null : away + opposingPlatoonShift(matchup.homePitcher, matchup.awayLineupMix),
+    home: home === null ? null : home + opposingPlatoonShift(matchup.awayPitcher, matchup.homeLineupMix) + weather,
+    away: away === null ? null : away + opposingPlatoonShift(matchup.homePitcher, matchup.awayLineupMix) + weather,
   };
 }

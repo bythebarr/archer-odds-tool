@@ -17,6 +17,7 @@ import {
 } from "./pitcherForm";
 import { getTeamHandednessMix, type LineupHandednessMix } from "./lineupHandedness";
 import type { PitcherHandSplit } from "@/lib/archer/pitcherPlatoon";
+import type { GameWeatherConditions } from "@/lib/archer/weatherEffect";
 
 export interface PitcherInfo {
   fullName: string;
@@ -50,6 +51,23 @@ export interface GameMatchup {
   /** Each team's OWN season batting-handedness mix — see archer/lineupHandedness.ts. Used when THAT team is batting (i.e. homeLineupMix pairs with awayPitcher in expectedRuns.ts, not homePitcher). */
   homeLineupMix: LineupHandednessMix | null;
   awayLineupMix: LineupHandednessMix | null;
+  /** Shared (not per-team) — see archer/weatherEffect.ts. Null when the game has no resolved venue or no forecast synced yet. */
+  weather: GameWeatherConditions | null;
+}
+
+/** Builds the shared weather-conditions object from a game's venue + latest synced forecast — null if either piece is missing. */
+function toWeatherConditions(
+  venue: { azimuthDeg: number; roofType: string } | null,
+  weather: { temperatureF: number; windMph: number; windFromDeg: number } | null
+): GameWeatherConditions | null {
+  if (!weather) return null;
+  return {
+    temperatureF: weather.temperatureF,
+    windMph: weather.windMph,
+    windFromDeg: weather.windFromDeg,
+    venueAzimuthDeg: venue?.azimuthDeg ?? null,
+    roofType: venue?.roofType ?? null,
+  };
 }
 
 interface PitcherWithStats {
@@ -99,6 +117,8 @@ export async function getGameMatchup(gameId: string): Promise<GameMatchup | null
     include: {
       homeProbablePitcher: { include: { seasonStats: true } },
       awayProbablePitcher: { include: { seasonStats: true } },
+      venue: true,
+      weather: true,
     },
   });
   // The DB CHECK constraint guarantees homeTeamId/awayTeamId are non-null
@@ -151,6 +171,7 @@ export async function getGameMatchup(gameId: string): Promise<GameMatchup | null
     awayBullpenRecentWorkload: recentWorkloadByTeam[game.awayTeamId] ?? null,
     homeLineupMix: lineupMixByTeam[game.homeTeamId] ?? null,
     awayLineupMix: lineupMixByTeam[game.awayTeamId] ?? null,
+    weather: toWeatherConditions(game.venue, game.weather),
   };
 }
 
@@ -161,6 +182,8 @@ export async function getGameMatchupsBatch(gameIds: string[]): Promise<Record<st
     include: {
       homeProbablePitcher: { include: { seasonStats: true } },
       awayProbablePitcher: { include: { seasonStats: true } },
+      venue: true,
+      weather: true,
     },
   });
 
@@ -206,6 +229,7 @@ export async function getGameMatchupsBatch(gameIds: string[]): Promise<Record<st
       awayBullpenRecentWorkload: recentWorkloadByTeam[game.awayTeamId] ?? null,
       homeLineupMix: lineupMixByTeam[game.homeTeamId] ?? null,
       awayLineupMix: lineupMixByTeam[game.awayTeamId] ?? null,
+      weather: toWeatherConditions(game.venue, game.weather),
     };
   }
   return result;

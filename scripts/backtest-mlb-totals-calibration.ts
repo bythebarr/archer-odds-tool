@@ -237,6 +237,10 @@ async function collectMlbTotalsSamples({
       // for this feature, so it's never reconstructed in this backtest.
       homeLineupMix: null,
       awayLineupMix: null,
+      // No historical venue backfill this pass (see archer/weatherEffect.ts's
+      // header) — Open-Meteo's archive COULD reconstruct this in principle,
+      // unlike platoon, but that's deliberately deferred, not attempted here.
+      weather: null,
     };
 
     const runs = computeExpectedRuns(matchup);
