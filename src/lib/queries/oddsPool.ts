@@ -15,6 +15,15 @@ import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns, type ExpectedRuns } from "@/lib/archer/expectedRuns";
 import { archerProbForRow } from "@/lib/archer/runProbability";
 import type { StatCategory } from "@/generated/prisma/client";
+import {
+  seasonLogsByPlayer,
+  MLB_STAT_DEFS,
+  seasonValuesForStat,
+  tallyPointSample,
+  type PointSample,
+} from "@/lib/props/mlbBoard";
+import { projectPropHit, pooledBaseRate, type PropProjection } from "@/lib/props/projection";
+import { pitcherRampFor } from "@/lib/props/pitcherRamp";
 
 /**
  * The odds pool: one row per *play* — a specific bettable selection (a side of a
@@ -71,7 +80,7 @@ export interface OddsPlay {
   booksCount: number;
   /** MARKET lens: EV of the best price vs the de-vigged market consensus, as a fraction; null for three-way soccer. */
   ev: number | null;
-  /** MODEL lens: EV of the best price vs Archer's own model probability (win prob for ML, expected-runs cover prob for spreads/totals), as a fraction. Non-null only for MLB game lines (the only markets the model prices today); null for props, non-MLB, and three-way soccer. */
+  /** MODEL lens: EV of the best price vs Archer's own model probability (win prob for ML, expected-runs cover prob for spreads/totals, the Archer Prop Projection for player props), as a fraction; null for non-MLB and three-way soccer. */
   modelEv: number | null;
 }
 
@@ -160,6 +169,33 @@ type PropLineRow = {
   };
 };
 
+/**
+ * The Archer Prop Projection's probability at one player/stat/point, plus
+ * the market EV that probability implies — pure and DB-free so it's
+ * unit-testable without mocking Prisma, composing the same already-pure,
+ * already-tested pieces mlbBoard.ts's board uses (tallyPointSample,
+ * pooledBaseRate, pitcherRampFor, projectPropHit), just at an arbitrary
+ * market point instead of the board's fixed standardLines grid.
+ */
+export function projectPropAtPoint(
+  playerSample: PointSample,
+  populationSamples: PointSample[],
+  column: string,
+  point: number
+): PropProjection | null {
+  const baseRate = pooledBaseRate(populationSamples);
+  const ramp = pitcherRampFor(column, point); // undefined off the fitted grid — projectPropHit applies no ramp, same as the board
+  return projectPropHit(
+    {
+      seasonHits: playerSample.seasonHits,
+      seasonSample: playerSample.seasonSample,
+      recentRate: playerSample.recentRate,
+      baseRate,
+    },
+    { ramp } // contextShift omitted (0) — matchup-context parity with the board's K-prop terms is a deliberate follow-up, not this pass
+  );
+}
+
 /** Player-prop plays — one per (player, stat, over/under) at the modal line, best-priced with over/under-devig value. MLB only today. */
 async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<OddsPlay[]> {
   const lines = (await prisma.currentPlayerPropLine.findMany({
@@ -176,6 +212,35 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
   for (const l of lines) {
     const key = `${l.game.id}|${l.mlbPlayerId}|${l.statCategory}`;
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(l);
+  }
+
+  // One batched fetch for every player referenced anywhere on the prop slate
+  // — same discipline mlbBoard.ts already uses, reused directly rather than
+  // re-implemented. Population is the players already being priced for each
+  // stat today (no extra lineup/probable-pitcher query needed) — the tightest
+  // available match to "the field this player should be regressed toward"
+  // without a second DB round-trip.
+  const playerIds = [...new Set(lines.map((l) => l.mlbPlayerId))];
+  const logsByPlayer = await seasonLogsByPlayer(playerIds);
+  const populationByStat = new Map<StatCategory, Set<string>>();
+  for (const l of lines) {
+    (populationByStat.get(l.statCategory) ?? populationByStat.set(l.statCategory, new Set()).get(l.statCategory)!).add(
+      l.mlbPlayerId
+    );
+  }
+  // Population samples are a function of (stat, point) — cache per group of
+  // calls, since many groups for the same stat legitimately share a point.
+  const populationCache = new Map<string, PointSample[]>();
+  function populationSamplesFor(stat: StatCategory, point: number): PointSample[] {
+    const cacheKey = `${stat}|${point}`;
+    const cached = populationCache.get(cacheKey);
+    if (cached) return cached;
+    const column = MLB_STAT_DEFS[stat].column;
+    const samples = [...(populationByStat.get(stat) ?? [])].map((playerId) =>
+      tallyPointSample(seasonValuesForStat(logsByPlayer.get(playerId) ?? [], column), point)
+    );
+    populationCache.set(cacheKey, samples);
+    return samples;
   }
 
   const plays: OddsPlay[] = [];
@@ -209,6 +274,23 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
       );
       const fairProb = side === "over" ? consensus.fairProbA : consensus.fairProbB;
 
+      // Computed per side (not hoisted above this loop) and at THIS side's own
+      // best.point: when there's no paired same-point over/under to devig
+      // (modalPoint === null), the over and under candidates can legitimately
+      // resolve to different points.
+      const column = MLB_STAT_DEFS[stat].column;
+      const playerSample = tallyPointSample(
+        seasonValuesForStat(logsByPlayer.get(group[0].mlbPlayerId) ?? [], column),
+        best.point
+      );
+      const projection = projectPropAtPoint(playerSample, populationSamplesFor(stat, best.point), column, best.point);
+      const overProb = projection?.probability ?? null;
+      // Under = 1 - over: the complement of P(clears the line), same
+      // convention archerTotalUnderProb already uses for game totals — there's
+      // no separate "under model."
+      const modelSideProb = overProb === null ? null : side === "over" ? overProb : 1 - overProb;
+      const modelEv = modelSideProb !== null ? calculateEv(modelSideProb, best.priceAmerican) : null;
+
       plays.push({
         key: `${g.id}:prop:${group[0].mlbPlayerId}:${stat}:${side}:${best.point}`,
         sport: "mlb",
@@ -234,7 +316,7 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
         bestBookInitials: BOOK_INITIALS[best.bookKey] ?? best.bookKey.slice(0, 3).toUpperCase(),
         booksCount: candidates.length,
         ev: fairProb !== null ? calculateEv(fairProb, best.priceAmerican) : null,
-        modelEv: null, // props have no Archer model today
+        modelEv,
       });
     }
   }

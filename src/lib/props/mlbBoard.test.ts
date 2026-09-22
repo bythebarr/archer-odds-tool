@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { assembleLineCells, type PropLogEntry } from "./mlbBoard";
+import { assembleLineCells, tallyPointSample, MLB_STAT_DEFS, type PropLogEntry } from "./mlbBoard";
+import { StatCategory } from "@/generated/prisma/client";
 
 // Most-recent-first, with one unrecorded (null) game that must be excluded.
 const log: PropLogEntry[] = [
@@ -54,5 +55,48 @@ describe("assembleLineCells", () => {
     const empty = assembleLineCells([{ value: null, splits: [] }], [0.5], WINDOWS, SPLITS);
     expect(empty[0].cells.season).toMatchObject({ sampleSize: 0, hitRate: null });
     expect(empty[0].cells.vsLHP).toMatchObject({ sampleSize: 0, hitRate: null });
+  });
+});
+
+describe("tallyPointSample", () => {
+  // Most-recent-first, 6 season values.
+  const values = [2, 0, 1, 3, 2, 1];
+
+  it("tallies at an arbitrary point, not just a stat's standardLines", () => {
+    // point 1.0 (not a standard line for any MLB stat): values > 1 => 2,3,2 => 3 of 6.
+    const sample = tallyPointSample(values, 1.0);
+    expect(sample).toMatchObject({ seasonHits: 3, seasonSample: 6 });
+  });
+
+  it("computes recentRate over only the first 10 (or fewer) values", () => {
+    // All 6 values are within L10 here, so recentRate should equal the season rate at this point.
+    const sample = tallyPointSample(values, 0.5);
+    expect(sample.recentRate).toBeCloseTo(sample.seasonHits / sample.seasonSample, 10);
+  });
+
+  it("returns a zeroed, null-rate sample for an empty array", () => {
+    expect(tallyPointSample([], 0.5)).toEqual({ seasonHits: 0, seasonSample: 0, recentRate: null });
+  });
+
+  it("agrees with assembleLineCells' own tally at one of a stat's real standard lines", () => {
+    const log: PropLogEntry[] = values.map((value) => ({ value, splits: [] }));
+    const viaBoard = assembleLineCells(log, [1.5], WINDOWS, []);
+    const viaPointSample = tallyPointSample(values, 1.5);
+    expect(viaPointSample.seasonHits).toBe(viaBoard[0].cells.season!.hits);
+    expect(viaPointSample.seasonSample).toBe(viaBoard[0].cells.season!.sampleSize);
+  });
+});
+
+describe("MLB_STAT_DEFS", () => {
+  it("has an entry for every StatCategory enum value", () => {
+    for (const stat of Object.values(StatCategory)) {
+      expect(MLB_STAT_DEFS[stat]).toBeDefined();
+    }
+  });
+
+  it("gives every stat a unique, non-empty PlayerGameLog column", () => {
+    const columns = Object.values(MLB_STAT_DEFS).map((d) => d.column);
+    expect(columns.every((c) => c.length > 0)).toBe(true);
+    expect(new Set(columns).size).toBe(columns.length);
   });
 });
