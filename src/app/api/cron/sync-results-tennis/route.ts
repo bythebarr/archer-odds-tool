@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { syncAndGradeTennisResults } from "@/lib/tennis/results";
+import { classifyFetchStore, ingestHttpStatus, sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "sync-results-tennis";
 
@@ -30,10 +31,17 @@ export async function POST(request: Request) {
     // "nothing to do" would undersell a run that did real work.
     const considered = Math.max(summary.awaitingResults, summary.matchesGraded);
     await recordPollLog(JOB_NAME, writeOutcomeStatus(considered, summary.matchesGraded, "matches graded"));
-    return Response.json({ ok: true, ...summary });
+    const outcome = classifyFetchStore(
+      { fetched: considered, stored: summary.matchesGraded },
+      { noun: "matches graded" }
+    );
+    return Response.json(
+      { ok: outcome.status === "ok" || outcome.status === "empty", status: outcome.status, ...summary },
+      { status: ingestHttpStatus(outcome.status) }
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
     await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ ok: false, error: message }, { status: 502 });
+    return Response.json({ ok: false, status: "error", error: message }, { status: 502 });
   }
 }

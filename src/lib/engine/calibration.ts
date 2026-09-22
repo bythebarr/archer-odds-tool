@@ -218,6 +218,9 @@ export interface CalibrationReport {
   verdict: CalibrationVerdict;
 }
 
+/** Default `trustMargin` for scoreCalibration — exported so callers that need this exact bar outside a calibration verdict (e.g. a before/after backtest's own ship/no-ship gate) can reuse it instead of restating the number. */
+export const DEFAULT_TRUST_MARGIN = 0.002;
+
 /**
  * Score a full set of samples into a report card. `minSample` is the floor below
  * which we refuse to render a verdict (default 100 — the UFC/MLB backtests run in
@@ -228,7 +231,7 @@ export interface CalibrationReport {
  */
 export function scoreCalibration(
   samplesNewestFirst: CalibrationSample[],
-  { minSample = 100, trustMargin = 0.002 } = {}
+  { minSample = 100, trustMargin = DEFAULT_TRUST_MARGIN } = {}
 ): CalibrationReport {
   const n = samplesNewestFirst.length;
   const b = brier(samplesNewestFirst);

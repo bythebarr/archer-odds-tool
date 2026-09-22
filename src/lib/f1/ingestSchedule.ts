@@ -27,6 +27,8 @@ async function upsertCircuit(cache: Map<string, string>, c: ErgastCircuit): Prom
 }
 
 export interface F1ScheduleSummary {
+  /** Races Jolpica returned for the season, before the upsert loop. */
+  racesFetched: number;
   racesUpserted: number;
 }
 
@@ -59,5 +61,5 @@ export async function ingestSeasonSchedule(season: number): Promise<F1ScheduleSu
     racesUpserted++;
   }
 
-  return { racesUpserted };
+  return { racesFetched: races.length, racesUpserted };
 }

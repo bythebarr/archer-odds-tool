@@ -118,11 +118,62 @@ export interface Play {
   display?: PlayDisplay;
 }
 
-/** Result of an adapter pulling its sport's data for a date. */
+/**
+ * How an ingest attempt actually went — the ONE vocabulary every adapter and
+ * every cron route that pulls provider data reports through (Step 2, truthful
+ * ingestion). "Did it throw?" is not enough: a provider can answer 200 and
+ * hand back events that map to nothing we can store, which must read
+ * differently from either a clean success or a legitimately quiet day.
+ *
+ *   ok        — usable records were fetched and stored (or matched/updated).
+ *   empty     — ran fine; the provider legitimately had nothing for us (an
+ *               off-season week, no active tournament, nothing left to grade).
+ *   skipped   — did not run: disabled by a feature flag, or required
+ *               credentials are absent. Distinct from `empty` — we never asked.
+ *   unusable  — the provider responded (no throw) but zero usable records
+ *               could be stored/matched from what it returned. This is the
+ *               case a bare `ok: true` has historically hidden.
+ *   error     — the attempt failed outright; `detail` carries a safe (no
+ *               secrets) description.
+ *
+ * See src/lib/engine/ingestResult.ts for the shared classifier/builders.
+ */
+export type IngestStatus = "ok" | "empty" | "skipped" | "unusable" | "error";
+
+/**
+ * Counts an ingest path can surface, when the underlying fetch/store loop can
+ * provide them. All optional — an adapter reports whichever of these it can
+ * actually compute; it must not invent ones it can't.
+ */
+export interface IngestCounts {
+  /** Raw items the provider returned, before any filtering/matching. */
+  fetched?: number;
+  /** Items that matched something we could act on (e.g. a known team/game). */
+  matched?: number;
+  /** Rows actually written/upserted. */
+  stored?: number;
+  /** Existing rows updated, where distinguishable from newly-created ones. */
+  updated?: number;
+  /** Items dropped as unusable (name mismatch, missing corner data, ...). */
+  rejected?: number;
+}
+
+/**
+ * Result of an adapter pulling its sport's data for a date.
+ *
+ * `ok` is derived, kept for callers still reading the old boolean: true for
+ * `status` "ok" or "empty" (we have — or legitimately don't need — current
+ * data), false for "skipped"/"unusable"/"error" (don't treat this run as
+ * having produced fresh, usable data). Prefer reading `status`.
+ */
 export interface IngestSummary {
   sportKey: string;
+  status: IngestStatus;
+  /** @deprecated derived from `status` — see the interface doc. */
   ok: boolean;
-  detail?: string;
+  /** Short, human-readable, secret-free description of what happened. */
+  detail: string;
+  counts?: IngestCounts;
   [k: string]: unknown;
 }
 

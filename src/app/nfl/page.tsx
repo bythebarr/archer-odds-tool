@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { listNflGamesWithLines } from "@/lib/queries/nflGames";
 import type { NflGameSummary } from "@/lib/queries/nflGames";
 import type { GameLineRow } from "@/lib/queries/games";
@@ -83,6 +84,11 @@ export default async function NflPage() {
               graded or counted in the tracked record.
             </span>
           </>
+        }
+        right={
+          <Link href="/nfl/research" className="text-xs text-muted-foreground underline underline-offset-2">
+            Experimental research →
+          </Link>
         }
       />
 

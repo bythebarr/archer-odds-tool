@@ -71,12 +71,34 @@ relative to the residual spread.
 | Opposing-team SB-allowed (SB o0.5) | `matchup:sb` | Real + PA-clean, but OOS Brier just −0.0001. Team-level proxy too coarse — steals hinge on the specific catcher's arm, which we don't log per game. |
 | Batter hits vs opposing starter | `matchup:batter` | No OOS gain (DIPS: pitchers barely control BABIP). Only the batter-K half of that study wired. |
 | Pitcher days of rest | `matchup:rest` | Standard rest (5 vs 6 days, ~87% of starts) is flat over ramp+opponent+park. Extended rest (≥7 days, n=293) shows a consistent +3–4.6pt and *does* improve OOS Brier (−0.0010, same order as wired terms) — a genuine lead. **But not wireable yet:** the obvious confound (extended rest clustering around the All-Star break / deliberate ace-skips) is **untestable on current data** — the archive is a single partial season (2026, Mar 26–Jul 7) that ends before the break. Revisit once multi-season / post-break data lands. |
+| Opposing bullpen quality (HR/TB/Hits) | `matchup:bullpenprops` | Run against real production data (2026-09-22, ~49k batter-games). Real, correctly-directioned, PA-clean signal (Δ0.01–0.06 PA/g, nothing like platoon's 0.44) — but OOS Brier gain is only −0.0001 to −0.0002, *smaller* than even the already-marginal park-factor signal. Same underlying quality signal was also tried, unscaled, in the game-line totals/spreads backtest (see `MLB-MODEL-INVENTORY.md` §8) — real there too, same marginal tier. |
+| Opposing bullpen recent-workload fatigue (HR/TB/Hits) | `matchup:bullpenprops` | Run same session as above. No OOS Brier gain on any of the three stats; the all-data beta flips sign on TB/HR (noise, not signal). Confirms the same finding independently reached by disabling this term in the game-line totals backtest — this specific signal doesn't hold up on real data. |
 
 **Meta-finding:** batting-side matchup context is consistently marginal (OOS Brier
 −0.0001 to −0.0006) versus the pitcher-K terms (−0.0013 to −0.0036). **Pitcher
 strikeouts are the prop edge.** Remaining unexplored matchup factors need data we
 don't have — day-of (weather, umpire) or finer-grained (catcher-level) — so the
 free-data matchup space is now well-explored.
+
+## Queued — built, not yet run
+
+One new candidate, written the same session the game-line model gained park
+weather — never tested against props. Complete and typechecks; hasn't been run
+because it needs the `Venue`/`Game.venueId` schema, which didn't exist in
+production at the time this doc was last updated (rides the same
+`syncMlbSchedule` deploy that resolved `matchup:bullpenprops` above). Run once
+that schema is live; wire only if it clears the same bar as everything above.
+
+| Investigation | Script | What it tests |
+|---|---|---|
+| Park weather (temperature + direction-aware wind) | `matchup:weatherprops` | Does `weatherRunsShift` (`archer/weatherEffect.ts`, reused unchanged) predict batter HR/TB residuals? Needs real historical weather from Open-Meteo's archive API (free, confirmed live) — unlike the game-line platoon signal, this one genuinely CAN be backtested, since Open-Meteo has real historical data where the MLB Stats API splits endpoint has none. |
+
+**Explicitly not queued:** a props version of the new pitcher-vs-lineup platoon
+signal (`archer/pitcherPlatoon.ts`). It can't be backtested at all — the MLB Stats
+API's handedness-split endpoint is a live rolling aggregate with no historical
+time series to replay, the same limitation documented in `weatherEffect.ts`'s
+header for the game-line version. There's nothing to test it against; it isn't a
+"shelved" finding, just a dead end given today's free data sources.
 
 ## Data caveat
 
@@ -90,8 +112,11 @@ extended rest, whose confound needs the break period) a re-check.
 ## Where this feeds
 
 `projectPropHit`'s probability ranks the board and is the honest counterweight to
-the raw trailing hit-rate. Once paid props-odds land it generates prop EV the same
-way the calibrated game-line models do. The props edge screen
-(`npm run backtest:props`) sweeps book-sharpness (f = how much of the model's
-edge the book already prices) so the true edge can be read against the −5.7% floor;
-it applies the same wired shifts as production so its verdicts stay honest.
+the raw trailing hit-rate. It also generates real prop `modelEv` in
+`queries/oddsPool.ts` against the actual polled market price, the same way the
+calibrated game-line models do — including the K-prop context shifts above, which
+carry into `modelEv` too (see `oddsPool.ts`'s `contextShiftFor`), not just the
+board's display ranking. The props edge screen (`npm run backtest:props`) sweeps
+book-sharpness (f = how much of the model's edge the book already prices) so the
+true edge can be read against the −5.7% floor; it applies the same wired shifts as
+production so its verdicts stay honest.

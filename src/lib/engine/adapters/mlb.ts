@@ -18,6 +18,7 @@ import { playLine } from "@/lib/card/line";
 import { gradeGameLine, gradeProp } from "@/lib/discord/gradePlay";
 import { getTeamFormForGame } from "@/lib/queries/teamForm";
 import { computeArcherWinProbability } from "@/lib/archer/winProbability";
+import { RECENT_STARTS_LONG_WINDOW, RECENT_STARTS_SHORT_WINDOW } from "@/lib/archer/pitcherRecency";
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { CalibrationSample } from "../calibration";
 import { STAT_COLUMN } from "@/lib/props/hitRate";
@@ -25,6 +26,7 @@ import { STAT_CATEGORY_LABELS } from "@/lib/props/format";
 import { syncMlbSchedule, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { sportMetaByKey } from "../sportsMeta";
+import { buildIngestSummary, classifyFetchStore, summaryForCaughtError } from "../ingestResult";
 import type { StatCategory } from "@/generated/prisma/client";
 import type {
   IngestSummary,
@@ -120,8 +122,18 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
     list.push({ date: r.gameDate, er: r.earnedRuns ?? 0, outs: r.outsRecorded ?? 0 });
     startsByPitcher.set(key, list);
   }
+  // Sort each pitcher's starts chronologically once — asOfPitcher's last10/last5
+  // recency windows need ascending date order, which Prisma's return order
+  // doesn't guarantee (the season-ERA sum above didn't care about order).
+  for (const list of startsByPitcher.values()) list.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  /** As-of ERA + starts for a pitcher, from starts that finished before `before`. */
+  const startSplitFrom = (starts: Start[]) => ({
+    earnedRuns: starts.reduce((s, r) => s + r.er, 0),
+    outsRecorded: starts.reduce((s, r) => s + r.outs, 0),
+    starts: starts.length,
+  });
+
+  /** As-of ERA + starts (season, plus last-10/last-5-start recency splits) for a pitcher, from starts that finished before `before`. */
   const asOfPitcher = (
     season: number,
     pitcherId: string | undefined,
@@ -130,7 +142,7 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
     if (!pitcherId) return null;
     const prior = (startsByPitcher.get(`${season}:${pitcherId}`) ?? []).filter(
       (s) => s.date < before
-    );
+    ); // already chronological — filter preserves the sorted order above
     const outs = prior.reduce((s, r) => s + r.outs, 0);
     if (outs === 0) return null; // no prior work this season — model treats ERA as unknown
     const er = prior.reduce((s, r) => s + r.er, 0);
@@ -141,6 +153,14 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
       era: (27 * er) / outs, // 9 * ER / (outs/3)
       gamesStarted: prior.length,
       inningsPitched: outs / 3,
+      last10Starts: startSplitFrom(prior.slice(-RECENT_STARTS_LONG_WINDOW)),
+      last5Starts: startSplitFrom(prior.slice(-RECENT_STARTS_SHORT_WINDOW)),
+      // Moneyline pricing (computeArcherWinProbability) never reads platoon
+      // data — only computeExpectedRuns does — so this backtest leaves it
+      // unset rather than reconstructing it for no consumer.
+      pitchHand: null,
+      platoonVsLeft: null,
+      platoonVsRight: null,
     };
   };
 
@@ -159,6 +179,16 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
       awayPitcher: asOfPitcher(g.season, starters?.get(g.awayTeamId!), before),
       homeForm,
       awayForm,
+      // Moneyline pricing (computeArcherWinProbability) never reads bullpen
+      // data — only computeExpectedRuns does — so this backtest leaves it
+      // unset rather than reconstructing it for no consumer.
+      homeBullpen: null,
+      awayBullpen: null,
+      homeBullpenRecentWorkload: null,
+      awayBullpenRecentWorkload: null,
+      homeLineupMix: null,
+      awayLineupMix: null,
+      weather: null,
     };
     const proj = computeArcherWinProbability(matchup);
     if (proj.homeProb === null || proj.awayProb === null) continue; // too thin to price
@@ -301,19 +331,32 @@ async function grade(play: Play): Promise<PlayGrade> {
  * inputs to the Archer model and the pool. Mirrors the sync-schedule cron; odds
  * polling stays a shared step outside the adapter (it serves every sport). In
  * Phase 3 the cron becomes a thin wrapper over this.
+ *
+ * Status is driven by the schedule window alone (games fetched vs. upserted) —
+ * pitchers/purge ride along as detail, not the ok/empty/unusable decision,
+ * since a probable-pitcher gap is normal for most of the forward window and
+ * shouldn't paint the whole ingest "unusable". Zero games fetched for the
+ * window is a legitimate empty slate (off-season) — never a fake failure.
  */
 async function ingest(dateEt: string): Promise<IngestSummary> {
-  const schedule = await syncMlbSchedule(shiftEtDate(dateEt, -7), shiftEtDate(dateEt, 6));
-  const pitchers = await syncProbablePitchers(dateEt, shiftEtDate(dateEt, 6));
-  const purge = await purgePreseasonGames();
-  return {
-    sportKey: "mlb",
-    ok: true,
-    detail: `${schedule.gamesUpserted} games, ${pitchers.pitchersUpserted} pitchers`,
-    schedule,
-    pitchers,
-    purge,
-  };
+  try {
+    const schedule = await syncMlbSchedule(shiftEtDate(dateEt, -7), shiftEtDate(dateEt, 6));
+    const pitchers = await syncProbablePitchers(dateEt, shiftEtDate(dateEt, 6));
+    const purge = await purgePreseasonGames();
+    const { status, detail } = classifyFetchStore(
+      { fetched: schedule.gamesFetched, stored: schedule.gamesUpserted },
+      { noun: "games" }
+    );
+    return buildIngestSummary(
+      "mlb",
+      status,
+      `${detail}; ${pitchers.pitchersUpserted} pitchers upserted`,
+      { fetched: schedule.gamesFetched, stored: schedule.gamesUpserted },
+      { schedule, pitchers, purge }
+    );
+  } catch (error) {
+    return summaryForCaughtError("mlb", error);
+  }
 }
 
 async function listPlays(dateEt: string): Promise<Play[]> {

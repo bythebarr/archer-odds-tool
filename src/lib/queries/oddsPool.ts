@@ -15,6 +15,21 @@ import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns, type ExpectedRuns } from "@/lib/archer/expectedRuns";
 import { archerProbForRow } from "@/lib/archer/runProbability";
 import type { StatCategory } from "@/generated/prisma/client";
+import {
+  seasonLogsByPlayer,
+  MLB_STAT_DEFS,
+  seasonValuesForStat,
+  tallyPointSample,
+  opposingStarterKRatesAsOf,
+  opponentKRatesAsOf,
+  parkKRatesAsOf,
+  type PointSample,
+} from "@/lib/props/mlbBoard";
+import { projectPropHit, pooledBaseRate, type PropProjection } from "@/lib/props/projection";
+import { pitcherRampFor } from "@/lib/props/pitcherRamp";
+import { batterKvsStarterShift } from "@/lib/props/opposingStarter";
+import { pitcherKContextShift } from "@/lib/props/opponentKRate";
+import { pitcherKParkShift } from "@/lib/props/parkKRate";
 
 /**
  * The odds pool: one row per *play* — a specific bettable selection (a side of a
@@ -71,7 +86,7 @@ export interface OddsPlay {
   booksCount: number;
   /** MARKET lens: EV of the best price vs the de-vigged market consensus, as a fraction; null for three-way soccer. */
   ev: number | null;
-  /** MODEL lens: EV of the best price vs Archer's own model probability (win prob for ML, expected-runs cover prob for spreads/totals), as a fraction. Non-null only for MLB game lines (the only markets the model prices today); null for props, non-MLB, and three-way soccer. */
+  /** MODEL lens: EV of the best price vs Archer's own model probability (win prob for ML, expected-runs cover prob for spreads/totals, the Archer Prop Projection for player props), as a fraction; null for non-MLB and three-way soccer. */
   modelEv: number | null;
 }
 
@@ -155,10 +170,92 @@ type PropLineRow = {
   game: {
     id: string;
     scheduledStartUtc: Date;
-    homeTeam: { name: string; abbreviation: string; mlbTeamId: number | null } | null;
-    awayTeam: { name: string; abbreviation: string; mlbTeamId: number | null } | null;
+    homeTeam: { id: string; name: string; abbreviation: string; mlbTeamId: number | null } | null;
+    awayTeam: { id: string; name: string; abbreviation: string; mlbTeamId: number | null } | null;
+    /** For the pitcher-K matchup shift — which side this game's pitcher is on determines their opponent + park (see contextShiftFor). */
+    homeProbablePitcher: { mlbPersonId: number } | null;
+    awayProbablePitcher: { mlbPersonId: number } | null;
   };
 };
+
+/**
+ * The Archer Prop Projection's probability at one player/stat/point, plus
+ * the market EV that probability implies — pure and DB-free so it's
+ * unit-testable without mocking Prisma, composing the same already-pure,
+ * already-tested pieces mlbBoard.ts's board uses (tallyPointSample,
+ * pooledBaseRate, pitcherRampFor, projectPropHit), just at an arbitrary
+ * market point instead of the board's fixed standardLines grid.
+ */
+export function projectPropAtPoint(
+  playerSample: PointSample,
+  populationSamples: PointSample[],
+  column: string,
+  point: number,
+  contextShift = 0
+): PropProjection | null {
+  const baseRate = pooledBaseRate(populationSamples);
+  const ramp = pitcherRampFor(column, point); // undefined off the fitted grid — projectPropHit applies no ramp, same as the board
+  return projectPropHit(
+    {
+      seasonHits: playerSample.seasonHits,
+      seasonSample: playerSample.seasonSample,
+      recentRate: playerSample.recentRate,
+      baseRate,
+    },
+    { ramp, contextShift }
+  );
+}
+
+/**
+ * For a battingStrikeouts prop: which probable starter (by mlbPersonId) this
+ * batter is facing, given the batter's own team id (propPlays() has no
+ * lineup/roster query, so this is resolved from the batter's most recent
+ * PlayerGameLog.teamId — a known, deliberate simplification vs. the board's
+ * current-roster resolution; see oddsPool's Phase 2 plan). Null when the
+ * batter's team can't be resolved, doesn't match either side of the game, or
+ * that side has no probable starter set yet — always a safe "no shift," never
+ * a guess.
+ */
+export function opposingStarterFor(
+  game: {
+    homeTeam: { id: string } | null;
+    awayTeam: { id: string } | null;
+    homeProbablePitcher: { mlbPersonId: number } | null;
+    awayProbablePitcher: { mlbPersonId: number } | null;
+  },
+  batterTeamId: string | null
+): number | null {
+  if (!batterTeamId) return null;
+  if (game.homeTeam?.id === batterTeamId) return game.awayProbablePitcher?.mlbPersonId ?? null;
+  if (game.awayTeam?.id === batterTeamId) return game.homeProbablePitcher?.mlbPersonId ?? null;
+  return null;
+}
+
+/**
+ * For a pitcherStrikeouts prop: this pitcher's opponent team id + park (the
+ * game's home team, for either side — mirrors buildPitcherBoard's own
+ * `park: g.homeTeam.id` for both home and away probable starters), given
+ * which side of the game they're pitching on. Both null when this pitcher
+ * doesn't match either probable starter (unresolvable — safe "no shift").
+ */
+export function pitcherMatchupContext(
+  game: {
+    homeTeam: { id: string } | null;
+    awayTeam: { id: string } | null;
+    homeProbablePitcher: { mlbPersonId: number } | null;
+    awayProbablePitcher: { mlbPersonId: number } | null;
+  },
+  pitcherMlbPersonId: number
+): { oppTeamId: string | null; parkId: string | null } {
+  const parkId = game.homeTeam?.id ?? null;
+  if (game.homeProbablePitcher?.mlbPersonId === pitcherMlbPersonId) {
+    return { oppTeamId: game.awayTeam?.id ?? null, parkId };
+  }
+  if (game.awayProbablePitcher?.mlbPersonId === pitcherMlbPersonId) {
+    return { oppTeamId: game.homeTeam?.id ?? null, parkId };
+  }
+  return { oppTeamId: null, parkId: null };
+}
 
 /** Player-prop plays — one per (player, stat, over/under) at the modal line, best-priced with over/under-devig value. MLB only today. */
 async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<OddsPlay[]> {
@@ -167,7 +264,14 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
     include: {
       book: true,
       mlbPlayer: true,
-      game: { include: { homeTeam: true, awayTeam: true } },
+      game: {
+        include: {
+          homeTeam: true,
+          awayTeam: true,
+          homeProbablePitcher: { select: { mlbPersonId: true } },
+          awayProbablePitcher: { select: { mlbPersonId: true } },
+        },
+      },
     },
   })) as unknown as (PropLineRow & { mlbPlayerId: string })[];
 
@@ -176,6 +280,89 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
   for (const l of lines) {
     const key = `${l.game.id}|${l.mlbPlayerId}|${l.statCategory}`;
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(l);
+  }
+
+  // One batched fetch for every player referenced anywhere on the prop slate
+  // — same discipline mlbBoard.ts already uses, reused directly rather than
+  // re-implemented. Population is the players already being priced for each
+  // stat today (no extra lineup/probable-pitcher query needed) — the tightest
+  // available match to "the field this player should be regressed toward"
+  // without a second DB round-trip.
+  const playerIds = [...new Set(lines.map((l) => l.mlbPlayerId))];
+  const logsByPlayer = await seasonLogsByPlayer(playerIds);
+  const populationByStat = new Map<StatCategory, Set<string>>();
+  for (const l of lines) {
+    (populationByStat.get(l.statCategory) ?? populationByStat.set(l.statCategory, new Set()).get(l.statCategory)!).add(
+      l.mlbPlayerId
+    );
+  }
+  // Population samples are a function of (stat, point) — cache per group of
+  // calls, since many groups for the same stat legitimately share a point.
+  const populationCache = new Map<string, PointSample[]>();
+  function populationSamplesFor(stat: StatCategory, point: number): PointSample[] {
+    const cacheKey = `${stat}|${point}`;
+    const cached = populationCache.get(cacheKey);
+    if (cached) return cached;
+    const column = MLB_STAT_DEFS[stat].column;
+    const samples = [...(populationByStat.get(stat) ?? [])].map((playerId) =>
+      tallyPointSample(seasonValuesForStat(logsByPlayer.get(playerId) ?? [], column), point)
+    );
+    populationCache.set(cacheKey, samples);
+    return samples;
+  }
+
+  // K-prop matchup context (battingStrikeouts, pitcherStrikeouts only) — the
+  // same already-fitted opposing-starter-K/opponent-K/park-K terms the board
+  // already computes, batched once across the whole slate rather than per
+  // play. Every other stat/line keeps contextShift 0, same as the board.
+  const hasBattingK = lines.some((l) => l.statCategory === "battingStrikeouts");
+  const hasPitchingK = lines.some((l) => l.statCategory === "pitcherStrikeouts");
+  const seasonStart = new Date(Date.UTC(gte.getUTCFullYear(), 0, 1));
+
+  let starterRates: { leagueRate: number; rateByPerson: Map<number, number> } | null = null;
+  if (hasBattingK) {
+    const personIds = new Set<number>();
+    for (const l of lines) {
+      if (l.statCategory !== "battingStrikeouts") continue;
+      const batterTeamId = logsByPlayer.get(l.mlbPlayerId)?.[0]?.teamId ?? null;
+      const oppStarter = opposingStarterFor(l.game, batterTeamId);
+      if (oppStarter !== null) personIds.add(oppStarter);
+    }
+    starterRates = await opposingStarterKRatesAsOf([...personIds], seasonStart, gte);
+  }
+
+  let opponentRates: { leagueRate: number; rateByTeam: Map<string, number> } | null = null;
+  let parkRates: { rateByPark: Map<string, number> } | null = null;
+  if (hasPitchingK) {
+    const oppTeamIds = new Set<string>();
+    const parkIds = new Set<string>();
+    for (const l of lines) {
+      if (l.statCategory !== "pitcherStrikeouts") continue;
+      const { oppTeamId, parkId } = pitcherMatchupContext(l.game, l.mlbPlayer.mlbPersonId);
+      if (oppTeamId) oppTeamIds.add(oppTeamId);
+      if (parkId) parkIds.add(parkId);
+    }
+    [opponentRates, parkRates] = await Promise.all([
+      opponentKRatesAsOf([...oppTeamIds], seasonStart, gte),
+      parkKRatesAsOf([...parkIds], seasonStart, gte),
+    ]);
+  }
+
+  /** contextShift for one play's own (stat, point) — 0 for every stat but the two K props, same gating as buildBatterBoard/buildPitcherBoard. */
+  function contextShiftFor(line: PropLineRow & { mlbPlayerId: string }, point: number): number {
+    if (line.statCategory === "battingStrikeouts" && starterRates) {
+      const batterTeamId = logsByPlayer.get(line.mlbPlayerId)?.[0]?.teamId ?? null;
+      const oppStarter = opposingStarterFor(line.game, batterTeamId);
+      const rate = oppStarter !== null ? starterRates.rateByPerson.get(oppStarter) ?? null : null;
+      return batterKvsStarterShift(point, rate, starterRates.leagueRate);
+    }
+    if (line.statCategory === "pitcherStrikeouts" && opponentRates && parkRates) {
+      const { oppTeamId, parkId } = pitcherMatchupContext(line.game, line.mlbPlayer.mlbPersonId);
+      const oppRate = oppTeamId ? opponentRates.rateByTeam.get(oppTeamId) ?? null : null;
+      const parkRate = parkId ? parkRates.rateByPark.get(parkId) ?? null : null;
+      return pitcherKContextShift(point, oppRate, opponentRates.leagueRate) + pitcherKParkShift(point, parkRate, opponentRates.leagueRate);
+    }
+    return 0;
   }
 
   const plays: OddsPlay[] = [];
@@ -209,6 +396,29 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
       );
       const fairProb = side === "over" ? consensus.fairProbA : consensus.fairProbB;
 
+      // Computed per side (not hoisted above this loop) and at THIS side's own
+      // best.point: when there's no paired same-point over/under to devig
+      // (modalPoint === null), the over and under candidates can legitimately
+      // resolve to different points.
+      const column = MLB_STAT_DEFS[stat].column;
+      const playerSample = tallyPointSample(
+        seasonValuesForStat(logsByPlayer.get(group[0].mlbPlayerId) ?? [], column),
+        best.point
+      );
+      const projection = projectPropAtPoint(
+        playerSample,
+        populationSamplesFor(stat, best.point),
+        column,
+        best.point,
+        contextShiftFor(best, best.point)
+      );
+      const overProb = projection?.probability ?? null;
+      // Under = 1 - over: the complement of P(clears the line), same
+      // convention archerTotalUnderProb already uses for game totals — there's
+      // no separate "under model."
+      const modelSideProb = overProb === null ? null : side === "over" ? overProb : 1 - overProb;
+      const modelEv = modelSideProb !== null ? calculateEv(modelSideProb, best.priceAmerican) : null;
+
       plays.push({
         key: `${g.id}:prop:${group[0].mlbPlayerId}:${stat}:${side}:${best.point}`,
         sport: "mlb",
@@ -234,7 +444,7 @@ async function propPlays(gte: Date, lt: Date, allowed: Set<string>): Promise<Odd
         bestBookInitials: BOOK_INITIALS[best.bookKey] ?? best.bookKey.slice(0, 3).toUpperCase(),
         booksCount: candidates.length,
         ev: fairProb !== null ? calculateEv(fairProb, best.priceAmerican) : null,
-        modelEv: null, // props have no Archer model today
+        modelEv,
       });
     }
   }

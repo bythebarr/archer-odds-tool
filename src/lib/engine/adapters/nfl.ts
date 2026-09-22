@@ -19,6 +19,7 @@
 import { prisma } from "@/lib/prisma";
 import { pollAndStoreNflOdds } from "@/lib/nfl/ingest";
 import { sportMetaByKey } from "../sportsMeta";
+import { buildIngestSummary, classifyFetchStore, summaryForCaughtError } from "../ingestResult";
 import type { MarketType } from "@/generated/prisma/client";
 import type { IngestSummary, MarketSpec, Play, PlayGrade, SportAdapter } from "../types";
 
@@ -29,15 +30,29 @@ const NFL_MARKETS: MarketSpec[] = [
   { market: "h2h", kind: "ml", label: "Moneyline" },
 ];
 
-/** Pull NFL odds into the shared Game/odds tables. */
+/**
+ * Pull NFL odds into the shared Game/odds tables. `eventsFetched === 0` is a
+ * legitimate empty slate (no games in the window); a nonzero fetch that
+ * stores zero games (every competitor unrecognized — the exact team-name-drift
+ * risk this feed carries) is "unusable", not an ordinary success.
+ */
 async function ingest(): Promise<IngestSummary> {
-  const summary = await pollAndStoreNflOdds();
-  return {
-    sportKey: "nfl",
-    ok: true,
-    detail: `${summary.gamesStored} games, ${summary.snapshotsWritten} snapshots`,
-    ...summary,
-  };
+  try {
+    const summary = await pollAndStoreNflOdds();
+    const { status, detail } = classifyFetchStore(
+      { fetched: summary.eventsFetched, stored: summary.gamesStored, rejected: summary.eventsSkippedNotNfl },
+      { noun: "games" }
+    );
+    return buildIngestSummary(
+      "nfl",
+      status,
+      detail,
+      { fetched: summary.eventsFetched, stored: summary.gamesStored, rejected: summary.eventsSkippedNotNfl },
+      { ...summary }
+    );
+  } catch (error) {
+    return summaryForCaughtError("nfl", error);
+  }
 }
 
 /**

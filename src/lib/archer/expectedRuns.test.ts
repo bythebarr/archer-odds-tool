@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { computeExpectedRuns } from "./expectedRuns";
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { RecordSplit, RunsSplit, TeamForm } from "@/lib/queries/teamForm";
+import type { BullpenSplit, BullpenWorkload } from "@/lib/archer/bullpenRate";
+import type { PitcherStartSplit } from "@/lib/archer/pitcherRecency";
 
 function record(wins: number, losses: number): RecordSplit {
   return { wins, losses, gamesFound: wins + losses, record: `${wins}-${losses}` };
@@ -27,11 +29,48 @@ function averageForm(overrides: Partial<TeamForm> = {}): TeamForm {
   };
 }
 
-function pitcher(era: number, gamesStarted = 10, inningsPitched: number | null = gamesStarted * 5.5): PitcherInfo {
-  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted, inningsPitched };
+/** A trailing-starts split at exactly `era` — used as the neutral default recency fixture (last10/last5 matching season era = no net recency shift). */
+function startSplit(era: number, starts: number, inningsPerStart = 5.5): PitcherStartSplit {
+  const outsRecorded = starts * inningsPerStart * 3;
+  return { earnedRuns: (era * outsRecorded) / 27, outsRecorded, starts };
+}
+
+function pitcher(
+  era: number,
+  gamesStarted = 10,
+  inningsPitched: number | null = gamesStarted * 5.5,
+  recency: { last10Era?: number; last5Era?: number } = {}
+): PitcherInfo {
+  return {
+    fullName: "Test Pitcher",
+    wins: 5,
+    losses: 5,
+    era,
+    gamesStarted,
+    inningsPitched,
+    last10Starts: startSplit(recency.last10Era ?? era, Math.min(gamesStarted, 10)),
+    last5Starts: startSplit(recency.last5Era ?? era, Math.min(gamesStarted, 5)),
+    // Neutral platoon defaults — null splits always produce a zero shift
+    // (see pitcherPlatoon.test.ts), so every existing test's expected
+    // values are unaffected without needing a "matching" fixture value.
+    pitchHand: "R",
+    platoonVsLeft: null,
+    platoonVsRight: null,
+  };
 }
 
 const avgPitcher = pitcher(4.2);
+
+/** A team's trailing bullpen split — defaults to a full-sample, league-average (4.3 runs/9) bullpen, i.e. mathematically identical to the pre-bullpen-feature flat constant. */
+function bullpen(runsPerNine = 4.3, relieverInnings = 60): BullpenSplit {
+  const outsRecorded = relieverInnings * 3;
+  return { earnedRuns: (runsPerNine * outsRecorded) / 27, outsRecorded };
+}
+
+/** A recent bullpen workload at exactly the league-typical pace (3.5 IP/game over `games` games) — the neutral fixture, zero fatigue penalty. */
+function bullpenWorkload(inningsPerGame: number, games: number): BullpenWorkload {
+  return { outsRecorded: inningsPerGame * games * 3, games };
+}
 
 function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
   return {
@@ -39,6 +78,20 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     awayPitcher: avgPitcher,
     homeForm: averageForm(),
     awayForm: averageForm(),
+    homeBullpen: bullpen(),
+    awayBullpen: bullpen(),
+    // Neutral default — null always produces a zero fatigue penalty (see
+    // bullpenFatiguePenalty's null guard), same as a matching-pace fixture.
+    homeBullpenRecentWorkload: null,
+    awayBullpenRecentWorkload: null,
+    // Neutral default — a null lineup mix always produces a zero platoon
+    // shift regardless of the pitcher's own splits (belt-and-suspenders
+    // with pitcher()'s own null platoon defaults above).
+    homeLineupMix: null,
+    awayLineupMix: null,
+    // Neutral default — null always produces a zero weather shift (see
+    // weatherRunsShift's null guard).
+    weather: null,
     ...overrides,
   };
 }
@@ -140,5 +193,132 @@ describe("computeExpectedRuns", () => {
     );
     expect(result.home).toBeNull();
     expect(result.away).toBeNull();
+  });
+
+  describe("bullpen quality", () => {
+    it("projects more runs against a worse (higher-runs-allowed) opposing bullpen, holding the starter fixed", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const badAwayBullpen = computeExpectedRuns(matchup({ awayBullpen: bullpen(6.0) }));
+      expect(badAwayBullpen.home!).toBeGreaterThan(baseline.home!);
+    });
+
+    it("projects fewer runs against a better (lower-runs-allowed) opposing bullpen", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const goodAwayBullpen = computeExpectedRuns(matchup({ awayBullpen: bullpen(2.5) }));
+      expect(goodAwayBullpen.home!).toBeLessThan(baseline.home!);
+    });
+
+    it("falls back to league average when the opposing bullpen has no sample yet (null) — today's behavior is a special case", () => {
+      const withNullBullpen = computeExpectedRuns(matchup({ awayBullpen: null }));
+      const withAverageBullpen = computeExpectedRuns(matchup({ awayBullpen: bullpen(4.3) }));
+      expect(withNullBullpen.home!).toBeCloseTo(withAverageBullpen.home!, 6);
+    });
+
+    it("shrinks a thin-sample bullpen toward league average instead of trusting it fully", () => {
+      const thinSample = computeExpectedRuns(matchup({ awayBullpen: bullpen(6.0, 10) }));
+      const fullSample = computeExpectedRuns(matchup({ awayBullpen: bullpen(6.0, 60) }));
+      const leagueAverage = computeExpectedRuns(matchup({ awayBullpen: bullpen(4.3, 60) }));
+      expect(thinSample.home!).toBeGreaterThan(leagueAverage.home!);
+      expect(thinSample.home!).toBeLessThan(fullSample.home!);
+    });
+
+    it("routes each team's own bullpen into the OPPONENT's expected runs, not its own", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const worseAwayBullpen = computeExpectedRuns(matchup({ awayBullpen: bullpen(6.0) }));
+      // A worse away bullpen should move home's expected runs, not away's.
+      expect(worseAwayBullpen.home!).toBeGreaterThan(baseline.home!);
+      expect(worseAwayBullpen.away!).toBeCloseTo(baseline.away!, 6);
+
+      const worseHomeBullpen = computeExpectedRuns(matchup({ homeBullpen: bullpen(6.0) }));
+      expect(worseHomeBullpen.away!).toBeGreaterThan(baseline.away!);
+      expect(worseHomeBullpen.home!).toBeCloseTo(baseline.home!, 6);
+    });
+  });
+
+  describe("pitcher ERA recency", () => {
+    it("projects fewer runs against a starter who's been pitching better recently than his season ERA suggests", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const hotRecently = computeExpectedRuns(
+        matchup({ awayPitcher: pitcher(4.2, 10, 55, { last10Era: 2.0, last5Era: 1.5 }) })
+      );
+      expect(hotRecently.home!).toBeLessThan(baseline.home!);
+    });
+
+    it("projects more runs against a starter who's been pitching worse recently than his season ERA suggests", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const coldRecently = computeExpectedRuns(
+        matchup({ awayPitcher: pitcher(4.2, 10, 55, { last10Era: 6.5, last5Era: 7.5 }) })
+      );
+      expect(coldRecently.home!).toBeGreaterThan(baseline.home!);
+    });
+
+    it("falls back to season ERA alone when no recency split is available yet — today's behavior is a special case", () => {
+      const withNullRecency = computeExpectedRuns(
+        matchup({ awayPitcher: { ...pitcher(4.2), last10Starts: null, last5Starts: null } })
+      );
+      expect(withNullRecency.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
+    });
+  });
+
+  describe("pitcher-vs-lineup handedness (platoon)", () => {
+    function platoonSplit(ops: number, battersFaced = 200) {
+      return { obp: ops / 2, slg: ops / 2, battersFaced };
+    }
+    const allLeftMix = { leftPA: 1000, rightPA: 0, switchPA: 0 };
+
+    it("projects more runs when tonight's lineup leans toward the hand the opposing starter struggles against", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const toughMatchup = computeExpectedRuns(
+        matchup({
+          awayPitcher: {
+            ...pitcher(4.2),
+            pitchHand: "R",
+            platoonVsLeft: platoonSplit(0.9),
+            platoonVsRight: platoonSplit(0.6),
+          },
+          homeLineupMix: allLeftMix,
+        })
+      );
+      expect(toughMatchup.home!).toBeGreaterThan(baseline.home!);
+    });
+
+    it("is unaffected when the opposing starter has no platoon split synced yet", () => {
+      const withoutSplit = computeExpectedRuns(matchup({ homeLineupMix: allLeftMix }));
+      expect(withoutSplit.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
+    });
+  });
+
+  describe("bullpen recent-workload fatigue (currently disabled — see BULLPEN_FATIGUE_RUNS_PER_WORKLOAD_RATIO's comment: a real-data retune found this signal added noise, not edge, on both the game-line backtest and an independent props check)", () => {
+    it("has no effect on the projection at its current weight, regardless of workload", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const heavilyWorked = computeExpectedRuns(
+        matchup({ awayBullpenRecentWorkload: bullpenWorkload(20, 2) }) // would have been capped-max under the old weight
+      );
+      const rested = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: bullpenWorkload(1.0, 2) }));
+      const noData = computeExpectedRuns(matchup({ awayBullpenRecentWorkload: null }));
+      expect(heavilyWorked.home!).toBeCloseTo(baseline.home!, 6);
+      expect(rested.home!).toBeCloseTo(baseline.home!, 6);
+      expect(noData.home!).toBeCloseTo(baseline.home!, 6);
+    });
+  });
+
+  describe("weather", () => {
+    it("raises BOTH teams' expected runs equally on a hot, wind-blowing-out day — shared, not per-team", () => {
+      const baseline = computeExpectedRuns(matchup());
+      const hotAndWindyOut = computeExpectedRuns(
+        matchup({
+          weather: { temperatureF: 95, windMph: 15, windFromDeg: 180, venueAzimuthDeg: 0, roofType: "Open" },
+        })
+      );
+      expect(hotAndWindyOut.home!).toBeGreaterThan(baseline.home!);
+      expect(hotAndWindyOut.away!).toBeGreaterThan(baseline.away!);
+      // Same shift applied to both sides, so the gap between them is unchanged.
+      expect(hotAndWindyOut.home! - hotAndWindyOut.away!).toBeCloseTo(baseline.home! - baseline.away!, 6);
+    });
+
+    it("is unaffected when no weather data is available yet", () => {
+      const result = computeExpectedRuns(matchup({ weather: null }));
+      expect(result.home!).toBeCloseTo(computeExpectedRuns(matchup()).home!, 6);
+    });
   });
 });

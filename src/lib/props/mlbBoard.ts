@@ -7,10 +7,11 @@ import { pitcherRampFor } from "./pitcherRamp";
 import { pitcherKContextShift } from "./opponentKRate";
 import { pitcherKParkShift, MIN_PARK_PA } from "./parkKRate";
 import { batterKvsStarterShift } from "./opposingStarter";
+import type { StatCategory } from "@/generated/prisma/client";
 import type { PropBoardColumnDef, PropBoardRow, PropLineCells, PropStatDef, PropView, SportPropConfig } from "./boardTypes";
 
 /** A stat with the PlayerGameLog column it reads. */
-interface MlbStatDef extends PropStatDef {
+export interface MlbStatDef extends PropStatDef {
   column: string;
 }
 
@@ -69,6 +70,17 @@ const PITCHER_COLUMNS: PropBoardColumnDef[] = [
   { key: "away", label: "Away", kind: "split" },
 ];
 
+/**
+ * StatCategory -> its MLB stat definition (PlayerGameLog column + standardLines).
+ * BATTER_STATS/PITCHER_STATS' `key` fields are literally the StatCategory enum
+ * values, so this is a safe merge — the single source of truth other callers
+ * (e.g. the odds pool's prop EV wiring) key off of instead of re-declaring
+ * their own stat catalog.
+ */
+export const MLB_STAT_DEFS: Record<StatCategory, MlbStatDef> = Object.fromEntries(
+  [...BATTER_STATS, ...PITCHER_STATS].map((s) => [s.key, s])
+) as Record<StatCategory, MlbStatDef>;
+
 /** Public, free MLB headshot by person id — the photos the user loves, no ingestion. */
 function mlbHeadshotUrl(mlbPersonId: number): string {
   return `https://img.mlbstatic.com/mlb-photos/image/upload/w_120,q_auto/v1/people/${mlbPersonId}/headshot/67/current`;
@@ -112,10 +124,36 @@ export function assembleLineCells(
   });
 }
 
-type GameLogRow = Awaited<ReturnType<typeof prisma.playerGameLog.findMany>>[number];
+/** A player's season values for `column` (most-recent-first), nulls dropped — same exclusion semantics as assembleLineCells: an unrecorded game isn't a "miss," it's not a data point. */
+export function seasonValuesForStat(rows: GameLogRow[], column: string): number[] {
+  return rows.map((r) => readColumn(r, column)).filter((v): v is number => v !== null);
+}
+
+/** A player's season + L10 sample at one point — the PropProjectionInput pieces projectPropHit needs, minus baseRate. */
+export interface PointSample {
+  seasonHits: number;
+  seasonSample: number;
+  /** L10 hit rate, or null with no recent sample — same recency window projectPropHit expects. */
+  recentRate: number | null;
+}
+
+/**
+ * Tally one player's season + L10 sample at an ARBITRARY point — not limited
+ * to a stat's fixed standardLines. Generalizes assembleLineCells' per-line
+ * tally so a caller with a real market point (e.g. CurrentPlayerPropLine.point)
+ * can build the same PropProjectionInput shape the board feeds projectPropHit,
+ * without being restricted to the board's display grid. Pure/DB-free.
+ */
+export function tallyPointSample(seasonValues: number[], point: number): PointSample {
+  const season = tallyPropHits(seasonValues, point, "over");
+  const l10 = tallyPropHits(seasonValues.slice(0, 10), point, "over");
+  return { seasonHits: season.hits, seasonSample: season.sampleSize, recentRate: l10.hitRate };
+}
+
+export type GameLogRow = Awaited<ReturnType<typeof prisma.playerGameLog.findMany>>[number];
 
 /** One batched query for every candidate's season logs, grouped by player id. */
-async function seasonLogsByPlayer(playerIds: string[]): Promise<Map<string, GameLogRow[]>> {
+export async function seasonLogsByPlayer(playerIds: string[]): Promise<Map<string, GameLogRow[]>> {
   const year = new Date().getUTCFullYear();
   const logs = await prisma.playerGameLog.findMany({
     where: {
@@ -227,7 +265,7 @@ function buildRows(
   return rows;
 }
 
-function readColumn(row: GameLogRow, column: string): number | null {
+export function readColumn(row: GameLogRow, column: string): number | null {
   return (row as unknown as Record<string, number | null>)[column] ?? null;
 }
 
@@ -237,7 +275,7 @@ function readColumn(row: GameLogRow, column: string): number | null {
  * shift. Light aggregates only; BF ≈ outs + hits + walks allowed (see
  * opposingStarter.ts). Pools everything strictly before the board date.
  */
-async function opposingStarterKRatesAsOf(personIds: number[], seasonStart: Date, before: Date) {
+export async function opposingStarterKRatesAsOf(personIds: number[], seasonStart: Date, before: Date) {
   const dateFilter = { gte: seasonStart, lt: before };
   const players = personIds.length
     ? await prisma.mlbPlayer.findMany({ where: { mlbPersonId: { in: personIds } }, select: { id: true, mlbPersonId: true } })
@@ -384,7 +422,7 @@ async function buildBatterBoard(dateEt: string, statKey: string): Promise<PropBo
  * Two light aggregate queries (no row load): correct for a "today" projection
  * because it pools everything strictly before the board date.
  */
-async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: Date) {
+export async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: Date) {
   const dateFilter = { gte: seasonStart, lt: before };
   const [league, byTeam] = await Promise.all([
     prisma.playerGameLog.aggregate({
@@ -414,7 +452,7 @@ async function opponentKRatesAsOf(teamIds: string[], seasonStart: Date, before: 
  * is one light aggregate per park (≤15 on a full slate, no row load), each summing
  * every batter line in games at that park strictly before the board date.
  */
-async function parkKRatesAsOf(parkIds: string[], seasonStart: Date, before: Date) {
+export async function parkKRatesAsOf(parkIds: string[], seasonStart: Date, before: Date) {
   const dateFilter = { gte: seasonStart, lt: before };
   const rateByPark = new Map<string, number>();
   await Promise.all(

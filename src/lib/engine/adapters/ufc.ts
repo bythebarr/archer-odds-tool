@@ -23,6 +23,7 @@ import { gradeUfcMoneyline } from "@/lib/discord/gradePlay";
 import { ensureUfcOddsFresh } from "@/lib/ufc/refreshOddsOnView";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 import { sportMetaByKey } from "../sportsMeta";
+import { buildIngestSummary, classifyUfcIngest, summaryForCaughtError } from "../ingestResult";
 import type {
   IngestSummary,
   MarketSpec,
@@ -193,15 +194,25 @@ async function grade(play: Play): Promise<PlayGrade> {
  * takes no param but satisfies `ingest(dateEt)`); odds refresh on-view.
  */
 async function ingest(): Promise<IngestSummary> {
-  const recent = await syncRecentUfcEvents();
-  const upcoming = await backfillUpcomingUfcEvents();
-  return {
-    sportKey: "ufc",
-    ok: true,
-    detail: `${recent.eventsProcessed + upcoming.eventsProcessed} events`,
-    recent,
-    upcoming,
-  };
+  try {
+    const recent = await syncRecentUfcEvents();
+    const upcoming = await backfillUpcomingUfcEvents();
+    const eventsProcessed = recent.eventsProcessed + upcoming.eventsProcessed;
+    const boutsProcessed = recent.boutsProcessed + upcoming.boutsProcessed;
+    const rejected = recent.skippedBouts.length + upcoming.skippedBouts.length;
+    // events vs. bouts is NOT a same-unit fetched/stored pair — see
+    // classifyUfcIngest's own doc for why this can't use classifyFetchStore.
+    const { status, detail } = classifyUfcIngest({ eventsProcessed, boutsProcessed, rejected });
+    return buildIngestSummary(
+      "ufc",
+      status,
+      detail,
+      { fetched: eventsProcessed, stored: boutsProcessed, rejected },
+      { recent, upcoming }
+    );
+  } catch (error) {
+    return summaryForCaughtError("ufc", error);
+  }
 }
 
 export const ufcAdapter = {

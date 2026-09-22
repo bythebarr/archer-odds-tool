@@ -42,6 +42,18 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", icon: "🏠", carriesDate: true, primary: true },
   { href: "/slate", label: "Slate", icon: "📊", carriesDate: true, primary: true },
   ...SPORT_TABS,
+  // CFB v0 is deliberately NOT a registry sport (see docs/architecture/CFB-V0.md
+  // — no Prisma model, no Sport enum entry, no Game/Team rows), so it's a fixed
+  // entry here rather than derived from SPORT_METAS, same as Props/Sports below.
+  // TEMPORARY v0 debt: this hand-append means CFB is invisible to every
+  // SPORT_METAS/registry consumer (SportRail, the /sports lobby, HomeLauncher,
+  // the site's "every sport" copy) — those don't claim to be exhaustive over
+  // every page in the app, only over the priced/graded sport product, so this
+  // is a known gap, not a false claim, but it IS debt. Exit condition: fold
+  // CFB into the registry only once a full adapter/storage/grading strategy
+  // for it is approved (see CFB-V0.md's roadmap) — not before, since the
+  // registry pulls in Prisma + the graded-play pipeline CFB v0 must not touch.
+  { href: "/cfb", label: "CFB", icon: "🎓", carriesDate: true, primary: true },
   { href: "/props", label: "Props", icon: "🎯", carriesDate: false, primary: true },
   // Mobile-only hub: one door to every sport (incl. Tennis/Soccer/F1) so the
   // bottom bar stays focused instead of listing each sport as its own tab.

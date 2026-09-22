@@ -3,6 +3,7 @@ import { recordPollLog } from "@/lib/pollingPolicy";
 import { syncMlbSchedule, purgePreseasonGames } from "@/lib/mlb/syncSchedule";
 import { syncProbablePitchers } from "@/lib/mlb/syncPitchers";
 import { todayEt, shiftEtDate } from "@/lib/dateEt";
+import { classifyFetchStore, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "sync-schedule";
 const PITCHERS_JOB_NAME = "sync-pitchers";
@@ -46,7 +47,14 @@ export async function POST(request: Request) {
 
   try {
     const summary = await syncMlbSchedule(startDate, endDate);
-    await recordPollLog(JOB_NAME, "ok");
+    // Zero games fetched for [startDate, endDate] is a legitimate empty
+    // result (e.g. entirely off-season), but a nonzero fetch that upserts
+    // zero games (every game failed the team-match check) is not.
+    const outcome = classifyFetchStore(
+      { fetched: summary.gamesFetched, stored: summary.gamesUpserted },
+      { noun: "games" }
+    );
+    await recordPollLog(JOB_NAME, pollLogStatus(outcome));
 
     // Separate try/catch: a pitcher-sync hiccup shouldn't mark the
     // already-succeeded schedule sync as failed.
@@ -76,10 +84,13 @@ export async function POST(request: Request) {
       await recordPollLog(PURGE_JOB_NAME, `error: ${message}`);
     }
 
-    return Response.json({ startDate, endDate, ...summary, pitchers: pitchersSummary, purge: purgeSummary });
+    return Response.json(
+      { status: outcome.status, detail: outcome.detail, startDate, endDate, ...summary, pitchers: pitchersSummary, purge: purgeSummary },
+      { status: ingestHttpStatus(outcome.status) }
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await recordPollLog(JOB_NAME, `error: ${message}`);
-    return Response.json({ error: message }, { status: 502 });
+    const summary = summaryForCaughtError("mlb", error);
+    await recordPollLog(JOB_NAME, pollLogStatus(summary));
+    return Response.json(summary, { status: ingestHttpStatus(summary.status) });
   }
 }

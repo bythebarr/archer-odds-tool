@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeArcherWinProbability } from "./winProbability";
 import type { GameMatchup, PitcherInfo } from "@/lib/queries/matchup";
 import type { RecordSplit, RunsSplit, TeamForm } from "@/lib/queries/teamForm";
+import type { PitcherStartSplit } from "@/lib/archer/pitcherRecency";
 
 function record(wins: number, losses: number): RecordSplit {
   return { wins, losses, gamesFound: wins + losses, record: `${wins}-${losses}` };
@@ -26,8 +27,31 @@ function form(overrides: Partial<TeamForm> = {}): TeamForm {
   };
 }
 
-function pitcher(era: number, gamesStarted = 10): PitcherInfo {
-  return { fullName: "Test Pitcher", wins: 5, losses: 5, era, gamesStarted, inningsPitched: gamesStarted * 5.5 };
+/** A trailing-starts split at exactly `era` — used as the neutral default recency fixture (last10/last5 matching season era = no net recency shift). */
+function startSplit(era: number, starts: number, inningsPerStart = 5.5): PitcherStartSplit {
+  const outsRecorded = starts * inningsPerStart * 3;
+  return { earnedRuns: (era * outsRecorded) / 27, outsRecorded, starts };
+}
+
+function pitcher(
+  era: number,
+  gamesStarted = 10,
+  recency: { last10Era?: number; last5Era?: number } = {}
+): PitcherInfo {
+  return {
+    fullName: "Test Pitcher",
+    wins: 5,
+    losses: 5,
+    era,
+    gamesStarted,
+    inningsPitched: gamesStarted * 5.5,
+    last10Starts: startSplit(recency.last10Era ?? era, Math.min(gamesStarted, 10)),
+    last5Starts: startSplit(recency.last5Era ?? era, Math.min(gamesStarted, 5)),
+    // computeArcherWinProbability never reads platoon data — unset here, mechanical only.
+    pitchHand: null,
+    platoonVsLeft: null,
+    platoonVsRight: null,
+  };
 }
 
 function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
@@ -36,6 +60,14 @@ function matchup(overrides: Partial<GameMatchup> = {}): GameMatchup {
     awayPitcher: pitcher(4.2),
     homeForm: form(),
     awayForm: form(),
+    // computeArcherWinProbability never reads bullpen/lineup data — unset here, mechanical only.
+    homeBullpen: null,
+    awayBullpen: null,
+    homeBullpenRecentWorkload: null,
+    awayBullpenRecentWorkload: null,
+    homeLineupMix: null,
+    awayLineupMix: null,
+    weather: null,
     ...overrides,
   };
 }
@@ -108,5 +140,30 @@ describe("computeArcherWinProbability", () => {
     );
     expect(result.homeProb).toBeNull();
     expect(result.awayProb).toBeNull();
+  });
+
+  describe("pitcher ERA recency", () => {
+    it("gives an edge to a starter who's been pitching better recently than his season ERA suggests", () => {
+      const baseline = computeArcherWinProbability(matchup());
+      const hotRecently = computeArcherWinProbability(
+        matchup({ homePitcher: pitcher(4.2, 10, { last10Era: 2.0, last5Era: 1.5 }) })
+      );
+      expect(hotRecently.homeProb!).toBeGreaterThan(baseline.homeProb!);
+    });
+
+    it("penalizes a starter who's been pitching worse recently than his season ERA suggests", () => {
+      const baseline = computeArcherWinProbability(matchup());
+      const coldRecently = computeArcherWinProbability(
+        matchup({ homePitcher: pitcher(4.2, 10, { last10Era: 6.5, last5Era: 7.5 }) })
+      );
+      expect(coldRecently.homeProb!).toBeLessThan(baseline.homeProb!);
+    });
+
+    it("falls back to season ERA alone when no recency split is available yet — today's behavior is a special case", () => {
+      const withNullRecency = computeArcherWinProbability(
+        matchup({ homePitcher: { ...pitcher(4.2), last10Starts: null, last5Starts: null } })
+      );
+      expect(withNullRecency.homeProb!).toBeCloseTo(computeArcherWinProbability(matchup()).homeProb!, 6);
+    });
   });
 });

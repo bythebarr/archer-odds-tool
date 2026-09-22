@@ -12,21 +12,35 @@
  */
 import { ingestSeasonSchedule } from "@/lib/f1/ingestSchedule";
 import { sportMetaByKey } from "../sportsMeta";
+import { buildIngestSummary, classifyFetchStore, summaryForCaughtError } from "../ingestResult";
 import type { IngestSummary, MarketSpec, Play, PlayGrade, SportAdapter } from "../types";
 
 /** F1 has no bettable markets wired — results-only. */
 const F1_MARKETS: MarketSpec[] = [];
 
-/** Pull the season schedule (feeds the "next race" card). Season = the browsed date's year. */
+/**
+ * Pull the season schedule (feeds the "next race" card). Season = the browsed
+ * date's year. Zero races fetched for a season (not yet published, or a far
+ * future/past year) is a legitimate empty result, not a failure.
+ */
 async function ingest(dateEt: string): Promise<IngestSummary> {
   const season = Number(dateEt.slice(0, 4));
-  const summary = await ingestSeasonSchedule(season);
-  return {
-    sportKey: "f1",
-    ok: true,
-    detail: `${summary.racesUpserted} races (${season})`,
-    ...summary,
-  };
+  try {
+    const summary = await ingestSeasonSchedule(season);
+    const { status, detail } = classifyFetchStore(
+      { fetched: summary.racesFetched, stored: summary.racesUpserted },
+      { noun: "races" }
+    );
+    return buildIngestSummary(
+      "f1",
+      status,
+      `${detail} (${season})`,
+      { fetched: summary.racesFetched, stored: summary.racesUpserted },
+      { ...summary }
+    );
+  } catch (error) {
+    return summaryForCaughtError("f1", error);
+  }
 }
 
 /** Results-only — no bettable plays on the board. */
