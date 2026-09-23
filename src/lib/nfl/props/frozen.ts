@@ -7,25 +7,28 @@
  *
  * Bump `NFL_PROPS_MODEL_VERSION` whenever a refit would change any number.
  */
-import frozenJson from "./frozen/nfl-props-v1.2.0.json";
+import frozenJson from "./frozen/nfl-props-v1.3.0.json";
 import { LogisticCalibrator, RatioDistribution, type FrozenRatioDistribution } from "./distribution";
 import { MARKET_FAMILY, type PropFamily } from "./eligibility";
 import type { EngineParams } from "./engine";
 import { PROP_MARKETS, type ModelParams, type PropMarket } from "./model";
 import { isTdMarket, poissonOver, type TdMarket, type TdParams } from "./td";
+import { isExtraMarket, type ExtraMarket, type IntParams } from "./extras";
 
-/** Every market the app serves: the yardage/volume markets plus touchdown markets (v1.2). */
-export type ServedMarket = PropMarket | TdMarket;
+/** Every market the app serves: yardage/volume (v1.0), touchdowns (v1.2), combos/interceptions/2+ TDs (v1.3). */
+export type ServedMarket = PropMarket | TdMarket | ExtraMarket;
 
 export const NFL_PROPS_SPORT_KEY = "nfl";
 export const NFL_PROPS_MODEL_KEY = "nfl-props";
 /**
  * v1.1.0 = v1.0.0 + carry-share redistribution when a teammate is ruled out.
- * v1.2.0 = v1.1.0 + touchdown markets (anytime TD, passing TDs), all
- * existing numbers unchanged. Each passed validation; see
- * docs/architecture/NFL-PROPS-MODEL.md. Earlier frozen files are kept for the record.
+ * v1.2.0 = v1.1.0 + touchdown markets (anytime TD, passing TDs).
+ * v1.3.0 = v1.2.0 + rush+rec yards, pass+rush yards, interceptions, 2+ TDs.
+ * Each version leaves every earlier number unchanged, and each addition passed
+ * validation; see docs/architecture/NFL-PROPS-MODEL.md. Earlier frozen files
+ * are kept for the record.
  */
-export const NFL_PROPS_MODEL_VERSION = "v1.2.0";
+export const NFL_PROPS_MODEL_VERSION = "v1.3.0";
 export const NFL_PROPS_FEATURE_SCHEMA_VERSION = "nfl-props-features-v1";
 /** Validated against outcomes and naive baselines only — never against sportsbook lines. Stays experimental until forward capture says otherwise. */
 export const NFL_PROPS_LIFECYCLE = "experimental" as const;
@@ -60,6 +63,23 @@ export interface FrozenTdModel {
   validation: TdValidationRow[];
 }
 
+export interface ExtraValidationRow {
+  market: string;
+  n: number;
+  metric: "brier" | "logloss";
+  model: number;
+  season: number;
+  deltaLo: number;
+  deltaHi: number;
+}
+
+export interface FrozenExtras {
+  ratio: Record<"rushRecYards" | "passRushYards", { dist: FrozenRatioDistribution; cal: { a: number; b: number } }>;
+  interceptions: { params: IntParams; cal: { a: number; b: number } };
+  twoPlusTds: { cal: { a: number; b: number } };
+  validation: ExtraValidationRow[];
+}
+
 export interface FrozenModelFile {
   modelKey: string;
   modelVersion: string;
@@ -71,6 +91,7 @@ export interface FrozenModelFile {
   calibrators: Record<PropFamily, { a: number; b: number }>;
   validation: ValidationRow[];
   td?: FrozenTdModel;
+  extras?: FrozenExtras;
   dataManifest: Record<string, Record<string, string>>;
 }
 
@@ -97,9 +118,25 @@ export function loadFrozenModel(): FrozenModel {
     ? { any: new LogisticCalibrator(td.calibrators.any.a, td.calibrators.any.b), pass: new LogisticCalibrator(td.calibrators.pass.a, td.calibrators.pass.b) }
     : null;
   const clampP = (p: number) => Math.min(0.98, Math.max(0.02, p));
+  const ex = file.extras;
+  const exRatio = ex
+    ? {
+        rushRecYards: { dist: RatioDistribution.fromFrozen(ex.ratio.rushRecYards.dist), cal: new LogisticCalibrator(ex.ratio.rushRecYards.cal.a, ex.ratio.rushRecYards.cal.b) },
+        passRushYards: { dist: RatioDistribution.fromFrozen(ex.ratio.passRushYards.dist), cal: new LogisticCalibrator(ex.ratio.passRushYards.cal.a, ex.ratio.passRushYards.cal.b) },
+      }
+    : null;
+  const exInt = ex ? new LogisticCalibrator(ex.interceptions.cal.a, ex.interceptions.cal.b) : null;
+  const exMulti = ex ? new LogisticCalibrator(ex.twoPlusTds.cal.a, ex.twoPlusTds.cal.b) : null;
   cached = {
     file,
     pOver: (market, mu, line) => {
+      if (isExtraMarket(market)) {
+        if (!exRatio || !exInt || !exMulti) throw new Error(`frozen model ${file.modelVersion} has no ${market} model`);
+        if (market === "interceptions") return exInt.apply(clampP(poissonOver(mu, line)));
+        // 2+ TDs: `mu` is the anytime-TD rate λ; the market is always "2 or more"
+        if (market === "twoPlusTds") return exMulti.apply(clampP(poissonOver(mu, 1.5)));
+        return exRatio[market].cal.apply(exRatio[market].dist.pOver(mu, line));
+      }
       if (isTdMarket(market)) {
         if (!tdCal) throw new Error(`frozen model ${file.modelVersion} has no touchdown model`);
         return tdCal[market === "anytimeTd" ? "any" : "pass"].apply(clampP(poissonOver(mu, line)));

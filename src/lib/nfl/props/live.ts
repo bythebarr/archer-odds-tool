@@ -21,14 +21,14 @@
 import { fetchNflGames, type NflGame } from "../games";
 import { franchise } from "../pbp/franchise";
 import { loadReleaseCsv, setInProgressSeason } from "../nflverse";
-import { AvailabilityTracker, NO_ABSENCES } from "./availability";
-import { EligibilityTracker, MARKET_FAMILY, type Baseline, type PropFamily } from "./eligibility";
-import { loadInjuryReports, ruledOut, type InjuryIndex } from "./injuries";
-import { PropState, weekKeyOf, type GameContext, type PlayerGameKey } from "./engine";
+import { MARKET_FAMILY, type Baseline, type PropFamily } from "./eligibility";
+import { loadInjuryReports, type InjuryIndex } from "./injuries";
+import type { GameContext, PlayerGameKey } from "./engine";
 import { loadFrozenModel, type ServedMarket } from "./frozen";
-import { PROP_MARKETS, adjusted, components, oppFactors, project, type PropMarket, type SnapshotSet } from "./model";
-import { passTdFraction, passTdLambda, projectTeamTds, tdShare } from "./td";
-import { loadPlayerGames, type PlayerGame, type TeamGameVolume } from "./playerGames";
+import { PROP_MARKETS, type PropMarket } from "./model";
+import { PropReplayer, groupWeeks } from "./replay";
+import { interceptionLambda, intRate, oppIntFactor } from "./extras";
+import { loadPlayerGames, type PlayerGame } from "./playerGames";
 
 const FIRST_SEASON = 2013;
 
@@ -65,6 +65,8 @@ export interface PropProjectionRow {
     oppFactor: number | null;
     volumeLabel: string;
     efficiencyLabel: string | null;
+    /** For combo markets: the component projections that sum to the mean. */
+    parts?: { label: string; value: number }[];
   };
   seasonAvg: number | null;
   l5Avg: number | null;
@@ -114,7 +116,6 @@ export async function projectUpcomingWeek(
   opts: { injuryIndex?: InjuryIndex } = {}
 ): Promise<LiveProjection> {
   const model = loadFrozenModel();
-  const { engine, params, td } = model.file;
   const allGames = await fetchNflGames();
   const games = upcomingWeek(allGames, now);
   if (games.length === 0) throw new Error("No upcoming regular-season NFL games found in nflverse schedule.");
@@ -130,31 +131,12 @@ export async function projectUpcomingWeek(
     warnings.push(`nflverse box scores for ${season} run through week ${statsThroughWeek ?? 0}, but week ${week - 1} is complete — projections are missing the latest week.`);
   }
 
-  // 1. replay history
+  // 1. replay every completed week through the shared replayer (no views needed for history)
   const ctx = new Map<string, GameContext>(allGames.map((g) => [g.gameId, { gameId: g.gameId, home: franchise(g.home), spread: g.spreadLine, total: g.totalLine }]));
-  const states = {
-    usage: new PropState(engine.usage),
-    efficiency: new PropState(engine.efficiency),
-    team: new PropState(engine.team),
-    defense: new PropState(engine.defense),
-  };
-  const tdState = td ? new PropState({ halfLife: td.halfLife, seasonCarry: engine.usage.seasonCarry }) : null;
-  const tracker = new EligibilityTracker();
-  const availTracker = new AvailabilityTracker(engine.usage.halfLife);
-  const byWeek = new Map<string, PlayerGame[]>();
-  for (const p of completed) (byWeek.get(weekKeyOf(p.season, p.week)) ?? byWeek.set(weekKeyOf(p.season, p.week), []).get(weekKeyOf(p.season, p.week))!).push(p);
-  const teamsByWeek = new Map<string, TeamGameVolume[]>();
-  for (const t of completedTeams) (teamsByWeek.get(weekKeyOf(t.season, t.week)) ?? teamsByWeek.set(weekKeyOf(t.season, t.week), []).get(weekKeyOf(t.season, t.week))!).push(t);
-  const teamGame = new Map(completedTeams.map((t) => [`${t.gameId}|${t.team}`, t]));
-  const weeks = [...new Set([...byWeek.keys(), ...teamsByWeek.keys()])].sort();
-  for (const wk of weeks) {
-    const wp = byWeek.get(wk) ?? [];
-    const wt = teamsByWeek.get(wk) ?? [];
-    for (const s of Object.values(states)) s.foldWeek(wp, wt, teamGame);
-    tdState?.foldWeek(wp, wt, teamGame);
-    tracker.foldWeek(wp);
-    availTracker.foldWeek(wp);
-  }
+  const replayer = new PropReplayer(model.file);
+  const { weeks, byWeek, teamsByWeek, teamGame } = groupWeeks(completed, completedTeams);
+  for (const wk of weeks) replayer.foldWeek(byWeek.get(wk) ?? [], teamsByWeek.get(wk) ?? [], teamGame);
+  const tracker = replayer.tracker;
 
   // 2. candidates
   const injuryIndex = opts.injuryIndex ?? (await loadInjuryReports(season, season));
@@ -169,19 +151,7 @@ export async function projectUpcomingWeek(
   }
   const rows: PropProjectionRow[] = [];
   const excluded: LiveProjection["excluded"] = [];
-  const upcomingKey = weekKeyOf(season, week);
-  const availCache = new Map<string, ReturnType<AvailabilityTracker["context"]>>();
-  const teamAvail = (team: string, game: UpcomingGame, opp: string) => {
-    const hit = availCache.get(team);
-    if (hit) return hit;
-    const out = ruledOut(injuryIndex, season, week, team);
-    const ctxA = out.length
-      ? availTracker.context(team, { gameId: game.gameId, season, week, opp }, out, states.usage, params.shrink, tracker.leadPasser(team))
-      : NO_ABSENCES;
-    availCache.set(team, ctxA);
-    return ctxA;
-  };
-  for (const playerId of tracker.players()) {
+  for (const playerId of [...tracker.players()]) {
     const last = tracker.lastGame(playerId)!;
     if (last.season < season - 1) continue;
     const game = teamGameMap.get(last.team);
@@ -198,23 +168,19 @@ export async function projectUpcomingWeek(
     }
 
     // 3. project
-    const gctx = ctx.get(game.gameId);
-    const set: SnapshotSet = {
-      usage: states.usage.snapshot(key, gctx, upcomingKey),
-      efficiency: states.efficiency.snapshot(key, gctx, upcomingKey),
-      team: states.team.snapshot(key, gctx, upcomingKey),
-      defense: states.defense.snapshot(key, gctx, upcomingKey),
-    };
-    const avail = teamAvail(last.team, game, opp);
-    const p = project(set, params, avail);
-    const { c, teamTgt, teamCar, teamAtt } = adjusted(set, params, avail);
-    const f = oppFactors(set.defense, params.opp);
+    const v = replayer.view(key, ctx.get(game.gameId), injuryIndex);
+    const { c, teamTgt, teamCar, teamAtt } = v.adj;
+    const f = v.opp;
     const vol = { rec: teamTgt, rush: teamCar, pass: teamAtt };
-    const a = params.availability;
+    const a = model.file.params.availability;
     const carNote =
       a && (a.carSame !== 0 || a.carOther !== 0)
-        ? avail.absent.filter((x) => x.vacCar >= 0.02 && x.name !== last.name).map((x) => `${x.name} (${x.position}) out`)
+        ? v.avail.absent.filter((x) => x.vacCar >= 0.02 && x.name !== last.name).map((x) => `${x.name} (${x.position}) out`)
         : [];
+    const common = {
+      game, playerId, name: last.name, position: last.position, headshotUrl: headshots.get(playerId) ?? null, team: last.team, opp,
+      priorGames: baseline.priorGames, injury: (status === "Questionable" ? "Questionable" : null) as InjuryStatus,
+    };
     for (const market of PROP_MARKETS) {
       const fam = MARKET_FAMILY[market];
       if (!families.includes(fam)) continue;
@@ -230,55 +196,108 @@ export async function projectUpcomingWeek(
       };
       const [efficiency, oppFactor, efficiencyLabel] = eff[market];
       rows.push({
-        game,
-        playerId,
-        name: last.name,
-        position: last.position,
-        headshotUrl: headshots.get(playerId) ?? null,
-        team: last.team,
-        opp,
+        ...common,
         market,
-        mean: p[market],
+        mean: v.proj[market],
         breakdown: { teamVolume: vol[fam], share, efficiency, oppFactor, volumeLabel: VOLUME_LABEL[fam], efficiencyLabel },
         seasonAvg: baseline.seasonAvg?.[market] ?? null,
         l5Avg: baseline.l5Avg?.[market] ?? null,
-        priorGames: baseline.priorGames,
-        injury: status === "Questionable" ? "Questionable" : null,
         availabilityNote: fam === "rush" && carNote.length ? carNote.join(", ") : null,
       });
     }
 
     // v1.2 touchdown markets — same eligibility; λ from market-implied team TDs × shrunk TD share
-    if (td && tdState) {
-      const base = components(set, params.shrink);
-      const teamTds = projectTeamTds(set.team, td.params);
+    if (v.td) {
       const history = tracker.gamesOf(playerId);
       const cur = history.filter((g) => g.season === season);
       const ref = cur.length ? cur : history.filter((g) => g.season === season - 1);
       const l5 = history.slice(-5);
-      const rate = (gs: readonly PlayerGame[], f: (g: PlayerGame) => number) => (gs.length ? gs.reduce((a, g) => a + f(g), 0) / gs.length : null);
+      const rate = (gs: readonly PlayerGame[], fn: (g: PlayerGame) => number) => (gs.length ? gs.reduce((acc, g) => acc + fn(g), 0) / gs.length : null);
       const anyTd = (g: PlayerGame) => (g.rushingTds + g.receivingTds > 0 ? 1 : 0);
-      const common = { game, playerId, name: last.name, position: last.position, headshotUrl: headshots.get(playerId) ?? null, team: last.team, opp, priorGames: baseline.priorGames, injury: (status === "Questionable" ? "Questionable" : null) as InjuryStatus, availabilityNote: null };
       if (families.includes("rec") || families.includes("rush")) {
-        const share = tdShare(tdState.snapshot(key, gctx, upcomingKey), base, td.params);
         rows.push({
           ...common,
           market: "anytimeTd",
-          mean: teamTds * share,
-          breakdown: { teamVolume: teamTds, share, efficiency: null, oppFactor: null, volumeLabel: "team TDs", efficiencyLabel: null },
+          mean: v.td.anytimeLambda,
+          breakdown: { teamVolume: v.td.teamTds, share: v.td.share, efficiency: null, oppFactor: null, volumeLabel: "team TDs", efficiencyLabel: null },
           seasonAvg: rate(ref, anyTd),
           l5Avg: rate(l5, anyTd),
+          availabilityNote: null,
         });
       }
       if (families.includes("pass")) {
-        const passFrac = passTdFraction(set.team, td.params.kPassFrac);
         rows.push({
           ...common,
           market: "passingTds",
-          mean: passTdLambda(teamTds, passFrac, base.attShare),
-          breakdown: { teamVolume: teamTds * passFrac, share: base.attShare, efficiency: null, oppFactor: null, volumeLabel: "team pass TDs", efficiencyLabel: null },
+          mean: v.td.passLambda,
+          breakdown: { teamVolume: v.td.teamTds * v.td.passFrac, share: v.base.attShare, efficiency: null, oppFactor: null, volumeLabel: "team pass TDs", efficiencyLabel: null },
           seasonAvg: rate(ref, (g) => g.passingTds),
           l5Avg: rate(l5, (g) => g.passingTds),
+          availabilityNote: null,
+        });
+      }
+    }
+
+    // v1.3 markets: combos (sum of marginals, own distribution), interceptions, 2+ TDs
+    const ex = model.file.extras;
+    if (ex) {
+      const history = v.history;
+      const cur = history.filter((g) => g.season === season);
+      const ref = cur.length ? cur : history.filter((g) => g.season === season - 1);
+      const l5 = history.slice(-5);
+      const rate = (gs: readonly PlayerGame[], fn: (g: PlayerGame) => number) => (gs.length ? gs.reduce((acc, g) => acc + fn(g), 0) / gs.length : null);
+      const noEff = { efficiency: null, oppFactor: null, efficiencyLabel: null };
+      if (last.position !== "QB" && (families.includes("rec") || families.includes("rush"))) {
+        rows.push({
+          ...common,
+          market: "rushRecYards",
+          mean: v.proj.rushingYards + v.proj.receivingYards,
+          breakdown: {
+            teamVolume: 0, share: 0, volumeLabel: "", ...noEff,
+            parts: [{ label: "rush yds", value: v.proj.rushingYards }, { label: "rec yds", value: v.proj.receivingYards }],
+          },
+          seasonAvg: rate(ref, (g) => g.rushingYards + g.receivingYards),
+          l5Avg: rate(l5, (g) => g.rushingYards + g.receivingYards),
+          availabilityNote: carNote.length ? carNote.join(", ") : null,
+        });
+      }
+      if (families.includes("pass")) {
+        rows.push({
+          ...common,
+          market: "passRushYards",
+          mean: v.proj.passingYards + v.proj.rushingYards,
+          breakdown: {
+            teamVolume: 0, share: 0, volumeLabel: "", ...noEff,
+            parts: [{ label: "pass yds", value: v.proj.passingYards }, { label: "rush yds", value: v.proj.rushingYards }],
+          },
+          seasonAvg: rate(ref, (g) => g.passingYards + g.rushingYards),
+          l5Avg: rate(l5, (g) => g.passingYards + g.rushingYards),
+          availabilityNote: null,
+        });
+        const p = ex.interceptions.params;
+        rows.push({
+          ...common,
+          market: "interceptions",
+          mean: interceptionLambda(v.proj.passAttempts, v.set.efficiency, v.set.defense, p),
+          breakdown: {
+            teamVolume: v.proj.passAttempts, share: intRate(v.set.efficiency, p), volumeLabel: "pass attempts",
+            efficiency: null, oppFactor: oppIntFactor(v.set.defense, p), efficiencyLabel: null,
+          },
+          seasonAvg: rate(ref, (g) => g.interceptions),
+          l5Avg: rate(l5, (g) => g.interceptions),
+          availabilityNote: null,
+        });
+      }
+      if (v.td && (families.includes("rec") || families.includes("rush"))) {
+        const multi = (g: PlayerGame) => (g.rushingTds + g.receivingTds >= 2 ? 1 : 0);
+        rows.push({
+          ...common,
+          market: "twoPlusTds",
+          mean: v.td.anytimeLambda,
+          breakdown: { teamVolume: v.td.teamTds, share: v.td.share, efficiency: null, oppFactor: null, volumeLabel: "team TDs", efficiencyLabel: null },
+          seasonAvg: rate(ref, multi),
+          l5Avg: rate(l5, multi),
+          availabilityNote: null,
         });
       }
     }

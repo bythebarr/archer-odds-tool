@@ -5,7 +5,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { NFL_TEAMS } from "../teams";
-import { NFL_PROPS_MODEL_KEY, type ServedMarket, type TdValidationRow, type ValidationRow } from "./frozen";
+import { NFL_PROPS_MODEL_KEY, type ExtraValidationRow, type ServedMarket, type TdValidationRow, type ValidationRow } from "./frozen";
 import { MARKET_BY_KEY } from "./predictionCapture";
 
 export interface NflPropsBoardGame {
@@ -40,6 +40,7 @@ export interface NflPropsBoardRow {
     oppFactor: number | null;
     volumeLabel: string;
     efficiencyLabel: string | null;
+    parts: { label: string; value: number }[] | null;
   };
   seasonAvg: number | null;
   l5Avg: number | null;
@@ -61,6 +62,7 @@ export interface NflPropsBoard {
   warnings: string[];
   validation: ValidationRow[];
   tdValidation: TdValidationRow[];
+  extraValidation: ExtraValidationRow[];
 }
 
 /** nflverse team code → this app's display identity (nflverse codes the Rams "LA"; the app shows "LAR"). */
@@ -119,6 +121,7 @@ export async function getLatestNflPropsBoard(): Promise<NflPropsBoard | null> {
         oppFactor: num(bd.oppFactor),
         volumeLabel: String(bd.volumeLabel ?? ""),
         efficiencyLabel: typeof bd.efficiencyLabel === "string" ? bd.efficiencyLabel : null,
+        parts: Array.isArray(bd.parts) ? (bd.parts as { label: string; value: number }[]) : null,
       },
       seasonAvg: num(proj.seasonAvg),
       l5Avg: num(proj.l5Avg),
@@ -140,5 +143,6 @@ export async function getLatestNflPropsBoard(): Promise<NflPropsBoard | null> {
     warnings: Array.isArray(meta.warnings) ? (meta.warnings as string[]) : [],
     validation: Array.isArray(calibration.validation) ? (calibration.validation as ValidationRow[]) : [],
     tdValidation: Array.isArray(calibration.tdValidation) ? (calibration.tdValidation as TdValidationRow[]) : [],
+    extraValidation: Array.isArray(calibration.extraValidation) ? (calibration.extraValidation as ExtraValidationRow[]) : [],
   };
 }

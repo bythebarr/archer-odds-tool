@@ -46,6 +46,7 @@ export interface PlayerGame {
   rushingTds: number;
   receivingTds: number;
   passingTds: number;
+  interceptions: number;
 }
 
 /** Team offensive volume for one game, summed over every player in the box score (not just those with snap rows). */
@@ -66,7 +67,7 @@ export interface TeamGameVolume {
 const STAT_COLUMNS = [
   "player_id", "player_display_name", "position", "season", "week", "season_type", "game_id", "team", "opponent_team",
   "completions", "attempts", "passing_yards", "carries", "rushing_yards", "receptions", "targets", "receiving_yards",
-  "rushing_tds", "receiving_tds", "passing_tds",
+  "rushing_tds", "receiving_tds", "passing_tds", "passing_interceptions",
 ] as const;
 const SNAP_COLUMNS = ["game_id", "season", "week", "game_type", "pfr_player_id", "player", "position", "team", "opponent", "offense_snaps", "offense_pct"] as const;
 const PLAYER_COLUMNS = ["gsis_id", "pfr_id", "display_name", "position"] as const;
@@ -156,6 +157,7 @@ export async function loadPlayerGames(fromSeason: number, toSeason: number, log?
         rushingTds: v("rushing_tds"),
         receivingTds: v("receiving_tds"),
         passingTds: v("passing_tds"),
+        interceptions: v("passing_interceptions"),
       });
     }
     log?.(`  ${season}: ${players.length} cumulative skill player-games (${zeroFilled} zero-stat games filled, ${unmapped} unmapped dropped)`);

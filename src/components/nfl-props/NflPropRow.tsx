@@ -37,6 +37,16 @@ function parseOdds(raw: string): number | null {
   return n !== null && Math.abs(n) >= 100 && Math.abs(n) <= 10000 ? Math.round(n) : null;
 }
 
+/** Markets settled as yes/no at a fixed line. */
+const YES_NO_LINE: Partial<Record<NflPropsBoardRow["market"], number>> = { anytimeTd: 0.5, twoPlusTds: 1.5 };
+
+const SHARE_LABEL: Partial<Record<NflPropsBoardRow["market"], string>> = {
+  anytimeTd: "TD share",
+  twoPlusTds: "TD share",
+  passingTds: "attempt share",
+  interceptions: "INT rate",
+};
+
 interface Props {
   row: NflPropsBoardRow;
   manual: ManualLine | undefined;
@@ -46,16 +56,18 @@ interface Props {
 export function NflPropRow({ row, manual, onManual }: Props) {
   const [open, setOpen] = useState(false);
   const meta = MARKET_META[row.market];
-  // Anytime TD is a yes/no market: headline the calibrated TD chance, compare it to the player's TD rate.
-  const isAnytime = row.market === "anytimeTd";
+  // Yes/no markets (anytime TD, 2+ TDs) have a fixed line: headline the calibrated chance, compare it to the player's rate.
+  const fixedLine = YES_NO_LINE[row.market];
+  const isAnytime = fixedLine !== undefined;
   const model = loadFrozenModel();
-  const tdChance = isAnytime ? model.pOver("anytimeTd", row.mean, 0.5) : null;
+  const tdChance = isAnytime ? model.pOver(row.market, row.mean, fixedLine) : null;
+  const chanceLabel = row.market === "twoPlusTds" ? "2+ TD chance" : "TD chance";
   const headline = tdChance ?? row.mean;
   const fmt = (v: number) => (isAnytime ? `${Math.round(v * 100)}%` : v.toFixed(meta.decimals));
   const diff = row.seasonAvg === null ? null : headline - row.seasonAvg;
   const diffPct = row.seasonAvg === null ? null : isAnytime ? diff! : row.seasonAvg ? diff! / row.seasonAvg : null;
 
-  const line = isAnytime ? 0.5 : manual?.line ?? null;
+  const line = isAnytime ? fixedLine : manual?.line ?? null;
   const priced =
     line !== null && (manual || isAnytime)
       ? priceProp(model, row.mean, { market: row.market, line, overAmerican: manual?.over ?? null, underAmerican: isAnytime ? null : manual?.under ?? null })
@@ -98,7 +110,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
         {/* projection */}
         <div className="text-right">
           <div className="font-mono text-2xl font-bold leading-none tabular-nums text-foreground">{fmt(headline)}</div>
-          <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{isAnytime ? "TD chance" : "ARCHR proj"}</div>
+          <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{isAnytime ? chanceLabel : "ARCHR proj"}</div>
           {diffPct !== null ? (
             <div
               className={`mt-0.5 text-[11px] font-medium tabular-nums ${
@@ -106,7 +118,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
               }`}
               title="Model projection vs. the player's season average"
             >
-              {diff! >= 0 ? "▲" : "▼"} {isAnytime ? `${Math.round(Math.abs(diff!) * 100)} pts vs TD rate` : `${fmt(Math.abs(diff!))} vs avg`}
+              {diff! >= 0 ? "▲" : "▼"} {isAnytime ? `${Math.round(Math.abs(diff!) * 100)} pts vs ${row.market === "twoPlusTds" ? "2+ TD" : "TD"} rate` : `${fmt(Math.abs(diff!))} vs avg`}
             </div>
           ) : null}
         </div>
@@ -116,7 +128,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
           {isAnytime ? (
             <>
               <label className="sr-only" htmlFor={`yes-${row.eventRef}-${row.playerId}`}>
-                Anytime TD price for {row.name}
+                {meta.label} price for {row.name}
               </label>
               <Input
                 id={`yes-${row.eventRef}-${row.playerId}`}
@@ -126,7 +138,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
                 defaultValue={manual?.over != null ? fmtOdds(manual.over) : ""}
                 onBlur={(e) => {
                   const over = parseOdds(e.target.value);
-                  onManual(over === null ? null : { line: 0.5, over, under: null });
+                  onManual(over === null ? null : { line: fixedLine!, over, under: null });
                 }}
                 className="h-9 w-20 text-center font-mono text-sm"
               />
@@ -187,10 +199,25 @@ export function NflPropRow({ row, manual, onManual }: Props) {
       {open ? (
         <div className="border-t border-border bg-muted/20 px-3 py-3 text-xs">
           {/* the projection, as an equation */}
+          {b.parts ? (
+            <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+              {b.parts.map((x, i) => (
+                <span key={x.label} className="contents">
+                  {i > 0 ? <span className="text-muted-foreground">+</span> : null}
+                  <Chip value={x.value.toFixed(1)} label={x.label} />
+                </span>
+              ))}
+              <span className="text-muted-foreground">=</span>
+              <Chip value={fmt(row.mean)} label={meta.unit} strong />
+            </div>
+          ) : (
           <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
             <Chip value={b.teamVolume.toFixed(1)} label={b.volumeLabel} />
             <span className="text-muted-foreground">×</span>
-            <Chip value={`${(b.share * 100).toFixed(1)}%`} label={row.market === "anytimeTd" ? "TD share" : row.market === "passingTds" ? "attempt share" : "player share"} />
+            <Chip
+              value={`${(b.share * 100).toFixed(row.market === "interceptions" ? 2 : 1)}%`}
+              label={SHARE_LABEL[row.market] ?? "player share"}
+            />
             {b.efficiency !== null ? (
               <>
                 <span className="text-muted-foreground">×</span>
@@ -200,7 +227,11 @@ export function NflPropRow({ row, manual, onManual }: Props) {
             {b.oppFactor !== null ? (
               <>
                 <span className="text-muted-foreground">×</span>
-                <Chip value={b.oppFactor.toFixed(3)} label={`${matchup} matchup`} tone={matchup === "soft" ? "good" : matchup === "tough" ? "bad" : undefined} />
+                {row.market === "interceptions" ? (
+                  <Chip value={b.oppFactor.toFixed(3)} label="def INT factor" />
+                ) : (
+                  <Chip value={b.oppFactor.toFixed(3)} label={`${matchup} matchup`} tone={matchup === "soft" ? "good" : matchup === "tough" ? "bad" : undefined} />
+                )}
               </>
             ) : null}
             <span className="text-muted-foreground">=</span>
@@ -208,10 +239,11 @@ export function NflPropRow({ row, manual, onManual }: Props) {
             {isAnytime ? (
               <>
                 <span className="text-muted-foreground">→</span>
-                <Chip value={fmt(headline)} label="TD chance" strong />
+                <Chip value={fmt(headline)} label={chanceLabel} strong />
               </>
             ) : null}
           </div>
+          )}
 
           {row.teammatesOut ? (
             <p className="mt-2 rounded-md bg-sky-500/10 px-2 py-1.5 text-[11px] text-sky-800 dark:text-sky-200">
@@ -223,7 +255,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
           <div className="mt-3 grid gap-1.5">
             {[
               { label: "ARCHR", v: headline, cls: "bg-foreground/80" },
-              { label: isAnytime ? "Season TD rate" : "Season avg", v: row.seasonAvg, cls: "bg-muted-foreground/40" },
+              { label: isAnytime ? (row.market === "twoPlusTds" ? "Season 2+ rate" : "Season TD rate") : "Season avg", v: row.seasonAvg, cls: "bg-muted-foreground/40" },
               { label: "Last 5", v: row.l5Avg, cls: "bg-muted-foreground/25" },
             ].map((x) =>
               x.v === null ? null : (

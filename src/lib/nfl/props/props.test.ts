@@ -9,7 +9,7 @@ function pg(p: Partial<PlayerGame>): PlayerGame {
   return {
     gameId: "2020_01_B_A", season: 2020, week: 1, team: "A", opp: "B", playerId: "p1", name: "P One", position: "WR",
     offenseSnaps: 60, offensePct: 0.9, targets: 8, receptions: 5, receivingYards: 70, carries: 0, rushingYards: 0,
-    passAttempts: 0, completions: 0, passingYards: 0, rushingTds: 0, receivingTds: 0, passingTds: 0,
+    passAttempts: 0, completions: 0, passingYards: 0, rushingTds: 0, receivingTds: 0, passingTds: 0, interceptions: 0,
     ...p,
   };
 }

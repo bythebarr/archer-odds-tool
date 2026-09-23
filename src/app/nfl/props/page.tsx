@@ -45,6 +45,21 @@ function Scorecard({ board }: { board: BoardData }) {
               </div>
             );
           })}
+          {board.extraValidation.map((v) => {
+            const better = (v.season - v.model) / v.season;
+            const label: Record<string, string> = {
+              rushRecYards: "Rush+Rec", passRushYards: "Pass+Rush", "interceptions o0.5": "INT o0.5", "interceptions o1.5": "INT o1.5", twoPlusTds: "2+ TDs",
+            };
+            return (
+              <div key={v.market} className="min-w-[6.5rem] rounded-lg border border-border bg-card px-2.5 py-2">
+                <div className="text-[10px] font-medium text-muted-foreground">{label[v.market] ?? v.market}</div>
+                <div className="mt-0.5 font-mono text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  −{(better * 100).toFixed(1)}%
+                </div>
+                <div className="text-[10px] tabular-nums text-muted-foreground">{v.metric === "brier" ? "Brier" : "log loss"} · n={v.n.toLocaleString()}</div>
+              </div>
+            );
+          })}
           {board.tdValidation.map((v) => {
             const better = (v.logLossSeason - v.logLossModel) / v.logLossSeason;
             return (

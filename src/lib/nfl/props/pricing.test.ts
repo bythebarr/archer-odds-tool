@@ -6,6 +6,9 @@ import { americanToDecimal, playerNameKey, priceProp, probToAmerican } from "./p
 import { PROP_MARKETS } from "./model";
 import { poissonOver } from "./td";
 import frozenV11 from "./frozen/nfl-props-v1.1.0.json";
+import frozenV12 from "./frozen/nfl-props-v1.2.0.json";
+import { intRate, oppIntFactor } from "./extras";
+import type { Snapshot } from "./engine";
 import type { LiveProjection } from "./live";
 
 describe("frozen model", () => {
@@ -106,14 +109,45 @@ describe("touchdown markets (v1.2)", () => {
     expect(MARKET_BY_KEY.player_passing_tds).toBe("passingTds");
   });
 
-  it("v1.2.0 leaves every v1.1.0 number untouched", () => {
-    const { td, modelVersion, frozenAt, ...rest } = loadFrozenModel().file;
-    expect(td?.validation.length).toBe(4);
-    expect(modelVersion).toBe("v1.2.0");
-    expect(frozenAt).toBeTruthy();
-    const v11 = { ...(frozenV11 as unknown as Record<string, unknown>) };
-    delete v11.modelVersion;
-    delete v11.frozenAt;
-    expect(rest).toEqual(v11);
+  it("each frozen version only adds to the previous one", () => {
+    const strip = (f: object, ...keys: string[]) => {
+      const o = { ...(f as Record<string, unknown>) };
+      for (const k of ["modelVersion", "frozenAt", ...keys]) delete o[k];
+      return o;
+    };
+    const current = loadFrozenModel().file;
+    expect(current.modelVersion).toBe("v1.3.0");
+    expect(current.td?.validation.length).toBe(4);
+    expect(strip(current, "td", "extras")).toEqual(strip(frozenV11));
+    expect(strip(current, "extras")).toEqual(strip(frozenV12));
+  });
+});
+
+describe("v1.3 markets", () => {
+  const model = loadFrozenModel();
+
+  it("prices combos, interceptions and 2+ TDs monotonically", () => {
+    expect(model.pOver("rushRecYards", 90, 60.5)).toBeGreaterThan(model.pOver("rushRecYards", 90, 110.5));
+    expect(model.pOver("passRushYards", 260, 230.5)).toBeGreaterThan(model.pOver("passRushYards", 220, 230.5));
+    expect(model.pOver("interceptions", 1.0, 0.5)).toBeGreaterThan(model.pOver("interceptions", 0.6, 0.5));
+    // 2+ TDs always settles at 1.5 regardless of the line passed
+    expect(model.pOver("twoPlusTds", 0.8, 0.5)).toBeCloseTo(model.pOver("twoPlusTds", 0.8, 1.5), 12);
+    expect(model.pOver("twoPlusTds", 0.8, 1.5)).toBeLessThan(model.pOver("anytimeTd", 0.8, 0.5));
+  });
+
+  it("interception rate shrinks toward the league and scales with the defense", () => {
+    const snap = (int: number, att: number, passInt: number, passAtt: number) =>
+      ({ player: { int, att }, oppDef: { passInt, passAtt }, league: { intRate: 0.025 } }) as unknown as Snapshot;
+    const p = { kInt: 400, kDefInt: 300, gammaInt: 0.5 };
+    expect(intRate(snap(0, 0, 0, 0), p)).toBeCloseTo(0.025, 12);
+    expect(intRate(snap(20, 400, 0, 0), p)).toBeCloseTo((20 + 400 * 0.025) / 800, 12);
+    expect(oppIntFactor(snap(0, 0, 0, 0), p)).toBeCloseTo(1, 12);
+    expect(oppIntFactor(snap(0, 0, 30, 600), p)).toBeGreaterThan(1);
+  });
+
+  it("maps the new markets to stable prediction keys", () => {
+    expect(PROP_MARKET_KEYS.rushRecYards).toBe("player_rush_rec_yards");
+    expect(MARKET_BY_KEY.player_interceptions).toBe("interceptions");
+    expect(MARKET_BY_KEY.player_two_plus_tds).toBe("twoPlusTds");
   });
 });

@@ -1,7 +1,7 @@
 # NFL player-prop projection model (research, 2026-09-23)
 
 > Status: **experimental, validated against outcomes, not yet priced against
-> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.2.0. Served
+> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.3.0 (13 markets). Served
 > read-only at `/nfl/props` from forward-captured `PredictionRun`s
 > (`npm run capture:nfl:props`). No odds provider, Discord, cron or schema
 > change. Follows the game-line result in `NFL-PBP-FEASIBILITY.md`: sides are
@@ -207,6 +207,40 @@ further, and historical depth charts aren't timestamped before 2025
 pregame for most of the train window. Revisit when 2025+ timestamped depth
 charts accumulate a usable sample.
 
+## v1.3 (2026-09-23): combos, interceptions, 2+ TDs — all four kept
+
+Built on frozen v1.2 through the new shared replayer (`replay.ts`). The
+live projector and every market experiment now read the same pre-week
+state; the refactor reproduced all 851 live projections to 9 decimals.
+Script: `npm run experiment:nfl:props:extras` (`extras.ts`).
+
+- **Rush + receiving yards** (RB/WR/TE) and **pass + rush yards** (QB): the
+  mean is the sum of the frozen marginal projections. The distribution is
+  its own empirical ratio distribution fit on the combined stat, so it
+  carries the real correlation between the parts rather than assuming
+  independence.
+- **Interceptions thrown:** Poisson with λ = projected attempts × INT rate
+  (shrunk with k = 400 phantom attempts toward the league) × defense INT
+  factor (k = 300, γ = 0.25). The heavy shrinkage and weak defense weight
+  are the finding: INTs are mostly noise, and the model wins by not chasing
+  a QB's recent INT streak, which is exactly what the naive average does.
+- **2+ TDs:** the anytime-TD Poisson rate at ≥2, with its own calibration.
+
+Validation 2020–2022 vs. the season-average baseline (95% week-block CI):
+
+| Market | n | Metric model / season / L5 | Δ vs season |
+|---|---|---|---|
+| Rush + rec yards | 8,493 | Brier 0.2301 / 0.2411 / 0.2367 (MAE 27.3 / 28.9 / 28.7) | −0.0110 [−0.0145, −0.0082] |
+| Pass + rush yards | 1,361 | Brier 0.2301 / 0.2360 / 0.2363 (MAE 62.0 / 66.6 / 67.8) | −0.0059 [−0.0093, −0.0026] |
+| Interceptions o0.5 | 1,361 | log loss 0.6968 / 0.7417 / 0.7260 | −0.0449 [−0.0709, −0.0234] |
+| Interceptions o1.5 | 1,361 | log loss 0.4587 / 0.5063 / 0.4947 | −0.0476 [−0.0578, −0.0379] |
+| 2+ TDs | 8,818 | log loss 0.1921 / 0.2035 / 0.2043 | −0.0114 [−0.0153, −0.0077] |
+
+**Frozen as v1.3.0 = v1.2.0 byte-for-byte + an `extras` block** (tested,
+along with v1.2 ⊃ v1.1). The board now has 13 market tabs. Combos show their
+parts (rush yds + rec yds = total), interceptions show attempts × INT rate
+× defense factor, and 2+ TDs uses the yes/no layout.
+
 ## What this does not show
 
 - **It is not evidence of edge against sportsbooks.** Books are far better
@@ -263,11 +297,15 @@ charts accumulate a usable sample.
    quoted line). That is the real edge test.
 3. **Grading job:** settle each stored projection against the nflverse box
    score after the week, and track calibration and CLV forward.
-4. **Next model candidates**, each through the same gate: longest
-   reception/rush (extreme-value markets), rushing+receiving combo yards
-   (needs a joint distribution, not a sum of marginals), the QB quality
-   differential once 2025+ depth charts give a pregame backup identity, and
-   opening the sealed 2023–2025 test window once, when the family list is
-   final.
+4. **Coverage roadmap**, each market through the same gate:
+   - *Batch B:* longest reception / rush / completion (extreme-value, from
+     play-by-play); kicker props (FG made, kicking points; box score has
+     `fg_made`, `pat_made`); first TD scorer.
+   - *Batch C:* defensive props: sacks, tackles + assists, needing defensive
+     snap counts and the box score's `def_*` columns.
+   - The QB quality differential, once 2025+ depth charts give a pregame
+     backup identity.
+   - Then open the sealed 2023–2025 test window **once**, when the market
+     list is final.
 5. **Automation:** a Friday/Saturday cron for capture once the runtime has a
    writable cache directory.
