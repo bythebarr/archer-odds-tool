@@ -1,7 +1,7 @@
 # NFL player-prop projection model (research, 2026-09-23)
 
 > Status: **experimental, validated against outcomes, not yet priced against
-> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.1.0. Served
+> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.2.0. Served
 > read-only at `/nfl/props` from forward-captured `PredictionRun`s
 > (`npm run capture:nfl:props`). No odds provider, Discord, cron or schema
 > change. Follows the game-line result in `NFL-PBP-FEASIBILITY.md`: sides are
@@ -142,6 +142,71 @@ validation window.
 projections apply it from the week's report, and the board shows a
 **+usage** tag naming the absent teammate. Test 2023–2025 remains sealed.
 
+## v1.2 (2026-09-23): touchdown markets added; depth-aware targets rejected
+
+### Touchdown markets — kept (`td.ts`, `npm run experiment:nfl:props:td`)
+
+Built on the frozen v1.1 engine. Usage and team decay and all shrinkage are
+reused, and only TD parameters are fit (train 2014–2019):
+
+- **Team TDs** = −0.468 + 0.1295 × market-implied team points − 0.044 ×
+  recent TDs/game (implied points = total/2 + team spread/2). The market's
+  implied total carries essentially all the signal; recent TD rate adds
+  nothing.
+- **Player TD share** = own decayed TDs (16-game half-life), shrunk with
+  k = 64 phantom team TDs toward a role prior of 0.278 × carry share +
+  0.696 × target share. The shrinkage is heavy, as it should be for rare
+  events. An earlier grid topped out at k = 32, at its edge, so the grid was
+  extended on train before freezing.
+- **Anytime** P = 1 − e^(−λ) with λ = team TDs × TD share. **Passing TDs**
+  are Poisson with λ = team TDs × team pass-TD fraction (k = 20) × QB attempt
+  share. Each gets a logistic recalibration on train, and so does every
+  baseline, so the comparison is between information, not calibration.
+
+Validation 2020–2022, log loss vs. the naive season rate (95% week-block CI):
+
+| Market | n | Log loss model / season / L5 | Δ vs season |
+|---|---|---|---|
+| Anytime TD | 8,818 | 0.5592 / 0.5818 / 0.5778 | −0.0226 [−0.0268, −0.0178] |
+| Pass TDs o0.5 | 1,361 | 0.4881 / 0.5482 / 0.5385 | −0.0601 [−0.0879, −0.0368] |
+| Pass TDs o1.5 | 1,361 | 0.6522 / 0.6793 / 0.6792 | −0.0271 [−0.0411, −0.0139] |
+| Pass TDs o2.5 | 1,361 | 0.4578 / 0.4971 / 0.4851 | −0.0393 [−0.0539, −0.0252] |
+
+Calibration holds through the range where the volume sits (anytime:
+0.16→0.16, 0.25→0.25, 0.34→0.35, 0.44→0.47). **Frozen as v1.2.0 = v1.1.0
+byte-for-byte + a `td` block** (tested). The board adds Anytime TD, showing
+calibrated TD chance, fair odds, and EV at a typed price, and Pass TDs
+(a line → over/under).
+
+**Bug found and fixed along the way:** `LogisticCalibrator` used undamped
+Newton steps, which diverged on spiky inputs (raw season TD rates piled at
+0 and 1; b reached −1.5M). It now uses step halving on the log-likelihood.
+Re-running the main experiment reproduces every shipped number exactly,
+including the frozen v1.0/v1.1 calibrators, so the bug never affected
+anything served.
+
+### Depth-aware target redistribution — rejected
+
+Pre-specified retry of v1.1's failed target form: an additive share bump
+weighted by (1 − the receiver's snap share), so whoever steps into the
+vacated snaps gains most. Fit on train (same-position 0.302, other 0.043),
+tested alone (`NFL_V11_VARIANT=tgtDepth`). Validation, affected rows:
+receptions +0.0003 [−0.0011, +0.0017]; receiving yards +0.0004
+[−0.0008, +0.0016], with MAE worse (23.82 → 24.19). Two structurally
+different target forms have now failed, which is fair evidence that for
+bettable receivers (≥3 targets/game), injury-report target redistribution
+adds nothing beyond their lagged shares. The code path stays, off, for
+reproducibility.
+
+### QB quality differential — deferred
+
+The binary QB-out flag had only 210 train receiver rows and couldn't
+resolve an effect. A backup-quality version would split that same sample
+further, and historical depth charts aren't timestamped before 2025
+(`NFL-PBP-FEASIBILITY.md`), so the backup's identity isn't knowable
+pregame for most of the train window. Revisit when 2025+ timestamped depth
+charts accumulate a usable sample.
+
 ## What this does not show
 
 - **It is not evidence of edge against sportsbooks.** Books are far better
@@ -198,9 +263,11 @@ projections apply it from the week's report, and the board shows a
    quoted line). That is the real edge test.
 3. **Grading job:** settle each stored projection against the nflverse box
    score after the week, and track calibration and CLV forward.
-4. **Model v1.2 candidates**, each through the same gate: a depth-aware
-   target redistribution (vacated targets to the next receiver by snap share
-   rather than proportionally), QB quality differential (backup's own
-   history) instead of a binary QB-out flag, touchdown markets.
+4. **Next model candidates**, each through the same gate: longest
+   reception/rush (extreme-value markets), rushing+receiving combo yards
+   (needs a joint distribution, not a sum of marginals), the QB quality
+   differential once 2025+ depth charts give a pregame backup identity, and
+   opening the sealed 2023–2025 test window once, when the family list is
+   final.
 5. **Automation:** a Friday/Saturday cron for capture once the runtime has a
    writable cache directory.

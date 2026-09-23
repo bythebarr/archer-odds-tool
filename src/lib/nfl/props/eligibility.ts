@@ -67,6 +67,11 @@ export class EligibilityTracker {
     return this.lastLeadPasser.get(team);
   }
 
+  /** Every prior game for a player, oldest first. */
+  gamesOf(playerId: string): readonly PlayerGame[] {
+    return this.history.get(playerId) ?? [];
+  }
+
   /** Most recent game a player appeared in, if any — used to build upcoming candidates. */
   lastGame(playerId: string): PlayerGame | undefined {
     const h = this.history.get(playerId);

@@ -1,9 +1,11 @@
-import type { PropMarket } from "@/lib/nfl/props/model";
+import type { ServedMarket } from "@/lib/nfl/props/frozen";
 
 /** Display order and labels for the NFL props board's market tabs. */
-export const MARKET_ORDER: PropMarket[] = ["passingYards", "rushingYards", "receivingYards", "receptions", "completions", "passAttempts", "rushAttempts"];
+export const MARKET_ORDER: ServedMarket[] = [
+  "passingYards", "rushingYards", "receivingYards", "receptions", "anytimeTd", "passingTds", "completions", "passAttempts", "rushAttempts",
+];
 
-export const MARKET_META: Record<PropMarket, { label: string; short: string; unit: string; decimals: number }> = {
+export const MARKET_META: Record<ServedMarket, { label: string; short: string; unit: string; decimals: number }> = {
   passingYards: { label: "Passing Yards", short: "Pass Yds", unit: "pass yds", decimals: 1 },
   rushingYards: { label: "Rushing Yards", short: "Rush Yds", unit: "rush yds", decimals: 1 },
   receivingYards: { label: "Receiving Yards", short: "Rec Yds", unit: "rec yds", decimals: 1 },
@@ -11,4 +13,6 @@ export const MARKET_META: Record<PropMarket, { label: string; short: string; uni
   completions: { label: "Completions", short: "Cmp", unit: "completions", decimals: 1 },
   passAttempts: { label: "Pass Attempts", short: "Pass Att", unit: "attempts", decimals: 1 },
   rushAttempts: { label: "Rush Attempts", short: "Rush Att", unit: "carries", decimals: 1 },
+  anytimeTd: { label: "Anytime Touchdown", short: "Anytime TD", unit: "exp. TDs", decimals: 2 },
+  passingTds: { label: "Passing Touchdowns", short: "Pass TDs", unit: "pass TDs", decimals: 2 },
 };

@@ -68,6 +68,14 @@ export interface AvailabilityParams {
   qbOutCar: number;
   qbOutCatch: number;
   qbOutYpt: number;
+  /**
+   * v1.2 candidate: depth-aware target redistribution — an ADDITIVE share bump
+   * weighted by (1 − the player's snap share), so the receiver who steps into
+   * the vacated snaps gains most rather than the one who already had the
+   * biggest share. Absent = 0.
+   */
+  tgtSameDepth?: number;
+  tgtOtherDepth?: number;
 }
 
 export interface ModelParams {
@@ -173,6 +181,12 @@ export function adjusted(set: SnapshotSet, params: ModelParams, avail?: Availabi
     const r = redistributionTerms(avail.vacCar, pos);
     c.tgtShare *= Math.max(0, 1 + a.tgtSame * t.same + a.tgtOther * t.other);
     c.carShare *= Math.max(0, 1 + a.carSame * r.same + a.carOther * r.other);
+    if (a.tgtSameDepth || a.tgtOtherDepth) {
+      const headroom = 1 - Math.min(1, snapShare(set.usage));
+      const vs = avail.vacTgt[pos];
+      const vo = avail.vacTgt.QB + avail.vacTgt.RB + avail.vacTgt.WR + avail.vacTgt.TE - vs;
+      c.tgtShare = Math.max(0, c.tgtShare + ((a.tgtSameDepth ?? 0) * vs + (a.tgtOtherDepth ?? 0) * vo) * headroom);
+    }
     if (avail.qbOut) {
       teamTgt *= a.qbOutTgt;
       teamAtt *= a.qbOutTgt;

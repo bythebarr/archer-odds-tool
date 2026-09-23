@@ -9,12 +9,12 @@ function pg(p: Partial<PlayerGame>): PlayerGame {
   return {
     gameId: "2020_01_B_A", season: 2020, week: 1, team: "A", opp: "B", playerId: "p1", name: "P One", position: "WR",
     offenseSnaps: 60, offensePct: 0.9, targets: 8, receptions: 5, receivingYards: 70, carries: 0, rushingYards: 0,
-    passAttempts: 0, completions: 0, passingYards: 0,
+    passAttempts: 0, completions: 0, passingYards: 0, rushingTds: 0, receivingTds: 0, passingTds: 0,
     ...p,
   };
 }
 function team(t: Partial<TeamGameVolume>): TeamGameVolume {
-  return { gameId: "2020_01_B_A", season: 2020, week: 1, team: "A", opp: "B", targets: 35, carries: 25, passAttempts: 36, ...t };
+  return { gameId: "2020_01_B_A", season: 2020, week: 1, team: "A", opp: "B", targets: 35, carries: 25, passAttempts: 36, tds: 3, passingTds: 2, ...t };
 }
 
 const ctx = new Map<string, GameContext>();

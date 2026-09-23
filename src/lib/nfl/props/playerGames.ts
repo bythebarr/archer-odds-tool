@@ -43,6 +43,9 @@ export interface PlayerGame {
   passAttempts: number;
   completions: number;
   passingYards: number;
+  rushingTds: number;
+  receivingTds: number;
+  passingTds: number;
 }
 
 /** Team offensive volume for one game, summed over every player in the box score (not just those with snap rows). */
@@ -55,11 +58,15 @@ export interface TeamGameVolume {
   targets: number;
   carries: number;
   passAttempts: number;
+  /** Offensive touchdowns (rushing + receiving) — passing TDs are the receiving TDs counted from the other side. */
+  tds: number;
+  passingTds: number;
 }
 
 const STAT_COLUMNS = [
   "player_id", "player_display_name", "position", "season", "week", "season_type", "game_id", "team", "opponent_team",
   "completions", "attempts", "passing_yards", "carries", "rushing_yards", "receptions", "targets", "receiving_yards",
+  "rushing_tds", "receiving_tds", "passing_tds",
 ] as const;
 const SNAP_COLUMNS = ["game_id", "season", "week", "game_type", "pfr_player_id", "player", "position", "team", "opponent", "offense_snaps", "offense_pct"] as const;
 const PLAYER_COLUMNS = ["gsis_id", "pfr_id", "display_name", "position"] as const;
@@ -100,12 +107,14 @@ export async function loadPlayerGames(fromSeason: number, toSeason: number, log?
       const key = `${s.game_id}|${team}`;
       let t = teamVol.get(key);
       if (!t) {
-        t = { gameId: s.game_id, season, week: num(s.week) ?? 0, team, opp: franchise(s.opponent_team), targets: 0, carries: 0, passAttempts: 0 };
+        t = { gameId: s.game_id, season, week: num(s.week) ?? 0, team, opp: franchise(s.opponent_team), targets: 0, carries: 0, passAttempts: 0, tds: 0, passingTds: 0 };
         teamVol.set(key, t);
       }
       t.targets += num(s.targets) ?? 0;
       t.carries += num(s.carries) ?? 0;
       t.passAttempts += num(s.attempts) ?? 0;
+      t.tds += (num(s.rushing_tds) ?? 0) + (num(s.receiving_tds) ?? 0);
+      t.passingTds += num(s.passing_tds) ?? 0;
     }
     teams.push(...teamVol.values());
 
@@ -144,6 +153,9 @@ export async function loadPlayerGames(fromSeason: number, toSeason: number, log?
         passAttempts: v("attempts"),
         completions: v("completions"),
         passingYards: v("passing_yards"),
+        rushingTds: v("rushing_tds"),
+        receivingTds: v("receiving_tds"),
+        passingTds: v("passing_tds"),
       });
     }
     log?.(`  ${season}: ${players.length} cumulative skill player-games (${zeroFilled} zero-stat games filled, ${unmapped} unmapped dropped)`);

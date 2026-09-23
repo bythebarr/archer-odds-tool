@@ -17,9 +17,9 @@ import {
   type FrozenModelFile,
 } from "./frozen";
 import type { LiveProjection, PropProjectionRow } from "./live";
-import type { PropMarket } from "./model";
+import type { ServedMarket } from "./frozen";
 
-export const PROP_MARKET_KEYS: Record<PropMarket, string> = {
+export const PROP_MARKET_KEYS: Record<ServedMarket, string> = {
   receptions: "player_receptions",
   receivingYards: "player_receiving_yards",
   rushAttempts: "player_rush_attempts",
@@ -27,9 +27,11 @@ export const PROP_MARKET_KEYS: Record<PropMarket, string> = {
   passAttempts: "player_pass_attempts",
   completions: "player_completions",
   passingYards: "player_passing_yards",
+  anytimeTd: "player_anytime_td",
+  passingTds: "player_passing_tds",
 };
 
-export const MARKET_BY_KEY = Object.fromEntries(Object.entries(PROP_MARKET_KEYS).map(([m, k]) => [k, m])) as Record<string, PropMarket>;
+export const MARKET_BY_KEY = Object.fromEntries(Object.entries(PROP_MARKET_KEYS).map(([m, k]) => [k, m])) as Record<string, ServedMarket>;
 
 export function eventRefFor(row: Pick<PropProjectionRow, "game">): string {
   return row.game.espnId ?? row.game.gameId;
@@ -86,7 +88,7 @@ export function buildNflPropsPredictionRun(live: LiveProjection, model: FrozenMo
     generatedAt,
     dataAsOfUtc: generatedAt,
     featureSchemaVersion: NFL_PROPS_FEATURE_SCHEMA_VERSION,
-    calibrationSnapshot: { frozenAt: model.frozenAt, splits: model.splits, validation: model.validation } as unknown as JsonValue,
+    calibrationSnapshot: { frozenAt: model.frozenAt, splits: model.splits, validation: model.validation, tdValidation: model.td?.validation ?? [] } as unknown as JsonValue,
     runMetadata: {
       season: live.season,
       week: live.week,

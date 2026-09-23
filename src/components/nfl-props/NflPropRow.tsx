@@ -46,19 +46,25 @@ interface Props {
 export function NflPropRow({ row, manual, onManual }: Props) {
   const [open, setOpen] = useState(false);
   const meta = MARKET_META[row.market];
-  const fmt = (v: number) => v.toFixed(meta.decimals);
-  const diff = row.seasonAvg === null ? null : row.mean - row.seasonAvg;
-  const diffPct = row.seasonAvg ? diff! / row.seasonAvg : null;
+  // Anytime TD is a yes/no market: headline the calibrated TD chance, compare it to the player's TD rate.
+  const isAnytime = row.market === "anytimeTd";
+  const model = loadFrozenModel();
+  const tdChance = isAnytime ? model.pOver("anytimeTd", row.mean, 0.5) : null;
+  const headline = tdChance ?? row.mean;
+  const fmt = (v: number) => (isAnytime ? `${Math.round(v * 100)}%` : v.toFixed(meta.decimals));
+  const diff = row.seasonAvg === null ? null : headline - row.seasonAvg;
+  const diffPct = row.seasonAvg === null ? null : isAnytime ? diff! : row.seasonAvg ? diff! / row.seasonAvg : null;
 
+  const line = isAnytime ? 0.5 : manual?.line ?? null;
   const priced =
-    manual && manual.line !== null
-      ? priceProp(loadFrozenModel(), row.mean, { market: row.market, line: manual.line, overAmerican: manual.over, underAmerican: manual.under })
+    line !== null && (manual || isAnytime)
+      ? priceProp(model, row.mean, { market: row.market, line, overAmerican: manual?.over ?? null, underAmerican: isAnytime ? null : manual?.under ?? null })
       : null;
 
   const b = row.breakdown;
   const matchup =
     b.oppFactor === null ? null : b.oppFactor >= 1.02 ? "soft" : b.oppFactor <= 0.98 ? "tough" : "neutral";
-  const maxBar = Math.max(row.mean, row.seasonAvg ?? 0, row.l5Avg ?? 0, 1);
+  const maxBar = isAnytime ? 1 : Math.max(row.mean, row.seasonAvg ?? 0, row.l5Avg ?? 0, 1);
 
   return (
     <div className="rounded-xl border border-border bg-card transition-colors hover:border-foreground/20">
@@ -91,8 +97,8 @@ export function NflPropRow({ row, manual, onManual }: Props) {
 
         {/* projection */}
         <div className="text-right">
-          <div className="font-mono text-2xl font-bold leading-none tabular-nums text-foreground">{fmt(row.mean)}</div>
-          <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">ARCHR proj</div>
+          <div className="font-mono text-2xl font-bold leading-none tabular-nums text-foreground">{fmt(headline)}</div>
+          <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{isAnytime ? "TD chance" : "ARCHR proj"}</div>
           {diffPct !== null ? (
             <div
               className={`mt-0.5 text-[11px] font-medium tabular-nums ${
@@ -100,29 +106,56 @@ export function NflPropRow({ row, manual, onManual }: Props) {
               }`}
               title="Model projection vs. the player's season average"
             >
-              {diff! >= 0 ? "▲" : "▼"} {fmt(Math.abs(diff!))} vs avg
+              {diff! >= 0 ? "▲" : "▼"} {isAnytime ? `${Math.round(Math.abs(diff!) * 100)} pts vs TD rate` : `${fmt(Math.abs(diff!))} vs avg`}
             </div>
           ) : null}
         </div>
 
         {/* line pricing */}
         <div className="col-span-3 flex items-center gap-3">
-          <label className="sr-only" htmlFor={`line-${row.eventRef}-${row.market}-${row.playerId}`}>
-            {meta.label} line for {row.name}
-          </label>
-          <Input
-            id={`line-${row.eventRef}-${row.market}-${row.playerId}`}
-            key={`line-${manual?.line ?? "none"}`}
-            inputMode="decimal"
-            placeholder="Line"
-            defaultValue={manual?.line ?? ""}
-            onBlur={(e) => {
-              const line = parseNum(e.target.value);
-              onManual(line === null ? null : { line, over: manual?.over ?? null, under: manual?.under ?? null });
-            }}
-            className="h-9 w-20 text-center font-mono text-sm"
-          />
-          {priced ? (
+          {isAnytime ? (
+            <>
+              <label className="sr-only" htmlFor={`yes-${row.eventRef}-${row.playerId}`}>
+                Anytime TD price for {row.name}
+              </label>
+              <Input
+                id={`yes-${row.eventRef}-${row.playerId}`}
+                key={`yes-${manual?.over ?? "none"}`}
+                inputMode="numeric"
+                placeholder="Price"
+                defaultValue={manual?.over != null ? fmtOdds(manual.over) : ""}
+                onBlur={(e) => {
+                  const over = parseOdds(e.target.value);
+                  onManual(over === null ? null : { line: 0.5, over, under: null });
+                }}
+                className="h-9 w-20 text-center font-mono text-sm"
+              />
+            </>
+          ) : (
+            <>
+              <label className="sr-only" htmlFor={`line-${row.eventRef}-${row.market}-${row.playerId}`}>
+                {meta.label} line for {row.name}
+              </label>
+              <Input
+                id={`line-${row.eventRef}-${row.market}-${row.playerId}`}
+                key={`line-${manual?.line ?? "none"}`}
+                inputMode="decimal"
+                placeholder="Line"
+                defaultValue={manual?.line ?? ""}
+                onBlur={(e) => {
+                  const line = parseNum(e.target.value);
+                  onManual(line === null ? null : { line, over: manual?.over ?? null, under: manual?.under ?? null });
+                }}
+                className="h-9 w-20 text-center font-mono text-sm"
+              />
+            </>
+          )}
+          {priced && isAnytime ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2 text-[11px] tabular-nums">
+              <span className="text-muted-foreground">fair {fmtOdds(priced.fairOverAmerican)}</span>
+              {priced.evOver !== null ? <EvTag side="Yes" ev={priced.evOver} /> : <span className="text-muted-foreground/70">enter a price for EV</span>}
+            </div>
+          ) : priced ? (
             <div className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-sm">
               <div className="flex justify-between text-[11px] font-semibold tabular-nums">
                 <span className={priced.pOver >= 0.5 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>O {Math.round(priced.pOver * 100)}%</span>
@@ -157,7 +190,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
           <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
             <Chip value={b.teamVolume.toFixed(1)} label={b.volumeLabel} />
             <span className="text-muted-foreground">×</span>
-            <Chip value={`${(b.share * 100).toFixed(1)}%`} label="player share" />
+            <Chip value={`${(b.share * 100).toFixed(1)}%`} label={row.market === "anytimeTd" ? "TD share" : row.market === "passingTds" ? "attempt share" : "player share"} />
             {b.efficiency !== null ? (
               <>
                 <span className="text-muted-foreground">×</span>
@@ -171,7 +204,13 @@ export function NflPropRow({ row, manual, onManual }: Props) {
               </>
             ) : null}
             <span className="text-muted-foreground">=</span>
-            <Chip value={fmt(row.mean)} label={meta.unit} strong />
+            <Chip value={isAnytime ? row.mean.toFixed(2) : fmt(row.mean)} label={meta.unit} strong />
+            {isAnytime ? (
+              <>
+                <span className="text-muted-foreground">→</span>
+                <Chip value={fmt(headline)} label="TD chance" strong />
+              </>
+            ) : null}
           </div>
 
           {row.teammatesOut ? (
@@ -183,8 +222,8 @@ export function NflPropRow({ row, manual, onManual }: Props) {
           {/* projection vs naive baselines */}
           <div className="mt-3 grid gap-1.5">
             {[
-              { label: "ARCHR", v: row.mean, cls: "bg-foreground/80" },
-              { label: "Season avg", v: row.seasonAvg, cls: "bg-muted-foreground/40" },
+              { label: "ARCHR", v: headline, cls: "bg-foreground/80" },
+              { label: isAnytime ? "Season TD rate" : "Season avg", v: row.seasonAvg, cls: "bg-muted-foreground/40" },
               { label: "Last 5", v: row.l5Avg, cls: "bg-muted-foreground/25" },
             ].map((x) =>
               x.v === null ? null : (
@@ -199,8 +238,8 @@ export function NflPropRow({ row, manual, onManual }: Props) {
             )}
           </div>
 
-          {/* optional prices → EV */}
-          <div className="mt-3 flex flex-wrap items-end gap-2">
+          {/* optional prices → EV (anytime TD takes its single price in the row) */}
+          <div className={`mt-3 flex flex-wrap items-end gap-2 ${isAnytime ? "hidden" : ""}`}>
             <OddsField
               id={`over-${row.eventRef}-${row.market}-${row.playerId}`}
               label="Over price"
@@ -267,7 +306,7 @@ function OddsField({ id, label, value, disabled, onCommit }: { id: string; label
         inputMode="numeric"
         placeholder="-110"
         disabled={disabled}
-        defaultValue={value ?? ""}
+        defaultValue={value != null ? fmtOdds(value) : ""}
         onBlur={(e) => onCommit(parseOdds(e.target.value))}
         className="h-8 w-20 text-center font-mono text-xs"
       />

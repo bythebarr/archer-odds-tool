@@ -3,7 +3,7 @@ import { franchise } from "@/lib/nfl/pbp/franchise";
 import { loadPlayerGames, type PlayerGame } from "@/lib/nfl/props/playerGames";
 import { walkForward, type EngineParams, type GameContext, type Snapshot } from "@/lib/nfl/props/engine";
 import {
-  PROP_MARKETS, actualFor, adjusted, components, oppFactors, project, volumeFeatures,
+  PROP_MARKETS, actualFor, adjusted, components, oppFactors, project, snapShare, volumeFeatures,
   type AvailabilityParams, type ModelParams, type PropMarket, type ShrinkParams, type SnapshotSet, type VolumeCoefs,
 } from "@/lib/nfl/props/model";
 import { LogisticCalibrator, RatioDistribution } from "@/lib/nfl/props/distribution";
@@ -344,6 +344,23 @@ async function main() {
     return { b: ols(X, Y), n: rows.filter((i) => affected(i, fam)).length };
   };
   const recShare = fitShare("rec");
+  // v1.2 candidate: depth-aware target redistribution (additive, weighted by 1 − snap share), fit alone on v1.0 targets
+  const depthFit = (() => {
+    const rows = trainIdx.filter((i) => elig(i, "rec"));
+    const X: number[][] = [];
+    const Y: number[] = [];
+    for (const i of rows) {
+      const b = base[i];
+      const a = availOf(i).vacTgt;
+      const vs = a[pgAt(i).position];
+      const vo = a.QB + a.RB + a.WR + a.TE - vs;
+      const headroom = 1 - Math.min(1, snapShare(setAt(i).usage));
+      X.push([b.teamTgt * vs * headroom, b.teamTgt * vo * headroom]);
+      Y.push(pgAt(i).targets - b.teamTgt * b.c.tgtShare);
+    }
+    return ols(X, Y);
+  })();
+  console.log(`  depth-aware targets (v1.2 candidate): same-pos ${depthFit[0].toFixed(3)}, other ${depthFit[1].toFixed(3)} (additive share × vacated × (1 − snap share))`);
   const rushShare = fitShare("rush");
   const ratio = (rows: number[], num: (i: number) => number, den: (i: number) => number) => {
     const d = rows.reduce((s, i) => s + den(i), 0);
@@ -367,9 +384,10 @@ async function main() {
   const f3 = (x: number) => x.toFixed(3);
   console.log(`  share redistribution: targets same-pos ${f3(availability.tgtSame)}, other ${f3(availability.tgtOther)} (affected train rows ${recShare.n}); carries same-pos ${f3(availability.carSame)}, other ${f3(availability.carOther)} (${rushShare.n})`);
   console.log(`  QB out (train receiver rows ${qbRec.length}, rusher rows ${qbRush.length}): targets ×${f3(availability.qbOutTgt)}, carries ×${f3(availability.qbOutCar)}, catch ×${f3(availability.qbOutCatch)}, yds/target ×${f3(availability.qbOutYpt)}`);
-  // NFL_V11_VARIANT isolates one feature family at a time: "car" | "tgt" | "qb" | "all" (default)
+  // NFL_V11_VARIANT isolates one feature family at a time: "car" | "tgt" | "qb" | "tgtDepth" (v1.2) | "all" (default)
   const variant = process.env.NFL_V11_VARIANT ?? "all";
   const active: AvailabilityParams = {
+    ...(variant === "tgtDepth" ? { tgtSameDepth: depthFit[0], tgtOtherDepth: depthFit[1] } : {}),
     tgtSame: variant === "all" || variant === "tgt" ? availability.tgtSame : 0,
     tgtOther: variant === "all" || variant === "tgt" ? availability.tgtOther : 0,
     carSame: variant === "all" || variant === "car" ? availability.carSame : 0,

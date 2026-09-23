@@ -82,15 +82,25 @@ export class RatioDistribution {
  * projection disagrees sharply with a realistic line its tails run
  * overconfident (0.93 → 0.84 observed in validation before this step, the
  * same shape on train) — model error and disagreement are correlated, which
- * a per-bin ratio shape can't see. b < 1 pulls the tails in.
+ * a per-bin ratio shape can't see. b < 1 pulls the tails in. Fit by damped
+ * Newton (step halving on the log-likelihood), which always converges.
  */
 export class LogisticCalibrator {
   constructor(readonly a: number, readonly b: number) {}
 
-  static fit(pairs: readonly { p: number; y: 0 | 1 }[], iterations = 25): LogisticCalibrator {
+  static fit(pairs: readonly { p: number; y: 0 | 1 }[], iterations = 50): LogisticCalibrator {
+    const xs = pairs.map((q) => logit(q.p));
+    const logLik = (a: number, b: number) =>
+      pairs.reduce((s, q, i) => {
+        const z = a + b * xs[i];
+        // log σ(z) and log(1 − σ(z)), computed stably
+        const logP = -Math.log1p(Math.exp(-z));
+        const logQ = -z + logP;
+        return s + (q.y ? logP : logQ);
+      }, 0);
     let a = 0;
     let b = 1;
-    const xs = pairs.map((q) => logit(q.p));
+    let ll = logLik(a, b);
     for (let it = 0; it < iterations; it++) {
       let ga = 0, gb = 0, haa = 0, hab = 0, hbb = 0;
       pairs.forEach((q, i) => {
@@ -106,8 +116,24 @@ export class LogisticCalibrator {
       });
       const det = haa * hbb - hab * hab;
       if (det <= 0) break;
-      a += (hbb * ga - hab * gb) / det;
-      b += (haa * gb - hab * ga) / det;
+      const da = (hbb * ga - hab * gb) / det;
+      const db = (haa * gb - hab * ga) / det;
+      // Damped Newton: halve the step until the likelihood improves. Plain
+      // Newton overshoots and diverges on noisy inputs (e.g. raw hit rates
+      // piled at 0 and 1); the log-likelihood is concave, so halving always
+      // finds an improving step.
+      let step = 1;
+      let next = logLik(a + da, b + db);
+      while (next < ll && step > 1e-6) {
+        step /= 2;
+        next = logLik(a + step * da, b + step * db);
+      }
+      if (next < ll) break;
+      a += step * da;
+      b += step * db;
+      const gain = next - ll;
+      ll = next;
+      if (gain < 1e-10) break;
     }
     return new LogisticCalibrator(a, b);
   }

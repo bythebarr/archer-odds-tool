@@ -44,8 +44,11 @@ class Acc<K extends string> {
   }
 }
 
-const PLAYER_KEYS = ["games", "snapPct", "tgt", "teamTgt", "rec", "recYds", "car", "teamCar", "rushYds", "att", "teamAtt", "cmp", "passYds"] as const;
-const TEAM_KEYS = ["games", "tgt", "car", "att"] as const;
+const PLAYER_KEYS = [
+  "games", "snapPct", "tgt", "teamTgt", "rec", "recYds", "car", "teamCar", "rushYds", "att", "teamAtt", "cmp", "passYds",
+  "td", "teamTd", "passTd", "teamPassTd",
+] as const;
+const TEAM_KEYS = ["games", "tgt", "car", "att", "td", "passTd"] as const;
 const DEF_KEYS = [
   "games", "tgtA", "carA", "attA",
   "tgtWR", "recWR", "ydsWR", "tgtTE", "recTE", "ydsTE", "tgtRB", "recRB", "ydsRB",
@@ -70,6 +73,9 @@ export interface LeagueRates {
   teamTgt: number;
   teamCar: number;
   teamAtt: number;
+  /** Offensive TDs per team game, and the fraction of them thrown. */
+  teamTd: number;
+  passTdFrac: number;
 }
 
 export interface Snapshot {
@@ -102,6 +108,8 @@ class League {
   private teamTgt = 0;
   private teamCar = 0;
   private teamAtt = 0;
+  private teamTd = 0;
+  private teamPassTd = 0;
 
   addPlayer(pg: PlayerGame, team: TeamGameVolume): void {
     const p = pg.position;
@@ -124,6 +132,8 @@ class League {
     this.teamTgt += t.targets;
     this.teamCar += t.carries;
     this.teamAtt += t.passAttempts;
+    this.teamTd += t.tds;
+    this.teamPassTd += t.passingTds;
   }
   rates(): LeagueRates {
     const by = (f: (p: SkillPosition) => number) => Object.fromEntries(POSITIONS.map((p) => [p, f(p)])) as Record<SkillPosition, number>;
@@ -140,6 +150,8 @@ class League {
       teamTgt: safe(this.teamTgt, this.teamGames, 33),
       teamCar: safe(this.teamCar, this.teamGames, 26),
       teamAtt: safe(this.teamAtt, this.teamGames, 34),
+      teamTd: safe(this.teamTd, this.teamGames, 2.4),
+      passTdFrac: safe(this.teamPassTd, this.teamTd, 0.6),
     };
   }
 }
@@ -183,7 +195,7 @@ export class PropState {
         : {
             ...key,
             offenseSnaps: 0, offensePct: 0, targets: 0, receptions: 0, receivingYards: 0, carries: 0, rushingYards: 0,
-            passAttempts: 0, completions: 0, passingYards: 0,
+            passAttempts: 0, completions: 0, passingYards: 0, rushingTds: 0, receivingTds: 0, passingTds: 0,
           };
     return {
       pg,
@@ -200,7 +212,7 @@ export class PropState {
   foldWeek(wkPlayers: readonly PlayerGame[], wkTeams: readonly TeamGameVolume[], teamGame: ReadonlyMap<string, TeamGameVolume>): void {
     const params = this.params;
     for (const t of wkTeams) {
-      this.get(this.teamAcc, t.team, TEAM_KEYS).add(t.season, { games: 1, tgt: t.targets, car: t.carries, att: t.passAttempts }, params);
+      this.get(this.teamAcc, t.team, TEAM_KEYS).add(t.season, { games: 1, tgt: t.targets, car: t.carries, att: t.passAttempts, td: t.tds, passTd: t.passingTds }, params);
       this.league.addTeam(t);
     }
     const defWeek = new Map<string, Partial<DefSums> & { season: number }>();
@@ -215,6 +227,7 @@ export class PropState {
           tgt: pg.targets, teamTgt: tv.targets, rec: pg.receptions, recYds: pg.receivingYards,
           car: pg.carries, teamCar: tv.carries, rushYds: pg.rushingYards,
           att: pg.passAttempts, teamAtt: tv.passAttempts, cmp: pg.completions, passYds: pg.passingYards,
+          td: pg.rushingTds + pg.receivingTds, teamTd: tv.tds, passTd: pg.passingTds, teamPassTd: tv.passingTds,
         },
         params
       );

@@ -4,6 +4,8 @@ import { loadFrozenModel, NFL_PROPS_MODEL_VERSION } from "./frozen";
 import { buildNflPropsPredictionRun, MARKET_BY_KEY, PROP_MARKET_KEYS } from "./predictionCapture";
 import { americanToDecimal, playerNameKey, priceProp, probToAmerican } from "./pricing";
 import { PROP_MARKETS } from "./model";
+import { poissonOver } from "./td";
+import frozenV11 from "./frozen/nfl-props-v1.1.0.json";
 import type { LiveProjection } from "./live";
 
 describe("frozen model", () => {
@@ -80,5 +82,38 @@ describe("buildNflPropsPredictionRun", () => {
     expect(p.selectionKey).toBe("00-0038543");
     expect(p.probability).toBeNull();
     expect(p.missingInputs).toEqual({ injuryReport: "Questionable" });
+  });
+});
+
+describe("touchdown markets (v1.2)", () => {
+  it("poissonOver matches the closed form", () => {
+    expect(poissonOver(0.5, 0.5)).toBeCloseTo(1 - Math.exp(-0.5), 12);
+    expect(poissonOver(1.8, 1.5)).toBeCloseTo(1 - Math.exp(-1.8) * (1 + 1.8), 12);
+    expect(poissonOver(1.8, 2.5)).toBeCloseTo(1 - Math.exp(-1.8) * (1 + 1.8 + 1.8 ** 2 / 2), 12);
+  });
+
+  it("the frozen model prices TD markets and they rise with the rate", () => {
+    const model = loadFrozenModel();
+    expect(model.file.td).toBeDefined();
+    const lo = model.pOver("anytimeTd", 0.2, 0.5);
+    const hi = model.pOver("anytimeTd", 0.8, 0.5);
+    expect(hi).toBeGreaterThan(lo);
+    expect(model.pOver("passingTds", 1.6, 1.5)).toBeGreaterThan(model.pOver("passingTds", 1.6, 2.5));
+  });
+
+  it("maps TD markets to stable prediction keys", () => {
+    expect(PROP_MARKET_KEYS.anytimeTd).toBe("player_anytime_td");
+    expect(MARKET_BY_KEY.player_passing_tds).toBe("passingTds");
+  });
+
+  it("v1.2.0 leaves every v1.1.0 number untouched", () => {
+    const { td, modelVersion, frozenAt, ...rest } = loadFrozenModel().file;
+    expect(td?.validation.length).toBe(4);
+    expect(modelVersion).toBe("v1.2.0");
+    expect(frozenAt).toBeTruthy();
+    const v11 = { ...(frozenV11 as unknown as Record<string, unknown>) };
+    delete v11.modelVersion;
+    delete v11.frozenAt;
+    expect(rest).toEqual(v11);
   });
 });

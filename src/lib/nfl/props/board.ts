@@ -5,9 +5,8 @@
  */
 import { prisma } from "@/lib/prisma";
 import { NFL_TEAMS } from "../teams";
-import { NFL_PROPS_MODEL_KEY, type ValidationRow } from "./frozen";
+import { NFL_PROPS_MODEL_KEY, type ServedMarket, type TdValidationRow, type ValidationRow } from "./frozen";
 import { MARKET_BY_KEY } from "./predictionCapture";
-import type { PropMarket } from "./model";
 
 export interface NflPropsBoardGame {
   eventRef: string;
@@ -26,7 +25,7 @@ export interface TeamDisplay {
 
 export interface NflPropsBoardRow {
   eventRef: string;
-  market: PropMarket;
+  market: ServedMarket;
   playerId: string;
   name: string;
   position: string;
@@ -61,6 +60,7 @@ export interface NflPropsBoard {
   excluded: { name: string; team: string; reason: string }[];
   warnings: string[];
   validation: ValidationRow[];
+  tdValidation: TdValidationRow[];
 }
 
 /** nflverse team code → this app's display identity (nflverse codes the Rams "LA"; the app shows "LAR"). */
@@ -139,5 +139,6 @@ export async function getLatestNflPropsBoard(): Promise<NflPropsBoard | null> {
     excluded: Array.isArray(meta.excluded) ? (meta.excluded as NflPropsBoard["excluded"]) : [],
     warnings: Array.isArray(meta.warnings) ? (meta.warnings as string[]) : [],
     validation: Array.isArray(calibration.validation) ? (calibration.validation as ValidationRow[]) : [],
+    tdValidation: Array.isArray(calibration.tdValidation) ? (calibration.tdValidation as TdValidationRow[]) : [],
   };
 }

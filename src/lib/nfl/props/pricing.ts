@@ -5,12 +5,11 @@
  * de-vigged market probability, fair odds, EV — lives here and never knows
  * where the line came from.
  */
-import type { FrozenModel } from "./frozen";
-import type { PropMarket } from "./model";
+import type { FrozenModel, ServedMarket } from "./frozen";
 
 export interface PropLineQuote {
   playerName: string;
-  market: PropMarket;
+  market: ServedMarket;
   line: number;
   overAmerican: number | null;
   underAmerican: number | null;

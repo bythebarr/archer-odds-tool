@@ -27,7 +27,7 @@ function Scorecard({ board }: { board: BoardData }) {
     <section aria-label="Model track record" className="mt-4 rounded-xl border border-border bg-gradient-to-br from-muted/40 to-transparent p-3">
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground">Holdout record · 2020–22</h2>
-        <span className="text-[10px] text-muted-foreground">error vs. season average, games the model never saw</span>
+        <span className="text-[10px] text-muted-foreground">error vs. season average (TDs: log loss vs. season TD rate), games the model never saw</span>
       </div>
       <div className="-mx-1 mt-2 overflow-x-auto">
         <div className="flex w-max gap-2 px-1">
@@ -42,6 +42,18 @@ function Scorecard({ board }: { board: BoardData }) {
                 <div className="text-[10px] tabular-nums text-muted-foreground">
                   {v.maeModel.toFixed(1)} vs {v.maeSeasonAvg.toFixed(1)} · n={v.n.toLocaleString()}
                 </div>
+              </div>
+            );
+          })}
+          {board.tdValidation.map((v) => {
+            const better = (v.logLossSeason - v.logLossModel) / v.logLossSeason;
+            return (
+              <div key={v.market} className="min-w-[6.5rem] rounded-lg border border-border bg-card px-2.5 py-2">
+                <div className="text-[10px] font-medium capitalize text-muted-foreground">{v.market.replace("pass TDs", "Pass TD")}</div>
+                <div className="mt-0.5 font-mono text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  −{(better * 100).toFixed(1)}%
+                </div>
+                <div className="text-[10px] tabular-nums text-muted-foreground">log loss · n={v.n.toLocaleString()}</div>
               </div>
             );
           })}
@@ -104,7 +116,9 @@ export default async function NflPropsPage() {
                 efficiency is weighted over ~16 games and shrunk hard toward league norms, because it&apos;s mostly
                 noise. Team volume follows the pregame spread and total. Players listed Out or Doubtful are removed,
                 and when a runner is ruled out, his carries are redistributed to his teammates (tagged +usage).
-                Questionable players are flagged Q.
+                Questionable players are flagged Q. Touchdown chances start from the team&apos;s market-implied
+                total, then take the player&apos;s TD share, shrunk hard toward what his carry and target role implies,
+                because touchdowns are rare and a hot streak is mostly noise.
               </p>
               <p>
                 The model beat both the season average and the last-5 average on every market in 2020–22 holdout

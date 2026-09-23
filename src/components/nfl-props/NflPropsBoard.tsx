@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { TeamBadge } from "@/components/TeamBadge";
 import type { NflPropsBoard as BoardData } from "@/lib/nfl/props/board";
-import type { PropMarket } from "@/lib/nfl/props/model";
+import type { ServedMarket as PropMarket } from "@/lib/nfl/props/frozen";
 import { MARKET_META, MARKET_ORDER } from "./marketMeta";
 import { NflPropRow } from "./NflPropRow";
 import { manualKey, useManualLines } from "./useManualLines";
@@ -17,6 +17,7 @@ function kickoffLabel(iso: string): string {
 
 export function NflPropsBoard({ board }: { board: BoardData }) {
   const [market, setMarket] = useState<PropMarket>("receivingYards");
+  const isAnytime = market === "anytimeTd";
   const [game, setGame] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("projection");
@@ -37,11 +38,13 @@ export function NflPropsBoard({ board }: { board: BoardData }) {
         (!game || r.eventRef === game) &&
         (!q || r.name.toLowerCase().includes(q) || r.team.abbreviation.toLowerCase() === q || r.team.name.toLowerCase().includes(q))
     );
-    const vsAvg = (r: (typeof filtered)[number]) => (r.seasonAvg ? (r.mean - r.seasonAvg) / r.seasonAvg : 0);
+    // anytime TD compares a probability to a rate, so its "vs avg" is in points, not percent
+    const vsAvg = (r: (typeof filtered)[number]) =>
+      isAnytime ? (1 - Math.exp(-r.mean)) - (r.seasonAvg ?? 0) : r.seasonAvg ? (r.mean - r.seasonAvg) / r.seasonAvg : 0;
     return filtered.sort((a, b) =>
       sort === "projection" ? b.mean - a.mean : sort === "vsAvg" ? vsAvg(b) - vsAvg(a) : a.name.localeCompare(b.name)
     );
-  }, [board.rows, market, game, query, sort]);
+  }, [board.rows, market, game, query, sort, isAnytime]);
 
   return (
     <div className="mt-5">
