@@ -68,6 +68,11 @@ export function NflPropRow({ row, manual, onManual }: Props) {
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-semibold text-foreground">{row.name}</span>
+            {row.teammatesOut ? (
+              <Badge variant="outline" className="h-4 border-sky-400 px-1 text-[9px] text-sky-700 dark:text-sky-300" title={`Absorbing usage: ${row.teammatesOut}`}>
+                +usage
+              </Badge>
+            ) : null}
             {row.injury ? (
               <Badge variant="outline" className="h-4 border-amber-400 px-1 text-[9px] text-amber-700 dark:text-amber-300" title={`Injury report: ${row.injury}`}>
                 Q
@@ -168,6 +173,12 @@ export function NflPropRow({ row, manual, onManual }: Props) {
             <span className="text-muted-foreground">=</span>
             <Chip value={fmt(row.mean)} label={meta.unit} strong />
           </div>
+
+          {row.teammatesOut ? (
+            <p className="mt-2 rounded-md bg-sky-500/10 px-2 py-1.5 text-[11px] text-sky-800 dark:text-sky-200">
+              Share bumped for the vacated carries: {row.teammatesOut} on the injury report.
+            </p>
+          ) : null}
 
           {/* projection vs naive baselines */}
           <div className="mt-3 grid gap-1.5">

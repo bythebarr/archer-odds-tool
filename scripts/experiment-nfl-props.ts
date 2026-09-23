@@ -3,10 +3,12 @@ import { franchise } from "@/lib/nfl/pbp/franchise";
 import { loadPlayerGames, type PlayerGame } from "@/lib/nfl/props/playerGames";
 import { walkForward, type EngineParams, type GameContext, type Snapshot } from "@/lib/nfl/props/engine";
 import {
-  PROP_MARKETS, actualFor, components, oppFactors, project, volumeFeatures,
-  type ModelParams, type PropMarket, type ShrinkParams, type SnapshotSet, type VolumeCoefs,
+  PROP_MARKETS, actualFor, adjusted, components, oppFactors, project, volumeFeatures,
+  type AvailabilityParams, type ModelParams, type PropMarket, type ShrinkParams, type SnapshotSet, type VolumeCoefs,
 } from "@/lib/nfl/props/model";
 import { LogisticCalibrator, RatioDistribution } from "@/lib/nfl/props/distribution";
+import { AvailabilityTracker, NO_ABSENCES, redistributionTerms, type AvailabilityContext } from "@/lib/nfl/props/availability";
+import { loadInjuryReports, ruledOut } from "@/lib/nfl/props/injuries";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { readManifest } from "@/lib/nfl/nflverse";
@@ -298,11 +300,95 @@ async function main() {
   });
   const proj = idxAll.map((i) => project(setAt(i), params));
 
+  // 4b. v1.1 — availability from the official injury report (pregame), fit on train on top of frozen v1.0
+  console.log("\nv1.1 availability features (injury report → vacated usage, QB out):");
+  const injuries = await loadInjuryReports(FIRST, TEST[1]);
+  const usageParams = passes[groupPass.usage].params;
+  const availByTeamWeek = new Map<string, AvailabilityContext>();
+  {
+    const avail = new AvailabilityTracker(usageParams.halfLife);
+    const elig = new EligibilityTracker();
+    walkForward(players, teams, ctx, usageParams, () => {}, (state, _wk, wkPlayers) => {
+      const byTeam = new Map<string, PlayerGame>();
+      for (const pg of wkPlayers) if (!byTeam.has(pg.team)) byTeam.set(pg.team, pg);
+      for (const [team, any] of byTeam) {
+        const out = ruledOut(injuries, any.season, any.week, team);
+        const c = out.length
+          ? avail.context(team, { gameId: any.gameId, season: any.season, week: any.week, opp: any.opp }, out, state, shrinkFit, elig.leadPasser(team))
+          : NO_ABSENCES;
+        availByTeamWeek.set(`${any.season}|${any.week}|${team}`, c);
+      }
+      avail.foldWeek(wkPlayers);
+      elig.foldWeek(wkPlayers);
+    });
+  }
+  const availOf = (i: number) => availByTeamWeek.get(`${pgAt(i).season}|${pgAt(i).week}|${pgAt(i).team}`) ?? NO_ABSENCES;
+  const affected = (i: number, fam: Family) => {
+    const a = availOf(i);
+    const vac = fam === "rush" ? a.vacCar : a.vacTgt;
+    return a.qbOut || vac.QB + vac.RB + vac.WR + vac.TE > 0.005;
+  };
+
+  const base = idxAll.map((i) => adjusted(setAt(i), params));
+  const fitShare = (fam: "rec" | "rush") => {
+    const rows = trainIdx.filter((i) => elig(i, fam));
+    const X: number[][] = [];
+    const Y: number[] = [];
+    for (const i of rows) {
+      const b = base[i];
+      const vol = fam === "rec" ? b.teamTgt * b.c.tgtShare : b.teamCar * b.c.carShare;
+      const t = redistributionTerms(fam === "rec" ? availOf(i).vacTgt : availOf(i).vacCar, pgAt(i).position);
+      X.push([vol * t.same, vol * t.other]);
+      Y.push((fam === "rec" ? pgAt(i).targets : pgAt(i).carries) - vol);
+    }
+    return { b: ols(X, Y), n: rows.filter((i) => affected(i, fam)).length };
+  };
+  const recShare = fitShare("rec");
+  const rushShare = fitShare("rush");
+  const ratio = (rows: number[], num: (i: number) => number, den: (i: number) => number) => {
+    const d = rows.reduce((s, i) => s + den(i), 0);
+    return d > 0 ? rows.reduce((s, i) => s + num(i), 0) / d : 1;
+  };
+  const qbRec = trainIdx.filter((i) => elig(i, "rec") && availOf(i).qbOut);
+  const qbRush = trainIdx.filter((i) => elig(i, "rush") && availOf(i).qbOut && pgAt(i).position !== "QB");
+  const partial: ModelParams = {
+    ...params,
+    availability: { tgtSame: recShare.b[0], tgtOther: recShare.b[1], carSame: rushShare.b[0], carOther: rushShare.b[1], qbOutTgt: 1, qbOutCar: 1, qbOutCatch: 1, qbOutYpt: 1 },
+  };
+  const shareAdj = idxAll.map((i) => adjusted(setAt(i), partial, { ...availOf(i), qbOut: false }));
+  const eff = idxAll.map((i) => components(setAt(i), shrinkFit));
+  const availability: AvailabilityParams = {
+    ...partial.availability!,
+    qbOutTgt: ratio(qbRec, (i) => pgAt(i).targets, (i) => shareAdj[i].teamTgt * shareAdj[i].c.tgtShare),
+    qbOutCar: ratio(qbRush, (i) => pgAt(i).carries, (i) => shareAdj[i].teamCar * shareAdj[i].c.carShare),
+    qbOutCatch: ratio(qbRec, (i) => pgAt(i).receptions, (i) => pgAt(i).targets * eff[i].catchRate),
+    qbOutYpt: ratio(qbRec, (i) => pgAt(i).receivingYards, (i) => pgAt(i).targets * eff[i].ypt * oppFactors(setAt(i).defense, oppParams).rec),
+  };
+  const f3 = (x: number) => x.toFixed(3);
+  console.log(`  share redistribution: targets same-pos ${f3(availability.tgtSame)}, other ${f3(availability.tgtOther)} (affected train rows ${recShare.n}); carries same-pos ${f3(availability.carSame)}, other ${f3(availability.carOther)} (${rushShare.n})`);
+  console.log(`  QB out (train receiver rows ${qbRec.length}, rusher rows ${qbRush.length}): targets ×${f3(availability.qbOutTgt)}, carries ×${f3(availability.qbOutCar)}, catch ×${f3(availability.qbOutCatch)}, yds/target ×${f3(availability.qbOutYpt)}`);
+  // NFL_V11_VARIANT isolates one feature family at a time: "car" | "tgt" | "qb" | "all" (default)
+  const variant = process.env.NFL_V11_VARIANT ?? "all";
+  const active: AvailabilityParams = {
+    tgtSame: variant === "all" || variant === "tgt" ? availability.tgtSame : 0,
+    tgtOther: variant === "all" || variant === "tgt" ? availability.tgtOther : 0,
+    carSame: variant === "all" || variant === "car" ? availability.carSame : 0,
+    carOther: variant === "all" || variant === "car" ? availability.carOther : 0,
+    qbOutTgt: variant === "all" || variant === "qb" ? availability.qbOutTgt : 1,
+    qbOutCar: variant === "all" || variant === "qb" ? availability.qbOutCar : 1,
+    qbOutCatch: variant === "all" || variant === "qb" ? availability.qbOutCatch : 1,
+    qbOutYpt: variant === "all" || variant === "qb" ? availability.qbOutYpt : 1,
+  };
+  console.log(`  variant under test: ${variant}`);
+  const paramsV11: ModelParams = { ...params, availability: active };
+  const proj11 = idxAll.map((i) => project(setAt(i), paramsV11, availOf(i)));
+
   // 5. distributions (train only) for model and both baselines
-  type Source = "model" | "seasonAvg" | "l5Avg";
-  const SOURCES: Source[] = ["model", "seasonAvg", "l5Avg"];
+  type Source = "model" | "v11" | "seasonAvg" | "l5Avg";
+  const SOURCES: Source[] = ["model", "v11", "seasonAvg", "l5Avg"];
   const muOf = (i: number, m: PropMarket, src: Source): number | null => {
     if (src === "model") return proj[i][m];
+    if (src === "v11") return proj11[i][m];
     const b = baselines.get(pgAt(i))![src];
     return b ? b[m] : null;
   };
@@ -333,7 +419,8 @@ async function main() {
   const prob = (m: PropMarket, src: Source, i: number, L: number) =>
     calibrators.get(`${FAMILY[m]}|${src}`)!.apply(dists.get(`${m}|${src}`)!.pOver(muOf(i, m, src)!, L));
 
-  // 6. evaluate
+  // 6. evaluate — PRIMARY is the model reported (and frozen) as "model": v1.0 by default, v1.1 with NFL_PROPS_PRIMARY=v11
+  const PRIMARY: Source = process.env.NFL_PROPS_PRIMARY === "v11" ? "v11" : "model";
   const evaluate = (label: string, range: readonly [number, number]): ValidationRow[] => {
     const results: ValidationRow[] = [];
     console.log(`\n── ${label} ──`);
@@ -356,7 +443,7 @@ async function main() {
       const byWeek = new Map<string, number[]>();
       for (const i of rows) {
         const wk = `${pgAt(i).season}_${pgAt(i).week}`;
-        (byWeek.get(wk) ?? byWeek.set(wk, []).get(wk)!).push(brierAt("model", i, line(i)) - brierAt("seasonAvg", i, line(i)));
+        (byWeek.get(wk) ?? byWeek.set(wk, []).get(wk)!).push(brierAt(PRIMARY, i, line(i)) - brierAt("seasonAvg", i, line(i)));
       }
       const weeks = [...byWeek.values()];
       const rand = rng(20260923);
@@ -368,16 +455,16 @@ async function main() {
       }
       deltas.sort((a, b) => a - b);
       results.push({
-        market: m, n: rows.length, maeModel: mae("model"), maeSeasonAvg: mae("seasonAvg"),
-        brierModel: proxy("model"), brierSeasonAvg: proxy("seasonAvg"),
+        market: m, n: rows.length, maeModel: mae(PRIMARY), maeSeasonAvg: mae("seasonAvg"),
+        brierModel: proxy(PRIMARY), brierSeasonAvg: proxy("seasonAvg"),
         deltaLo: deltas[Math.floor(0.025 * BOOT)], deltaHi: deltas[Math.floor(0.975 * BOOT)],
       });
       const f = (x: number, dp = 4) => x.toFixed(dp);
       console.log(
-        `  ${m.padEnd(15)} ${String(rows.length).padStart(5)}  ${f(mae("model"), 2).padStart(6)} / ${f(mae("seasonAvg"), 2).padStart(6)} / ${f(mae("l5Avg"), 2).padStart(6)}      ` +
-          `${f(proxy("model"))} / ${f(proxy("seasonAvg"))} / ${f(proxy("l5Avg"))}              ` +
-          `${f(proxy("model") - proxy("seasonAvg"))} [${f(deltas[Math.floor(0.025 * BOOT)])}, ${f(deltas[Math.floor(0.975 * BOOT)])}]   ` +
-          `${f(grid("model"))} / ${f(grid("seasonAvg"))} / ${f(grid("l5Avg"))}`
+        `  ${m.padEnd(15)} ${String(rows.length).padStart(5)}  ${f(mae(PRIMARY), 2).padStart(6)} / ${f(mae("seasonAvg"), 2).padStart(6)} / ${f(mae("l5Avg"), 2).padStart(6)}      ` +
+          `${f(proxy(PRIMARY))} / ${f(proxy("seasonAvg"))} / ${f(proxy("l5Avg"))}              ` +
+          `${f(proxy(PRIMARY) - proxy("seasonAvg"))} [${f(deltas[Math.floor(0.025 * BOOT)])}, ${f(deltas[Math.floor(0.975 * BOOT)])}]   ` +
+          `${f(grid(PRIMARY))} / ${f(grid("seasonAvg"))} / ${f(grid("l5Avg"))}`
       );
     }
     // calibration of model probabilities at proxy lines, pooled across markets
@@ -385,7 +472,7 @@ async function main() {
     for (const m of PROP_MARKETS)
       for (const i of rowsFor(m, range)) {
         const L = Math.floor(muOf(i, m, "seasonAvg")!) + 0.5;
-        const p = prob(m, "model", i, L);
+        const p = prob(m, PRIMARY, i, L);
         const b = bins[Math.min(9, Math.floor(p * 10))];
         b.p += p;
         b.y += actualFor(passes[0].snaps[i], m) > L ? 1 : 0;
@@ -394,6 +481,44 @@ async function main() {
     console.log("  model calibration at proxy lines (pooled): " + bins.filter((b) => b.n > 0).map((b) => `${(b.p / b.n).toFixed(2)}→${(b.y / b.n).toFixed(2)} (n=${b.n})`).join("  "));
     return results;
   };
+
+  // v1.1 vs v1.0 head-to-head: all eligible rows, and the rows the features actually touch
+  const compare = (label: string, range: readonly [number, number]) => {
+    console.log(`\n── v1.1 vs v1.0 · ${label} ──`);
+    console.log("  market          subset     n      MAE v1.0 → v1.1     Brier@proxy v1.0 → v1.1     Δ 95% CI");
+    for (const m of PROP_MARKETS) {
+      const all = rowsFor(m, range);
+      for (const [name, rows] of [["all", all], ["affected", all.filter((i) => affected(i, FAMILY[m]))]] as const) {
+        if (rows.length < 30) continue;
+        const y = (i: number) => actualFor(passes[0].snaps[i], m);
+        const line = (i: number) => Math.floor(muOf(i, m, "seasonAvg")!) + 0.5;
+        const br = (src: Source, i: number) => (prob(m, src, i, line(i)) - (y(i) > line(i) ? 1 : 0)) ** 2;
+        const mae = (src: Source) => mean(rows.map((i) => Math.abs(y(i) - muOf(i, m, src)!)));
+        const byWeek = new Map<string, number[]>();
+        for (const i of rows) {
+          const wk = `${pgAt(i).season}_${pgAt(i).week}`;
+          (byWeek.get(wk) ?? byWeek.set(wk, []).get(wk)!).push(br("v11", i) - br("model", i));
+        }
+        const weeks = [...byWeek.values()];
+        const rand = rng(20260923);
+        const deltas: number[] = [];
+        for (let b = 0; b < BOOT; b++) {
+          const d: number[] = [];
+          for (let j = 0; j < weeks.length; j++) d.push(...weeks[Math.floor(rand() * weeks.length)]);
+          deltas.push(mean(d));
+        }
+        deltas.sort((a, b) => a - b);
+        const b0 = mean(rows.map((i) => br("model", i)));
+        const b1 = mean(rows.map((i) => br("v11", i)));
+        console.log(
+          `  ${m.padEnd(15)} ${name.padEnd(9)} ${String(rows.length).padStart(5)}   ${mae("model").toFixed(2).padStart(6)} → ${mae("v11").toFixed(2).padStart(6)}      ` +
+            `${b0.toFixed(4)} → ${b1.toFixed(4)}      ${(b1 - b0).toFixed(4)} [${deltas[Math.floor(0.025 * BOOT)].toFixed(4)}, ${deltas[Math.floor(0.975 * BOOT)].toFixed(4)}]`
+        );
+      }
+    }
+  };
+  compare("TRAIN (in-sample)", TRAIN);
+  compare("VALIDATION 2020–2022", VALID);
 
   evaluate("TRAIN 2014–2019 (in-sample fit, context only)", TRAIN);
   const validation = evaluate("VALIDATION 2020–2022", VALID);
@@ -414,6 +539,7 @@ async function main() {
         defense: passes[defPass].params,
       },
       params: {
+        ...(PRIMARY === "v11" ? { availability: Object.fromEntries(Object.entries(active).map(([k, v]) => [k, round(v)])) as unknown as AvailabilityParams } : {}),
         shrink: params.shrink,
         opp: params.opp,
         volume: {
@@ -422,13 +548,13 @@ async function main() {
           att: params.volume.att.map(round) as VolumeCoefs,
         },
       },
-      distributions: Object.fromEntries(PROP_MARKETS.map((m) => [m, dists.get(`${m}|model`)!.toFrozen()])) as FrozenModelFile["distributions"],
+      distributions: Object.fromEntries(PROP_MARKETS.map((m) => [m, dists.get(`${m}|${PRIMARY}`)!.toFrozen()])) as FrozenModelFile["distributions"],
       calibrators: Object.fromEntries(
-        (["rec", "rush", "pass"] as Family[]).map((f) => { const c = calibrators.get(`${f}|model`)!; return [f, { a: round(c.a), b: round(c.b) }]; })
+        (["rec", "rush", "pass"] as Family[]).map((f) => { const c = calibrators.get(`${f}|${PRIMARY}`)!; return [f, { a: round(c.a), b: round(c.b) }]; })
       ) as FrozenModelFile["calibrators"],
       validation: validation.map((v) => ({ ...v, maeModel: round(v.maeModel), maeSeasonAvg: round(v.maeSeasonAvg), brierModel: round(v.brierModel), brierSeasonAvg: round(v.brierSeasonAvg), deltaLo: round(v.deltaLo), deltaHi: round(v.deltaHi) })),
       dataManifest: Object.fromEntries(
-        ["players", "stats_player", "snap_counts"].map((tag) => [tag, Object.fromEntries(Object.entries(readManifest(tag)).map(([f, e]) => [f, e.sha256]))])
+        ["players", "stats_player", "snap_counts", "injuries"].map((tag) => [tag, Object.fromEntries(Object.entries(readManifest(tag)).map(([f, e]) => [f, e.sha256]))])
       ),
     };
     const out = path.join(process.cwd(), "src/lib/nfl/props/frozen", `nfl-props-${NFL_PROPS_MODEL_VERSION}.json`);

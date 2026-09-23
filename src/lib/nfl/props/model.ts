@@ -20,6 +20,7 @@
  * and total (game script: favorites run, trailing teams throw).
  */
 import type { Snapshot } from "./engine";
+import { redistributionTerms, type AvailabilityContext } from "./availability";
 import type { PlayerGame } from "./playerGames";
 
 export const PROP_MARKETS = ["receptions", "receivingYards", "rushAttempts", "rushingYards", "passAttempts", "completions", "passingYards"] as const;
@@ -52,10 +53,28 @@ export interface VolumeParams {
   att: VolumeCoefs;
 }
 
+/**
+ * v1.1 availability adjustments (see availability.ts). Share multipliers are
+ * 1 + same·(vacated same-position share)/(1−V) + other·(vacated other)/(1−V);
+ * QB-out factors multiply team volume and receiver efficiency when the
+ * presumed starter is ruled out. Absent (v1.0) = no adjustment.
+ */
+export interface AvailabilityParams {
+  tgtSame: number;
+  tgtOther: number;
+  carSame: number;
+  carOther: number;
+  qbOutTgt: number;
+  qbOutCar: number;
+  qbOutCatch: number;
+  qbOutYpt: number;
+}
+
 export interface ModelParams {
   shrink: ShrinkParams;
   opp: OppParams;
   volume: VolumeParams;
+  availability?: AvailabilityParams;
 }
 
 /** Snapshots per component group — each group may use a different decay half-life. */
@@ -141,12 +160,35 @@ export function oppFactors(d: Snapshot, o: OppParams): OppFactors {
 
 export type Projection = Record<PropMarket, number>;
 
-export function project(set: SnapshotSet, params: ModelParams): Projection {
-  const c = components(set, params.shrink);
+/** Components and team volume after v1.1 availability adjustments (identity when either argument is absent). */
+export function adjusted(set: SnapshotSet, params: ModelParams, avail?: AvailabilityContext) {
+  const c = { ...components(set, params.shrink) };
+  let teamTgt = Math.max(0, dot(params.volume.tgt, volumeFeatures(set.team, "tgt")));
+  let teamCar = Math.max(0, dot(params.volume.car, volumeFeatures(set.team, "car")));
+  let teamAtt = Math.max(0, dot(params.volume.att, volumeFeatures(set.team, "att")));
+  const a = params.availability;
+  if (a && avail) {
+    const pos = set.usage.pg.position;
+    const t = redistributionTerms(avail.vacTgt, pos);
+    const r = redistributionTerms(avail.vacCar, pos);
+    c.tgtShare *= Math.max(0, 1 + a.tgtSame * t.same + a.tgtOther * t.other);
+    c.carShare *= Math.max(0, 1 + a.carSame * r.same + a.carOther * r.other);
+    if (avail.qbOut) {
+      teamTgt *= a.qbOutTgt;
+      teamAtt *= a.qbOutTgt;
+      teamCar *= a.qbOutCar;
+      if (pos !== "QB") {
+        c.catchRate *= a.qbOutCatch;
+        c.ypt *= a.qbOutYpt;
+      }
+    }
+  }
+  return { c, teamTgt, teamCar, teamAtt };
+}
+
+export function project(set: SnapshotSet, params: ModelParams, avail?: AvailabilityContext): Projection {
+  const { c, teamTgt, teamCar, teamAtt } = adjusted(set, params, avail);
   const f = oppFactors(set.defense, params.opp);
-  const teamTgt = Math.max(0, dot(params.volume.tgt, volumeFeatures(set.team, "tgt")));
-  const teamCar = Math.max(0, dot(params.volume.car, volumeFeatures(set.team, "car")));
-  const teamAtt = Math.max(0, dot(params.volume.att, volumeFeatures(set.team, "att")));
   const targets = teamTgt * c.tgtShare;
   const carries = teamCar * c.carShare;
   const attempts = teamAtt * c.attShare;

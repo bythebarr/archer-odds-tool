@@ -7,7 +7,7 @@
  *
  * Bump `NFL_PROPS_MODEL_VERSION` whenever a refit would change any number.
  */
-import frozenJson from "./frozen/nfl-props-v1.0.0.json";
+import frozenJson from "./frozen/nfl-props-v1.1.0.json";
 import { LogisticCalibrator, RatioDistribution, type FrozenRatioDistribution } from "./distribution";
 import { MARKET_FAMILY, type PropFamily } from "./eligibility";
 import type { EngineParams } from "./engine";
@@ -15,7 +15,13 @@ import { PROP_MARKETS, type ModelParams, type PropMarket } from "./model";
 
 export const NFL_PROPS_SPORT_KEY = "nfl";
 export const NFL_PROPS_MODEL_KEY = "nfl-props";
-export const NFL_PROPS_MODEL_VERSION = "v1.0.0";
+/**
+ * v1.1.0 = v1.0.0 + carry-share redistribution when a teammate is ruled out
+ * on the injury report (the only v1.1 candidate that passed validation; see
+ * docs/architecture/NFL-PROPS-MODEL.md). v1.0.0's frozen file is kept for the
+ * record.
+ */
+export const NFL_PROPS_MODEL_VERSION = "v1.1.0";
 export const NFL_PROPS_FEATURE_SCHEMA_VERSION = "nfl-props-features-v1";
 /** Validated against outcomes and naive baselines only — never against sportsbook lines. Stays experimental until forward capture says otherwise. */
 export const NFL_PROPS_LIFECYCLE = "experimental" as const;

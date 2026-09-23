@@ -1,7 +1,7 @@
 # NFL player-prop projection model (research, 2026-09-23)
 
 > Status: **experimental, validated against outcomes, not yet priced against
-> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.0.0. Served
+> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.1.0. Served
 > read-only at `/nfl/props` from forward-captured `PredictionRun`s
 > (`npm run capture:nfl:props`). No odds provider, Discord, cron or schema
 > change. Follows the game-line result in `NFL-PBP-FEASIBILITY.md`: sides are
@@ -108,6 +108,40 @@ sample. Anything above ~0.8 should be displayed as "strong" rather than
 trusted as a price until forward data confirms it. Test 2023–2025 remains
 sealed.
 
+## v1.1 (2026-09-23): injury-report availability — one of three candidates kept
+
+Source: the official injury report (`injuries.ts`, nflverse 2009+). It's
+published before kickoff, and its designations are reliable: across
+2013–2025, skill players listed **Out** played 0–1% of the time and
+**Doubtful** 0–4%, while **Questionable** played 52–72%. Out/Doubtful count as
+absent; Questionable is only flagged.
+
+Vacated usage = the absent player's own decayed share × 0.5^(k/4), where k =
+team games since he last played (4 = the usage half-life). A fresh absence
+frees his full share. A long one frees little, because teammates' lagged
+shares have already absorbed it (`availability.ts`; tested). Each candidate
+was fit on train on top of frozen v1.0 and tested **alone** on validation
+(`NFL_V11_VARIANT=car|tgt|qb npm run experiment:nfl:props`):
+
+| Candidate | Fit (train) | Validation Δ Brier @ proxy line vs v1.0 [95% CI] | Verdict |
+|---|---|---|---|
+| Carry redistribution | same-position 0.285, other 0.034 | rush att affected rows (n=774) **−0.0097 [−0.0133, −0.0063]**; rush yds **−0.0051 [−0.0084, −0.0025]**; all rush rows also significant | **Kept** |
+| Target redistribution | same-position 0.373, other 0.098 | receptions −0.0005 [−0.0013, +0.0003]; rec yds −0.0004 [−0.0012, +0.0004], MAE worse (23.82 → 24.01) | Rejected |
+| QB out (starter ruled out) | targets ×0.96, catch ×0.967, yds/target ×0.913 (210 train rows) | rec yds −0.0002 [−0.0006, +0.0002] | Rejected (not proven; sample too small) |
+
+Why carries and not targets: a backfield usually has one clear heir, while
+vacated targets spread across several receivers and the QB's read
+progression. That's a hypothesis, not tested here. The targets form was
+not re-tuned after it failed, because that would be fitting to the
+validation window.
+
+**v1.1.0 vs season average (validation):** rush attempts Δ −0.0151
+[−0.0203, −0.0104] (v1.0: −0.0126); rushing yards −0.0115 [−0.0167, −0.0065]
+(v1.0: −0.0099). Other markets are unchanged. Frozen with
+`NFL_V11_VARIANT=car NFL_PROPS_PRIMARY=v11 NFL_PROPS_FREEZE=1`. Live
+projections apply it from the week's report, and the board shows a
+**+usage** tag naming the absent teammate. Test 2023–2025 remains sealed.
+
 ## What this does not show
 
 - **It is not evidence of edge against sportsbooks.** Books are far better
@@ -164,8 +198,9 @@ sealed.
    quoted line). That is the real edge test.
 3. **Grading job:** settle each stored projection against the nflverse box
    score after the week, and track calibration and CLV forward.
-4. **Model v1.1 candidates**, each through the same train/validation gate:
-   teammate-absence share redistribution (injury report → vacated targets),
-   QB-change adjustment for receivers, touchdown markets.
+4. **Model v1.2 candidates**, each through the same gate: a depth-aware
+   target redistribution (vacated targets to the next receiver by snap share
+   rather than proportionally), QB quality differential (backup's own
+   history) instead of a binary QB-out flag, touchdown markets.
 5. **Automation:** a Friday/Saturday cron for capture once the runtime has a
    writable cache directory.

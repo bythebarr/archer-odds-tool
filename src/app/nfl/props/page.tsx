@@ -102,7 +102,8 @@ export default async function NflPropsPage() {
                 Projections come from free nflverse data: weekly box scores, snap counts, schedules and the official
                 injury report. Role (target, carry and attempt share) is weighted toward the last ~4 games. Per-touch
                 efficiency is weighted over ~16 games and shrunk hard toward league norms, because it&apos;s mostly
-                noise. Team volume follows the pregame spread and total. Players listed Out or Doubtful are removed;
+                noise. Team volume follows the pregame spread and total. Players listed Out or Doubtful are removed,
+                and when a runner is ruled out, his carries are redistributed to his teammates (tagged +usage).
                 Questionable players are flagged Q.
               </p>
               <p>

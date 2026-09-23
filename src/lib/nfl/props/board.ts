@@ -46,6 +46,8 @@ export interface NflPropsBoardRow {
   l5Avg: number | null;
   priorGames: number;
   injury: string | null;
+  /** v1.1: ruled-out teammates whose carries this projection absorbs. */
+  teammatesOut: string | null;
 }
 
 export interface NflPropsBoard {
@@ -122,6 +124,7 @@ export async function getLatestNflPropsBoard(): Promise<NflPropsBoard | null> {
       l5Avg: num(proj.l5Avg),
       priorGames: num(f.priorGames) ?? 0,
       injury: typeof missing.injuryReport === "string" ? missing.injuryReport : null,
+      teammatesOut: typeof missing.teammatesOut === "string" ? missing.teammatesOut : null,
     });
   }
 

@@ -60,7 +60,7 @@ describe("buildNflPropsPredictionRun", () => {
     rows: [
       {
         game, playerId: "00-0038543", name: "Jaxon Smith-Njigba", position: "WR", headshotUrl: null, team: "SEA", opp: "WAS",
-        market: "receivingYards", mean: 92.04, seasonAvg: 138.5, l5Avg: 105.8, priorGames: 53, injury: "Questionable",
+        market: "receivingYards", mean: 92.04, seasonAvg: 138.5, l5Avg: 105.8, priorGames: 53, injury: "Questionable", availabilityNote: null,
         breakdown: { teamVolume: 28.3, share: 0.344, efficiency: 9.26, oppFactor: 1.021, volumeLabel: "team targets", efficiencyLabel: "yards / target" },
       },
     ],

@@ -21,10 +21,12 @@
 import { fetchNflGames, type NflGame } from "../games";
 import { franchise } from "../pbp/franchise";
 import { loadReleaseCsv, setInProgressSeason } from "../nflverse";
+import { AvailabilityTracker, NO_ABSENCES } from "./availability";
 import { EligibilityTracker, MARKET_FAMILY, type Baseline, type PropFamily } from "./eligibility";
+import { loadInjuryReports, ruledOut, type InjuryIndex } from "./injuries";
 import { PropState, weekKeyOf, type GameContext, type PlayerGameKey } from "./engine";
 import { loadFrozenModel } from "./frozen";
-import { PROP_MARKETS, components, oppFactors, project, volumeFeatures, type PropMarket, type SnapshotSet } from "./model";
+import { PROP_MARKETS, adjusted, oppFactors, project, type PropMarket, type SnapshotSet } from "./model";
 import { loadPlayerGames, type PlayerGame, type TeamGameVolume } from "./playerGames";
 
 const FIRST_SEASON = 2013;
@@ -66,6 +68,8 @@ export interface PropProjectionRow {
   l5Avg: number | null;
   priorGames: number;
   injury: InjuryStatus;
+  /** Ruled-out teammates whose usage this projection redistributes (v1.1: carries only), e.g. "J. Doe (RB) out". */
+  availabilityNote: string | null;
 }
 
 export interface LiveProjection {
@@ -99,16 +103,14 @@ function upcomingWeek(all: readonly NflGame[], now: Date): UpcomingGame[] {
     .sort((a, b) => (a.kickoffUtc?.getTime() ?? 0) - (b.kickoffUtc?.getTime() ?? 0));
 }
 
-async function injuryReport(season: number, week: number): Promise<Map<string, string>> {
-  const rows = await loadReleaseCsv("injuries", `injuries_${season}.csv.gz`, ["season", "week", "game_type", "gsis_id", "report_status"] as const);
-  const out = new Map<string, string>();
-  for (const r of rows ?? []) if (Number(r.week) === week && r.game_type === "REG" && r.report_status && r.report_status !== "NA") out.set(r.gsis_id, r.report_status);
-  return out;
-}
-
 const VOLUME_LABEL: Record<PropFamily, string> = { rec: "team targets", rush: "team carries", pass: "team pass attempts" };
 
-export async function projectUpcomingWeek(now = new Date(), log?: (msg: string) => void): Promise<LiveProjection> {
+export async function projectUpcomingWeek(
+  now = new Date(),
+  log?: (msg: string) => void,
+  /** Test/diagnostic hook: supply the injury report instead of downloading it. */
+  opts: { injuryIndex?: InjuryIndex } = {}
+): Promise<LiveProjection> {
   const model = loadFrozenModel();
   const { engine, params } = model.file;
   const allGames = await fetchNflGames();
@@ -135,6 +137,7 @@ export async function projectUpcomingWeek(now = new Date(), log?: (msg: string) 
     defense: new PropState(engine.defense),
   };
   const tracker = new EligibilityTracker();
+  const availTracker = new AvailabilityTracker(engine.usage.halfLife);
   const byWeek = new Map<string, PlayerGame[]>();
   for (const p of completed) (byWeek.get(weekKeyOf(p.season, p.week)) ?? byWeek.set(weekKeyOf(p.season, p.week), []).get(weekKeyOf(p.season, p.week))!).push(p);
   const teamsByWeek = new Map<string, TeamGameVolume[]>();
@@ -146,10 +149,12 @@ export async function projectUpcomingWeek(now = new Date(), log?: (msg: string) 
     const wt = teamsByWeek.get(wk) ?? [];
     for (const s of Object.values(states)) s.foldWeek(wp, wt, teamGame);
     tracker.foldWeek(wp);
+    availTracker.foldWeek(wp);
   }
 
   // 2. candidates
-  const injuries = await injuryReport(season, week);
+  const injuryIndex = opts.injuryIndex ?? (await loadInjuryReports(season, season));
+  const injuries = new Map((injuryIndex.get(`${season}|${week}`) ?? []).map((e) => [e.playerId, e.status as string]));
   const headshots = new Map(
     ((await loadReleaseCsv("players", "players.csv", ["gsis_id", "headshot"] as const)) ?? []).filter((p) => p.headshot && p.headshot !== "NA").map((p) => [p.gsis_id, p.headshot])
   );
@@ -161,6 +166,17 @@ export async function projectUpcomingWeek(now = new Date(), log?: (msg: string) 
   const rows: PropProjectionRow[] = [];
   const excluded: LiveProjection["excluded"] = [];
   const upcomingKey = weekKeyOf(season, week);
+  const availCache = new Map<string, ReturnType<AvailabilityTracker["context"]>>();
+  const teamAvail = (team: string, game: UpcomingGame, opp: string) => {
+    const hit = availCache.get(team);
+    if (hit) return hit;
+    const out = ruledOut(injuryIndex, season, week, team);
+    const ctxA = out.length
+      ? availTracker.context(team, { gameId: game.gameId, season, week, opp }, out, states.usage, params.shrink, tracker.leadPasser(team))
+      : NO_ABSENCES;
+    availCache.set(team, ctxA);
+    return ctxA;
+  };
   for (const playerId of tracker.players()) {
     const last = tracker.lastGame(playerId)!;
     if (last.season < season - 1) continue;
@@ -185,15 +201,16 @@ export async function projectUpcomingWeek(now = new Date(), log?: (msg: string) 
       team: states.team.snapshot(key, gctx, upcomingKey),
       defense: states.defense.snapshot(key, gctx, upcomingKey),
     };
-    const p = project(set, params);
-    const c = components(set, params.shrink);
+    const avail = teamAvail(last.team, game, opp);
+    const p = project(set, params, avail);
+    const { c, teamTgt, teamCar, teamAtt } = adjusted(set, params, avail);
     const f = oppFactors(set.defense, params.opp);
-    const dot = (b: readonly number[], x: readonly number[]) => Math.max(0, b.reduce((s, v, i) => s + v * x[i], 0));
-    const vol = {
-      rec: dot(params.volume.tgt, volumeFeatures(set.team, "tgt")),
-      rush: dot(params.volume.car, volumeFeatures(set.team, "car")),
-      pass: dot(params.volume.att, volumeFeatures(set.team, "att")),
-    };
+    const vol = { rec: teamTgt, rush: teamCar, pass: teamAtt };
+    const a = params.availability;
+    const carNote =
+      a && (a.carSame !== 0 || a.carOther !== 0)
+        ? avail.absent.filter((x) => x.vacCar >= 0.02 && x.name !== last.name).map((x) => `${x.name} (${x.position}) out`)
+        : [];
     for (const market of PROP_MARKETS) {
       const fam = MARKET_FAMILY[market];
       if (!families.includes(fam)) continue;
@@ -223,6 +240,7 @@ export async function projectUpcomingWeek(now = new Date(), log?: (msg: string) 
         l5Avg: baseline.l5Avg?.[market] ?? null,
         priorGames: baseline.priorGames,
         injury: status === "Questionable" ? "Questionable" : null,
+        availabilityNote: fam === "rush" && carNote.length ? carNote.join(", ") : null,
       });
     }
   }

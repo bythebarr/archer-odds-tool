@@ -62,6 +62,11 @@ export class EligibilityTracker {
     };
   }
 
+  /** The team's leading passer in its most recent game — the presumed starter. */
+  leadPasser(team: string): string | undefined {
+    return this.lastLeadPasser.get(team);
+  }
+
   /** Most recent game a player appeared in, if any — used to build upcoming candidates. */
   lastGame(playerId: string): PlayerGame | undefined {
     const h = this.history.get(playerId);

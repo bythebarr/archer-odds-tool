@@ -75,7 +75,7 @@ export function buildNflPropsPredictionRun(live: LiveProjection, model: FrozenMo
         total: row.game.total,
         priorGames: row.priorGames,
       },
-      missingInputs: row.injury ? { injuryReport: row.injury } : null,
+      missingInputs: row.injury || row.availabilityNote ? { ...(row.injury ? { injuryReport: row.injury } : {}), ...(row.availabilityNote ? { teammatesOut: row.availabilityNote } : {}) } : null,
     });
   }
   return {

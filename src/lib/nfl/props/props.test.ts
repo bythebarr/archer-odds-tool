@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { walkForward, type GameContext, type Snapshot } from "./engine";
+import { PropState, walkForward, type GameContext, type Snapshot } from "./engine";
+import { AvailabilityTracker } from "./availability";
 import { LogisticCalibrator, RatioDistribution } from "./distribution";
 import { project, type ModelParams } from "./model";
 import type { PlayerGame, TeamGameVolume } from "./playerGames";
@@ -95,5 +96,46 @@ describe("project", () => {
     // share 8/35, catch 5/8, ypt 70/8 (no shrinkage, no opponent adjustment)
     expect(p.receptions).toBeCloseTo(40 * (8 / 35) * (5 / 8), 6);
     expect(p.receivingYards).toBeCloseTo(40 * (8 / 35) * (70 / 8), 6);
+  });
+});
+
+describe("AvailabilityTracker", () => {
+  const shrink = { kTgtShare: 1e-9, kCarShare: 1e-9, kAttShare: 1, kCatch: 1, kYpt: 1, kYpc: 1, kCmp: 1, kYpa: 1 };
+  const rb = (week: number, playerId: string, carries: number, teamCode = "A") =>
+    pg({ week, gameId: `g${week}`, playerId, name: playerId, position: "RB", team: teamCode, carries, targets: 0, receptions: 0, receivingYards: 0 });
+  const tm = (week: number) => team({ week, gameId: `g${week}`, carries: 25 });
+
+  function run(weeks: number, rbs: (w: number) => PlayerGame[]) {
+    const state = new PropState({ halfLife: 4, seasonCarry: 1 });
+    const avail = new AvailabilityTracker(4);
+    const all = Array.from({ length: weeks }, (_, i) => i + 1);
+    const tv = all.map((w) => tm(w));
+    const teamGame = new Map(tv.map((t) => [`${t.gameId}|${t.team}`, t]));
+    for (const w of all) {
+      const wk = rbs(w);
+      state.foldWeek(wk, [tv[w - 1]], teamGame);
+      avail.foldWeek(wk);
+    }
+    return { state, avail };
+  }
+  const key = { gameId: "g9", season: 2020, week: 9, opp: "B" };
+
+  it("a fresh absence frees the absent player's full carry share", () => {
+    const { state, avail } = run(3, (w) => [rb(w, "starter", 15), rb(w, "backup", 5)]);
+    const ctx = avail.context("A", key, [{ playerId: "starter", team: "A", position: "RB", status: "Out" }], state, shrink, undefined);
+    expect(ctx.vacCar.RB).toBeCloseTo(15 / 25, 6);
+    expect(ctx.absent[0].name).toBe("starter");
+  });
+
+  it("a long absence frees less, at the usage half-life", () => {
+    const { state, avail } = run(7, (w) => (w <= 3 ? [rb(w, "starter", 15), rb(w, "backup", 5)] : [rb(w, "backup", 15)]));
+    const ctx = avail.context("A", key, [{ playerId: "starter", team: "A", position: "RB", status: "Out" }], state, shrink, undefined);
+    expect(ctx.vacCar.RB).toBeCloseTo((15 / 25) * Math.pow(0.5, 4 / 4), 6);
+  });
+
+  it("ignores ruled-out players whose last game was for another team", () => {
+    const { state, avail } = run(3, (w) => [rb(w, "starter", 15, "C"), rb(w, "backup", 5)]);
+    const ctx = avail.context("A", key, [{ playerId: "starter", team: "A", position: "RB", status: "Out" }], state, shrink, undefined);
+    expect(ctx.vacCar.RB).toBe(0);
   });
 });

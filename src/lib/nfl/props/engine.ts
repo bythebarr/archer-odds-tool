@@ -251,7 +251,9 @@ export function walkForward(
   teams: readonly TeamGameVolume[],
   games: ReadonlyMap<string, GameContext>,
   params: EngineParams,
-  emit: (s: Snapshot) => void
+  emit: (s: Snapshot) => void,
+  /** Called once per week with the pre-week state, after `emit` and before the week is folded in. */
+  onWeek?: (state: PropState, weekKey: string, wkPlayers: readonly PlayerGame[]) => void
 ): PropState {
   const playersByWeek = new Map<string, PlayerGame[]>();
   for (const p of players) {
@@ -269,6 +271,7 @@ export function walkForward(
   for (const wk of weeks) {
     const wkPlayers = playersByWeek.get(wk) ?? [];
     for (const pg of wkPlayers) emit(state.snapshot(pg, games.get(pg.gameId), wk));
+    onWeek?.(state, wk, wkPlayers);
     state.foldWeek(wkPlayers, teamsByWeek.get(wk) ?? [], teamGame);
   }
   return state;
