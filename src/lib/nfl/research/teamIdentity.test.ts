@@ -11,17 +11,29 @@ import type { NflGame } from "../games";
 
 function game(home: string, away: string): NflGame {
   return {
+    gameId: `2025_01_${away}_${home}`,
     season: 2025,
     gameType: "REG",
     week: 1,
     date: new Date("2025-09-07T17:00:00.000Z"),
     away,
     home,
+    neutralSite: false,
     result: 7,
+    homeScore: 24,
+    awayScore: 17,
     spreadLine: null,
     totalLine: null,
     homeMoneyline: null,
     awayMoneyline: null,
+    weekday: "Sunday",
+    gametime: null,
+    roof: "outdoors",
+    temp: null,
+    wind: null,
+    awayRest: 7,
+    homeRest: 7,
+    divGame: false,
   };
 }
 

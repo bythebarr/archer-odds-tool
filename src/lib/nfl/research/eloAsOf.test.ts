@@ -12,17 +12,29 @@ import type { NflGame } from "../games";
 
 function g(overrides: Partial<NflGame> = {}): NflGame {
   return {
+    gameId: "2025_01_KC_BUF",
     season: 2025,
     gameType: "REG",
     week: 1,
     date: new Date("2025-09-07T17:00:00.000Z"),
     away: "KC",
     home: "BUF",
+    neutralSite: false,
     result: 7, // home won by 7
+    homeScore: 24,
+    awayScore: 17,
     spreadLine: null,
     totalLine: null,
     homeMoneyline: null,
     awayMoneyline: null,
+    weekday: "Sunday",
+    gametime: null,
+    roof: "outdoors",
+    temp: null,
+    wind: null,
+    awayRest: 7,
+    homeRest: 7,
+    divGame: false,
     ...overrides,
   };
 }

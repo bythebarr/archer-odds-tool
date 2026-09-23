@@ -32,17 +32,29 @@ function schedGame(overrides: Partial<NflScheduleGame> = {}): NflScheduleGame {
 
 function nflGame(overrides: Partial<NflGame> = {}): NflGame {
   return {
+    gameId: "2025_01_NYG_LA",
     season: 2025,
     gameType: "REG",
     week: 1,
     date: new Date("2025-09-07T17:00:00.000Z"),
     away: "NYG",
     home: "LA",
+    neutralSite: false,
     result: 7,
+    homeScore: 24,
+    awayScore: 17,
     spreadLine: null,
     totalLine: null,
     homeMoneyline: null,
     awayMoneyline: null,
+    weekday: "Sunday",
+    gametime: null,
+    roof: "outdoors",
+    temp: null,
+    wind: null,
+    awayRest: 7,
+    homeRest: 7,
+    divGame: false,
     ...overrides,
   };
 }

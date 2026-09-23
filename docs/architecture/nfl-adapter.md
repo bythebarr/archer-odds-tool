@@ -152,8 +152,106 @@ weeks while grading nothing.
 
 - **Props** — the market vocabulary and hit-rate backfill (step 3 above). This is
   where the calibration work says the edge actually is, and NFL carries more prop
-  markets than MLB.
+  markets than MLB. Now the clear next step — see "Phase 4 attempted" below.
 - **Alt-line ladders** — not a phase-2 gap but a provider one: ParlayAPI rejects
   `alternate_spreads`/`alternate_totals` outright, so the ladder needs a second
   odds source, not more code.
-- **Model EV** — still last, and still only if a CLV backtest clears it.
+- **Model EV** — attempted twice now (Elo, then SRS), both CLV-negative. Not
+  ruled out forever, but there's no third candidate queued — see below.
+
+## Phase 4 attempted (2026-09-22): SRS model, also CLV-negative
+
+A second, structurally different model was built and honestly backtested
+against real nflverse closing-line history — not a variant of the existing
+Elo model, but an opponent-adjusted points model (offense/defense SRS,
+mirroring `src/lib/cfb/`'s architecture 1:1: same Gauss-Seidel solver, same
+per-component recentering identifiability fix, same `predictGame`/
+`spreadCoverProbability`/`totalOverProbability` shape). Code lives in
+`src/lib/nfl/srs/`, not imported by any production path.
+
+Unlike CFB (no real market data to fit against at all), NFL's free nflverse
+feed (`src/lib/nfl/games.ts`) carries real closing spread/total/moneyline in
+the same rows as results, so — unlike CFB's admittedly-unfit placeholder
+constants — this model's `HOME_FIELD_POINTS`/`MARGIN_SD`/`TOTAL_SD` were
+genuinely *fit*: walk-forward, 70/30 chronological train/validate split,
+nflverse 2007+, ratings rebuilt once per NFL week (lookahead-safe — each
+week's cutoff is that week's own earliest kickoff).
+
+**Result** (`npm run backtest:nfl:srs`, n=4,951 graded games):
+
+- OOS calibration is honest: Brier 0.2456 vs. a base-rate guess's 0.2488 —
+  real, if modest, discrimination.
+- **CLV-negative on both markets**: ATS −3.48% ROI (vs. a flat-favorite
+  −5.98% baseline — better than doing nothing, still a clear loser against
+  the close) and moneyline **−9.36%** ROI (worse than a flat "always bet the
+  favorite" baseline's −2.68%).
+- The ATS edge-bucket breakdown is non-monotone (1-2pt −2.25%, 2-3pt −2.26%,
+  3-5pt −8.07%, 5+pt −1.62%) — no "bigger edge, better ROI" gradient, the
+  same real-signal check every other wired term in this codebase passes and
+  this one fails.
+- Directly comparable to (not meaningfully better than, and worse than on
+  moneyline) the existing Elo model's own result: ATS −3.38% to −6.80%, ML
+  −7.97% (`npm run backtest:nfl:clv`).
+
+**Verdict: not wired**, same as Elo. `nflAdapter.listPlays()` stays `[]`. Two
+structurally different, honestly-fit models have now independently reached
+the same negative answer on NFL game lines — that's a real finding, not a
+build-quality problem: it's consistent with this doc's own step 3/4 ordering
+("props... is where the calibration work says the edge actually is") and
+with MLB's own calibration history (sides/totals also don't clear the CLV
+bar there). Code kept, not deleted, same posture as MLB's disabled
+bullpen-fatigue term — sound infrastructure a future feature set (QB status,
+injuries, rest) could still build on, just not today's answer.
+
+## Phase 5 attempted (2026-09-22): richer game-context signals, still no real signal
+
+Before writing off game lines entirely, five more candidate signals were
+investigated on top of the SRS baseline above — the "cheap," already-fetched
+half of a much longer brainstormed list (weather, rest, schedule spot,
+division familiarity, strength-of-schedule; the harder half — offensive
+run/pass tendency and defensive scheme fit — needs nflverse's much bigger
+play-by-play files and a real CSV parser this repo doesn't have yet, and
+wasn't attempted this round; see "Not attempted" below). `src/lib/nfl/games.ts`
+already had these columns unread (`roof`/`temp`/`wind`, `weekday`/`gametime`,
+`away_rest`/`home_rest`, `div_game`) — now parsed. Investigation script:
+`npm run matchup:nfl:context`, same walk-forward replay as `backtest-nfl-srs.ts`
+(factored into shared `srs/backtestHarness.ts` so both scripts share one
+lookahead-safe pass), same train-fit/validate-check bar as MLB's props studies.
+
+**Result** (n=3,465 train / 1,486 validate):
+
+| Candidate | Target | OOS residual-variance reduction | Verdict |
+|---|---|---|---|
+| Temperature (outdoors only) | total | 0.38% | Real direction (monotone tercile gradient, hotter = more scoring — same physical hypothesis as MLB's weather feature), but negligible magnitude. |
+| Wind speed (outdoors only, no direction data in nflverse) | total | 0.94% | Same story — monotone, physically sensible (more wind → less scoring), still under 1%. The strongest of the five, and still far too small to matter. |
+| Rest advantage (home rest − away rest) | margin | 0.22% | Negligible. |
+| Strength-of-schedule differential | margin | **−0.72% (OOS worse than baseline)** | Fits in-sample (0.43% train reduction) then makes it WORSE out of sample — classic overfit-to-train-noise, not a real effect. |
+| Schedule spot (weekday) | margin & total | n/a (categorical) | Thursday (n=102) shows a suggestively large total-residual bump (+2.17), but every non-Sunday bucket is thin (Saturday n=47, Friday n=6, Wednesday n=4) — not separable from noise at this sample size. |
+| Division familiarity (div_game) | margin & total | n/a | The "division games run closer" belief isn't supported: mean \|actual margin\| is 11.19 (div) vs. 11.20 (non-div) — essentially identical. |
+
+**None of these clear a wireable bar**, and — more importantly — none of them
+are remotely large enough to matter: the SRS model's CLV gap is multiple
+*percentage points* (ATS −3.48%, ML −9.36%); every signal here moves well
+under 1% of residual variance. Stacking all five together, even generously,
+would not plausibly close that gap. This is consistent with why NFL sides/
+totals are one of the hardest markets in all of sports betting to beat —
+enormous public volume and sharp money keep it efficiently priced, which is
+exactly the environment where free, game-level context (as opposed to
+play-level tendency/EPA data, or non-public information like injury/practice
+reports) is least likely to carry a real, wireable edge.
+
+**Not attempted this round**: offensive run/pass tendency and defensive
+scheme fit — the "stylistic matchup" half of the brainstorm. Confirmed
+feasible in principle (nflverse publishes free per-season play-by-play files,
+`github.com/nflverse/nflverse-data` tag `pbp`, ~20MB gzipped CSV/season back
+to 1999) but a real, separate engineering lift: the columns needed
+(`play_type`, `epa`, `posteam`/`defteam`) sit after a free-text `desc` column
+with embedded commas, so `games.ts`'s "plain comma split is safe" trick
+doesn't apply — this needs an actual CSV parser (no such dependency exists in
+this repo yet) plus new team-level, lookahead-safe aggregation. Worth
+attempting on its own merits (EPA-based tendency data is where public NFL
+analytics has found real signal historically), but sized and paced
+separately from this round's cheap-signal sweep, and with the same tempered
+expectation the table above sets: NFL game lines are a hard market, and nothing
+tried so far — two structurally different rating models plus five context
+signals — has found a wireable edge.
