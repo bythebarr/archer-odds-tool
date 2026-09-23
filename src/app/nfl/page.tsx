@@ -86,9 +86,17 @@ export default async function NflPage() {
           </>
         }
         right={
-          <Link href="/nfl/research" className="text-xs text-muted-foreground underline underline-offset-2">
-            Experimental research →
-          </Link>
+          <div className="flex flex-col items-end gap-1">
+            <Link
+              href="/nfl/props"
+              className="rounded-md bg-foreground px-2.5 py-1 text-xs font-semibold text-background transition-opacity hover:opacity-90"
+            >
+              Player props →
+            </Link>
+            <Link href="/nfl/research" className="text-xs text-muted-foreground underline underline-offset-2">
+              Experimental research →
+            </Link>
+          </div>
         }
       />
 

@@ -14,8 +14,31 @@ interface Bin {
   ratios: Float64Array; // sorted ascending
 }
 
+/** Serializable form: each bin's ratio distribution reduced to evenly spaced quantiles. */
+export interface FrozenRatioDistribution {
+  bins: { maxMu: number | null; q: number[] }[];
+}
+
 export class RatioDistribution {
   private constructor(private readonly bins: Bin[]) {}
+
+  static fromFrozen(f: FrozenRatioDistribution): RatioDistribution {
+    return new RatioDistribution(f.bins.map((b) => ({ maxMu: b.maxMu ?? Infinity, ratios: Float64Array.from(b.q) })));
+  }
+
+  toFrozen(quantiles = 201): FrozenRatioDistribution {
+    return {
+      bins: this.bins.map((b) => ({
+        maxMu: Number.isFinite(b.maxMu) ? b.maxMu : null,
+        q: Array.from({ length: quantiles }, (_, i) => {
+          const pos = (i / (quantiles - 1)) * (b.ratios.length - 1);
+          const lo = Math.floor(pos);
+          const hi = Math.min(b.ratios.length - 1, lo + 1);
+          return +(b.ratios[lo] + (b.ratios[hi] - b.ratios[lo]) * (pos - lo)).toFixed(5);
+        }),
+      })),
+    };
+  }
 
   /** Fit from (projection, actual) pairs; projections ≤ 0 are ignored. */
   static fit(pairs: readonly { mu: number; y: number }[], binCount = 10): RatioDistribution {
@@ -62,7 +85,7 @@ export class RatioDistribution {
  * a per-bin ratio shape can't see. b < 1 pulls the tails in.
  */
 export class LogisticCalibrator {
-  private constructor(readonly a: number, readonly b: number) {}
+  constructor(readonly a: number, readonly b: number) {}
 
   static fit(pairs: readonly { p: number; y: 0 | 1 }[], iterations = 25): LogisticCalibrator {
     let a = 0;

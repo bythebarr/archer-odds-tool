@@ -1,10 +1,11 @@
 # NFL player-prop projection model (research, 2026-09-23)
 
-> Status: **research-only, validated against outcomes, not yet priced.** Code:
-> `src/lib/nfl/props/`, `scripts/experiment-nfl-props.ts`
-> (`npm run experiment:nfl:props`). Nothing here is imported by an app route,
-> writes to the database, or posts anywhere. Follows the game-line result in
-> `NFL-PBP-FEASIBILITY.md`: sides are priced; props are the thinner market.
+> Status: **experimental, validated against outcomes, not yet priced against
+> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.0.0. Served
+> read-only at `/nfl/props` from forward-captured `PredictionRun`s
+> (`npm run capture:nfl:props`). No odds provider, Discord, cron or schema
+> change. Follows the game-line result in `NFL-PBP-FEASIBILITY.md`: sides are
+> priced; props are the thinner market.
 
 ## Why props, and what "validated" means here
 
@@ -119,21 +120,52 @@ sealed.
 - No touchdown, longest-reception, or anytime-scorer markets — those are
   low-count or extreme-value markets with different distributions.
 
-## Path to a priced product (next steps, in order)
+## Serving the model (built 2026-09-23)
 
-1. **Freeze the parameters** (above) into a versioned params file.
-   Projections served by the app must be byte-for-byte this model.
-2. **NFL prop storage.** `PlayerPropSnapshot`/`CurrentPlayerPropLine` are
-   hardcoded to `MlbPlayer`/`StatCategory` (`MODEL-DATA-REQUIREMENTS.md`), so
-   NFL props need a schema migration: an `NflPlayer` keyed by GSIS id and
-   sport-generic prop tables or NFL-specific siblings.
-3. **Live lines** from ParlayAPI (82 NFL prop markets measured, per
-   `provider-coverage.md`), mapped through an explicit allow-list the same
-   way `src/lib/props/propMarkets.ts` does for MLB. Match player names to GSIS
-   ids via `players.csv`.
-4. **Forward capture** of every projection versus the posted line into
-   `PredictionRun`/`ModelPrediction` (lifecycle `experimental`), graded
-   against the nflverse box score the next day. That is the real CLV/edge
-   test.
-5. **UI:** props board with projection, line, calibrated over/under, and the
-   volume/share/efficiency breakdown, plus player pages with usage trends.
+- **Frozen:** `src/lib/nfl/props/frozen/nfl-props-v1.0.0.json` holds every
+  fitted number: decay parameters per component group, shrinkage, volume
+  coefficients, opponent damping, the per-market ratio distributions (201
+  quantiles per bin), calibrators, the validation table, and the SHA-256 of
+  every data file. It is written only by
+  `NFL_PROPS_FREEZE=1 npm run experiment:nfl:props`, and `frozen.ts`
+  refuses to load a version the code doesn't declare. Refitting means bumping
+  `NFL_PROPS_MODEL_VERSION`.
+- **Live projection:** `live.ts` replays 2013 → last completed week with the
+  frozen parameters. It projects the next week for players whose latest game
+  was for a team playing that week, applies the shared eligibility rules
+  (`eligibility.ts`, the same code the experiment uses), drops Out/Doubtful
+  from the official injury report, and flags Questionable. Files for the
+  in-progress season re-download once they're 3h old; historical files stay
+  pinned.
+- **Forward capture:** `npm run capture:nfl:props` (`--dry-run`,
+  `--confirm-rerun`) writes one `ModelPrediction` per (ESPN event,
+  `player_<market>`, GSIS id) under `nfl-props` v1.0.0, lifecycle
+  `experimental`, with `probability` null, the mean plus breakdown in
+  `projection`, and the validation table in `calibrationSnapshot`. No schema
+  change was needed. Run it Friday/Saturday, after the final injury report.
+- **Provider-agnostic pricing:** `pricing.ts` takes any `PropLineQuote`
+  (player, market, line, over/under American price, book, source) and returns
+  calibrated over/under, fair odds, de-vigged market probability and EV. A
+  future odds provider only has to produce quotes; `playerNameKey` handles
+  book-label → nflverse name matching.
+- **UI:** `/nfl/props` (linked from `/nfl`) reads the latest run: holdout
+  scorecard, game rail, market tabs, search and sort, then one row per player
+  with projection vs. season/L5 averages, a line box giving calibrated O/U and
+  fair odds, optional prices giving EV, and a "Why" panel showing the
+  projection as its equation. Lines entered stay in the browser only.
+
+## Remaining path to a priced product
+
+1. **Pick the odds provider**, then write one adapter producing
+   `PropLineQuote`s through an explicit market allow-list (like
+   `src/lib/props/propMarkets.ts`). Only then does NFL need prop storage
+   (`PlayerPropSnapshot`/`CurrentPlayerPropLine` are MLB-keyed).
+2. **Attach quotes at capture** (`marketSnapshot` + `probability` at the
+   quoted line). That is the real edge test.
+3. **Grading job:** settle each stored projection against the nflverse box
+   score after the week, and track calibration and CLV forward.
+4. **Model v1.1 candidates**, each through the same train/validation gate:
+   teammate-absence share redistribution (injury report → vacated targets),
+   QB-change adjustment for receivers, touchdown markets.
+5. **Automation:** a Friday/Saturday cron for capture once the runtime has a
+   writable cache directory.

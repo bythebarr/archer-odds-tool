@@ -45,6 +45,7 @@
     "matchup:bullpenprops": "tsx scripts/matchup-bullpen-props.ts",
     "matchup:weatherprops": "tsx scripts/matchup-weather-props.ts",
     "capture:cfb:predictions": "tsx scripts/capture-cfb-predictions.ts",
+    "capture:nfl:props": "tsx scripts/capture-nfl-props.ts",
     "discord:plan": "tsx scripts/discord/provision-server.ts --plan",
     "discord:dry": "tsx scripts/discord/provision-server.ts --prune",
     "discord:sync": "tsx scripts/discord/provision-server.ts --prune --apply",

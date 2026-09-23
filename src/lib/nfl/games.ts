@@ -22,6 +22,8 @@
  * deliberately not read this way — see docs/architecture/nfl-adapter.md.)
  */
 
+import { DateTime } from "luxon";
+
 const GAMES_URL = "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv";
 
 export interface NflGame {
@@ -62,6 +64,10 @@ export interface NflGame {
   homeRest: number | null;
   /** True if both teams are in the same division. */
   divGame: boolean;
+  /** ESPN event id (nflverse `espn` column) — the join key to the ESPN scoreboard and to `/nfl/research`'s stored predictions. */
+  espnId?: string | null;
+  /** Kickoff instant: `gameday` + `gametime`, which nflverse reports in US Eastern time. null when gametime is missing. */
+  kickoffUtc?: Date | null;
 }
 
 const int = (v: string | undefined): number | null => {
@@ -74,6 +80,12 @@ const flt = (v: string | undefined): number | null => {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : null;
 };
+
+function kickoffUtc(gameday: string | undefined, gametime: string | undefined): Date | null {
+  if (!gameday || !gametime) return null;
+  const dt = DateTime.fromISO(`${gameday}T${gametime}`, { zone: "America/New_York" });
+  return dt.isValid ? dt.toJSDate() : null;
+}
 
 /** Fetch + parse the full nflverse games file. Caller filters/sorts. */
 export async function fetchNflGames(): Promise<NflGame[]> {
@@ -107,6 +119,7 @@ export async function fetchNflGames(): Promise<NflGame[]> {
   const iRoof = col("roof");
   const iTemp = col("temp");
   const iWind = col("wind");
+  const iEspn = col("espn");
 
   const out: NflGame[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -141,6 +154,8 @@ export async function fetchNflGames(): Promise<NflGame[]> {
       awayRest: int(f[iAwayRest]),
       homeRest: int(f[iHomeRest]),
       divGame: f[iDivGame]?.trim() === "1",
+      espnId: f[iEspn]?.trim() || null,
+      kickoffUtc: kickoffUtc(f[iDate]?.trim(), f[iGametime]?.trim()),
     });
   }
   return out;

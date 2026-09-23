@@ -7,7 +7,7 @@
  * which bytes it ran on. Set `NFLVERSE_REFRESH=1` to re-download.
  */
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createGunzip } from "node:zlib";
 import { CsvStreamParser } from "./pbp/csv";
@@ -27,12 +27,29 @@ export function readManifest(tag: string): Record<string, ManifestEntry> {
   return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as Record<string, ManifestEntry>) : {};
 }
 
+/** In-progress season: its files change weekly, so they're re-downloaded once older than this. Historical seasons stay pinned to their hashed copy. */
+const CURRENT_SEASON_MAX_AGE_MS = 3 * 3600_000;
+let freshSeason: number | null = null;
+
+/** Mark `season` as in progress, so its assets (and the season-less players/injuries files) refresh when stale. */
+export function setInProgressSeason(season: number | null): void {
+  freshSeason = season;
+}
+
+function isStale(dest: string, file: string): boolean {
+  if (process.env.NFLVERSE_REFRESH === "1") return true;
+  if (freshSeason === null) return false;
+  const seasonMatch = file.match(/_(\d{4})\.csv/);
+  const isCurrent = seasonMatch ? Number(seasonMatch[1]) === freshSeason : true;
+  return isCurrent && Date.now() - statSync(dest).mtimeMs > CURRENT_SEASON_MAX_AGE_MS;
+}
+
 /** Download (once) and return the local path of a release asset. Returns null on HTTP 404 — some seasons simply don't exist for some tags. */
 export async function downloadReleaseAsset(tag: string, file: string): Promise<string | null> {
   const dir = path.join(NFLVERSE_CACHE_DIR, tag);
   mkdirSync(dir, { recursive: true });
   const dest = path.join(dir, file);
-  if (existsSync(dest) && process.env.NFLVERSE_REFRESH !== "1") return dest;
+  if (existsSync(dest) && !isStale(dest, file)) return dest;
   const res = await fetch(`${RELEASE_BASE}/${tag}/${file}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`nflverse ${tag}/${file}: HTTP ${res.status}`);

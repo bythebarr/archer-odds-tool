@@ -7,6 +7,11 @@ import {
   type ModelParams, type PropMarket, type ShrinkParams, type SnapshotSet, type VolumeCoefs,
 } from "@/lib/nfl/props/model";
 import { LogisticCalibrator, RatioDistribution } from "@/lib/nfl/props/distribution";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { readManifest } from "@/lib/nfl/nflverse";
+import { NFL_PROPS_MODEL_KEY, NFL_PROPS_MODEL_VERSION, type FrozenModelFile, type ValidationRow } from "@/lib/nfl/props/frozen";
+import { EligibilityTracker, MARKET_FAMILY, type Baseline, type PropFamily } from "@/lib/nfl/props/eligibility";
 
 /**
  * NFL player-prop projection experiment — volume × share × efficiency model vs.
@@ -50,66 +55,21 @@ const LINE_GRID: Record<PropMarket, number[]> = {
 const inRange = (season: number, [a, b]: readonly [number, number]) => season >= a && season <= b;
 const mean = (xs: readonly number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : NaN);
 
-// ─── baselines & eligibility (model-independent, pregame) ──────────────────
-type Family = "rec" | "rush" | "pass";
-const FAMILY: Record<PropMarket, Family> = {
-  receptions: "rec", receivingYards: "rec", rushAttempts: "rush", rushingYards: "rush",
-  passAttempts: "pass", completions: "pass", passingYards: "pass",
-};
-
-interface Baseline {
-  seasonAvg: Record<PropMarket, number> | null;
-  l5Avg: Record<PropMarket, number> | null;
-  eligible: Record<Family, boolean>;
-}
+// ─── baselines & eligibility (model-independent, pregame; shared with the live projector) ──
+type Family = PropFamily;
+const FAMILY = MARKET_FAMILY;
 
 function computeBaselines(players: readonly PlayerGame[]): Map<PlayerGame, Baseline> {
   const sorted = [...players].sort((a, b) => a.season - b.season || a.week - b.week);
-  const history = new Map<string, PlayerGame[]>();
-  // team's leading passer in its most recent game
-  const lastLeadPasser = new Map<string, string>();
+  const tracker = new EligibilityTracker();
   const out = new Map<PlayerGame, Baseline>();
-  const avg = (gs: readonly PlayerGame[]) =>
-    Object.fromEntries(
-      PROP_MARKETS.map((m) => [m, mean(gs.map((g) => actualFor({ pg: g }, m)))])
-    ) as Record<PropMarket, number>;
-
   let i = 0;
   while (i < sorted.length) {
-    const season = sorted[i].season;
-    const week = sorted[i].week;
     let j = i;
-    while (j < sorted.length && sorted[j].season === season && sorted[j].week === week) j++;
+    while (j < sorted.length && sorted[j].season === sorted[i].season && sorted[j].week === sorted[i].week) j++;
     const wk = sorted.slice(i, j);
-    for (const pg of wk) {
-      const h = history.get(pg.playerId) ?? [];
-      const thisSeason = h.filter((g) => g.season === season);
-      const lastSeason = h.filter((g) => g.season === season - 1);
-      const ref = thisSeason.length ? thisSeason : lastSeason;
-      const seasonAvg = ref.length ? avg(ref) : null;
-      const l5Avg = h.length ? avg(h.slice(-5)) : null;
-      const tgtPg = ref.length ? mean(ref.map((g) => g.targets)) : 0;
-      const carPg = ref.length ? mean(ref.map((g) => g.carries)) : 0;
-      const attPg = ref.length ? mean(ref.map((g) => g.passAttempts)) : 0;
-      const enough = h.length >= 2;
-      out.set(pg, {
-        seasonAvg,
-        l5Avg,
-        eligible: {
-          rec: enough && pg.position !== "QB" && tgtPg >= 3,
-          rush: enough && carPg >= 5,
-          pass: enough && pg.position === "QB" && attPg >= 15 && lastLeadPasser.get(pg.team) === pg.playerId,
-        },
-      });
-    }
-    // fold week into history
-    const lead = new Map<string, PlayerGame>();
-    for (const pg of wk) {
-      (history.get(pg.playerId) ?? history.set(pg.playerId, []).get(pg.playerId)!).push(pg);
-      const cur = lead.get(pg.team);
-      if (!cur || pg.passAttempts > cur.passAttempts) lead.set(pg.team, pg);
-    }
-    for (const [team, pg] of lead) if (pg.passAttempts > 0) lastLeadPasser.set(team, pg.playerId);
+    for (const pg of wk) out.set(pg, tracker.baseline(pg));
+    tracker.foldWeek(wk);
     i = j;
   }
   return out;
@@ -374,7 +334,8 @@ async function main() {
     calibrators.get(`${FAMILY[m]}|${src}`)!.apply(dists.get(`${m}|${src}`)!.pOver(muOf(i, m, src)!, L));
 
   // 6. evaluate
-  const evaluate = (label: string, range: readonly [number, number]) => {
+  const evaluate = (label: string, range: readonly [number, number]): ValidationRow[] => {
+    const results: ValidationRow[] = [];
     console.log(`\n── ${label} ──`);
     console.log(
       "  market          n     MAE model / season / L5      Brier@book-proxy line: model / season / L5   Δ(model−season) 95% CI     grid Brier model / season / L5"
@@ -406,6 +367,11 @@ async function main() {
         deltas.push(mean(d));
       }
       deltas.sort((a, b) => a - b);
+      results.push({
+        market: m, n: rows.length, maeModel: mae("model"), maeSeasonAvg: mae("seasonAvg"),
+        brierModel: proxy("model"), brierSeasonAvg: proxy("seasonAvg"),
+        deltaLo: deltas[Math.floor(0.025 * BOOT)], deltaHi: deltas[Math.floor(0.975 * BOOT)],
+      });
       const f = (x: number, dp = 4) => x.toFixed(dp);
       console.log(
         `  ${m.padEnd(15)} ${String(rows.length).padStart(5)}  ${f(mae("model"), 2).padStart(6)} / ${f(mae("seasonAvg"), 2).padStart(6)} / ${f(mae("l5Avg"), 2).padStart(6)}      ` +
@@ -426,12 +392,50 @@ async function main() {
         b.n++;
       }
     console.log("  model calibration at proxy lines (pooled): " + bins.filter((b) => b.n > 0).map((b) => `${(b.p / b.n).toFixed(2)}→${(b.y / b.n).toFixed(2)} (n=${b.n})`).join("  "));
+    return results;
   };
 
   evaluate("TRAIN 2014–2019 (in-sample fit, context only)", TRAIN);
-  evaluate("VALIDATION 2020–2022", VALID);
+  const validation = evaluate("VALIDATION 2020–2022", VALID);
   if (OPEN_TEST) evaluate("TEST 2023–2025 — opened once, per pre-registration", TEST);
   else console.log("\nTest window 2023–2025 remains sealed (NFL_OPEN_TEST=1 once the model is frozen).");
+
+  if (process.env.NFL_PROPS_FREEZE === "1") {
+    const round = (x: number) => +x.toFixed(6);
+    const file: FrozenModelFile = {
+      modelKey: NFL_PROPS_MODEL_KEY,
+      modelVersion: NFL_PROPS_MODEL_VERSION,
+      frozenAt: new Date().toISOString(),
+      splits: { train: [...TRAIN], validation: [...VALID], test: [...TEST] },
+      engine: {
+        usage: passes[groupPass.usage].params,
+        efficiency: passes[groupPass.efficiency].params,
+        team: passes[teamPass].params,
+        defense: passes[defPass].params,
+      },
+      params: {
+        shrink: params.shrink,
+        opp: params.opp,
+        volume: {
+          tgt: params.volume.tgt.map(round) as VolumeCoefs,
+          car: params.volume.car.map(round) as VolumeCoefs,
+          att: params.volume.att.map(round) as VolumeCoefs,
+        },
+      },
+      distributions: Object.fromEntries(PROP_MARKETS.map((m) => [m, dists.get(`${m}|model`)!.toFrozen()])) as FrozenModelFile["distributions"],
+      calibrators: Object.fromEntries(
+        (["rec", "rush", "pass"] as Family[]).map((f) => { const c = calibrators.get(`${f}|model`)!; return [f, { a: round(c.a), b: round(c.b) }]; })
+      ) as FrozenModelFile["calibrators"],
+      validation: validation.map((v) => ({ ...v, maeModel: round(v.maeModel), maeSeasonAvg: round(v.maeSeasonAvg), brierModel: round(v.brierModel), brierSeasonAvg: round(v.brierSeasonAvg), deltaLo: round(v.deltaLo), deltaHi: round(v.deltaHi) })),
+      dataManifest: Object.fromEntries(
+        ["players", "stats_player", "snap_counts"].map((tag) => [tag, Object.fromEntries(Object.entries(readManifest(tag)).map(([f, e]) => [f, e.sha256]))])
+      ),
+    };
+    const out = path.join(process.cwd(), "src/lib/nfl/props/frozen", `nfl-props-${NFL_PROPS_MODEL_VERSION}.json`);
+    mkdirSync(path.dirname(out), { recursive: true });
+    writeFileSync(out, JSON.stringify(file) + "\n");
+    console.log(`\nFroze model ${NFL_PROPS_MODEL_VERSION} → ${path.relative(process.cwd(), out)}`);
+  }
 
   // 7. a sanity sample: most recent validation week's top receiving projections
   const lastVal = idxAll.filter((i) => inRange(pgAt(i).season, VALID) && elig(i, "rec"));

@@ -152,63 +152,63 @@ export interface GameContext {
   total: number | null;
 }
 
+/** The identity a snapshot needs — a past `PlayerGame`, or an upcoming game's candidate with no outcome yet. */
+export type PlayerGameKey = Pick<PlayerGame, "gameId" | "season" | "week" | "team" | "opp" | "playerId" | "name" | "position">;
+
 /**
- * Walk every week in order; `emit` decides which player-games to snapshot
- * (eligibility) and receives the pre-week state.
+ * Mutable walk-forward state. `foldWeek` adds one week's outcomes; `snapshot`
+ * reads the state as it stands — so the caller controls the as-of boundary:
+ * snapshot a week's games first, fold that week second.
  */
-export function walkForward(
-  players: readonly PlayerGame[],
-  teams: readonly TeamGameVolume[],
-  games: ReadonlyMap<string, GameContext>,
-  params: EngineParams,
-  emit: (s: Snapshot) => void
-): void {
-  const weekKey = (season: number, week: number) => `${season}_${String(week).padStart(2, "0")}`;
-  const playersByWeek = new Map<string, PlayerGame[]>();
-  for (const p of players) (playersByWeek.get(weekKey(p.season, p.week)) ?? playersByWeek.set(weekKey(p.season, p.week), []).get(weekKey(p.season, p.week))!).push(p);
-  const teamsByWeek = new Map<string, TeamGameVolume[]>();
-  for (const t of teams) (teamsByWeek.get(weekKey(t.season, t.week)) ?? teamsByWeek.set(weekKey(t.season, t.week), []).get(weekKey(t.season, t.week))!).push(t);
-  const teamGame = new Map(teams.map((t) => [`${t.gameId}|${t.team}`, t]));
+export class PropState {
+  private readonly playerAcc = new Map<string, Acc<(typeof PLAYER_KEYS)[number]>>();
+  private readonly teamAcc = new Map<string, Acc<(typeof TEAM_KEYS)[number]>>();
+  private readonly defAcc = new Map<string, Acc<(typeof DEF_KEYS)[number]>>();
+  private readonly league = new League();
+  private rates: LeagueRates | null = null;
 
-  const playerAcc = new Map<string, Acc<(typeof PLAYER_KEYS)[number]>>();
-  const teamAcc = new Map<string, Acc<(typeof TEAM_KEYS)[number]>>();
-  const defAcc = new Map<string, Acc<(typeof DEF_KEYS)[number]>>();
-  const league = new League();
-  const get = <K extends string>(m: Map<string, Acc<K>>, id: string, keys: readonly K[]) => m.get(id) ?? m.set(id, new Acc(keys)).get(id)!;
+  constructor(private readonly params: EngineParams) {}
 
-  const weeks = [...new Set([...playersByWeek.keys(), ...teamsByWeek.keys()])].sort();
-  for (const wk of weeks) {
-    const wkPlayers = playersByWeek.get(wk) ?? [];
-    const wkTeams = teamsByWeek.get(wk) ?? [];
+  private get<K extends string>(m: Map<string, Acc<K>>, id: string, keys: readonly K[]): Acc<K> {
+    return m.get(id) ?? m.set(id, new Acc(keys)).get(id)!;
+  }
 
-    // 1. snapshot, strictly pre-week
-    const rates = league.rates();
-    for (const pg of wkPlayers) {
-      const ctx = games.get(pg.gameId);
-      const isHome = ctx?.home === pg.team;
-      emit({
-        pg,
-        weekKey: wk,
-        teamSpread: ctx?.spread == null ? null : isHome ? ctx.spread : -ctx.spread,
-        total: ctx?.total ?? null,
-        player: get(playerAcc, pg.playerId, PLAYER_KEYS).snapshot(),
-        team: get(teamAcc, pg.team, TEAM_KEYS).snapshot(),
-        oppDef: get(defAcc, pg.opp, DEF_KEYS).snapshot(),
-        league: rates,
-      });
-    }
+  snapshot(key: PlayerGameKey, ctx: GameContext | undefined, weekKey: string): Snapshot {
+    this.rates ??= this.league.rates();
+    const isHome = ctx?.home === key.team;
+    // A played game passes through by identity (callers key maps on it); an upcoming one gets zeroed outcomes.
+    const pg: PlayerGame =
+      "targets" in key
+        ? (key as PlayerGame)
+        : {
+            ...key,
+            offenseSnaps: 0, offensePct: 0, targets: 0, receptions: 0, receivingYards: 0, carries: 0, rushingYards: 0,
+            passAttempts: 0, completions: 0, passingYards: 0,
+          };
+    return {
+      pg,
+      weekKey,
+      teamSpread: ctx?.spread == null ? null : isHome ? ctx.spread : -ctx.spread,
+      total: ctx?.total ?? null,
+      player: this.get(this.playerAcc, key.playerId, PLAYER_KEYS).snapshot(),
+      team: this.get(this.teamAcc, key.team, TEAM_KEYS).snapshot(),
+      oppDef: this.get(this.defAcc, key.opp, DEF_KEYS).snapshot(),
+      league: this.rates,
+    };
+  }
 
-    // 2. fold in the week's outcomes
+  foldWeek(wkPlayers: readonly PlayerGame[], wkTeams: readonly TeamGameVolume[], teamGame: ReadonlyMap<string, TeamGameVolume>): void {
+    const params = this.params;
     for (const t of wkTeams) {
-      get(teamAcc, t.team, TEAM_KEYS).add(t.season, { games: 1, tgt: t.targets, car: t.carries, att: t.passAttempts }, params);
-      league.addTeam(t);
+      this.get(this.teamAcc, t.team, TEAM_KEYS).add(t.season, { games: 1, tgt: t.targets, car: t.carries, att: t.passAttempts }, params);
+      this.league.addTeam(t);
     }
     const defWeek = new Map<string, Partial<DefSums> & { season: number }>();
     for (const t of wkTeams) defWeek.set(t.opp, { season: t.season, games: 1, tgtA: t.targets, carA: t.carries, attA: t.passAttempts });
     for (const pg of wkPlayers) {
       const tv = teamGame.get(`${pg.gameId}|${pg.team}`);
       if (!tv) continue;
-      get(playerAcc, pg.playerId, PLAYER_KEYS).add(
+      this.get(this.playerAcc, pg.playerId, PLAYER_KEYS).add(
         pg.season,
         {
           games: 1, snapPct: pg.offensePct,
@@ -218,7 +218,7 @@ export function walkForward(
         },
         params
       );
-      league.addPlayer(pg, tv);
+      this.league.addPlayer(pg, tv);
       const d = defWeek.get(pg.opp);
       if (!d) continue;
       const add = (k: keyof DefSums, v: number) => (d[k] = (d[k] ?? 0) + v);
@@ -234,6 +234,42 @@ export function walkForward(
       add("passCmp", pg.completions);
       add("passYds", pg.passingYards);
     }
-    for (const [def, d] of defWeek) get(defAcc, def, DEF_KEYS).add(d.season, d, params);
+    for (const [def, d] of defWeek) this.get(this.defAcc, def, DEF_KEYS).add(d.season, d, params);
+    this.rates = null;
   }
+}
+
+export const weekKeyOf = (season: number, week: number) => `${season}_${String(week).padStart(2, "0")}`;
+
+/**
+ * Walk every week in order; `emit` receives each played player-game's
+ * pre-week snapshot. Returns the final state (every week folded in), from
+ * which upcoming games can be snapshotted.
+ */
+export function walkForward(
+  players: readonly PlayerGame[],
+  teams: readonly TeamGameVolume[],
+  games: ReadonlyMap<string, GameContext>,
+  params: EngineParams,
+  emit: (s: Snapshot) => void
+): PropState {
+  const playersByWeek = new Map<string, PlayerGame[]>();
+  for (const p of players) {
+    const k = weekKeyOf(p.season, p.week);
+    (playersByWeek.get(k) ?? playersByWeek.set(k, []).get(k)!).push(p);
+  }
+  const teamsByWeek = new Map<string, TeamGameVolume[]>();
+  for (const t of teams) {
+    const k = weekKeyOf(t.season, t.week);
+    (teamsByWeek.get(k) ?? teamsByWeek.set(k, []).get(k)!).push(t);
+  }
+  const teamGame = new Map(teams.map((t) => [`${t.gameId}|${t.team}`, t]));
+  const state = new PropState(params);
+  const weeks = [...new Set([...playersByWeek.keys(), ...teamsByWeek.keys()])].sort();
+  for (const wk of weeks) {
+    const wkPlayers = playersByWeek.get(wk) ?? [];
+    for (const pg of wkPlayers) emit(state.snapshot(pg, games.get(pg.gameId), wk));
+    state.foldWeek(wkPlayers, teamsByWeek.get(wk) ?? [], teamGame);
+  }
+  return state;
 }
