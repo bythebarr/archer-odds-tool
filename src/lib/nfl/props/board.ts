@@ -5,7 +5,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { NFL_TEAMS } from "../teams";
-import { NFL_PROPS_MODEL_KEY, type ExtraValidationRow, type ServedMarket, type TdValidationRow, type ValidationRow } from "./frozen";
+import { NFL_PROPS_MODEL_KEY, type ExtraValidationRow, type PricingAux, type ServedMarket, type TdValidationRow, type ValidationRow } from "./frozen";
 import { MARKET_BY_KEY } from "./predictionCapture";
 
 export interface NflPropsBoardGame {
@@ -48,6 +48,8 @@ export interface NflPropsBoardRow {
   injury: string | null;
   /** v1.1: ruled-out teammates whose carries this projection absorbs. */
   teammatesOut: string | null;
+  /** v1.4: pricing inputs for longest-play markets. */
+  aux: PricingAux | null;
 }
 
 export interface NflPropsBoard {
@@ -63,6 +65,7 @@ export interface NflPropsBoard {
   validation: ValidationRow[];
   tdValidation: TdValidationRow[];
   extraValidation: ExtraValidationRow[];
+  batchBValidation: ExtraValidationRow[];
 }
 
 /** nflverse team code → this app's display identity (nflverse codes the Rams "LA"; the app shows "LAR"). */
@@ -128,6 +131,7 @@ export async function getLatestNflPropsBoard(): Promise<NflPropsBoard | null> {
       priorGames: num(f.priorGames) ?? 0,
       injury: typeof missing.injuryReport === "string" ? missing.injuryReport : null,
       teammatesOut: typeof missing.teammatesOut === "string" ? missing.teammatesOut : null,
+      aux: proj.aux && typeof proj.aux === "object" ? (proj.aux as PricingAux) : null,
     });
   }
 
@@ -144,5 +148,6 @@ export async function getLatestNflPropsBoard(): Promise<NflPropsBoard | null> {
     validation: Array.isArray(calibration.validation) ? (calibration.validation as ValidationRow[]) : [],
     tdValidation: Array.isArray(calibration.tdValidation) ? (calibration.tdValidation as TdValidationRow[]) : [],
     extraValidation: Array.isArray(calibration.extraValidation) ? (calibration.extraValidation as ExtraValidationRow[]) : [],
+    batchBValidation: Array.isArray(calibration.batchBValidation) ? (calibration.batchBValidation as ExtraValidationRow[]) : [],
   };
 }

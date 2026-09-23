@@ -7,16 +7,24 @@
  *
  * Bump `NFL_PROPS_MODEL_VERSION` whenever a refit would change any number.
  */
-import frozenJson from "./frozen/nfl-props-v1.3.0.json";
+import frozenJson from "./frozen/nfl-props-v1.4.0.json";
 import { LogisticCalibrator, RatioDistribution, type FrozenRatioDistribution } from "./distribution";
 import { MARKET_FAMILY, type PropFamily } from "./eligibility";
 import type { EngineParams } from "./engine";
 import { PROP_MARKETS, type ModelParams, type PropMarket } from "./model";
 import { isTdMarket, poissonOver, type TdMarket, type TdParams } from "./td";
 import { isExtraMarket, type ExtraMarket, type IntParams } from "./extras";
+import { isBatchBMarket, pLongestOver, type BatchBMarket, type KickParams, type SurvivalCurve } from "./batchB";
 
-/** Every market the app serves: yardage/volume (v1.0), touchdowns (v1.2), combos/interceptions/2+ TDs (v1.3). */
-export type ServedMarket = PropMarket | TdMarket | ExtraMarket;
+/** Every market the app serves: yardage/volume (v1.0), touchdowns (v1.2), combos/INTs/2+ TDs (v1.3), longest/kickers/first TD (v1.4). */
+export type ServedMarket = PropMarket | TdMarket | ExtraMarket | BatchBMarket;
+
+/** Extra pricing inputs for markets one mean can't describe (longest plays): expected touches, yards per touch, position. */
+export interface PricingAux {
+  touches: number;
+  ypp: number;
+  position: string;
+}
 
 export const NFL_PROPS_SPORT_KEY = "nfl";
 export const NFL_PROPS_MODEL_KEY = "nfl-props";
@@ -24,11 +32,13 @@ export const NFL_PROPS_MODEL_KEY = "nfl-props";
  * v1.1.0 = v1.0.0 + carry-share redistribution when a teammate is ruled out.
  * v1.2.0 = v1.1.0 + touchdown markets (anytime TD, passing TDs).
  * v1.3.0 = v1.2.0 + rush+rec yards, pass+rush yards, interceptions, 2+ TDs.
+ * v1.4.0 = v1.3.0 + longest reception/rush/completion, kicker FG made and
+ * kicking points, first TD scorer.
  * Each version leaves every earlier number unchanged, and each addition passed
  * validation; see docs/architecture/NFL-PROPS-MODEL.md. Earlier frozen files
  * are kept for the record.
  */
-export const NFL_PROPS_MODEL_VERSION = "v1.3.0";
+export const NFL_PROPS_MODEL_VERSION = "v1.4.0";
 export const NFL_PROPS_FEATURE_SCHEMA_VERSION = "nfl-props-features-v1";
 /** Validated against outcomes and naive baselines only — never against sportsbook lines. Stays experimental until forward capture says otherwise. */
 export const NFL_PROPS_LIFECYCLE = "experimental" as const;
@@ -80,6 +90,15 @@ export interface FrozenExtras {
   validation: ExtraValidationRow[];
 }
 
+export interface FrozenBatchB {
+  /** Single-play survival curves (train): receptions and rushes by position, completions league-wide. */
+  curves: { rec: Record<string, SurvivalCurve>; rush: Record<string, SurvivalCurve>; cmp: SurvivalCurve };
+  longestCal: Record<"longestReception" | "longestRush" | "longestCompletion", { a: number; b: number }>;
+  kick: { params: KickParams; fgCal: { a: number; b: number }; kpDist: FrozenRatioDistribution; kpCal: { a: number; b: number } };
+  firstTd: { delta: number; cal: { a: number; b: number } };
+  validation: ExtraValidationRow[];
+}
+
 export interface FrozenModelFile {
   modelKey: string;
   modelVersion: string;
@@ -92,13 +111,18 @@ export interface FrozenModelFile {
   validation: ValidationRow[];
   td?: FrozenTdModel;
   extras?: FrozenExtras;
+  batchB?: FrozenBatchB;
   dataManifest: Record<string, Record<string, string>>;
 }
 
 export interface FrozenModel {
   file: FrozenModelFile;
-  /** Calibrated P(stat > line) for a projected mean (for TD markets, the mean is the Poisson rate λ). */
-  pOver(market: ServedMarket, mu: number, line: number): number;
+  /**
+   * Calibrated P(stat > line). `mu` is the projected mean; for TD, INT and FG
+   * markets it's the Poisson rate λ, and for first TD it's the raw first-TD
+   * probability. Longest-play markets need `aux`.
+   */
+  pOver(market: ServedMarket, mu: number, line: number, aux?: PricingAux): number;
 }
 
 let cached: FrozenModel | null = null;
@@ -127,9 +151,35 @@ export function loadFrozenModel(): FrozenModel {
     : null;
   const exInt = ex ? new LogisticCalibrator(ex.interceptions.cal.a, ex.interceptions.cal.b) : null;
   const exMulti = ex ? new LogisticCalibrator(ex.twoPlusTds.cal.a, ex.twoPlusTds.cal.b) : null;
+  const bb = file.batchB;
+  const bbCal = bb
+    ? {
+        longestReception: new LogisticCalibrator(bb.longestCal.longestReception.a, bb.longestCal.longestReception.b),
+        longestRush: new LogisticCalibrator(bb.longestCal.longestRush.a, bb.longestCal.longestRush.b),
+        longestCompletion: new LogisticCalibrator(bb.longestCal.longestCompletion.a, bb.longestCal.longestCompletion.b),
+        fg: new LogisticCalibrator(bb.kick.fgCal.a, bb.kick.fgCal.b),
+        kp: new LogisticCalibrator(bb.kick.kpCal.a, bb.kick.kpCal.b),
+        kpDist: RatioDistribution.fromFrozen(bb.kick.kpDist),
+        firstTd: new LogisticCalibrator(bb.firstTd.cal.a, bb.firstTd.cal.b),
+      }
+    : null;
+  const curveFor = (market: BatchBMarket, position: string): SurvivalCurve => {
+    const c = bb!.curves;
+    if (market === "longestReception") return c.rec[position === "QB" ? "WR" : position] ?? c.rec.WR;
+    if (market === "longestRush") return c.rush[position] ?? c.rush.RB;
+    return c.cmp;
+  };
   cached = {
     file,
-    pOver: (market, mu, line) => {
+    pOver: (market, mu, line, aux) => {
+      if (isBatchBMarket(market)) {
+        if (!bbCal) throw new Error(`frozen model ${file.modelVersion} has no ${market} model`);
+        if (market === "fgMade") return bbCal.fg.apply(clampP(poissonOver(mu, line)));
+        if (market === "kickingPoints") return bbCal.kp.apply(bbCal.kpDist.pOver(mu, line));
+        if (market === "firstTd") return bbCal.firstTd.apply(clampP(mu));
+        if (!aux) throw new Error(`${market} needs touches/ypp/position to price`);
+        return bbCal[market].apply(clampP(pLongestOver(aux.touches, curveFor(market, aux.position), aux.ypp, line)));
+      }
       if (isExtraMarket(market)) {
         if (!exRatio || !exInt || !exMulti) throw new Error(`frozen model ${file.modelVersion} has no ${market} model`);
         if (market === "interceptions") return exInt.apply(clampP(poissonOver(mu, line)));
@@ -145,4 +195,10 @@ export function loadFrozenModel(): FrozenModel {
     },
   };
   return cached;
+}
+
+/** Median of a longest-play market: the smallest whole-yard line the calibrated model makes ≤50% to clear. */
+export function medianLongest(model: FrozenModel, market: "longestReception" | "longestRush" | "longestCompletion", aux: PricingAux): number {
+  for (let x = 0; x < 110; x++) if (model.pOver(market, 0, x + 0.5, aux) < 0.5) return x;
+  return 110;
 }

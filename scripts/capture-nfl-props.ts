@@ -25,7 +25,7 @@ async function main() {
   const model = loadFrozenModel();
   const live = await projectUpcomingWeek(new Date());
   const run = buildNflPropsPredictionRun(live, model.file, new Date());
-  console.log(`Season ${live.season} week ${live.week}: ${live.games.length} games, ${run.predictions.length} projections, ${live.excluded.length} excluded by injury report.`);
+  console.log(`Season ${live.season} week ${live.week}: ${live.games.length} games, ${run.predictions.length} projections, ${live.excluded.length} excluded (injury report / roster status).`);
   for (const w of live.warnings) console.warn(`  warning: ${w}`);
   if (dryRun) return;
 

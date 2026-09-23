@@ -38,7 +38,8 @@ function parseOdds(raw: string): number | null {
 }
 
 /** Markets settled as yes/no at a fixed line. */
-const YES_NO_LINE: Partial<Record<NflPropsBoardRow["market"], number>> = { anytimeTd: 0.5, twoPlusTds: 1.5 };
+const YES_NO_LINE: Partial<Record<NflPropsBoardRow["market"], number>> = { anytimeTd: 0.5, twoPlusTds: 1.5, firstTd: 0.5 };
+const LONGEST = new Set(["longestReception", "longestRush", "longestCompletion"]);
 
 const SHARE_LABEL: Partial<Record<NflPropsBoardRow["market"], string>> = {
   anytimeTd: "TD share",
@@ -61,7 +62,9 @@ export function NflPropRow({ row, manual, onManual }: Props) {
   const isAnytime = fixedLine !== undefined;
   const model = loadFrozenModel();
   const tdChance = isAnytime ? model.pOver(row.market, row.mean, fixedLine) : null;
-  const chanceLabel = row.market === "twoPlusTds" ? "2+ TD chance" : "TD chance";
+  const chanceLabel = row.market === "twoPlusTds" ? "2+ TD chance" : row.market === "firstTd" ? "1st TD chance" : "TD chance";
+  const isLongest = LONGEST.has(row.market);
+  const aux = row.aux ?? undefined;
   const headline = tdChance ?? row.mean;
   const fmt = (v: number) => (isAnytime ? `${Math.round(v * 100)}%` : v.toFixed(meta.decimals));
   const diff = row.seasonAvg === null ? null : headline - row.seasonAvg;
@@ -70,7 +73,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
   const line = isAnytime ? fixedLine : manual?.line ?? null;
   const priced =
     line !== null && (manual || isAnytime)
-      ? priceProp(model, row.mean, { market: row.market, line, overAmerican: manual?.over ?? null, underAmerican: isAnytime ? null : manual?.under ?? null })
+      ? priceProp(model, row.mean, { market: row.market, line, overAmerican: manual?.over ?? null, underAmerican: isAnytime ? null : manual?.under ?? null }, aux)
       : null;
 
   const b = row.breakdown;
@@ -110,7 +113,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
         {/* projection */}
         <div className="text-right">
           <div className="font-mono text-2xl font-bold leading-none tabular-nums text-foreground">{fmt(headline)}</div>
-          <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{isAnytime ? chanceLabel : "ARCHR proj"}</div>
+          <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{isAnytime ? chanceLabel : isLongest ? "median longest" : "ARCHR proj"}</div>
           {diffPct !== null ? (
             <div
               className={`mt-0.5 text-[11px] font-medium tabular-nums ${
@@ -118,7 +121,7 @@ export function NflPropRow({ row, manual, onManual }: Props) {
               }`}
               title="Model projection vs. the player's season average"
             >
-              {diff! >= 0 ? "▲" : "▼"} {isAnytime ? `${Math.round(Math.abs(diff!) * 100)} pts vs ${row.market === "twoPlusTds" ? "2+ TD" : "TD"} rate` : `${fmt(Math.abs(diff!))} vs avg`}
+              {diff! >= 0 ? "▲" : "▼"} {isAnytime ? `${Math.round(Math.abs(diff!) * 100)} pts vs ${row.market === "twoPlusTds" ? "2+ TD" : row.market === "firstTd" ? "1st TD" : "TD"} rate` : `${fmt(Math.abs(diff!))} vs avg`}
             </div>
           ) : null}
         </div>
@@ -199,7 +202,34 @@ export function NflPropRow({ row, manual, onManual }: Props) {
       {open ? (
         <div className="border-t border-border bg-muted/20 px-3 py-3 text-xs">
           {/* the projection, as an equation */}
-          {b.parts ? (
+          {isLongest ? (
+            <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+              <Chip value={b.teamVolume.toFixed(1)} label={b.volumeLabel} />
+              <span className="text-muted-foreground">·</span>
+              <Chip value={(b.efficiency ?? 0).toFixed(1)} label={b.efficiencyLabel ?? ""} />
+              <span className="text-muted-foreground">→</span>
+              <Chip value={fmt(row.mean)} label="median longest" strong />
+            </div>
+          ) : row.market === "fgMade" && b.parts ? (
+            <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+              {b.parts.map((x, i) => (
+                <span key={x.label} className="contents">
+                  {i > 0 ? <span className="text-muted-foreground">·</span> : null}
+                  <Chip value={x.value.toFixed(1)} label={x.label} />
+                </span>
+              ))}
+              <span className="text-muted-foreground">→</span>
+              <Chip value={fmt(row.mean)} label={meta.unit} strong />
+            </div>
+          ) : row.market === "firstTd" ? (
+            <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+              <Chip value={b.teamVolume.toFixed(2)} label="game TDs (both teams)" />
+              <span className="text-muted-foreground">·</span>
+              <Chip value={`${(b.share * 100).toFixed(1)}%`} label="his share" />
+              <span className="text-muted-foreground">→</span>
+              <Chip value={fmt(headline)} label={chanceLabel} strong />
+            </div>
+          ) : b.parts ? (
             <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
               {b.parts.map((x, i) => (
                 <span key={x.label} className="contents">

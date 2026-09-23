@@ -45,10 +45,12 @@ function Scorecard({ board }: { board: BoardData }) {
               </div>
             );
           })}
-          {board.extraValidation.map((v) => {
+          {[...board.extraValidation, ...board.batchBValidation].map((v) => {
             const better = (v.season - v.model) / v.season;
             const label: Record<string, string> = {
               rushRecYards: "Rush+Rec", passRushYards: "Pass+Rush", "interceptions o0.5": "INT o0.5", "interceptions o1.5": "INT o1.5", twoPlusTds: "2+ TDs",
+              longestReception: "Long Rec", longestRush: "Long Rush", longestCompletion: "Long Cmp", "fgMade o0.5": "FG o0.5",
+              "fgMade o1.5": "FG o1.5", "fgMade o2.5": "FG o2.5", kickingPoints: "Kick Pts", firstTd: "1st TD",
             };
             return (
               <div key={v.market} className="min-w-[6.5rem] rounded-lg border border-border bg-card px-2.5 py-2">
@@ -127,13 +129,16 @@ export default async function NflPropsPage() {
             <div className="space-y-2 px-3 leading-relaxed">
               <p>
                 Projections come from free nflverse data: weekly box scores, snap counts, schedules and the official
-                injury report. Role (target, carry and attempt share) is weighted toward the last ~4 games. Per-touch
+                injury report, plus play-by-play for longest plays and first touchdowns. Role (target, carry and attempt share) is weighted toward the last ~4 games. Per-touch
                 efficiency is weighted over ~16 games and shrunk hard toward league norms, because it&apos;s mostly
                 noise. Team volume follows the pregame spread and total. Players listed Out or Doubtful are removed,
                 and when a runner is ruled out, his carries are redistributed to his teammates (tagged +usage).
                 Questionable players are flagged Q. Touchdown chances start from the team&apos;s market-implied
                 total, then take the player&apos;s TD share, shrunk hard toward what his carry and target role implies,
-                because touchdowns are rare and a hot streak is mostly noise.
+                because touchdowns are rare and a hot streak is mostly noise. Longest-play odds come from how many
+                touches a player gets and how often a single touch goes long for his position, stretched by his own yards
+                per touch. Kickers follow the market-implied total: more points means more kicks, and a team that scores
+                touchdowns kicks fewer field goals.
               </p>
               <p>
                 The model beat both the season average and the last-5 average on every market in 2020–22 holdout

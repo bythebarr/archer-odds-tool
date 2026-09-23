@@ -7,6 +7,9 @@ import { PROP_MARKETS } from "./model";
 import { poissonOver } from "./td";
 import frozenV11 from "./frozen/nfl-props-v1.1.0.json";
 import frozenV12 from "./frozen/nfl-props-v1.2.0.json";
+import frozenV13 from "./frozen/nfl-props-v1.3.0.json";
+import { KickerTracker, buildSurvival, firstTdProbability, pLongestOver, survivalAt } from "./batchB";
+import { medianLongest } from "./frozen";
 import { intRate, oppIntFactor } from "./extras";
 import type { Snapshot } from "./engine";
 import type { LiveProjection } from "./live";
@@ -116,10 +119,11 @@ describe("touchdown markets (v1.2)", () => {
       return o;
     };
     const current = loadFrozenModel().file;
-    expect(current.modelVersion).toBe("v1.3.0");
+    expect(current.modelVersion).toBe("v1.4.0");
     expect(current.td?.validation.length).toBe(4);
-    expect(strip(current, "td", "extras")).toEqual(strip(frozenV11));
-    expect(strip(current, "extras")).toEqual(strip(frozenV12));
+    expect(strip(current, "td", "extras", "batchB")).toEqual(strip(frozenV11));
+    expect(strip(current, "extras", "batchB")).toEqual(strip(frozenV12));
+    expect(strip(current, "batchB")).toEqual(strip(frozenV13));
   });
 });
 
@@ -149,5 +153,48 @@ describe("v1.3 markets", () => {
     expect(PROP_MARKET_KEYS.rushRecYards).toBe("player_rush_rec_yards");
     expect(MARKET_BY_KEY.player_interceptions).toBe("interceptions");
     expect(MARKET_BY_KEY.player_two_plus_tds).toBe("twoPlusTds");
+  });
+});
+
+describe("v1.4 markets", () => {
+  const model = loadFrozenModel();
+
+  it("survival curves interpolate and never hit zero", () => {
+    const c = buildSurvival([0, 5, 10, 15, 20, 25, 30, 35, 40, 80]);
+    expect(survivalAt(c, -1)).toBe(1);
+    expect(survivalAt(c, 12)).toBeGreaterThan(survivalAt(c, 30));
+    expect(survivalAt(c, 500)).toBeGreaterThan(0);
+  });
+
+  it("longest-play odds rise with touches and with yards per touch", () => {
+    const c = buildSurvival(Array.from({ length: 500 }, (_, i) => (i % 50) * 1.2));
+    expect(pLongestOver(6, c, c.mean, 25.5)).toBeGreaterThan(pLongestOver(3, c, c.mean, 25.5));
+    expect(pLongestOver(4, c, c.mean * 1.5, 25.5)).toBeGreaterThan(pLongestOver(4, c, c.mean, 25.5));
+  });
+
+  it("the frozen model prices longest plays with aux inputs and medians move with volume", () => {
+    const low = { touches: 2, ypp: 10, position: "WR" };
+    const high = { touches: 7, ypp: 13, position: "WR" };
+    expect(model.pOver("longestReception", 0, 20.5, high)).toBeGreaterThan(model.pOver("longestReception", 0, 20.5, low));
+    expect(medianLongest(model, "longestReception", high)).toBeGreaterThan(medianLongest(model, "longestReception", low));
+    expect(() => model.pOver("longestRush", 0, 10.5)).toThrow();
+  });
+
+  it("prices kickers and first TD", () => {
+    expect(model.pOver("fgMade", 2.0, 1.5)).toBeGreaterThan(model.pOver("fgMade", 1.2, 1.5));
+    expect(model.pOver("kickingPoints", 9, 7.5)).toBeGreaterThan(model.pOver("kickingPoints", 6, 7.5));
+    expect(model.pOver("firstTd", 0.2, 0.5)).toBeGreaterThan(model.pOver("firstTd", 0.05, 0.5));
+  });
+
+  it("first-TD probability is the player's share of game TDs times P(any TD)", () => {
+    expect(firstTdProbability(0.5, 5)).toBeCloseTo((0.5 / 5) * (1 - Math.exp(-5)), 12);
+    expect(firstTdProbability(0.5, 0)).toBe(0);
+  });
+
+  it("the kicker tracker shrinks toward the league and decays", () => {
+    const t = new KickerTracker(8, 4);
+    t.fold([{ playerId: "a", fgMade: 1 }, { playerId: "b", fgMade: 3 }]);
+    expect(t.recentFgm("b")).toBeGreaterThan(t.recentFgm("a"));
+    expect(t.recentFgm("new")).toBeCloseTo(2, 12); // league mean of what's been seen
   });
 });

@@ -1,7 +1,7 @@
 # NFL player-prop projection model (research, 2026-09-23)
 
 > Status: **experimental, validated against outcomes, not yet priced against
-> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.3.0 (13 markets). Served
+> sportsbook lines.** Model: `src/lib/nfl/props/`, frozen as v1.4.0 (19 markets). Served
 > read-only at `/nfl/props` from forward-captured `PredictionRun`s
 > (`npm run capture:nfl:props`). No odds provider, Discord, cron or schema
 > change. Follows the game-line result in `NFL-PBP-FEASIBILITY.md`: sides are
@@ -241,6 +241,66 @@ along with v1.2 ⊃ v1.1). The board now has 13 market tabs. Combos show their
 parts (rush yds + rec yds = total), interceptions show attempts × INT rate
 × defense factor, and 2+ TDs uses the yes/no layout.
 
+## v1.4 (2026-09-23): longest plays, kickers, first TD scorer — all six kept
+
+New data: `src/lib/nfl/pbp/playExtras.ts` makes one streaming pass over each
+season's raw play-by-play (column allow-list enforced) for every single-play
+gain, each player-game's longest reception / rush / completion, and each
+game's first TD scorer. That includes defensive and return TDs, which beat
+every offensive player to it. Kickers come from the weekly box score
+(`kickerGames.ts`). Script: `npm run experiment:nfl:props:batchb` (`batchB.ts`).
+
+- **Longest reception / rush / completion:**
+  P(longest > L) = 1 − exp(−μ · S(L)). μ = the frozen model's projected
+  receptions / carries / completions. S = the position's single-play
+  survival curve from train (reception mean: WR 13.0, TE 11.1, RB 8.1 yds),
+  stretched by the player's shrunk yards per touch. The board shows the
+  **median** longest: on longest rush, the *mean* has higher error than the
+  season average (9.5 vs 8.8 yds) because longest plays are right-skewed,
+  but the probability at the line, which is what prices a bet, beats it.
+- **Kickers:** FG made ~ Poisson, λ = 2.083 − 0.390·implied pts + 3.200·
+  projected team TDs + 0.478·recent FGM (half-life 32 games, 2 prior games).
+  Substituting the TD model's linear dependence on implied points, the net
+  is +0.025 per implied point, −0.14 per recent team TD/game (TD-heavy teams
+  kick fewer FGs), plus the kicker's own rate. XP = 0.937 × team TDs.
+  Kicking points = 3λ + XP, with its own empirical distribution.
+- **First TD scorer:** P = (λ_player / λ_game)·(1 − e^(−λ_game)), where
+  λ_game = both teams' projected TDs + δ = 0.2 non-offensive TDs/game (fit
+  on train).
+
+Validation 2020–2022 vs. season average (95% week-block CI):
+
+| Market | n | Metric model / season / L5 | Δ vs season |
+|---|---|---|---|
+| Longest reception | 7,033 | Brier 0.2228 / 0.2342 / 0.2317 | −0.0114 [−0.0137, −0.0093] |
+| Longest rush | 2,892 | Brier 0.2148 / 0.2244 / 0.2216 | −0.0095 [−0.0128, −0.0063] |
+| Longest completion | 1,361 | Brier 0.2215 / 0.2261 / 0.2286 | −0.0046 [−0.0075, −0.0020] |
+| FG made o0.5 / o1.5 / o2.5 | 1,557 | log loss 0.462 / 0.688 / 0.533 vs 0.537 / 0.724 / 0.577 | −0.075 / −0.036 / −0.045, all exclude 0 |
+| Kicking points | 1,557 | Brier 0.2254 / 0.2357 / 0.2276 | −0.0103 [−0.0153, −0.0059] |
+| First TD scorer | 8,818 | log loss 0.2329 / 0.2400 / 0.2397 | −0.0071 [−0.0098, −0.0044] |
+
+**Weakest two:** longest completion and kicking points cleared validation,
+but their train-window edge was not significant (−0.0012 [−0.0031, +0.0007]
+and −0.0007 [−0.0047, +0.0034]). They are kept under the rule, and flagged
+as the first candidates to drop if the sealed test window disagrees.
+
+**Frozen as v1.4.0 = v1.3.0 byte-for-byte + a `batchB` block** (tested:
+v1.4 ⊃ v1.3 ⊃ v1.2 ⊃ v1.1). Longest-play pricing needs more than one mean,
+so `pOver` takes `aux` = {expected touches, yards per touch, position},
+stored with each captured prediction.
+
+### Live-serving fix found while shipping v1.4: roster status
+
+The FG tab showed 47 kickers for 32 teams. Candidates were "players whose
+last game was for a team playing this week", which keeps cut and
+injured-reserve players (IR players aren't on the weekly injury report).
+The live projector now reads nflverse's weekly roster for the target week
+(falling back to the latest published week, with a warning) and requires
+status ACT. A player who changed teams is projected for his **new** team,
+carrying his own usage history. That's how team changers appear in the
+validated population too. Week 3: 32 kickers for 32 teams, and 54
+exclusions (28 not on a roster, 12 reserve, 12 practice squad, 2 other).
+
 ## What this does not show
 
 - **It is not evidence of edge against sportsbooks.** Books are far better
@@ -298,9 +358,7 @@ parts (rush yds + rec yds = total), interceptions show attempts × INT rate
 3. **Grading job:** settle each stored projection against the nflverse box
    score after the week, and track calibration and CLV forward.
 4. **Coverage roadmap**, each market through the same gate:
-   - *Batch B:* longest reception / rush / completion (extreme-value, from
-     play-by-play); kicker props (FG made, kicking points; box score has
-     `fg_made`, `pat_made`); first TD scorer.
+   - ~~*Batch B:* longest plays, kickers, first TD scorer~~ (done, v1.4).
    - *Batch C:* defensive props: sacks, tackles + assists, needing defensive
      snap counts and the box score's `def_*` columns.
    - The QB quality differential, once 2025+ depth charts give a pregame

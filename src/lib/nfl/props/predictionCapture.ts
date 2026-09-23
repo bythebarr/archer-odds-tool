@@ -33,6 +33,12 @@ export const PROP_MARKET_KEYS: Record<ServedMarket, string> = {
   passRushYards: "player_pass_rush_yards",
   interceptions: "player_interceptions",
   twoPlusTds: "player_two_plus_tds",
+  firstTd: "player_first_td",
+  longestReception: "player_longest_reception",
+  longestRush: "player_longest_rush",
+  longestCompletion: "player_longest_completion",
+  fgMade: "player_field_goals_made",
+  kickingPoints: "player_kicking_points",
 };
 
 export const MARKET_BY_KEY = Object.fromEntries(Object.entries(PROP_MARKET_KEYS).map(([m, k]) => [k, m])) as Record<string, ServedMarket>;
@@ -64,6 +70,7 @@ export function buildNflPropsPredictionRun(live: LiveProjection, model: FrozenMo
           efficiencyLabel: row.breakdown.efficiencyLabel,
           ...(row.breakdown.parts ? { parts: row.breakdown.parts.map((x) => ({ label: x.label, value: r4(x.value) })) } : {}),
         },
+        ...(row.aux ? { aux: { touches: r4(row.aux.touches), ypp: r4(row.aux.ypp), position: row.aux.position } } : {}),
         seasonAvg: r4(row.seasonAvg),
         l5Avg: r4(row.l5Avg),
       },
@@ -93,7 +100,7 @@ export function buildNflPropsPredictionRun(live: LiveProjection, model: FrozenMo
     generatedAt,
     dataAsOfUtc: generatedAt,
     featureSchemaVersion: NFL_PROPS_FEATURE_SCHEMA_VERSION,
-    calibrationSnapshot: { frozenAt: model.frozenAt, splits: model.splits, validation: model.validation, tdValidation: model.td?.validation ?? [], extraValidation: model.extras?.validation ?? [] } as unknown as JsonValue,
+    calibrationSnapshot: { frozenAt: model.frozenAt, splits: model.splits, validation: model.validation, tdValidation: model.td?.validation ?? [], extraValidation: model.extras?.validation ?? [], batchBValidation: model.batchB?.validation ?? [] } as unknown as JsonValue,
     runMetadata: {
       season: live.season,
       week: live.week,

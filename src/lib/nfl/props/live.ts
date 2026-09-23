@@ -24,7 +24,11 @@ import { loadReleaseCsv, setInProgressSeason } from "../nflverse";
 import { MARKET_FAMILY, type Baseline, type PropFamily } from "./eligibility";
 import { loadInjuryReports, type InjuryIndex } from "./injuries";
 import type { GameContext, PlayerGameKey } from "./engine";
-import { loadFrozenModel, type ServedMarket } from "./frozen";
+import { loadFrozenModel, medianLongest, type PricingAux, type ServedMarket } from "./frozen";
+import { KickerTracker, fgLambda, firstTdProbability, kickingPointsMean } from "./batchB";
+import { loadKickerGames, kickingPoints, type KickerGame } from "./kickerGames";
+import { loadSeasonPlayExtras, type PlayerGameLongest } from "../pbp/playExtras";
+import { impliedTeamPoints } from "./td";
 import { PROP_MARKETS, type PropMarket } from "./model";
 import { PropReplayer, groupWeeks } from "./replay";
 import { interceptionLambda, intRate, oppIntFactor } from "./extras";
@@ -74,6 +78,8 @@ export interface PropProjectionRow {
   injury: InjuryStatus;
   /** Ruled-out teammates whose usage this projection redistributes (v1.1: carries only), e.g. "J. Doe (RB) out". */
   availabilityNote: string | null;
+  /** Pricing inputs for longest-play markets (see `PricingAux`). */
+  aux?: PricingAux;
 }
 
 export interface LiveProjection {
@@ -107,6 +113,22 @@ function upcomingWeek(all: readonly NflGame[], now: Date): UpcomingGame[] {
     .sort((a, b) => (a.kickoffUtc?.getTime() ?? 0) - (b.kickoffUtc?.getTime() ?? 0));
 }
 
+/**
+ * nflverse weekly roster for the target week (or the latest published week before it), keyed by GSIS id.
+ * Returns null — with a warning — if no roster for the season is available, so projections still run.
+ */
+async function weeklyRoster(season: number, week: number, warnings: string[]): Promise<Map<string, { team: string; status: string }> | null> {
+  const rows = await loadReleaseCsv("weekly_rosters", `roster_weekly_${season}.csv.gz`, ["week", "team", "gsis_id", "status", "game_type"] as const);
+  const reg = (rows ?? []).filter((r) => r.game_type === "REG" && Number(r.week) <= week && r.gsis_id);
+  if (reg.length === 0) {
+    warnings.push(`No ${season} weekly roster published — roster-status filtering skipped.`);
+    return null;
+  }
+  const useWeek = Math.max(...reg.map((r) => Number(r.week)));
+  if (useWeek !== week) warnings.push(`Week ${week} roster not published yet — using week ${useWeek} roster statuses.`);
+  return new Map(reg.filter((r) => Number(r.week) === useWeek).map((r) => [r.gsis_id, { team: franchise(r.team), status: r.status }]));
+}
+
 const VOLUME_LABEL: Record<PropFamily, string> = { rec: "team targets", rush: "team carries", pass: "team pass attempts" };
 
 export async function projectUpcomingWeek(
@@ -138,12 +160,48 @@ export async function projectUpcomingWeek(
   for (const wk of weeks) replayer.foldWeek(byWeek.get(wk) ?? [], teamsByWeek.get(wk) ?? [], teamGame);
   const tracker = replayer.tracker;
 
+  // v1.4 inputs: longest plays (this season + last) and kickers (full history for the tracker)
+  const bb = model.file.batchB;
+  const longest = new Map<string, PlayerGameLongest>();
+  const kickerHistory = new Map<string, KickerGame[]>();
+  const kickerTracker = bb ? new KickerTracker(bb.kick.params.halfLife, bb.kick.params.priorGames) : null;
+  const firstTdScorer = new Map<string, string | null>();
+  if (bb) {
+    for (const s of [season - 1, season]) {
+      try {
+        const x = await loadSeasonPlayExtras(s);
+        for (const l of x.longest) longest.set(`${l.gameId}|${l.playerId}`, l);
+        for (const f of x.firstTds) firstTdScorer.set(f.gameId, f.playerId);
+      } catch {
+        warnings.push(`play-by-play for ${s} unavailable — longest-play season averages may be missing`);
+      }
+    }
+    const kickers = (await loadKickerGames(FIRST_SEASON, season)).filter((k) => k.season < season || k.week < week);
+    const kWeeks = new Map<string, KickerGame[]>();
+    for (const k of kickers) (kWeeks.get(`${k.season}_${String(k.week).padStart(2, "0")}`) ?? kWeeks.set(`${k.season}_${String(k.week).padStart(2, "0")}`, []).get(`${k.season}_${String(k.week).padStart(2, "0")}`)!).push(k);
+    for (const wk of [...kWeeks.keys()].sort()) {
+      kickerTracker!.fold(kWeeks.get(wk)!);
+      for (const k of kWeeks.get(wk)!) (kickerHistory.get(k.playerId) ?? kickerHistory.set(k.playerId, []).get(k.playerId)!).push(k);
+    }
+  }
+
   // 2. candidates
   const injuryIndex = opts.injuryIndex ?? (await loadInjuryReports(season, season));
   const injuries = new Map((injuryIndex.get(`${season}|${week}`) ?? []).map((e) => [e.playerId, e.status as string]));
   const headshots = new Map(
     ((await loadReleaseCsv("players", "players.csv", ["gsis_id", "headshot"] as const)) ?? []).filter((p) => p.headshot && p.headshot !== "NA").map((p) => [p.gsis_id, p.headshot])
   );
+  // Current roster status: a player's last game being for a team doesn't mean he's still there. Injured-reserve
+  // players aren't on the weekly injury report, and cut players aren't anywhere. Require ACT on this week's roster.
+  const roster = await weeklyRoster(season, week, warnings);
+  const rosterBlock = (playerId: string): string | null => {
+    if (!roster) return null;
+    const r = roster.get(playerId);
+    if (!r) return "Not on a current roster";
+    return r.status === "ACT" ? null : `Roster status: ${r.status}`;
+  };
+  /** The team a player is on now: his current roster team, else the team of his last game. */
+  const currentTeam = (playerId: string, lastTeam: string) => roster?.get(playerId)?.team ?? lastTeam;
   const teamGameMap = new Map<string, UpcomingGame>();
   for (const g of games) {
     teamGameMap.set(g.home, g);
@@ -152,8 +210,11 @@ export async function projectUpcomingWeek(
   const rows: PropProjectionRow[] = [];
   const excluded: LiveProjection["excluded"] = [];
   for (const playerId of [...tracker.players()]) {
-    const last = tracker.lastGame(playerId)!;
-    if (last.season < season - 1) continue;
+    const lastPlayed = tracker.lastGame(playerId)!;
+    if (lastPlayed.season < season - 1) continue;
+    // A player who changed teams is projected for his new team, carrying his own usage history
+    // (the validated population includes team changers the same way).
+    const last = { ...lastPlayed, team: currentTeam(playerId, lastPlayed.team) };
     const game = teamGameMap.get(last.team);
     if (!game) continue;
     const opp = game.home === last.team ? game.away : game.home;
@@ -164,6 +225,11 @@ export async function projectUpcomingWeek(
     const status = injuries.get(playerId);
     if (status === "Out" || status === "Doubtful") {
       excluded.push({ name: last.name, team: last.team, reason: `Injury report: ${status}` });
+      continue;
+    }
+    const blocked = rosterBlock(playerId);
+    if (blocked) {
+      excluded.push({ name: last.name, team: last.team, reason: blocked });
       continue;
     }
 
@@ -300,6 +366,115 @@ export async function projectUpcomingWeek(
           availabilityNote: null,
         });
       }
+    }
+
+    // v1.4: longest plays and first TD scorer
+    if (bb) {
+      const cur = v.history.filter((g) => g.season === season);
+      const ref = cur.length ? cur : v.history.filter((g) => g.season === season - 1);
+      const l5 = v.history.slice(-5);
+      const longestOf = (g: PlayerGame, f: (l: PlayerGameLongest) => number) => {
+        const l = longest.get(`${g.gameId}|${g.playerId}`);
+        return l ? f(l) : 0;
+      };
+      const rateL = (gs: readonly PlayerGame[], f: (l: PlayerGameLongest) => number) => {
+        // only games whose play-by-play we loaded count toward the average
+        const known = gs.filter((g) => g.season >= season - 1);
+        return known.length ? known.reduce((acc, g) => acc + longestOf(g, f), 0) / known.length : null;
+      };
+      const defs = [
+        { market: "longestReception" as const, fam: "rec" as const, touches: v.proj.receptions, ypp: v.base.catchRate > 0 ? v.base.ypt / v.base.catchRate : 0, f: (l: PlayerGameLongest) => l.longestReception, label: "receptions", yppLabel: "yds / catch" },
+        { market: "longestRush" as const, fam: "rush" as const, touches: v.proj.rushAttempts, ypp: v.base.ypc, f: (l: PlayerGameLongest) => l.longestRush, label: "carries", yppLabel: "yds / carry" },
+        { market: "longestCompletion" as const, fam: "pass" as const, touches: v.proj.completions, ypp: v.base.cmpRate > 0 ? v.base.ypa / v.base.cmpRate : 0, f: (l: PlayerGameLongest) => l.longestCompletion, label: "completions", yppLabel: "yds / completion" },
+      ];
+      for (const d of defs) {
+        if (!families.includes(d.fam)) continue;
+        const aux: PricingAux = { touches: d.touches, ypp: d.ypp, position: last.position };
+        rows.push({
+          ...common,
+          market: d.market,
+          mean: medianLongest(model, d.market, aux),
+          breakdown: { teamVolume: d.touches, share: 0, efficiency: d.ypp, oppFactor: null, volumeLabel: d.label, efficiencyLabel: d.yppLabel },
+          seasonAvg: rateL(ref, d.f),
+          l5Avg: rateL(l5, d.f),
+          availabilityNote: null,
+          aux,
+        });
+      }
+      if (v.td && (families.includes("rec") || families.includes("rush"))) {
+        const oppTds = replayer.teamView(opp, last.team, game.gameId, season, week, ctx.get(game.gameId)).teamTds ?? 2.4;
+        const gameLam = v.td.teamTds + oppTds + bb.firstTd.delta;
+        const firsts = (gs: readonly PlayerGame[]) => {
+          const known = gs.filter((g) => g.season >= season - 1);
+          return known.length ? known.filter((g) => firstTdScorer.get(g.gameId) === g.playerId).length / known.length : null;
+        };
+        rows.push({
+          ...common,
+          market: "firstTd",
+          mean: firstTdProbability(v.td.anytimeLambda, gameLam),
+          breakdown: { teamVolume: gameLam, share: v.td.anytimeLambda / gameLam, efficiency: null, oppFactor: null, volumeLabel: "game TDs", efficiencyLabel: null },
+          seasonAvg: firsts(ref),
+          l5Avg: firsts(l5),
+          availabilityNote: null,
+        });
+      }
+    }
+  }
+
+  // v1.4 kickers: last game for a team playing this week, ≥2 prior games, not ruled out
+  if (bb && kickerTracker) {
+    for (const [kid, hist] of kickerHistory) {
+      const lastKick = hist[hist.length - 1];
+      if (hist.length < 2 || lastKick.season < season - 1) continue;
+      const last = { ...lastKick, team: currentTeam(kid, lastKick.team) };
+      const game = teamGameMap.get(last.team);
+      if (!game) continue;
+      const status = injuries.get(kid);
+      if (status === "Out" || status === "Doubtful") {
+        excluded.push({ name: last.name, team: last.team, reason: `Injury report: ${status}` });
+        continue;
+      }
+      const blocked = rosterBlock(kid);
+      if (blocked) {
+        excluded.push({ name: last.name, team: last.team, reason: blocked });
+        continue;
+      }
+      const opp = game.home === last.team ? game.away : game.home;
+      const tv = replayer.teamView(last.team, opp, game.gameId, season, week, ctx.get(game.gameId));
+      const teamTds = tv.teamTds ?? 2.4;
+      const implied = impliedTeamPoints(tv.snap);
+      const recent = kickerTracker.recentFgm(kid);
+      const lam = fgLambda(bb.kick.params, implied, teamTds, recent);
+      const cur = hist.filter((g) => g.season === season);
+      const ref = cur.length ? cur : hist.filter((g) => g.season === season - 1);
+      const l5 = hist.slice(-5);
+      const avgK = (gs: readonly KickerGame[], f: (g: KickerGame) => number) => (gs.length ? gs.reduce((acc, g) => acc + f(g), 0) / gs.length : null);
+      const common = {
+        game, playerId: kid, name: last.name, position: "K", headshotUrl: headshots.get(kid) ?? null, team: last.team, opp,
+        priorGames: hist.length, injury: (status === "Questionable" ? "Questionable" : null) as InjuryStatus, availabilityNote: null,
+      };
+      rows.push({
+        ...common,
+        market: "fgMade",
+        mean: lam,
+        breakdown: {
+          teamVolume: 0, share: 0, efficiency: null, oppFactor: null, volumeLabel: "", efficiencyLabel: null,
+          parts: [{ label: "implied pts", value: implied }, { label: "team TDs", value: teamTds }, { label: "recent FGM", value: recent }],
+        },
+        seasonAvg: avgK(ref, (g) => g.fgMade),
+        l5Avg: avgK(l5, (g) => g.fgMade),
+      });
+      rows.push({
+        ...common,
+        market: "kickingPoints",
+        mean: kickingPointsMean(bb.kick.params, lam, teamTds),
+        breakdown: {
+          teamVolume: 0, share: 0, efficiency: null, oppFactor: null, volumeLabel: "", efficiencyLabel: null,
+          parts: [{ label: "3 × exp. FGs", value: 3 * lam }, { label: "exp. XPs", value: bb.kick.params.xpPerTd * teamTds }],
+        },
+        seasonAvg: avgK(ref, kickingPoints),
+        l5Avg: avgK(l5, kickingPoints),
+      });
     }
   }
 

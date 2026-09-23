@@ -104,6 +104,16 @@ export class PropReplayer {
     };
   }
 
+  /**
+   * Team-level pre-week view for any team in a game (kickers, opponents): the
+   * frozen team-state snapshot plus the TD model's projected team TDs.
+   */
+  teamView(team: string, opp: string, gameId: string, season: number, week: number, gctx: GameContext | undefined): { snap: Snapshot; teamTds: number | null } {
+    const key: PlayerGameKey = { gameId, season, week, team, opp, playerId: `team:${team}`, name: team, position: "QB" };
+    const snap = this.states.team.snapshot(key, gctx, weekKeyOf(season, week));
+    return { snap, teamTds: this.model.td ? projectTeamTds(snap, this.model.td.params) : null };
+  }
+
   foldWeek(wp: readonly PlayerGame[], wt: readonly TeamGameVolume[], teamGame: ReadonlyMap<string, TeamGameVolume>): void {
     for (const s of Object.values(this.states)) s.foldWeek(wp, wt, teamGame);
     this.tdState?.foldWeek(wp, wt, teamGame);
@@ -138,13 +148,19 @@ export function replayHistory(
   teams: readonly TeamGameVolume[],
   ctx: ReadonlyMap<string, GameContext>,
   injuries: InjuryIndex,
-  onView?: (pg: PlayerGame, view: PlayerView) => void
+  onView?: (pg: PlayerGame, view: PlayerView) => void,
+  /** Called once per week with the pre-week replayer, after the week's views and before it folds. */
+  onWeek?: (replayer: PropReplayer, season: number, week: number) => void
 ): PropReplayer {
   const r = new PropReplayer(model);
   const { weeks, byWeek, teamsByWeek, teamGame } = groupWeeks(players, teams);
   for (const wk of weeks) {
     const wp = byWeek.get(wk) ?? [];
     if (onView) for (const pg of wp) onView(pg, r.view(pg, ctx.get(pg.gameId), injuries));
+    if (onWeek) {
+      const [season, week] = wk.split("_").map(Number);
+      onWeek(r, season, week);
+    }
     r.foldWeek(wp, teamsByWeek.get(wk) ?? [], teamGame);
   }
   return r;

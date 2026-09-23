@@ -5,7 +5,7 @@
  * de-vigged market probability, fair odds, EV — lives here and never knows
  * where the line came from.
  */
-import type { FrozenModel, ServedMarket } from "./frozen";
+import type { FrozenModel, PricingAux, ServedMarket } from "./frozen";
 
 export interface PropLineQuote {
   playerName: string;
@@ -43,8 +43,13 @@ export function probToAmerican(p: number): number {
   return c >= 0.5 ? -Math.round((100 * c) / (1 - c)) : Math.round((100 * (1 - c)) / c);
 }
 
-export function priceProp(model: FrozenModel, mean: number, quote: Pick<PropLineQuote, "market" | "line" | "overAmerican" | "underAmerican">): PricedProp {
-  const pOver = model.pOver(quote.market, mean, quote.line);
+export function priceProp(
+  model: FrozenModel,
+  mean: number,
+  quote: Pick<PropLineQuote, "market" | "line" | "overAmerican" | "underAmerican">,
+  aux?: PricingAux
+): PricedProp {
+  const pOver = model.pOver(quote.market, mean, quote.line, aux);
   const pUnder = 1 - pOver;
   const { overAmerican: o, underAmerican: u } = quote;
   const marketPOver = o !== null && u !== null ? impliedProb(o) / (impliedProb(o) + impliedProb(u)) : null;

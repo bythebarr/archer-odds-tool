@@ -31,6 +31,7 @@
     "experiment:nfl:props": "tsx scripts/experiment-nfl-props.ts",
     "experiment:nfl:props:td": "tsx scripts/experiment-nfl-props-td.ts",
     "experiment:nfl:props:extras": "tsx scripts/experiment-nfl-props-extras.ts",
+    "experiment:nfl:props:batchb": "tsx scripts/experiment-nfl-props-batchb.ts",
     "backtest:all": "tsx scripts/backtest-all.ts",
     "backtest:props": "tsx scripts/backtest-props-edge.ts",
     "calibrate:pitchers": "tsx scripts/calibrate-pitcher-props.ts",
