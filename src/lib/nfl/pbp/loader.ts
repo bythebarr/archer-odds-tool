@@ -14,19 +14,16 @@
  *
  * Set `NFLVERSE_REFRESH=1` to re-download (e.g. the in-progress season).
  */
-import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createGunzip } from "node:zlib";
-import { CsvStreamParser } from "./csv";
+import { NFLVERSE_CACHE_DIR, downloadReleaseAsset, readManifest, streamCsv, type ManifestEntry } from "../nflverse";
 import { franchise } from "./franchise";
 import type { NflPlay } from "./types";
 
-const RELEASE_BASE = "https://github.com/nflverse/nflverse-data/releases/download/pbp";
 /** Bump when `NflPlay`'s shape or the allow-list changes, so stale reduced caches are ignored. */
 const REDUCED_VERSION = 1;
 
-export const PBP_CACHE_DIR = path.join(process.cwd(), ".cache", "nflverse", "pbp");
+export const PBP_CACHE_DIR = path.join(NFLVERSE_CACHE_DIR, "pbp");
 
 /**
  * The only pbp columns this layer ever reads. `result`, `total`, `spread_line`,
@@ -47,37 +44,8 @@ export const PBP_FORBIDDEN_COLUMNS = ["result", "total", "spread_line", "total_l
 
 type Col = (typeof PBP_ALLOWED_COLUMNS)[number];
 
-interface ManifestEntry {
-  sha256: string;
-  bytes: number;
-  downloadedAt: string;
-}
-
-function manifestPath(): string {
-  return path.join(PBP_CACHE_DIR, "manifest.json");
-}
-
 export function readPbpManifest(): Record<string, ManifestEntry> {
-  const p = manifestPath();
-  return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as Record<string, ManifestEntry>) : {};
-}
-
-async function download(season: number): Promise<string> {
-  const file = `play_by_play_${season}.csv.gz`;
-  const dest = path.join(PBP_CACHE_DIR, file);
-  if (existsSync(dest) && process.env.NFLVERSE_REFRESH !== "1") return dest;
-  const res = await fetch(`${RELEASE_BASE}/${file}`);
-  if (!res.ok) throw new Error(`nflverse pbp ${season}: HTTP ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  writeFileSync(dest, buf);
-  const manifest = readPbpManifest();
-  manifest[file] = {
-    sha256: createHash("sha256").update(buf).digest("hex"),
-    bytes: buf.length,
-    downloadedAt: new Date().toISOString(),
-  };
-  writeFileSync(manifestPath(), JSON.stringify(manifest, null, 2));
-  return dest;
+  return readManifest("pbp");
 }
 
 const num = (v: string | undefined): number | null => {
@@ -143,38 +111,22 @@ export function toPlay(get: (c: Col) => string | undefined): NflPlay | null {
 
 async function parseSeason(gzPath: string): Promise<NflPlay[]> {
   const plays: NflPlay[] = [];
-  let index: Map<Col, number> | null = null;
-  const parser = new CsvStreamParser((row) => {
-    if (!index) {
-      index = new Map();
-      for (const c of PBP_ALLOWED_COLUMNS) {
-        const i = row.indexOf(c);
-        if (i >= 0) index.set(c, i);
-      }
-      return;
-    }
-    const idx = index;
-    const play = toPlay((c) => {
-      const i = idx.get(c);
-      return i === undefined ? undefined : row[i];
-    });
+  const allowed = new Set<string>(PBP_ALLOWED_COLUMNS);
+  await streamCsv(gzPath, (get) => {
+    const play = toPlay((c) => (allowed.has(c) ? get(c) : undefined));
     if (play) plays.push(play);
   });
-  const stream = createReadStream(gzPath).pipe(createGunzip());
-  stream.setEncoding("utf8");
-  for await (const chunk of stream) parser.push(chunk as string);
-  parser.end();
   return plays;
 }
 
 /** Load one season's scrimmage plays, downloading and reducing on first use. */
 export async function loadSeasonPlays(season: number): Promise<NflPlay[]> {
-  mkdirSync(PBP_CACHE_DIR, { recursive: true });
   const reduced = path.join(PBP_CACHE_DIR, `plays_v${REDUCED_VERSION}_${season}.json`);
   if (existsSync(reduced) && process.env.NFLVERSE_REFRESH !== "1") {
     return JSON.parse(readFileSync(reduced, "utf8")) as NflPlay[];
   }
-  const gz = await download(season);
+  const gz = await downloadReleaseAsset("pbp", `play_by_play_${season}.csv.gz`);
+  if (!gz) throw new Error(`nflverse pbp ${season}: not published`);
   const plays = await parseSeason(gz);
   writeFileSync(reduced, JSON.stringify(plays));
   return plays;
