@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { recordPollLog } from "@/lib/pollingPolicy";
 import { fetchUfcEvents, fetchUpcomingUfcEvents, type CitoBoutFighter, type CitoEvent } from "./citoApiClient";
 import { parseStatLine } from "./citoStats";
 import type { Prisma } from "@/generated/prisma/client";

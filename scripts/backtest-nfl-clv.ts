@@ -1,4 +1,4 @@
-import { fetchNflGames, type NflGame } from "@/lib/nfl/games";
+import { fetchNflGames } from "@/lib/nfl/games";
 import { NflElo } from "@/lib/nfl/elo";
 
 /**

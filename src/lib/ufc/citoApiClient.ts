@@ -182,14 +182,3 @@ export async function fetchUpcomingUfcEvents(
   }
   return { events: data, meta };
 }
-
-/** Single bout's stats, for the rare case a bout needs re-fetching outside a full events listing pass. */
-export async function fetchUfcBoutStats(
-  boutId: string
-): Promise<{ boutStats: CitoStatLine[]; roundStats: CitoStatLine[] }> {
-  const { data } = await citoFetch<{ boutStats: CitoStatLine[]; roundStats: CitoStatLine[] }>(
-    `/ufc/bouts/${boutId}/stats`,
-    {}
-  );
-  return data;
-}

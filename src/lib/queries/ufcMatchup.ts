@@ -193,9 +193,7 @@ export async function getUfcMatchupAsOf(
  * fight already ingested). NOTE: the current backfill (see backfillUfc.ts)
  * only sweeps Cito's /events/recent listing, which covers past events —
  * genuinely upcoming cards (e.g. next weekend's fight) aren't in the DB yet
- * until a separate /events/upcoming ingestion pass is added. Use
- * getUfcMatchupByFighterSlugs below for a hypothetical/upcoming pairing
- * that has no UfcBout row yet.
+ * until a separate /events/upcoming ingestion pass is added.
  */
 export async function getUfcMatchup(boutId: string): Promise<UfcMatchup | null> {
   const bout = await prisma.ufcBout.findUnique({ where: { id: boutId } });
@@ -205,23 +203,6 @@ export async function getUfcMatchup(boutId: string): Promise<UfcMatchup | null> 
     getUfcFightHistory(bout.redCornerFighterId),
     getUfcFightHistory(bout.blueCornerFighterId),
   ]);
-  if (!fighterA || !fighterB) return null;
-
-  return buildMatchup(fighterA, fighterB);
-}
-
-/** Same as getUfcMatchup, but by fighter identity directly — works for a hypothetical or announced-but-not-yet-ingested pairing. */
-export async function getUfcMatchupByFighterSlugs(
-  fighterASlug: string,
-  fighterBSlug: string
-): Promise<UfcMatchup | null> {
-  const [a, b] = await Promise.all([
-    prisma.ufcFighter.findUnique({ where: { citoSlug: fighterASlug } }),
-    prisma.ufcFighter.findUnique({ where: { citoSlug: fighterBSlug } }),
-  ]);
-  if (!a || !b) return null;
-
-  const [fighterA, fighterB] = await Promise.all([getUfcFightHistory(a.id), getUfcFightHistory(b.id)]);
   if (!fighterA || !fighterB) return null;
 
   return buildMatchup(fighterA, fighterB);

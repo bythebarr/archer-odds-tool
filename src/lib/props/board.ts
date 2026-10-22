@@ -14,10 +14,6 @@ export function listPropSports(): SportPropConfig[] {
   return Object.values(PROP_SPORTS);
 }
 
-export function isPropSport(value: string): value is PropSport {
-  return value in PROP_SPORTS;
-}
-
 /**
  * Build the board for one sport/view/date/stat. Generic over the registry —
  * the page and UI never mention a specific sport or view.

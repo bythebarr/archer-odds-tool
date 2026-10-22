@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { RED_CORNER, BLUE_CORNER } from "./UfcWinProbabilityCard";
-import { americanToDecimal, decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
+import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
 import { calculateEv } from "@/lib/odds/devig";
 import type { UfcBoutOddsSummary, UfcCornerBestLine } from "@/lib/queries/ufcOdds";
 

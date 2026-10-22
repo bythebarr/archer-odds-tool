@@ -9,7 +9,6 @@
 import { fetchFootballData, type SoccerMatch } from "./footballData";
 import { SoccerPoisson } from "./poisson";
 import type { CalibrationSample } from "@/lib/engine/calibration";
-import type { SportModel } from "@/lib/engine/types";
 
 /** Seasons with closing odds coverage + enough warm-up depth for the Poisson fit. */
 export const DEFAULT_SEASONS = ["1617", "1718", "1819", "1920", "2021", "2122", "2223", "2324", "2425"];
@@ -52,24 +51,3 @@ export async function collectSoccerSamples({ limit }: { limit: number }): Promis
   }
   return chrono.slice(-limit).reverse();
 }
-
-/**
- * Soccer Poisson goals model. Free-data, public-info — first model to natively price
- * a 3-way market (win/draw/loss). Calibration-validated via `npm run backtest:soccer`;
- * CLV-tested via `npm run backtest:soccer:clv`. Stays SIGNAL-ONLY if it doesn't beat
- * the close, like the rest (see [[models_dont_beat_the_close]]).
- */
-export const SOCCER_MODEL: SportModel = {
-  describes: "Poisson attack/defense goals model → 3-way home/draw/away probabilities",
-  backtest: { unit: "match", collect: collectSoccerSamples },
-  // Baked from `npm run backtest:soccer` (N=12000) after the drawBoost fix — our
-  // best-calibrated model (skill -0.0130), overall gap -0.1pt, refit best-shrink 1.00.
-  // Still CLV-negative (see backtest:soccer:clv). Refresh when the model/params change.
-  calibration: {
-    verdict: "trusted",
-    brier: 0.2368,
-    baseRateBrier: 0.2498,
-    n: 12000,
-    asOf: "2026-07-16",
-  },
-};

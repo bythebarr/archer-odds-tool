@@ -11,7 +11,6 @@
  */
 import { formatEv } from "@/lib/odds/format";
 import { formatAmerican } from "@/lib/odds/americanOdds";
-import { unitsFor } from "@/lib/betting/kelly";
 import type { OddsPlay } from "@/lib/queries/oddsPool";
 import type { UfcBestPlay, UfcFinishLean } from "@/lib/discord/ufcBestPlays";
 

@@ -353,61 +353,6 @@ export async function fetchBulkPlayerProps(sportKey: string): Promise<FetchBulkP
   };
 }
 
-export interface OddsApiScoreEntry {
-  name: string;
-  score: string;
-}
-
-export interface OddsApiScoreResult {
-  id: string;
-  sport_key: string;
-  commence_time: string;
-  completed: boolean;
-  home_team: string;
-  away_team: string;
-  scores: OddsApiScoreEntry[] | null;
-  last_update: string | null;
-}
-
-export interface FetchScoresResult {
-  results: OddsApiScoreResult[];
-  creditsUsed: number | null;
-  creditsRemaining: number | null;
-}
-
-/**
- * Fetches recent/completed results for a sport_key. Costs a flat 2 credits
- * per call regardless of markets/regions (measured live this session — the
- * secondhand doc summary said 1 credit, that was wrong; see the tennis plan
- * doc). `daysFrom` (1-3) controls how far back completed events are
- * included. Coverage is sport-dependent — confirmed live for tennis this
- * session (returns real match data), but the exact shape of a *completed*
- * match's `scores` field is still unverified (zero completed matches seen
- * during a live tournament day) — see tennis/grading.ts's defensive parsing.
- */
-export async function fetchScores(sportKey: string, daysFrom: number): Promise<FetchScoresResult> {
-  const apiKey = oddsApiKey();
-
-  const url = new URL(`${BASE_URL}/sports/${sportKey}/scores`);
-  url.searchParams.set("apiKey", apiKey);
-  url.searchParams.set("daysFrom", String(daysFrom));
-  url.searchParams.set("dateFormat", "iso");
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`The Odds API scores request failed: ${res.status} ${res.statusText} — ${body}`);
-  }
-
-  const results = (await res.json()) as OddsApiScoreResult[];
-
-  return {
-    results,
-    creditsUsed: parseIntHeader(res.headers.get("x-requests-last")),
-    creditsRemaining: parseIntHeader(res.headers.get("x-requests-remaining")),
-  };
-}
-
 function parseIntHeader(value: string | null): number | null {
   if (value === null) return null;
   const parsed = Number.parseInt(value, 10);
