@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTeamGameWithLines } from "@/lib/queries/teamLeagueGames";
+import Link from "next/link";
 import { TeamLeagueGame } from "@/components/TeamLeagueGame";
+import { etDateOf } from "@/lib/dateEt";
 
 /** Shares getTeamGameWithLines's per-request cache() with the page below — same pattern as the MLB/tennis/soccer game pages. */
 export async function generateMetadata({
@@ -38,6 +40,14 @@ export default async function NbaGamePage({
       sport="nba"
       result={result}
       disclaimer="Line-shopping only — the best price per side among bettable books, compared at the consensus number. No model EV for NBA: no model here has been shown to beat a closing line."
+      links={
+        <Link
+          href={`/nba/props?date=${etDateOf(result.game.scheduledStartUtc)}&game=${result.game.id}`}
+          className="font-medium text-primary hover:underline"
+        >
+          Player props for this game →
+        </Link>
+      }
     />
   );
 }

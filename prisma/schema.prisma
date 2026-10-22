@@ -80,6 +80,8 @@ model Team {
   awayGames      Game[]          @relation("AwayTeam")
   outcomes       GameOutcome[]
   playerGameLogs PlayerGameLog[]
+  nbaPlayers     NbaPlayer[]
+  nbaGameLogs    NbaPlayerGameLog[]
 
   @@index([mlbTeamId])
 }
@@ -229,6 +231,9 @@ model Game {
   currentPlayerPropLines CurrentPlayerPropLine[]
   lineupSlots            LineupSlot[]
   weather                GameWeather?
+  nbaGameLogs            NbaPlayerGameLog[]
+  nbaPropSnapshots       NbaPropSnapshot[]
+  currentNbaPropLines    CurrentNbaPropLine[]
 
   @@index([scheduledStartUtc])
   @@index([status])
@@ -468,6 +473,8 @@ model Sportsbook {
   playerPropSnapshots    PlayerPropSnapshot[]
   currentPlayerPropLines CurrentPlayerPropLine[]
   ufcBoutOdds            UfcBoutOdds[]
+  nbaPropSnapshots       NbaPropSnapshot[]
+  currentNbaPropLines    CurrentNbaPropLine[]
 }
 
 /// Append-only fact table: every polled price, forever. Source of truth for
@@ -1201,4 +1208,109 @@ model ModelPrediction {
   /// the third expected axis (alongside sport/model on PredictionRun and
   /// event/market/selection above) once a reader is built.
   @@index([scheduledStartUtc])
+}
+
+// ── NBA player props ─────────────────────────────────────────────────────────
+// Separate from the MLB prop tables (keyed by MlbPlayer) rather than bolted on:
+// the identity source differs (ESPN athlete ids, not MLB person ids) and so do
+// the stats. See docs/architecture/nba-props.md.
+
+/// An NBA player, keyed by ESPN athlete id — ESPN's free box scores are the
+/// only identity and stat source, so they own the key. Upserted as box scores
+/// are ingested; prop odds match onto these rows by normalized name.
+model NbaPlayer {
+  id            String  @id @default(cuid())
+  espnAthleteId String  @unique
+  fullName      String
+  headshotUrl   String?
+  /// The team from the player's most recent box score.
+  teamId        String?
+  team          Team?   @relation(fields: [teamId], references: [id])
+
+  gameLogs         NbaPlayerGameLog[]
+  propSnapshots    NbaPropSnapshot[]
+  currentPropLines CurrentNbaPropLine[]
+}
+
+/// One row per player per game played (DNPs are not stored — books void a
+/// prop on a player who doesn't play, so a DNP is not a miss).
+model NbaPlayerGameLog {
+  id          String    @id @default(cuid())
+  gameId      String
+  game        Game      @relation(fields: [gameId], references: [id])
+  /// Denormalized off Game.scheduledStartUtc, as PlayerGameLog does.
+  gameDate    DateTime
+  season      Int
+  nbaPlayerId String
+  nbaPlayer   NbaPlayer @relation(fields: [nbaPlayerId], references: [id])
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id])
+  isHome      Boolean
+  starter     Boolean
+  minutes     Int
+  points      Int
+  rebounds    Int
+  assists     Int
+  threesMade  Int
+  steals      Int
+  blocks      Int
+  turnovers   Int
+
+  @@unique([nbaPlayerId, gameId])
+  @@index([nbaPlayerId, gameDate])
+  @@index([gameId])
+}
+
+/// The prop markets we can grade against NbaPlayerGameLog. Combos are sums of
+/// logged columns, so they cost no extra ingestion.
+enum NbaPropStat {
+  points
+  rebounds
+  assists
+  threes
+  steals
+  blocks
+  pointsReboundsAssists
+  pointsRebounds
+  pointsAssists
+  reboundsAssists
+}
+
+/// Append-only NBA prop prices — PlayerPropSnapshot's shape, keyed to NbaPlayer.
+model NbaPropSnapshot {
+  id            String      @id @default(cuid())
+  gameId        String
+  game          Game        @relation(fields: [gameId], references: [id])
+  nbaPlayerId   String
+  nbaPlayer     NbaPlayer   @relation(fields: [nbaPlayerId], references: [id])
+  bookKey       String
+  book          Sportsbook  @relation(fields: [bookKey], references: [key])
+  stat          NbaPropStat
+  side          Side
+  point         Float
+  priceAmerican Int
+  polledAt      DateTime    @default(now())
+
+  @@index([gameId, nbaPlayerId, stat, bookKey, polledAt])
+}
+
+/// The latest price per (game, player, book, stat, side, point). Rows a poll
+/// didn't refresh are deleted at the end of that poll, so this holds only what
+/// books are hanging right now — a moved line doesn't linger as a stale rung.
+model CurrentNbaPropLine {
+  id            String      @id @default(cuid())
+  gameId        String
+  game          Game        @relation(fields: [gameId], references: [id])
+  nbaPlayerId   String
+  nbaPlayer     NbaPlayer   @relation(fields: [nbaPlayerId], references: [id])
+  bookKey       String
+  book          Sportsbook  @relation(fields: [bookKey], references: [key])
+  stat          NbaPropStat
+  side          Side
+  point         Float
+  priceAmerican Int
+  polledAt      DateTime
+
+  @@unique([gameId, nbaPlayerId, bookKey, stat, side, point])
+  @@index([gameId])
 }

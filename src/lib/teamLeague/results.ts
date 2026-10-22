@@ -49,7 +49,7 @@ export function lookbackDatesEt(today: Date, days: number = LOOKBACK_DAYS): stri
 }
 
 /** Finds the Game a completed ESPN result refers to — same teams, same ET day. */
-async function findGameForResult(league: TeamLeague, result: EspnTeamResult) {
+export async function findGameForResult(league: TeamLeague, result: EspnTeamResult) {
   const home = league.lookupTeam(result.homeName);
   const away = league.lookupTeam(result.awayName);
   if (!home || !away) return null;

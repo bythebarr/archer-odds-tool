@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { TeamGameWithLines } from "@/lib/queries/teamLeagueGames";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { TeamGameLinesView } from "@/components/TeamGameLinesView";
@@ -9,10 +10,13 @@ export function TeamLeagueGame({
   sport,
   result,
   disclaimer,
+  links,
 }: {
   sport: TeamLeagueSport;
   result: TeamGameWithLines;
   disclaimer: string;
+  /** League-specific links under the header, e.g. NBA's props for this game. */
+  links?: ReactNode;
 }) {
   const { game, lines } = result;
 
@@ -44,6 +48,7 @@ export function TeamLeagueGame({
         }).format(game.scheduledStartUtc)}{" "}
         ET · {game.status}
       </p>
+      {links && <div className="mt-2 text-sm">{links}</div>}
 
       <div className="mt-8">
         <TeamGameLinesView sport={sport} game={game} lines={lines} disclaimer={disclaimer} />

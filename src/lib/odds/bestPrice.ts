@@ -4,8 +4,15 @@ import { BETTABLE_BOOK_KEYS } from "@/lib/odds/bookAllowlist";
 
 const BETTABLE = new Set<string>(BETTABLE_BOOK_KEYS);
 
+/** The fields line shopping needs — satisfied by game lines and player-prop lines alike. */
+export interface PricedLine {
+  bookKey: string;
+  point: number | null;
+  priceAmerican: number;
+}
+
 /** True when a member can actually bet this book — Pinnacle prices, but is never offered as a best line. */
-function isBettableBook(bookKey: string): boolean {
+export function isBettableBook(bookKey: string): boolean {
   return BETTABLE.has(bookKey);
 }
 
@@ -14,7 +21,7 @@ function isBettableBook(bookKey: string): boolean {
  * points (moneyline). Ties go to the number whose best price is higher, so the
  * pick is deterministic rather than insertion-order.
  */
-function consensusPoint(lines: GameLineRow[]): number | null {
+export function consensusPoint(lines: PricedLine[]): number | null {
   const byPoint = new Map<number, { count: number; bestDecimal: number }>();
   for (const line of lines) {
     if (line.point === null) continue;
@@ -42,11 +49,14 @@ function consensusPoint(lines: GameLineRow[]): number | null {
  * price is only comparable at the same number: -3.5 at -105 is not "better" than
  * -3 at -115 in any way a single sort can decide, so mixing points would crown
  * whichever book hung the worse number at the friendlier price.
+ *
+ * `atPoint` overrides the consensus — for a two-sided market (a prop's Over and
+ * Under) the caller picks one number for both sides so they describe one line.
  */
-export function bestBettableLine(lines: GameLineRow[]): GameLineRow | null {
+export function bestBettableLine<T extends PricedLine>(lines: T[], atPoint?: number | null): T | null {
   const bettable = lines.filter((l) => isBettableBook(l.bookKey));
-  const point = consensusPoint(bettable);
-  let best: GameLineRow | null = null;
+  const point = atPoint !== undefined ? atPoint : consensusPoint(bettable);
+  let best: T | null = null;
   for (const line of bettable) {
     if (point !== null && line.point !== point) continue;
     if (!best || americanToDecimal(line.priceAmerican) > americanToDecimal(best.priceAmerican)) best = line;

@@ -11,6 +11,23 @@ import { syncAndGradeTeamLeagueResults } from "./results";
 import type { TeamLeague } from "./league";
 
 /**
+ * A league-specific job that rides an existing tick — NBA props ride the odds
+ * poll, NBA game logs ride the results sync — so a new data feed doesn't need
+ * its own cron entry. It runs after the main job succeeds, owns its own PollLog
+ * row, and its outcome (or its error) lands in the response under `also`.
+ */
+export type RideAlongJob = () => Promise<unknown>;
+
+async function runRideAlong(job: RideAlongJob | undefined): Promise<{ also?: unknown }> {
+  if (!job) return {};
+  try {
+    return { also: await job() };
+  } catch (error) {
+    return { also: { status: "error", error: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)) } };
+  }
+}
+
+/**
  * Odds poll on the conservative fixed-cadence policy (tennis/soccer's), not MLB's
  * tiered near-first-pitch throttle. `minIntervalMinutes` is the floor between
  * polls; the cron schedule decides when ticks actually arrive.
@@ -18,7 +35,8 @@ import type { TeamLeague } from "./league";
 export async function handleTeamLeagueOddsPoll(
   request: Request,
   league: TeamLeague,
-  minIntervalMinutes: number
+  minIntervalMinutes: number,
+  afterPoll?: RideAlongJob
 ): Promise<Response> {
   const authError = checkCronAuth(request);
   if (authError) return authError;
@@ -45,8 +63,10 @@ export async function handleTeamLeagueOddsPoll(
       { fetched: summary.eventsFetched, stored: summary.snapshotsWritten, rejected: summary.eventsSkippedUnknownTeam },
       { noun: "snapshots" }
     );
+    // After the game lines are stored, so a ride-along keyed on games sees them.
+    const also = await runRideAlong(afterPoll);
     return Response.json(
-      { polled: true, status: outcome.status, ...decision, ...summary },
+      { polled: true, status: outcome.status, ...decision, ...summary, ...also },
       { status: ingestHttpStatus(outcome.status) }
     );
   } catch (error) {
@@ -63,7 +83,11 @@ export async function handleTeamLeagueOddsPoll(
  * free and unkeyed, so this is rate-limited only by its cron schedule. That's
  * also why it re-checks several days rather than just today — see LOOKBACK_DAYS.
  */
-export async function handleTeamLeagueResultsSync(request: Request, league: TeamLeague): Promise<Response> {
+export async function handleTeamLeagueResultsSync(
+  request: Request,
+  league: TeamLeague,
+  afterSync?: RideAlongJob
+): Promise<Response> {
   const authError = checkCronAuth(request);
   if (authError) return authError;
 
@@ -78,8 +102,9 @@ export async function handleTeamLeagueResultsSync(request: Request, league: Team
       { fetched: summary.resultsFetched, stored: summary.gamesGraded },
       { noun: "games graded" }
     );
+    const also = await runRideAlong(afterSync);
     return Response.json(
-      { ok: outcome.status === "ok" || outcome.status === "empty", status: outcome.status, ...summary },
+      { ok: outcome.status === "ok" || outcome.status === "empty", status: outcome.status, ...summary, ...also },
       { status: ingestHttpStatus(outcome.status) }
     );
   } catch (error) {
