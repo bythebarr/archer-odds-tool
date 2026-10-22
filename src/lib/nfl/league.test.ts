@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { nflSeasonOf } from "./ingest";
+import { nflSeasonOf } from "./league";
 
 describe("nflSeasonOf — a season is named for the year it starts", () => {
   it("uses the calendar year for the fall slate", () => {

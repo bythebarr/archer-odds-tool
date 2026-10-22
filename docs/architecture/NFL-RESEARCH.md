@@ -18,7 +18,7 @@ applied to NFL's existing, already-validated Elo model instead of a new one.
 
 - Reads the current week's NFL schedule from ESPN's free, unkeyed scoreboard
   (`src/lib/nfl/research/espnSchedule.ts` — a client separate from
-  production's `src/lib/nfl/espnScoreboard.ts`; see that file's docstring for
+  production's `src/lib/teamLeague/espnScoreboard.ts`; see that file's docstring for
   why).
 - Reconstructs each of the 32 teams' Elo rating strictly as of the current
   instant, by replaying nflverse's free historical game log
@@ -176,7 +176,7 @@ settlement record (not built in this task — mirrors CFB's own deferred
 game final, a later job can look up the corresponding `ModelPrediction` rows
 by `eventRef` and write a settlement row (final score, which side actually
 won) WITHOUT touching the original, frozen prediction rows at all. This
-page's own production sibling (`src/lib/nfl/results.ts`) already has a
+page's own production sibling (`src/lib/teamLeague/results.ts`) already has a
 working, tested ESPN-results pattern to build that job from — reuse, not a
 new integration.
 

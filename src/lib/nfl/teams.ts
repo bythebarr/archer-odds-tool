@@ -16,11 +16,9 @@
  * rename since 2016: Washington in 2020, one relocation: the 2020 Raiders), and
  * because the alternative is storing another league's games as NFL.
  */
+import { createTeamLookup, type LeagueTeamInfo } from "@/lib/teamLeague/league";
 
-export interface NflTeamInfo {
-  /** Full name as books and the feed render it, e.g. "Kansas City Chiefs". */
-  name: string;
-  abbreviation: string;
+export interface NflTeamInfo extends LeagueTeamInfo {
   conference: "AFC" | "NFC";
   division: "East" | "North" | "South" | "West";
 }
@@ -60,23 +58,5 @@ export const NFL_TEAMS: NflTeamInfo[] = [
   { name: "Seattle Seahawks", abbreviation: "SEA", conference: "NFC", division: "West" },
 ];
 
-/**
- * Case/punctuation/whitespace-insensitive key. Parlay's names are known to drift
- * in exactly these cosmetic ways (the MLB poll's comments record "Milwaukee
- * Brewers @ New York"-style mangling), so an exact string compare would drop real
- * games. Anything beyond cosmetic drift SHOULD miss — a wrong match is worse than
- * a skipped game, and skips are reported.
- */
-function normalize(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-const BY_NORMALIZED = new Map(NFL_TEAMS.map((t) => [normalize(t.name), t]));
-
 /** The NFL team this feed name refers to, or null if it isn't one of the 32 (e.g. a CFL club). */
-export function lookupNflTeam(name: string): NflTeamInfo | null {
-  return BY_NORMALIZED.get(normalize(name)) ?? null;
-}
+export const lookupNflTeam = createTeamLookup(NFL_TEAMS);

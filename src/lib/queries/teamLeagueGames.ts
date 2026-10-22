@@ -1,25 +1,26 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { toLineRow, type GameLineRow } from "./games";
 
-export interface NflTeamSummary {
+export interface TeamSummary {
   id: string;
   name: string;
   abbreviation: string;
 }
 
-export interface NflGameSummary {
+export interface TeamGameSummary {
   id: string;
   scheduledStartUtc: Date;
   status: string;
-  homeTeam: NflTeamSummary;
-  awayTeam: NflTeamSummary;
+  homeTeam: TeamSummary;
+  awayTeam: TeamSummary;
 }
 
 /**
  * homeTeam/awayTeam are nullable at the schema level (tennis rows use
- * homePlayer/awayPlayer instead), but every query here filters sport: "nfl",
- * and NFL sits on the team-pair branch of the game_sport_competitor_check
+ * homePlayer/awayPlayer instead), but every query here filters on a team-league
+ * sport, and those sit on the team-pair branch of the game_sport_competitor_check
  * constraint — so the DB itself guarantees both are set. Same reasoning as
  * soccerMatches.ts's toMatchSummary.
  */
@@ -29,7 +30,7 @@ function toGameSummary(g: {
   status: string;
   homeTeam: { id: string; name: string; abbreviation: string } | null;
   awayTeam: { id: string; name: string; abbreviation: string } | null;
-}): NflGameSummary {
+}): TeamGameSummary {
   return {
     id: g.id,
     scheduledStartUtc: g.scheduledStartUtc,
@@ -39,20 +40,21 @@ function toGameSummary(g: {
   };
 }
 
-export interface NflGameWithLines {
-  game: NflGameSummary;
+export interface TeamGameWithLines {
+  game: TeamGameSummary;
   lines: GameLineRow[];
 }
 
 /**
- * One NFL game plus its current lines. cache()d for the same reason as
+ * One team-league game plus its current lines. cache()d for the same reason as
  * games.ts's getGameWithLines — a generateMetadata call can share the round-trip.
  */
-export const getNflGameWithLines = cache(async function getNflGameWithLines(
+export const getTeamGameWithLines = cache(async function getTeamGameWithLines(
+  sport: TeamLeagueSport,
   gameId: string
-): Promise<NflGameWithLines | null> {
+): Promise<TeamGameWithLines | null> {
   const game = await prisma.game.findUnique({
-    where: { id: gameId, sport: "nfl" },
+    where: { id: gameId, sport },
     include: { homeTeam: true, awayTeam: true },
   });
   if (!game) return null;
@@ -67,15 +69,15 @@ export const getNflGameWithLines = cache(async function getNflGameWithLines(
 });
 
 /**
- * Every upcoming NFL game with current lines — the /nfl list view.
+ * Every upcoming game in a league with current lines — the /nfl and /nba list views.
  *
  * No date filter, unlike MLB's date-scoped board: an NFL slate is one week of
- * games, not a nightly card, so the whole upcoming set IS the natural page. That's
- * also why `meta.carriesDate` is false for NFL.
+ * games, and the books only hang NBA numbers a day or two out, so the whole
+ * upcoming set IS the natural page. That's also why `meta.carriesDate` is false.
  */
-export async function listNflGamesWithLines(): Promise<NflGameWithLines[]> {
+export async function listTeamLeagueGamesWithLines(sport: TeamLeagueSport): Promise<TeamGameWithLines[]> {
   const games = await prisma.game.findMany({
-    where: { sport: "nfl", status: { in: ["scheduled", "live"] } },
+    where: { sport, status: { in: ["scheduled", "live"] } },
     orderBy: { scheduledStartUtc: "asc" },
     include: {
       homeTeam: true,

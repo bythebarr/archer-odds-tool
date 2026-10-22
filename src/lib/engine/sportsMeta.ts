@@ -21,8 +21,11 @@ export type { SportMeta };
 export const SPORT_METAS = [
   { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false, signalOnly: false },
   // Fully tracked: ESPN's free scoreboard is NFL's results authority (see
-  // nfl/results.ts), so games settle and plays grade like MLB's.
+  // teamLeague/results.ts), so games settle and plays grade like MLB's.
   { sport: "nfl", label: "NFL", icon: "🏈", href: "/nfl", accent: "#f59e0b", carriesDate: false, resultsOnly: false, signalOnly: false },
+  // Same pipeline as NFL (src/lib/teamLeague): odds line-shopping, graded off
+  // ESPN's free scoreboard.
+  { sport: "nba", label: "NBA", icon: "🏀", href: "/nba", accent: "#c026d3", carriesDate: false, resultsOnly: false, signalOnly: false },
   { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false, signalOnly: false },
   // signalOnly cleared 2026-07-21: ESPN's free tennis scoreboard now settles
   // matches (src/lib/tennis/results.ts), so tennis is tracked again.
@@ -31,7 +34,7 @@ export const SPORT_METAS = [
   { sport: "f1", label: "F1", icon: "🏁", href: "/f1", accent: "#e10600", carriesDate: false, resultsOnly: true, signalOnly: false },
 ] as const satisfies readonly SportMeta[];
 
-/** Every registered sport's key — `"mlb" | "ufc" | "tennis" | "soccer" | "f1"`, derived. */
+/** Every registered sport's key — `"mlb" | "nfl" | "nba" | "ufc" | …`, derived. */
 export type SportKey = (typeof SPORT_METAS)[number]["sport"];
 
 /** Results-only sports (a page, no odds/Slate) — F1 today. Derived from `resultsOnly`. */

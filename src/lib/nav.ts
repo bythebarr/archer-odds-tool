@@ -25,9 +25,11 @@ export type NavItem = {
 /**
  * Sports that earn a mobile bottom-nav slot (the bar can't scroll, so it can't
  * list every sport). A nav-presentation choice, not sport identity — kept here,
- * typed to NavSport so it can't name a sport the registry doesn't have.
+ * typed to NavSport so it can't name a sport the registry doesn't have. Follows
+ * the calendar: NBA took MLB's slot for basketball season; MLB stays one tap
+ * away in the Sports hub and in the desktop nav.
  */
-const PRIMARY_SPORTS: ReadonlySet<NavSport> = new Set<NavSport>(["mlb", "ufc"]);
+const PRIMARY_SPORTS: ReadonlySet<NavSport> = new Set<NavSport>(["nba", "ufc"]);
 
 /** The per-sport tabs, derived from each sport's display meta (registry order). */
 const SPORT_TABS: NavItem[] = SPORT_METAS.map((m) => ({

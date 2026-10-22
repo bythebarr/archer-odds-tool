@@ -68,7 +68,7 @@ ledger, Kelly sizing) that CFB v0 must not touch.
 ESPN's public college-football scoreboard:
 `https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard`
 — free, unkeyed, read-only. Same provider and role as NFL's results authority
-(`nfl/espnScoreboard.ts`), given its own client (`cfb/espnScoreboard.ts`)
+(`teamLeague/espnScoreboard.ts`), given its own client (`cfb/espnScoreboard.ts`)
 rather than reused directly, because CFB's payload needs fields NFL's client
 doesn't parse (neutral-site flag, team records) and — importantly — is **not**
 filtered through an NFL-style team allowlist. ESPN's own numeric team `id` is

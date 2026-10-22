@@ -77,7 +77,7 @@ async function upsertOutcome(
 }
 
 /** Team-pair sports this grades. Tennis grades through its own adapter (player-pair rows). */
-const GRADABLE_TEAM_SPORTS = new Set(["mlb", "nfl"]);
+const GRADABLE_TEAM_SPORTS = new Set(["mlb", "nfl", "nba"]);
 
 /**
  * Grades a single final game across all three v1 markets. Idempotent (safe to

@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import type { MarketType } from "@/generated/prisma/client";
-import type { NflGameSummary, NflTeamSummary } from "@/lib/queries/nflGames";
+import type { TeamGameSummary, TeamSummary } from "@/lib/queries/teamLeagueGames";
+import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import type { GameLineRow } from "@/lib/queries/games";
 import { MarketTabs } from "./MarketTabs";
 import { TeamBadge } from "./TeamBadge";
 import { LinesLadder } from "./LinesLadder";
 
-const SIDE_TEAM: Record<string, (g: NflGameSummary) => NflTeamSummary | null> = {
+const SIDE_TEAM: Record<string, (g: TeamGameSummary) => TeamSummary | null> = {
   home: (g) => g.homeTeam,
   away: (g) => g.awayTeam,
   over: () => null,
@@ -22,27 +23,30 @@ const SIDE_ORDER: Record<MarketType, string[]> = {
   totals: ["over", "under"],
 };
 
-interface NflGameLinesViewProps {
-  game: NflGameSummary;
+interface TeamGameLinesViewProps {
+  sport: TeamLeagueSport;
+  game: TeamGameSummary;
   lines: GameLineRow[];
+  /** Footer under the ladder — each league states why it shows no model EV. */
+  disclaimer: string;
 }
 
 /**
- * NFL's line-shopping view: price comparison across books for one game, on the
- * shared Moneyline/Spread/Total tabs.
+ * A team league's line-shopping view (NFL, NBA): price comparison across books
+ * for one game, on the shared Moneyline/Spread/Total tabs, opening on the spread
+ * because that's where both leagues' action is.
  *
  * No EV column, deliberately — and for a different reason than soccer's (whose
- * 3-way market breaks the 2-way de-vig math). NFL's de-vig would compute fine;
+ * 3-way market breaks the 2-way de-vig math). The de-vig would compute fine;
  * what's missing is any evidence a number derived from it should be acted on.
  * Per docs/architecture/calibration.md, model EV that hasn't beaten a closing
- * line in a CLV backtest gets shown as signal at most, and NFL's hasn't been run
- * on live prices. Line shopping needs no such proof — the best price IS the best
- * price — so that's what ships first. See docs/architecture/nfl-adapter.md.
+ * line in a CLV backtest gets shown as signal at most. Line shopping needs no
+ * such proof — the best price IS the best price — so that's what ships.
  */
-export function NflGameLinesView({ game, lines }: NflGameLinesViewProps) {
+export function TeamGameLinesView({ sport, game, lines, disclaimer }: TeamGameLinesViewProps) {
   const [market, setMarket] = useState<MarketType>("spreads");
 
-  // Alt lines are excluded: NFL's ingest doesn't request the alternate ladders
+  // Alt lines are excluded: the team-league ingest doesn't request the alternate ladders
   // (MLB-only today), so this is belt-and-braces against a row arriving from a
   // provider that volunteers them.
   const rows = useMemo(
@@ -57,7 +61,7 @@ export function NflGameLinesView({ game, lines }: NflGameLinesViewProps) {
         rows={rows}
         sideOrder={SIDE_ORDER[market]}
         slipContext={{
-          sport: "nfl",
+          sport,
           matchId: game.id,
           matchLabel: `${game.awayTeam.abbreviation} @ ${game.homeTeam.abbreviation}`,
         }}
@@ -70,7 +74,7 @@ export function NflGameLinesView({ game, lines }: NflGameLinesViewProps) {
           };
         }}
         emptyMessage="No odds polled for this game yet."
-        disclaimer="Line-shopping only — the best available price per side across books. No model EV for NFL: the Elo model hasn't been shown to beat a closing line, so it prices nothing here."
+        disclaimer={disclaimer}
       />
     </>
   );
