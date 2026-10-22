@@ -5,6 +5,7 @@ import type { GameLineRow } from "@/lib/queries/games";
 import { americanToDecimal, formatAmerican } from "@/lib/odds/americanOdds";
 import { formatEv, evColorClass, formatPoint } from "@/lib/odds/format";
 import { lineKey } from "@/lib/odds/lineEconomics";
+import { bestBettableLine } from "@/lib/odds/bestPrice";
 import { Badge } from "@/components/ui/badge";
 import { PriceRangeSlider } from "./PriceRangeSlider";
 import { BookBadge } from "./BookBadge";
@@ -224,7 +225,11 @@ export function LinesLadder({
             const d = americanToDecimal(r.priceAmerican);
             return d >= effectiveRange[0] && d <= effectiveRange[1];
           });
-          const bestKey = inRange[0] ? lineKey(inRange[0].bookKey, inRange[0].side, inRange[0].point) : null;
+          // The highlighted row is the best line a member can actually bet at the
+          // consensus number — not simply the top price, which can be Pinnacle's
+          // or an off-market number's (see bestBettableLine).
+          const best = bestBettableLine(inRange);
+          const bestKey = best ? lineKey(best.bookKey, best.side, best.point) : null;
           const header = sideHeader(side);
           const altGroups = altSections?.get(side) ?? [];
 

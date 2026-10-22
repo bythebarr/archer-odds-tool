@@ -1,6 +1,6 @@
 /**
- * NFL results sync + grading — phase 2 of docs/architecture/nfl-adapter.md, the
- * piece that turns NFL from `signalOnly` into a tracked, graded sport.
+ * Results sync + grading for a team league — the piece that makes a league a
+ * tracked, graded sport rather than `signalOnly`.
  *
  * Reads ESPN's free scoreboard (see espnScoreboard.ts), writes final scores onto
  * our Game rows, and hands each newly-final game to the shared `gradeGame`, which
@@ -19,10 +19,10 @@
 import { prisma } from "@/lib/prisma";
 import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
 import { gradeGame } from "@/lib/grading/gradeOutcomes";
-import { fetchNflScoreboard, type EspnNflResult } from "./espnScoreboard";
-import { lookupNflTeam } from "./teams";
+import { fetchEspnScoreboard, type EspnTeamResult } from "./espnScoreboard";
+import type { TeamLeague } from "./league";
 
-export interface SyncNflResultsSummary {
+export interface SyncTeamLeagueResultsSummary {
   datesChecked: string[];
   resultsFetched: number;
   gamesFinalized: number;
@@ -49,15 +49,15 @@ export function lookbackDatesEt(today: Date, days: number = LOOKBACK_DAYS): stri
 }
 
 /** Finds the Game a completed ESPN result refers to — same teams, same ET day. */
-async function findGameForResult(result: EspnNflResult) {
-  const home = lookupNflTeam(result.homeName);
-  const away = lookupNflTeam(result.awayName);
+async function findGameForResult(league: TeamLeague, result: EspnTeamResult) {
+  const home = league.lookupTeam(result.homeName);
+  const away = league.lookupTeam(result.awayName);
   if (!home || !away) return null;
 
   const { gte, lt } = etDayBoundsUtc(etDateOf(result.startUtc));
   return prisma.game.findFirst({
     where: {
-      sport: "nfl",
+      sport: league.sport,
       scheduledStartUtc: { gte, lt },
       homeTeam: { name: home.name },
       awayTeam: { name: away.name },
@@ -66,11 +66,14 @@ async function findGameForResult(result: EspnNflResult) {
 }
 
 /**
- * Pulls recent NFL results, finalizes the matching games, and grades them.
- * Idempotent: re-running re-grades to the same values rather than double-counting,
- * because both the score write and `gradeGame` are upserts.
+ * Pulls a league's recent results, finalizes the matching games, and grades
+ * them. Idempotent: re-running re-grades to the same values rather than
+ * double-counting, because both the score write and `gradeGame` are upserts.
  */
-export async function syncAndGradeNflResults(now: Date = new Date()): Promise<SyncNflResultsSummary> {
+export async function syncAndGradeTeamLeagueResults(
+  league: TeamLeague,
+  now: Date = new Date()
+): Promise<SyncTeamLeagueResultsSummary> {
   const datesChecked = lookbackDatesEt(now);
   const unmatched: string[] = [];
   let resultsFetched = 0;
@@ -78,13 +81,13 @@ export async function syncAndGradeNflResults(now: Date = new Date()): Promise<Sy
   let gamesGraded = 0;
 
   for (const dateEt of datesChecked) {
-    const results = await fetchNflScoreboard(dateEt);
+    const results = await fetchEspnScoreboard(league.espnPath, dateEt);
     resultsFetched += results.length;
 
     for (const result of results) {
       if (!result.completed) continue; // in progress — a live score isn't a final one
 
-      const game = await findGameForResult(result);
+      const game = await findGameForResult(league, result);
       if (!game) {
         // Not one of ours is normal (we only store games the odds feed listed),
         // but naming them makes real team-name drift visible instead of silent.

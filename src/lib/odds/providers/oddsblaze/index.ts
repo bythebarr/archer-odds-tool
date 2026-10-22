@@ -78,9 +78,3 @@ export async function fetchOddsBlazeGameOdds(
 }
 
 export type { OddsBlazeNormalizedEvent } from "./normalize";
-export {
-  fetchOddsBlazeSchedule,
-  fetchOddsBlazeGrade,
-  type OddsBlazeGradeResult,
-  type OddsBlazeScheduleResponse,
-} from "./client";

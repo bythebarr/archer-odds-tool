@@ -9,7 +9,6 @@ import { SITE_URL } from "@/lib/siteUrl";
  * Basic Auth gate (static image extension), so Discord's image proxy can fetch
  * it even though the rest of the site is private.
  */
-export const MOSES_USERNAME = "Moses, Leader of Many";
 export const LOGO_URL = `${SITE_URL}/icon-512.png`;
 
 /** The embed author block — a small round logo + brand name at the top of every post. */

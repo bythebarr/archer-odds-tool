@@ -157,3 +157,12 @@ weeks while grading nothing.
   `alternate_spreads`/`alternate_totals` outright, so the ladder needs a second
   odds source, not more code.
 - **Model EV** — still last, and still only if a CLV backtest clears it.
+
+## Generalised into the team-league pipeline (2026-10-22)
+
+When NBA was added, every NFL module except the team allowlist and the season
+boundary turned out to be league-neutral, so they moved to `src/lib/teamLeague/`
+and NFL became a config value (`NFL_LEAGUE` in `src/lib/nfl/league.ts`). The
+odds poll, ESPN scoreboard client, results sync, play grader, cron route bodies,
+board, and game page are now shared with NBA. Behavior is unchanged; see
+docs/architecture/nba-adapter.md.

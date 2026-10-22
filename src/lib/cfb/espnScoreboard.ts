@@ -1,6 +1,6 @@
 /**
  * ESPN's public college-football scoreboard — free, unkeyed, read-only. Same
- * role and same provider as NFL's results authority (see nfl/espnScoreboard.ts),
+ * role and same provider as NFL's results authority (see teamLeague/espnScoreboard.ts),
  * but CFB gets its own client rather than reusing NFL's: CFB's payload carries
  * fields NFL's doesn't need (neutral-site, team records, richer status detail)
  * and — critically — CFB is NOT run through NFL's team allowlist. NFL keys off

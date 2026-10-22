@@ -8,6 +8,7 @@ import { listUpcomingUfcEvents } from "./ufcEvents";
 import { getUfcMatchup } from "./ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { computeFinishProjection, scheduledRoundsForBout, type FinishMethod } from "@/lib/ufc/finishMath";
+import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 
 /**
  * The Slate: one normalized, cross-sport view of a day's card. Every sport
@@ -145,28 +146,29 @@ async function soccerItems(gte: Date, lt: Date): Promise<SlateItem[]> {
 }
 
 /**
- * NFL — same shape as soccer (team-pair Game rows), which is the whole point of
- * the shared engine: a new team sport joins the Slate without new machinery.
- * `modelProb` stays null even though `src/lib/nfl/model.ts` exists — see the
- * adapter for why an unvalidated model prices nothing.
+ * Team leagues on the shared pipeline (NFL, NBA) — same shape as soccer
+ * (team-pair Game rows), which is the whole point of the shared engine: a new
+ * team sport joins the Slate without new machinery. `modelProb` stays null even
+ * though `src/lib/nfl/model.ts` exists — see the adapter for why an unvalidated
+ * model prices nothing.
  */
-async function nflItems(gte: Date, lt: Date): Promise<SlateItem[]> {
+async function teamLeagueItems(sport: TeamLeagueSport, gte: Date, lt: Date): Promise<SlateItem[]> {
   const games = await prisma.game.findMany({
-    where: { sport: "nfl", scheduledStartUtc: { gte, lt } },
+    where: { sport, scheduledStartUtc: { gte, lt } },
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
   });
 
   return games.map((g) => ({
-    key: `nfl:${g.id}`,
-    sport: "nfl" as const,
+    key: `${sport}:${g.id}`,
+    sport,
     startUtc: g.scheduledStartUtc,
     status: g.status,
-    href: `/nfl/${g.id}`,
+    href: `/${sport}/${g.id}`,
     title: null,
     home: { name: g.homeTeam?.name ?? "TBD", meta: g.homeTeam?.abbreviation },
     away: { name: g.awayTeam?.name ?? "TBD", meta: g.awayTeam?.abbreviation },
-    modelProb: null, // SEAM: the Elo model plugs in here once CLV-validated
+    modelProb: null, // SEAM: a league model plugs in here once CLV-validated
     ev: null, // SEAM: paid EV
   }));
 }
@@ -245,21 +247,22 @@ export function getUfcSlateItems(dateEt: string): Promise<SlateItem[]> {
 export const getSlateForDate = cache(async function getSlateForDate(dateEt: string): Promise<Slate> {
   const { gte, lt } = etDayBoundsUtc(dateEt);
 
-  const [mlb, nfl, tennis, soccer, ufc] = await Promise.all([
+  const [mlb, nfl, nba, tennis, soccer, ufc] = await Promise.all([
     mlbItems(dateEt),
-    nflItems(gte, lt),
+    teamLeagueItems("nfl", gte, lt),
+    teamLeagueItems("nba", gte, lt),
     tennisItems(gte, lt),
     soccerItems(gte, lt),
     ufcItems(dateEt),
   ]);
 
-  const items = [...mlb, ...nfl, ...tennis, ...soccer, ...ufc].sort(
+  const items = [...mlb, ...nfl, ...nba, ...tennis, ...soccer, ...ufc].sort(
     (a, b) => a.startUtc.getTime() - b.startUtc.getTime()
   );
 
   return {
     date: dateEt,
     items,
-    counts: { mlb: mlb.length, nfl: nfl.length, tennis: tennis.length, soccer: soccer.length, ufc: ufc.length },
+    counts: { mlb: mlb.length, nfl: nfl.length, nba: nba.length, tennis: tennis.length, soccer: soccer.length, ufc: ufc.length },
   };
 });

@@ -1,6 +1,6 @@
 /**
  * ESPN's public NFL scoreboard, for the research vertical slice only —
- * deliberately a SEPARATE client from `src/lib/nfl/espnScoreboard.ts`
+ * deliberately a SEPARATE client from `src/lib/teamLeague/espnScoreboard.ts`
  * (production results/grading), for the exact reason CFB's own client is
  * separate from NFL's (see `docs/architecture/CFB-V0.md`'s "Data source":
  * "given its own client rather than reused directly, because [this

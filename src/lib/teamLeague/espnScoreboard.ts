@@ -1,26 +1,29 @@
 /**
- * ESPN's public NFL scoreboard — our results authority for the NFL, in the same
- * role MLB Stats API plays for baseball, Cito for UFC, and Jolpica for F1.
+ * ESPN's public scoreboard — the results authority for every team league built
+ * on the shared team-league pipeline (NFL, NBA), in the same role MLB Stats API
+ * plays for baseball, Cito for UFC, and Jolpica for F1. Every league serves the
+ * same payload shape from `/apis/site/v2/sports/{sport}/{league}/scoreboard`, so
+ * one parser covers them all; only the path differs.
  *
  * Free and unkeyed, which is the point: `docs/architecture/provider-coverage.md`
  * establishes that ParlayAPI is the odds-and-props layer, not the everything
- * layer, and it serves no NFL results we'd trust — its own event ids agree with
- * /odds on only 12 of 16 games. Grading has to come from somewhere authoritative
- * or not at all.
+ * layer, and it serves no results we'd trust — its own event ids agree with
+ * /odds on only 12 of 16 NFL games. Grading has to come from somewhere
+ * authoritative or not at all.
  *
- * Verified live 2026-07-21 against a completed 2025 slate: full team display
+ * Verified live 2026-07-21 against a completed 2025 NFL slate: full team display
  * names matching our allowlist exactly, final scores, and an explicit per-team
  * `winner` flag. Team NAMES are the join key — never ESPN's event id against a
  * book's event id, which is the trap that lost props for a day.
  */
 
-const SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
+const SCOREBOARD_BASE = "https://site.api.espn.com/apis/site/v2/sports";
 
-export interface EspnNflResult {
+export interface EspnTeamResult {
   /** ESPN's own event id — stored for debugging only, never joined against a book feed. */
   espnEventId: string;
   startUtc: Date;
-  /** Full display name, e.g. "Kansas City Chiefs" — matches NFL_TEAMS.name. */
+  /** Full display name, e.g. "Kansas City Chiefs" — resolved through the league's team allowlist. */
   homeName: string;
   awayName: string;
   homeScore: number;
@@ -61,11 +64,11 @@ export function toEspnDateParam(dateEt: string): string {
  * Exported so the parsing is testable against a captured payload without a
  * network call.
  */
-export function parseScoreboard(payload: unknown): EspnNflResult[] {
+export function parseScoreboard(payload: unknown): EspnTeamResult[] {
   // `?.` not just `??`: a null body (an upstream error page, a truncated
   // response) must yield "no results", not throw inside the grading cron.
   const body = payload as EspnScoreboardResponse | null | undefined;
-  const out: EspnNflResult[] = [];
+  const out: EspnTeamResult[] = [];
 
   for (const event of body?.events ?? []) {
     const competition = event.competitions?.[0];
@@ -99,9 +102,12 @@ export function parseScoreboard(payload: unknown): EspnNflResult[] {
   return out;
 }
 
-/** Fetches one ET date's NFL scoreboard. Throws on a non-OK response so the caller can log and retry. */
-export async function fetchNflScoreboard(dateEt: string): Promise<EspnNflResult[]> {
-  const url = `${SCOREBOARD_URL}?dates=${toEspnDateParam(dateEt)}`;
+/**
+ * Fetches one ET date's scoreboard for a league path such as "football/nfl" or
+ * "basketball/nba". Throws on a non-OK response so the caller can log and retry.
+ */
+export async function fetchEspnScoreboard(path: string, dateEt: string): Promise<EspnTeamResult[]> {
+  const url = `${SCOREBOARD_BASE}/${path}/scoreboard?dates=${toEspnDateParam(dateEt)}`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`ESPN scoreboard request failed: ${res.status} ${res.statusText}`);

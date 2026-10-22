@@ -257,7 +257,7 @@ async function main() {
   const CAP = bestCap.cap;
   console.log(`  → best cap = ${CAP === Infinity ? "∞" : CAP} (mean |val gap| ${bestCap.absGap.toFixed(2)}pt)`);
 
-  const splits = perProp.map(({ p, samples }, i) => ({
+  const splits = perProp.map(({ p }, i) => ({
     p,
     base: bases[i],
     ...rawSplits[i],

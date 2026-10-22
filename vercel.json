@@ -220,6 +220,34 @@
     {
       "path": "/api/cron/poll-player-props",
       "schedule": "40 10 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds-nba",
+      "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds-nba",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds-nba",
+      "schedule": "30 21 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds-nba",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds-nba",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/sync-results-nba",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/sync-results-nba",
+      "schedule": "30 13 * * *"
     }
   ]
 }

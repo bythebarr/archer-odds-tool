@@ -53,6 +53,7 @@ enum Sport {
   soccer
   ufc // graded Discord plays only (fighter-math moneyline) — UFC never uses the Game table
   nfl // team sport on the shared Game table, like MLB; teams upserted by oddsApiName like soccer's
+  nba // same shape as nfl — both run on src/lib/teamLeague
 }
 
 /// mlbTeamId is MLB-only (nullable so soccer/NFL rows can omit it); soccer and
