@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { TeamGameWithLines } from "@/lib/queries/teamLeagueGames";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { TeamGameLinesView } from "@/components/TeamGameLinesView";
+import { espnTeamLogoUrl } from "@/lib/logos";
 import { TeamBadge } from "@/components/TeamBadge";
 import { BackLink } from "@/components/BackLink";
 
@@ -28,12 +29,12 @@ export function TeamLeagueGame({
 
       <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-foreground">
         <span className="inline-flex items-center gap-2">
-          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} size={24} />
+          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} logoUrl={espnTeamLogoUrl(sport, game.awayTeam.abbreviation)} size={24} />
           {game.awayTeam.name}
         </span>
         <span>at</span>
         <span className="inline-flex items-center gap-2">
-          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} size={24} />
+          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} logoUrl={espnTeamLogoUrl(sport, game.homeTeam.abbreviation)} size={24} />
           {game.homeTeam.name}
         </span>
       </h1>

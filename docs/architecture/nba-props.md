@@ -5,19 +5,45 @@
 
 ## What a member sees
 
-`/nba/props?date=…&stat=…&side=over|under&sort=…&game=…` lists every player
-prop on the board for one stat. Each row shows:
+`/nba/props` loads the whole day's slate in one go (`getNbaPropsSlate`), and the
+browser recomputes everything from there (`src/lib/nba/propsMath.ts`). That
+means switching stat, Over/Under, sort, game, or searching by player happens
+instantly, with no page reload. The controls stick to the top of the screen
+while you scroll. Each choice is written into the URL, so a view can be shared,
+and saved in a cookie, so the server opens on the member's last view without a
+flash.
 
-- **The consensus line**: the number most bettable books are hanging. If a
-  book hangs a different number, it shows up as "+N alt" and isn't mixed in.
-- **Best Over and best Under at that line** across bettable books. Pinnacle is
-  never shown as the best book (see `bestBettableLine`).
-- **Hit rates at that exact line**: L5 / L10 / L20, this season, and the last 20
-  home or away games (matching tonight's venue). Sample sizes are always shown.
-- **Context**: the player's average for the stat over L10, and minutes over L5.
+**Each card** shows:
+- the player's headshot with their team's logo;
+- the opponent's logo and the tip time;
+- the main line and the player's average over their last 10 games;
+- a last-10 strip (one tick per game, filled when that side cashed) with the
+  L10 hit rate;
+- the best bettable price, with the book's badge;
+- L5 / L20 / season / home-or-away hit rates;
+- how many books hang the main line, and how many alt lines exist.
 
-Sort by L10 hit rate, by L10 average minus the line, or by best price. The
-`/nba` board and every NBA game page link in.
+**Tapping a card** opens the player sheet: a bottom sheet on phones, a dialog on
+desktop. The sheet lets the member:
+- switch between the stats this player has props for;
+- pick any line any book hangs (the main line is marked "MAIN");
+- toggle Over/Under.
+
+It shows:
+- hit-rate tiles for the chosen line;
+- a last-20-games bar chart against the line (tap a bar to see that game);
+- every book's Over and Under at that line, with the best bettable book
+  highlighted and sharp books (Pinnacle) marked as reference only;
+- a last-10 game-log table.
+
+The game-log table is also the chart's second encoding. In light mode the
+"missed" bar color is under 3:1 contrast, so the result can't depend on color
+alone.
+
+**Images.** Headshots and team logos come from ESPN's public CDN (`nbaHeadshotUrl`
+and `espnTeamLogoUrl` in `src/lib/logos.ts`). This is the same hotlinking MLB
+does with mlbstatic. NBA and NFL game boards use the same logos. If an image
+fails to load, the colored-initials badge shows instead.
 
 ## Data flow
 

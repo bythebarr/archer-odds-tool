@@ -6,6 +6,7 @@ import type { TeamGameSummary, TeamSummary } from "@/lib/queries/teamLeagueGames
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import type { GameLineRow } from "@/lib/queries/games";
 import { MarketTabs } from "./MarketTabs";
+import { espnTeamLogoUrl } from "@/lib/logos";
 import { TeamBadge } from "./TeamBadge";
 import { LinesLadder } from "./LinesLadder";
 
@@ -69,7 +70,7 @@ export function TeamGameLinesView({ sport, game, lines, disclaimer }: TeamGameLi
           const team = SIDE_TEAM[side]?.(game) ?? null;
           if (!team) return { badge: null, label: side === "over" ? "Over" : "Under" };
           return {
-            badge: <TeamBadge abbreviation={team.abbreviation} name={team.name} size={20} />,
+            badge: <TeamBadge abbreviation={team.abbreviation} name={team.name} logoUrl={espnTeamLogoUrl(sport, team.abbreviation)} size={20} />,
             label: team.name,
           };
         }}

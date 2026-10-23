@@ -11,6 +11,8 @@ interface LogoProps {
   color?: string;
   size?: number;
   className?: string;
+  /** "cover" for photos (headshots fill the circle); "contain" for logos, the default. */
+  fit?: "contain" | "cover";
 }
 
 /** Picks readable text color (near-white or near-black) for a given hex background. */
@@ -47,7 +49,7 @@ function darken(hex: string, amount: number): string {
   return `rgb(${scale(r)}, ${scale(g)}, ${scale(b)})`;
 }
 
-export function Logo({ sources, alt, fallbackText, color, size = 20, className = "" }: LogoProps) {
+export function Logo({ sources, alt, fallbackText, color, size = 20, className = "", fit = "contain" }: LogoProps) {
   const [index, setIndex] = useState(0);
   // Local 404s can fire the img's error event before React finishes hydrating
   // and attaches its listener, so the <img> itself is only rendered once
@@ -82,7 +84,7 @@ export function Logo({ sources, alt, fallbackText, color, size = 20, className =
       alt={alt}
       width={size}
       height={size}
-      className={`inline-block shrink-0 rounded-full bg-background object-contain ring-1 ring-black/5 dark:ring-white/10 ${className}`}
+      className={`inline-block shrink-0 rounded-full bg-background ${fit === "cover" ? "object-cover object-top" : "object-contain"} ring-1 ring-black/5 dark:ring-white/10 ${className}`}
       onError={() => setIndex((i) => i + 1)}
     />
   );

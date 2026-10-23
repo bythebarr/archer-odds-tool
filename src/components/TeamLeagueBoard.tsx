@@ -3,6 +3,7 @@ import type { GameLineRow } from "@/lib/queries/games";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { bestLinesBySide } from "@/lib/odds/bestPrice";
+import { espnTeamLogoUrl } from "@/lib/logos";
 import { TeamBadge } from "@/components/TeamBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
 
@@ -69,11 +70,11 @@ export function TeamLeagueBoard({ sport, games }: { sport: TeamLeagueSport; game
           href={`/${sport}/${game.id}`}
           competitors={[
             {
-              badge: <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} size={28} />,
+              badge: <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} logoUrl={espnTeamLogoUrl(sport, game.awayTeam.abbreviation)} size={28} />,
               label: game.awayTeam.name,
             },
             {
-              badge: <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} size={28} />,
+              badge: <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} logoUrl={espnTeamLogoUrl(sport, game.homeTeam.abbreviation)} size={28} />,
               label: game.homeTeam.name,
             },
           ]}
