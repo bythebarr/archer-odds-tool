@@ -2,6 +2,7 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { backfillF1History } from "@/lib/f1/backfillF1";
 import { ingestHttpStatus, pollLogStatus, summaryForCaughtError, type IngestStatus } from "@/lib/engine/ingestResult";
+import { skipIfOverBudget } from "@/lib/ops/computeBudget";
 
 const JOB_NAME = "backfill-f1";
 
@@ -25,6 +26,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
+  // Optional job: pauses when the month's database compute budget runs low.
+  const overBudget = await skipIfOverBudget(JOB_NAME);
+  if (overBudget) return overBudget;
 
   try {
     const summary = await backfillF1History();

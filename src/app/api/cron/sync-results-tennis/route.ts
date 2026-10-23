@@ -2,6 +2,7 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { syncAndGradeTennisResults } from "@/lib/tennis/results";
 import { classifyFetchStore, ingestHttpStatus, sanitizeErrorMessage } from "@/lib/engine/ingestResult";
+import { skipIfOverBudget } from "@/lib/ops/computeBudget";
 
 const JOB_NAME = "sync-results-tennis";
 
@@ -18,6 +19,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
+  // Optional job: pauses when the month's database compute budget runs low.
+  const overBudget = await skipIfOverBudget(JOB_NAME);
+  if (overBudget) return overBudget;
 
   try {
     const summary = await syncAndGradeTennisResults();

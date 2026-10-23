@@ -1,14 +1,12 @@
 name: Sync scores & grade outcomes (free)
 
+# Manual only. This used to run every 15 minutes, and every run wakes the
+# database: that kept a scale-to-zero Postgres awake around the clock and used
+# up the database plan's compute quota on 2026-10-14, which took the site down.
+# Vercel Cron now runs sync-results, grade-outcomes and poll-odds in clustered
+# windows (see vercel.json), so this stays as a button: it prints the site's
+# health and runs one sync on demand.
 on:
-  schedule:
-    # Hourly, at :17. This was every 15 minutes, and every tick wakes the
-    # database: 96 wake-ups a day kept a scale-to-zero Postgres awake around
-    # the clock, which exhausted the database plan's compute quota on
-    # 2026-10-14 and took the whole site down. Vercel Cron already runs
-    # sync-results and poll-odds on their own schedules (vercel.json), so this
-    # is a backstop, and hourly is plenty for one.
-    - cron: "17 * * * *"
   workflow_dispatch:
 
 jobs:
