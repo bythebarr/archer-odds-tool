@@ -2,7 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
 import { espnTeamLogoUrl, nbaHeadshotUrl } from "@/lib/logos";
 import { NBA_LEAGUE } from "@/lib/nba/league";
-import type { GameLogPoint, SlateProp } from "@/lib/nba/propsMath";
+import { summarizeProp, type GameLogPoint, type SlateProp } from "@/lib/nba/propsMath";
+import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
+import type { NbaPropStat } from "@/generated/prisma/client";
 
 export interface SlateTeam {
   abbreviation: string;
@@ -138,4 +140,64 @@ export async function getNbaPropsSlate(dateEt: string): Promise<NbaPropsSlate> {
     props: [...propsByKey.values()],
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
+}
+
+export interface TopProp {
+  gameId: string;
+  playerId: string;
+  playerName: string;
+  headshotUrl: string;
+  matchup: string;
+  stat: NbaPropStat;
+  statShort: string;
+  side: "over" | "under";
+  point: number;
+  hits: number;
+  sample: number;
+  priceAmerican: number;
+  bookKey: string;
+  bookName: string;
+}
+
+/** Stats eligible for the lobby's "top props" strip — the markets members shop most. */
+const TOP_PROP_STATS: NbaPropStat[] = ["points", "rebounds", "assists", "threes", "pointsReboundsAssists"];
+
+/**
+ * The lobby's "Top props" strip: the day's props with the strongest L10 record
+ * at the main line (either side), at least 8 games of sample, one per player.
+ * A shortlist to tap into, not a pick — the finder carries every prop.
+ */
+export async function getTopNbaProps(dateEt: string, limit = 8): Promise<TopProp[]> {
+  const slate = await getNbaPropsSlate(dateEt);
+  const candidates: TopProp[] = [];
+  for (const prop of slate.props) {
+    if (!TOP_PROP_STATS.includes(prop.stat)) continue;
+    const player = slate.players[prop.playerId];
+    const stat = NBA_PROP_STAT_BY_KEY.get(prop.stat);
+    if (!player || !stat) continue;
+    for (const side of ["over", "under"] as const) {
+      const s = summarizeProp(prop, slate.logs[prop.playerId] ?? [], stat, side, { season: slate.season, venue: player.venue });
+      const best = s && (side === "over" ? s.over : s.under);
+      if (!s || !best || s.hitRates.l10.sampleSize < 8) continue;
+      candidates.push({
+        gameId: player.gameId,
+        playerId: player.id,
+        playerName: player.name,
+        headshotUrl: player.headshotUrl,
+        matchup: player.opponent ? `${player.venue === "home" ? "vs" : "@"} ${player.opponent.abbreviation}` : "",
+        stat: prop.stat,
+        statShort: stat.shortLabel,
+        side,
+        point: s.point,
+        hits: s.hitRates.l10.hits,
+        sample: s.hitRates.l10.sampleSize,
+        priceAmerican: best.priceAmerican,
+        bookKey: best.bookKey,
+        bookName: best.bookName,
+      });
+    }
+  }
+  candidates.sort((a, b) => b.hits / b.sample - a.hits / a.sample || b.sample - a.sample);
+  const seen = new Set<string>();
+  return candidates.filter((c) => !seen.has(c.playerId) && seen.add(c.playerId)).slice(0, limit);
 }

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
+import { PROPS_PREFS_COOKIE, type PropsPrefs } from "@/lib/nba/propsPrefsShared";
 import { sortSummaries, summarizeProp, type PropSort, type PropSummary } from "@/lib/nba/propsMath";
 import type { NbaPropsSlate, SlateGame, SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
@@ -12,14 +13,6 @@ import { BookBadge } from "@/components/BookBadge";
 import { HitMeter, formatRate, rateTone } from "./HitMeter";
 import { PlayerPropSheet } from "./PlayerPropSheet";
 
-export interface PropsPrefs {
-  stat: NbaPropStat;
-  side: PropDirection;
-  sort: PropSort;
-}
-
-/** Remembered across visits in a cookie, so the server renders the member's last view with no flash. */
-export const PROPS_PREFS_COOKIE = "nba_props_prefs";
 
 const SORTS: { key: PropSort; label: string }[] = [
   { key: "hitRate", label: "Hit rate" },
@@ -156,7 +149,18 @@ function PropCard({
  * stat, Over/Under, sort, game, search — recomputes in the browser instantly.
  * Choices are mirrored into the URL (shareable) and a cookie (remembered).
  */
-export function NbaPropsFinder({ slate, initial, initialGame }: { slate: NbaPropsSlate; initial: PropsPrefs; initialGame: string | null }) {
+export function NbaPropsFinder({
+  slate,
+  initial,
+  initialGame,
+  lockGame = false,
+}: {
+  slate: NbaPropsSlate;
+  initial: PropsPrefs;
+  initialGame: string | null;
+  /** On a game page: stay on that game, with no game strip and no URL rewriting. */
+  lockGame?: boolean;
+}) {
   const [prefs, setPrefs] = useState<PropsPrefs>(initial);
   const [gameId, setGameId] = useState<string | null>(initialGame);
   const [query, setQuery] = useState("");
@@ -168,12 +172,14 @@ export function NbaPropsFinder({ slate, initial, initialGame }: { slate: NbaProp
       const game = change.game !== undefined ? change.game : gameId;
       setPrefs(next);
       if (change.game !== undefined) setGameId(change.game);
-      const qs = new URLSearchParams({ date: slate.date, stat: next.stat, side: next.side, sort: next.sort });
-      if (game) qs.set("game", game);
-      window.history.replaceState(null, "", `?${qs.toString()}`);
+      if (!lockGame) {
+        const qs = new URLSearchParams({ date: slate.date, stat: next.stat, side: next.side, sort: next.sort });
+        if (game) qs.set("game", game);
+        window.history.replaceState(null, "", `?${qs.toString()}`);
+      }
       document.cookie = `${PROPS_PREFS_COOKIE}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=31536000; samesite=lax`;
     },
-    [prefs, gameId, slate.date]
+    [prefs, gameId, slate.date, lockGame]
   );
 
   const statDef = NBA_PROP_STAT_BY_KEY.get(prefs.stat)!;
@@ -277,7 +283,7 @@ export function NbaPropsFinder({ slate, initial, initialGame }: { slate: NbaProp
         </div>
       </div>
 
-      {slate.games.length > 1 && (
+      {!lockGame && slate.games.length > 1 && (
         <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
           <button type="button" onClick={() => update({ game: null })} className={chip(gameId === null)}>
             All games

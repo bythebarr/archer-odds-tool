@@ -1,16 +1,12 @@
 // Single source of truth for the app's primary navigation. Both the desktop
-// SiteNav (full list) and the mobile BottomNav (primary subset) read from here
-// so the two bars can't drift out of sync. The SPORT tabs derive from the sport
-// registry (`SPORTS`) — label/icon/href/carriesDate come straight off each
-// adapter's `meta`, so adding a sport surfaces it in nav automatically. The
-// fixed non-sport tabs (Home, Slate, Props, the mobile hub) bracket them.
+// SiteNav and the mobile BottomNav read from here so the two bars can't drift
+// out of sync. The sportsbook layout: Home, then each in-season sport, then
+// Props. The SPORT tabs derive from the sport registry (`SPORT_METAS`, parked
+// sports excluded), so adding or un-parking a sport surfaces it automatically.
 //
-// carriesDate: MLB's Games/Slate views share a browsed date across nav clicks;
-// Tennis/Soccer/F1 have no date filter, so they never carry one (from meta).
+// carriesDate: a tab that keeps the browsed date across nav clicks.
 // primary: shows in the mobile BottomNav (a bottom bar shouldn't scroll).
-// mobileOnly: hidden from the desktop top bar. The desktop nav lists every
-// sport individually, so the "All Sports" hub tab would be redundant there —
-// it exists only to give mobile a single door to the non-primary sports.
+// mobileOnly: hidden from the desktop top bar.
 import { SPORT_METAS, type NavSport } from "@/lib/engine/sportsMeta";
 
 export type NavItem = {
@@ -39,18 +35,18 @@ const SPORT_TABS: NavItem[] = SPORT_METAS.filter((m) => !m.parked).map((m) => ({
 }));
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Home", icon: "🏠", carriesDate: true, primary: true },
-  { href: "/slate", label: "Slate", icon: "📊", carriesDate: true, primary: true },
+  { href: "/", label: "Home", icon: "🏠", carriesDate: false, primary: true },
   ...SPORT_TABS,
   // Props points at the NBA finder, the in-season props product. (The MLB props
   // board at /props is parked with MLB; it's still reachable by URL.)
   { href: "/nba/props", label: "Props", icon: "🎯", carriesDate: false, primary: true },
-  // Mobile-only hub: one door to every sport, including the parked ones, so the
-  // bottom bar stays focused instead of listing each sport as its own tab.
-  { href: "/sports", label: "Sports", icon: "🏟️", carriesDate: true, primary: true, mobileOnly: true },
 ];
 
-/** Desktop top bar: every sport individually, minus the mobile-only hub. */
+/**
+ * The Slate and the /sports hub left the nav with the sportsbook layout: the
+ * sport carousel at the top of Home and every league page is the way between
+ * sports now (parked ones included). Both routes still work by URL.
+ */
 export const DESKTOP_NAV_ITEMS = NAV_ITEMS.filter((item) => !item.mobileOnly);
 export const PRIMARY_NAV_ITEMS = NAV_ITEMS.filter((item) => item.primary);
 
