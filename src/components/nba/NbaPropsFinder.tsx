@@ -4,14 +4,17 @@ import { useCallback, useMemo, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { PROPS_PREFS_COOKIE, type PropsPrefs } from "@/lib/nba/propsPrefsShared";
-import { sortSummaries, summarizeProp, type PropSort, type PropSummary } from "@/lib/nba/propsMath";
-import type { NbaPropsSlate, SlateGame, SlatePlayer } from "@/lib/queries/nbaProps";
+import { sortSummaries, summarizeProp, unpackLog, type GameLogPoint, type PropSort, type PropSummary } from "@/lib/nba/propsMath";
+import type { SlateGame, SlatePlayer, WireNbaPropsSlate } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
 import { HitMeter, formatRate, rateTone } from "./HitMeter";
 import { PlayerPropSheet } from "./PlayerPropSheet";
+import { MatchupChip } from "./Matchup";
+import type { DefenseTable } from "@/lib/nba/matchup";
+import type { NbaPropStatDef } from "@/lib/nba/propStats";
 
 
 const SORTS: { key: PropSort; label: string }[] = [
@@ -45,19 +48,26 @@ function PropCard({
   player,
   game,
   side,
-  statShort,
+  stat,
+  defense,
   onOpen,
 }: {
   summary: PropSummary;
   player: SlatePlayer;
   game: SlateGame | undefined;
   side: PropDirection;
-  statShort: string;
+  stat: NbaPropStatDef;
+  defense: DefenseTable;
   onOpen: () => void;
 }) {
   const best = side === "over" ? summary.over : summary.under;
   const other = side === "over" ? summary.under : summary.over;
+  const statShort = stat.shortLabel;
   const rates = summary.hitRates;
+  // The card's split strip: short and long form, the season, and head-to-head when they've met.
+  const cardSplits = summary.splits.filter(
+    (sp) => ["l3", "l5", "l15", "season"].includes(sp.key) || (sp.key === "h2h" && sp.rate.sampleSize > 0)
+  );
   return (
     <li>
       <button
@@ -121,22 +131,18 @@ function PropCard({
           </div>
         </div>
 
-        <div className="mt-2.5 flex gap-3 border-t border-border pt-2 text-[11px] text-muted-foreground">
-          {(
-            [
-              ["L5", rates.l5],
-              ["L20", rates.l20],
-              ["Season", rates.season],
-              [player.venue === "home" ? "Home" : player.venue === "away" ? "Away" : "Venue", rates.venue],
-            ] as const
-          ).map(([label, rate]) => (
-            <span key={label}>
-              {label} <span className={`font-mono font-semibold ${rateTone(rate)}`}>{formatRate(rate)}</span>
+        <div className="mt-2.5 flex items-center gap-3 overflow-x-auto whitespace-nowrap border-t border-border pt-2 text-[11px] text-muted-foreground [scrollbar-width:none]">
+          {cardSplits.map((sp) => (
+            <span key={sp.key}>
+              {sp.label} <span className={`font-mono font-semibold ${rateTone(sp.rate)}`}>{formatRate(sp.rate)}</span>
             </span>
           ))}
-          <span className="ml-auto">
-            {summary.booksAtLine} book{summary.booksAtLine === 1 ? "" : "s"}
-            {summary.points.length > 1 && ` · ${summary.points.length - 1} alt`}
+          <span className="ml-auto flex items-center gap-2">
+            <MatchupChip defense={defense} opponent={player.opponent?.abbreviation} stat={stat} side={side} />
+            <span className="hidden sm:inline">
+              {summary.booksAtLine} book{summary.booksAtLine === 1 ? "" : "s"}
+              {summary.points.length > 1 && ` · ${summary.points.length - 1} alt`}
+            </span>
           </span>
         </div>
       </button>
@@ -155,7 +161,7 @@ export function NbaPropsFinder({
   initialGame,
   lockGame = false,
 }: {
-  slate: NbaPropsSlate;
+  slate: WireNbaPropsSlate;
   initial: PropsPrefs;
   initialGame: string | null;
   /** On a game page: stay on that game, with no game strip and no URL rewriting. */
@@ -183,6 +189,11 @@ export function NbaPropsFinder({
   );
 
   const statDef = NBA_PROP_STAT_BY_KEY.get(prefs.stat)!;
+  // Unpacked once per slate; every control after that recomputes from these.
+  const logs = useMemo(
+    () => Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackLog)])) as Record<string, GameLogPoint[]>,
+    [slate.logs]
+  );
   const gameById = useMemo(() => new Map(slate.games.map((g) => [g.id, g])), [slate.games]);
   const statCounts = useMemo(() => {
     const counts = new Map<NbaPropStat, number>();
@@ -201,14 +212,15 @@ export function NbaPropsFinder({
       const player = slate.players[prop.playerId];
       if (!player || (gameId && player.gameId !== gameId)) continue;
       if (needle && !player.name.toLowerCase().includes(needle)) continue;
-      const s = summarizeProp(prop, slate.logs[prop.playerId] ?? [], statDef, prefs.side, {
+      const s = summarizeProp(prop, logs[prop.playerId] ?? [], statDef, prefs.side, {
         season: slate.season,
         venue: player.venue,
+        opponent: player.opponent?.abbreviation,
       });
       if (s) out.push(s);
     }
     return sortSummaries(out, prefs.sort, prefs.side);
-  }, [slate, prefs, gameId, query, statDef]);
+  }, [slate, logs, prefs, gameId, query, statDef]);
 
   const openPlayer = open ? slate.players[open] : null;
   // Stable, so the sheet's open/close effect (focus, scroll lock) runs once per opening.
@@ -328,7 +340,8 @@ export function NbaPropsFinder({
               player={slate.players[s.playerId]}
               game={gameById.get(slate.players[s.playerId].gameId)}
               side={prefs.side}
-              statShort={statDef.shortLabel}
+              stat={statDef}
+              defense={slate.defense}
               onOpen={() => setOpen(s.playerId)}
             />
           ))}
@@ -340,8 +353,9 @@ export function NbaPropsFinder({
           key={openPlayer.id}
           player={openPlayer}
           props={slate.props.filter((p) => p.playerId === openPlayer.id)}
-          logs={slate.logs[openPlayer.id] ?? []}
+          logs={logs[openPlayer.id] ?? []}
           season={slate.season}
+          defense={slate.defense}
           initialStat={prefs.stat}
           side={prefs.side}
           startLabel={(() => {

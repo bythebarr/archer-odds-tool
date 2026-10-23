@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTeamGameWithLines } from "@/lib/queries/teamLeagueGames";
-import { getNbaPropsSlate } from "@/lib/queries/nbaProps";
+import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { readPropsPrefs } from "@/lib/nba/propsPrefs";
 import { etDateOf } from "@/lib/dateEt";
 import { TeamLeagueGame } from "@/components/TeamLeagueGame";
@@ -48,7 +48,7 @@ export default async function NbaGamePage({
       readPropsPrefs(query),
     ]);
     propsPanel = slate.props.some((p) => slate.players[p.playerId]?.gameId === gameId) ? (
-      <NbaPropsFinder slate={slate} initial={prefs} initialGame={gameId} lockGame />
+      <NbaPropsFinder slate={toWireSlate(slate)} initial={prefs} initialGame={gameId} lockGame />
     ) : (
       <p className="mt-8 text-center text-sm text-muted-foreground">
         No player props posted for this game yet. Books usually post them the morning of the game.

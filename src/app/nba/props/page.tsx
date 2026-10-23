@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getNbaPropsSlate } from "@/lib/queries/nbaProps";
+import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { getFeedFreshness } from "@/lib/freshness";
 import { SportCarousel } from "@/components/book/SportCarousel";
@@ -53,7 +53,7 @@ export default async function NbaPropsPage({
         </div>
       ) : (
         <>
-          <NbaPropsFinder slate={slate} initial={prefs} initialGame={initialGame} />
+          <NbaPropsFinder slate={toWireSlate(slate)} initial={prefs} initialGame={initialGame} />
           <div className="mt-6">
             <FreshnessStamp freshness={freshness} />
           </div>

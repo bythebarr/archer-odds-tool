@@ -5,12 +5,13 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { booksAtPoint, propConsensusPoint, summarizeProp, type GameLogPoint, type SlateProp } from "@/lib/nba/propsMath";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
-import type { PropDirection, PropHitRateResult } from "@/lib/props/tally";
+import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
 import { GameLogChart } from "./GameLogChart";
-import { formatRate, rateTone } from "./HitMeter";
+import { MatchupPanel, SplitGrid } from "./Matchup";
+import type { DefenseTable } from "@/lib/nba/matchup";
 
 function initials(name: string): string {
   return name
@@ -18,16 +19,6 @@ function initials(name: string): string {
     .map((p) => p[0])
     .join("")
     .slice(0, 2);
-}
-
-function RateTile({ label, rate }: { label: string; rate: PropHitRateResult }) {
-  return (
-    <div className="rounded-lg bg-muted/60 px-2 py-2 text-center">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`font-mono text-base font-semibold ${rateTone(rate)}`}>{formatRate(rate)}</p>
-      <p className="text-[10px] text-muted-foreground">{rate.sampleSize ? `${rate.hits}/${rate.sampleSize}` : "—"}</p>
-    </div>
-  );
 }
 
 function Segmented<T extends string>({
@@ -46,7 +37,7 @@ function Segmented<T extends string>({
           key={o.key}
           type="button"
           onClick={() => onChange(o.key)}
-          className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+          className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
             o.key === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -56,6 +47,15 @@ function Segmented<T extends string>({
     </div>
   );
 }
+
+type ChartWindow = "5" | "10" | "15" | "20" | "szn";
+const CHART_WINDOWS: { key: ChartWindow; label: string }[] = [
+  { key: "5", label: "L5" },
+  { key: "10", label: "L10" },
+  { key: "15", label: "L15" },
+  { key: "20", label: "L20" },
+  { key: "szn", label: "SZN" },
+];
 
 /**
  * Everything about one player's props in one panel: switch stat, pick any line
@@ -67,6 +67,7 @@ export function PlayerPropSheet({
   props,
   logs,
   season,
+  defense,
   initialStat,
   side: initialSide,
   startLabel,
@@ -77,12 +78,14 @@ export function PlayerPropSheet({
   props: SlateProp[];
   logs: GameLogPoint[];
   season: number;
+  defense: DefenseTable;
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
   onClose: () => void;
 }) {
   const [stat, setStat] = useState<NbaPropStat>(initialStat);
+  const [chartWindow, setChartWindow] = useState<ChartWindow>("20");
   const [side, setSide] = useState<PropDirection>(initialSide);
   const prop = props.find((p) => p.stat === stat) ?? props[0];
   const statDef = NBA_PROP_STAT_BY_KEY.get(prop.stat)!;
@@ -91,8 +94,8 @@ export function PlayerPropSheet({
   const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? 0;
 
   const summary = useMemo(
-    () => summarizeProp(prop, logs, statDef, side, { season, venue: player.venue }, point),
-    [prop, logs, statDef, side, season, player.venue, point]
+    () => summarizeProp(prop, logs, statDef, side, { season, venue: player.venue, opponent: player.opponent?.abbreviation }, point),
+    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, point]
   );
   const books = useMemo(() => booksAtPoint(prop.quotes, point, side), [prop.quotes, point, side]);
   const bestBook = side === "over" ? summary?.over?.bookKey : summary?.under?.bookKey;
@@ -214,21 +217,40 @@ export function PlayerPropSheet({
           </section>
 
           {summary && (
-            <section className="grid grid-cols-5 gap-1.5">
-              <RateTile label="L5" rate={summary.hitRates.l5} />
-              <RateTile label="L10" rate={summary.hitRates.l10} />
-              <RateTile label="L20" rate={summary.hitRates.l20} />
-              <RateTile label="Season" rate={summary.hitRates.season} />
-              <RateTile
-                label={player.venue === "home" ? "Home" : player.venue === "away" ? "Away" : "Venue"}
-                rate={summary.hitRates.venue}
+            <section>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hit rates</h3>
+              <SplitGrid splits={summary.splits} />
+            </section>
+          )}
+
+          {summary && (
+            <section>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Matchup</h3>
+              <MatchupPanel
+                defense={defense}
+                player={player}
+                stat={statDef}
+                side={side}
+                h2h={summary.splits.find((sp) => sp.key === "h2h")}
+                minutesL5={summary.avgMinutesL5}
+                minutesSeason={summary.avgMinutesSeason}
               />
             </section>
           )}
 
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last 20 games</h3>
-            <GameLogChart logs={logs} stat={statDef} point={point} side={side} />
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Game log</h3>
+              <Segmented options={CHART_WINDOWS} value={chartWindow} onChange={setChartWindow} />
+            </div>
+            <GameLogChart
+              key={chartWindow}
+              logs={chartWindow === "szn" ? logs.filter((l) => l.season === season) : logs}
+              stat={statDef}
+              point={point}
+              side={side}
+              count={chartWindow === "szn" ? 82 : Number(chartWindow)}
+            />
           </section>
 
           <section>
@@ -277,7 +299,7 @@ export function PlayerPropSheet({
           </section>
 
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Game log</h3>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last 10 games</h3>
             {logs.length === 0 ? (
               <p className="text-sm text-muted-foreground">No games logged yet.</p>
             ) : (
