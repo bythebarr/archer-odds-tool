@@ -2,13 +2,13 @@ name: Sync scores & grade outcomes (free)
 
 on:
   schedule:
-    # Every 15 minutes. The first two steps hit only the free MLB Stats API /
-    # read already-stored odds history — no Odds API credits are ever spent.
-    # The third step (MLB odds refresh) is DORMANT: it runs only once the repo
-    # variable ODDS_FRESH_ENABLED is set to "true", which should happen only
-    # AFTER upgrading the Odds API to a paid tier. When enabled, the poller's
-    # own tier policy self-throttles the real cadence around game time.
-    - cron: "*/15 * * * *"
+    # Hourly, at :17. This was every 15 minutes, and every tick wakes the
+    # database: 96 wake-ups a day kept a scale-to-zero Postgres awake around
+    # the clock, which exhausted the database plan's compute quota on
+    # 2026-10-14 and took the whole site down. Vercel Cron already runs
+    # sync-results and poll-odds on their own schedules (vercel.json), so this
+    # is a backstop, and hourly is plenty for one.
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 jobs:
