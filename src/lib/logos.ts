@@ -62,9 +62,13 @@ const ESPN_LOGO_CODE: Record<"nba" | "nfl", Record<string, string>> = {
   nfl: { WAS: "wsh" },
 };
 
+/** ESPN's short code for a club — its logo key and its slug in ESPN's site API. */
+export function espnTeamCode(league: "nba" | "nfl", abbreviation: string): string {
+  return ESPN_LOGO_CODE[league][abbreviation] ?? abbreviation.toLowerCase();
+}
+
 export function espnTeamLogoUrl(league: "nba" | "nfl", abbreviation: string): string {
-  const code = ESPN_LOGO_CODE[league][abbreviation] ?? abbreviation.toLowerCase();
-  return `https://a.espncdn.com/i/teamlogos/${league}/500/${code}.png`;
+  return `https://a.espncdn.com/i/teamlogos/${league}/500/${espnTeamCode(league, abbreviation)}.png`;
 }
 
 /**

@@ -4,6 +4,7 @@ import type { PropSplit } from "@/lib/nba/propsMath";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import { Logo } from "@/components/Logo";
+import { POSITION_GROUP_LABEL, type PositionGroup } from "@/lib/nba/positionGroups";
 import { formatRate, rateTone } from "./HitMeter";
 
 const GRADE: Record<MatchupGrade, { label: string; text: string; bg: string }> = {
@@ -20,18 +21,26 @@ export function MatchupChip({
   opponent,
   stat,
   side,
+  group,
 }: {
   defense: DefenseTable;
   opponent: string | undefined;
   stat: NbaPropStatDef;
   side: PropDirection;
+  group: PositionGroup | null;
 }) {
-  const m = opponent ? statMatchup(defense, opponent, stat) : null;
+  const m = opponent ? statMatchup(defense, opponent, stat, group) : null;
   if (!m) return null;
   const g = GRADE[matchupGrade(m.rank, m.of, side)];
+  const vs = m.scope === "position" && group ? ` to ${POSITION_GROUP_LABEL[group]}` : "";
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${g.bg}`} title={`${opponent} allows ${m.perGame.toFixed(1)} ${stat.shortLabel} per game`}>
-      <span className="text-[10px] font-semibold uppercase text-muted-foreground">Def</span>
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${g.bg}`}
+      title={`${opponent} allows ${m.perGame.toFixed(1)} ${stat.shortLabel} per game${vs}`}
+    >
+      <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+        {m.scope === "position" && group ? `Def v ${group}` : "Def"}
+      </span>
       <span className={`font-mono font-semibold ${g.text}`}>{ordinal(m.rank)}</span>
     </span>
   );
@@ -119,7 +128,9 @@ export function MatchupPanel({
   minutesSeason: number | null;
 }) {
   const opp = player.opponent;
-  const m = opp ? statMatchup(defense, opp.abbreviation, stat) : null;
+  const group = player.positionGroup;
+  const m = opp ? statMatchup(defense, opp.abbreviation, stat, group) : null;
+  const byPosition = m?.scope === "position" && group;
   const pace = opp ? paceRank(defense, opp.abbreviation) : null;
   const grade = m ? matchupGrade(m.rank, m.of, side) : null;
   const minutesDelta = minutesL5 !== null && minutesSeason !== null ? minutesL5 - minutesSeason : null;
@@ -132,7 +143,8 @@ export function MatchupPanel({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-foreground">{opp.name}</p>
           <p className="text-[11px] text-muted-foreground">
-            Defense vs {stat.label.toLowerCase()}
+            {byPosition ? `vs ${POSITION_GROUP_LABEL[group]} · ` : "Defense · "}
+            {stat.label.toLowerCase()}
             {defense.fromLastSeason ? " · last season" : ""}
           </p>
         </div>
@@ -145,7 +157,7 @@ export function MatchupPanel({
       <div className="mt-1 divide-y divide-border">
         {m ? (
           <Metric
-            label={`${stat.shortLabel} allowed / game`}
+            label={byPosition ? `${stat.shortLabel} allowed to ${POSITION_GROUP_LABEL[group]} / game` : `${stat.shortLabel} allowed / game`}
             value={m.perGame.toFixed(1)}
             sub={`${ordinal(m.rank)} of ${m.of} · lg ${m.leagueAvg.toFixed(1)}`}
           >

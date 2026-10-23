@@ -11,6 +11,14 @@
  */
 import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStatDef, NbaStatLine } from "./propStats";
+import type { PositionGroup } from "./positionGroups";
+
+export interface PositionDefense {
+  /** Games where the opponent's positions were known. */
+  games: number;
+  /** What this position group averages against this team, per game. */
+  allowed: NbaStatLine;
+}
 
 export interface TeamDefenseRow {
   /** Games in the sample. */
@@ -19,6 +27,8 @@ export interface TeamDefenseRow {
   allowed: NbaStatLine;
   /** Both teams' points per game in this team's games — a pace proxy. */
   combinedPoints: number;
+  /** The same, split by the scoring players' position group. */
+  byPosition: Partial<Record<PositionGroup, PositionDefense>>;
 }
 
 export interface DefenseTable {
@@ -29,6 +39,8 @@ export interface DefenseTable {
 }
 
 export interface StatMatchup {
+  /** "position" when ranked against what teams allow to the player's position group. */
+  scope: "position" | "team";
   perGame: number;
   leagueAvg: number;
   /** 1 = gives up the most. */
@@ -37,13 +49,45 @@ export interface StatMatchup {
   games: number;
 }
 
-/** How the opponent defends one stat: per game, league average, and rank (1 = most allowed). */
-export function statMatchup(table: DefenseTable, opponent: string, stat: NbaPropStatDef): StatMatchup | null {
+/** Below this many position-known games, a team's by-position read falls back to the team-wide one. */
+export const MIN_POSITION_GAMES = 5;
+
+/**
+ * How the opponent defends one stat: per game, league average, and rank
+ * (1 = most allowed). With a position group, it's what the opponent allows to
+ * that group, ranked among teams with enough position-known games — guards vs
+ * guards, centers vs centers — else the team-wide number.
+ */
+export function statMatchup(
+  table: DefenseTable,
+  opponent: string,
+  stat: NbaPropStatDef,
+  group?: PositionGroup | null
+): StatMatchup | null {
   const row = table.teams[opponent];
   if (!row) return null;
+
+  const pos = group ? row.byPosition[group] : undefined;
+  if (group && pos && pos.games >= MIN_POSITION_GAMES) {
+    const all = Object.values(table.teams).flatMap((t) => {
+      const p = t.byPosition[group];
+      return p && p.games >= MIN_POSITION_GAMES ? [stat.value(p.allowed)] : [];
+    });
+    const perGame = stat.value(pos.allowed);
+    return {
+      scope: "position",
+      perGame,
+      leagueAvg: all.reduce((a, b) => a + b, 0) / all.length,
+      rank: 1 + all.filter((v) => v > perGame).length,
+      of: all.length,
+      games: pos.games,
+    };
+  }
+
   const all = Object.values(table.teams).map((t) => stat.value(t.allowed));
   const perGame = stat.value(row.allowed);
   return {
+    scope: "team",
     perGame,
     leagueAvg: all.reduce((a, b) => a + b, 0) / all.length,
     rank: 1 + all.filter((v) => v > perGame).length,

@@ -19,6 +19,8 @@ export interface EspnNbaPlayerLine extends NbaStatLine {
   espnAthleteId: string;
   name: string;
   headshotUrl: string | null;
+  /** ESPN's position abbreviation (PG, SF, C, …), when the box score lists one. */
+  position: string | null;
   /** The team's display name as ESPN renders it, e.g. "LA Clippers". */
   teamName: string;
   starter: boolean;
@@ -40,7 +42,7 @@ interface SummaryResponse {
         keys?: string[];
         names?: string[];
         athletes?: {
-          athlete?: { id?: string; displayName?: string; headshot?: { href?: string } };
+          athlete?: { id?: string; displayName?: string; headshot?: { href?: string }; position?: { abbreviation?: string } };
           starter?: boolean;
           didNotPlay?: boolean;
           stats?: string[];
@@ -130,6 +132,7 @@ export function parseNbaBoxScore(payload: unknown): EspnNbaBoxScore {
         espnAthleteId: id,
         name,
         headshotUrl: entry.athlete?.headshot?.href ?? null,
+        position: entry.athlete?.position?.abbreviation ?? null,
         teamName,
         starter: entry.starter === true,
         minutes,

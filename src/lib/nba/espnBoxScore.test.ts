@@ -36,6 +36,7 @@ describe("parseNbaBoxScore", () => {
         espnAthleteId: "1",
         name: "James Harden",
         headshotUrl: "https://img/1.png",
+        position: null,
         teamName: "LA Clippers",
         starter: true,
         minutes: 36,
@@ -48,6 +49,22 @@ describe("parseNbaBoxScore", () => {
         turnovers: 4,
       },
     ]);
+  });
+
+  it("reads the athlete's listed position", () => {
+    const { lines } = parseNbaBoxScore(
+      payload("Denver Nuggets", {
+        keys: KEYS,
+        athletes: [
+          {
+            athlete: { id: "9", displayName: "Nikola Jokic", position: { abbreviation: "C" } },
+            starter: true,
+            stats: ["35", "29", "11-18", "1-3", "6-7", "13", "10", "3", "2", "1"],
+          },
+        ],
+      })
+    );
+    expect(lines[0].position).toBe("C");
   });
 
   it("falls back to the abbreviation header and reads mm:ss minutes", () => {

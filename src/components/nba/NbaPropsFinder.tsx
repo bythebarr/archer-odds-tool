@@ -138,7 +138,7 @@ function PropCard({
             </span>
           ))}
           <span className="ml-auto flex items-center gap-2">
-            <MatchupChip defense={defense} opponent={player.opponent?.abbreviation} stat={stat} side={side} />
+            <MatchupChip defense={defense} opponent={player.opponent?.abbreviation} stat={stat} side={side} group={player.positionGroup} />
             <span className="hidden sm:inline">
               {summary.booksAtLine} book{summary.booksAtLine === 1 ? "" : "s"}
               {summary.points.length > 1 && ` · ${summary.points.length - 1} alt`}

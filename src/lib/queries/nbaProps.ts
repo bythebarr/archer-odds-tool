@@ -5,6 +5,7 @@ import { NBA_LEAGUE } from "@/lib/nba/league";
 import { packLog, summarizeProp, type GameLogPoint, type PackedLog, type SlateProp } from "@/lib/nba/propsMath";
 import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import type { DefenseTable, TeamDefenseRow } from "@/lib/nba/matchup";
+import { positionGroup, type PositionGroup } from "@/lib/nba/positionGroups";
 import type { NbaPropStat } from "@/generated/prisma/client";
 
 export interface SlateTeam {
@@ -30,6 +31,8 @@ export interface SlatePlayer {
   team: SlateTeam | null;
   opponent: SlateTeam | null;
   venue: "home" | "away" | null;
+  /** G / F / C, for defense by position; null until the player's position is known. */
+  positionGroup: PositionGroup | null;
 }
 
 /** Everything the props finder needs for one ET date, in one payload. */
@@ -62,8 +65,9 @@ const MIN_DEFENSE_GAMES = 10;
  * The current season once teams have played enough games, else last season.
  */
 export async function getNbaDefenseTable(season: number): Promise<DefenseTable> {
+  // One row per game, team and position group (null = position unknown).
   const sums = await prisma.nbaPlayerGameLog.groupBy({
-    by: ["season", "gameId", "teamId"],
+    by: ["season", "gameId", "teamId", "positionGroup"],
     where: { season: { in: [season - 1, season] } },
     _sum: { points: true, rebounds: true, assists: true, threesMade: true, steals: true, blocks: true },
   });
@@ -72,38 +76,65 @@ export async function getNbaDefenseTable(season: number): Promise<DefenseTable> 
       .map((t) => [t.id, t.abbreviation])
   );
 
+  type Line = TeamDefenseRow["allowed"];
+  const zero = (): Line => ({ points: 0, rebounds: 0, assists: 0, threesMade: 0, steals: 0, blocks: 0 });
+  const addInto = (into: Line, from: (typeof sums)[number]["_sum"]) => {
+    for (const k of Object.keys(into) as (keyof Line)[]) into[k] += from[k] ?? 0;
+  };
+  const divide = (line: Line, n: number) => {
+    for (const k of Object.keys(line) as (keyof Line)[]) line[k] /= n;
+  };
+
   const build = (forSeason: number): Record<string, TeamDefenseRow> => {
-    const byGame = new Map<string, typeof sums>();
-    for (const r of sums) if (r.season === forSeason) byGame.set(r.gameId, [...(byGame.get(r.gameId) ?? []), r]);
+    // gameId → teamId → { total, by group }
+    const games = new Map<string, Map<string, { total: Line; groups: Map<PositionGroup, Line> }>>();
+    for (const r of sums) {
+      if (r.season !== forSeason) continue;
+      const teams = games.get(r.gameId) ?? new Map();
+      const side = teams.get(r.teamId) ?? { total: zero(), groups: new Map<PositionGroup, Line>() };
+      addInto(side.total, r._sum);
+      const group = positionGroup(r.positionGroup);
+      if (group) addInto(side.groups.get(group) ?? side.groups.set(group, zero()).get(group)!, r._sum);
+      teams.set(r.teamId, side);
+      games.set(r.gameId, teams);
+    }
+
     const acc = new Map<string, TeamDefenseRow>();
-    for (const pair of byGame.values()) {
-      if (pair.length !== 2) continue;
-      const combined = (pair[0]._sum.points ?? 0) + (pair[1]._sum.points ?? 0);
-      for (const [us, them] of [[pair[0], pair[1]], [pair[1], pair[0]]] as const) {
-        const key = abbr.get(us.teamId);
+    for (const teams of games.values()) {
+      if (teams.size !== 2) continue;
+      const [[idA, a], [idB, b]] = [...teams.entries()];
+      const combined = a.total.points + b.total.points;
+      for (const [usId, them] of [[idA, b], [idB, a]] as const) {
+        const key = abbr.get(usId);
         if (!key) continue;
-        const row = acc.get(key) ?? {
-          games: 0,
-          allowed: { points: 0, rebounds: 0, assists: 0, threesMade: 0, steals: 0, blocks: 0 },
-          combinedPoints: 0,
-        };
+        const row = acc.get(key) ?? { games: 0, allowed: zero(), combinedPoints: 0, byPosition: {} };
         row.games += 1;
         row.combinedPoints += combined;
-        for (const k of Object.keys(row.allowed) as (keyof typeof row.allowed)[]) row.allowed[k] += them._sum[k] ?? 0;
+        addInto(row.allowed, them.total);
+        // A game counts toward the by-position sums only when the opponent's positions are known.
+        if (them.groups.size > 0) {
+          for (const g of ["G", "F", "C"] as const) {
+            const pos = (row.byPosition[g] ??= { games: 0, allowed: zero() });
+            pos.games += 1;
+            const line = them.groups.get(g);
+            if (line) addInto(pos.allowed, line);
+          }
+        }
         acc.set(key, row);
       }
     }
     // Totals → per-game averages.
     for (const row of acc.values()) {
       row.combinedPoints /= row.games;
-      for (const k of Object.keys(row.allowed) as (keyof typeof row.allowed)[]) row.allowed[k] /= row.games;
+      divide(row.allowed, row.games);
+      for (const pos of Object.values(row.byPosition)) divide(pos.allowed, pos.games);
     }
     return Object.fromEntries(acc);
   };
 
   const current = build(season);
-  const games = Object.values(current).map((t) => t.games).sort((a, b) => a - b);
-  const median = games.length ? games[Math.floor(games.length / 2)] : 0;
+  const counts = Object.values(current).map((t) => t.games).sort((a, b) => a - b);
+  const median = counts.length ? counts[Math.floor(counts.length / 2)] : 0;
   if (median >= MIN_DEFENSE_GAMES) return { season, fromLastSeason: false, teams: current };
   const last = build(season - 1);
   return Object.keys(last).length > 0
@@ -166,6 +197,7 @@ export async function getNbaPropsSlate(dateEt: string): Promise<NbaPropsSlate> {
         team: venue === "home" ? team(g.homeTeam) : venue === "away" ? team(g.awayTeam) : null,
         opponent: venue === "home" ? team(g.awayTeam) : venue === "away" ? team(g.homeTeam) : null,
         venue,
+        positionGroup: positionGroup(p.positionGroup),
       };
     }
     const key = `${p.id}:${line.stat}`;
