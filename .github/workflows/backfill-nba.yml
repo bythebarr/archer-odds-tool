@@ -1,0 +1,34 @@
+name: Backfill NBA history
+
+# One-time (re-runnable) fill of NBA player game logs — the history every prop
+# hit rate, split and matchup read is computed from. Walks the dates in small
+# chunks, each one request to /api/cron/backfill-nba-game-logs, until it
+# reaches yesterday. Safe to rerun: games already logged are skipped.
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: "First date (ET, YYYY-MM-DD). Default: the start of last season."
+        required: false
+        default: "2025-10-21"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Backfill in 3-day chunks
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FROM: ${{ inputs.from }}
+        run: |
+          next="$FROM"
+          while [ -n "$next" ] && [ "$next" != "null" ]; do
+            body=$(curl -sS -L --fail-with-body --retry 2 -X POST \
+              "$APP_URL/api/cron/backfill-nba-game-logs?from=$next&days=3" \
+              -H "Authorization: Bearer $CRON_SECRET")
+            echo "$body" | head -c 400; echo
+            next=$(echo "$body" | jq -r '.next')
+          done
+          echo "Backfill complete."

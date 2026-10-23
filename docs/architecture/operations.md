@@ -112,6 +112,16 @@ set these in Vercel:
   backfills. They're all parked right now, so the guard matters once they come
   back. The lineup (NBA, NFL, UFC, results, Discord) always runs.
 
+## NBA history backfill
+
+Prop hit rates, splits and the matchup read are computed from stored player game
+logs. The daily results sync only looks back four days, so a fresh database
+needs history once: run the **Backfill NBA history** workflow (Actions → Run
+workflow). It calls `/api/cron/backfill-nba-game-logs` in 3-day chunks from the
+start of last season to yesterday, then fills positions from the rosters. It is
+idempotent; rerun it any time a gap is suspected. Expect it to keep the database
+awake for the length of the run (well under an hour, once).
+
 ## If it happens again
 
 1. Run **sync-free** from the Actions tab. Its first step prints the health
