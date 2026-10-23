@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { listTeamLeagueGamesWithLines } from "@/lib/queries/teamLeagueGames";
 import { TeamLeagueBoard } from "@/components/TeamLeagueBoard";
 import { PageShell, PageHeader } from "@/components/PageShell";
@@ -29,6 +30,11 @@ export default async function NbaPage() {
                 but no model has beaten a closing line, so nothing claims an edge. */}
             <span className="text-muted-foreground/80">Prices only — no model EV.</span>
           </>
+        }
+        right={
+          <Link href="/nba/props" className="text-xs text-muted-foreground underline underline-offset-2">
+            Player props →
+          </Link>
         }
       />
 

@@ -1,5 +1,6 @@
 import { handleTeamLeagueOddsPoll } from "@/lib/teamLeague/cronHandlers";
 import { NBA_LEAGUE } from "@/lib/nba/league";
+import { runNbaPropsPoll } from "@/lib/nba/cronJobs";
 
 /**
  * NBA lines move all day — injury reports and rest decisions land hours before
@@ -16,5 +17,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  return handleTeamLeagueOddsPoll(request, NBA_LEAGUE, MIN_INTERVAL_MINUTES);
+  // Player props ride the same tick: one ~3-credit bulk call per poll.
+  return handleTeamLeagueOddsPoll(request, NBA_LEAGUE, MIN_INTERVAL_MINUTES, runNbaPropsPoll);
 }

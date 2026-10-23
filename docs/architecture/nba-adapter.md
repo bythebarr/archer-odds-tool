@@ -49,11 +49,7 @@ sport's ladder, not just NBA — see `src/lib/odds/bestPrice.ts`.
 
 ## Not built yet (in order of value)
 
-1. **Player props.** The audit saw only 2 prop books / 19 markets for NBA in
-   July; re-run `npx tsx scripts/odds/audit-coverage.ts` now that the season is
-   live before building. The props pipeline is MLB-shaped (`mlbPlayerId`), so
-   NBA props need a player identity source — ESPN's box scores are the free
-   candidate, the same way MLB Stats API serves baseball.
+1. ~~**Player props.**~~ Shipped — see docs/architecture/nba-props.md.
 2. **Alternate spreads/totals.** Same per-event fetch MLB uses; costs credits
    per event.
 3. **A model.** Only after a CLV backtest beats the close — see
