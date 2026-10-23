@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SPORT_METAS } from "@/lib/engine/sportsMeta";
+import { Glyph } from "@/components/brand/Glyph";
 
 /**
  * The sportsbook sport switcher: in-season sports first as round icon tiles,
@@ -16,16 +17,16 @@ export function SportCarousel({ active }: { active?: string }) {
             <li key={s.sport} className="shrink-0">
               <Link href={s.href} aria-current={isActive ? "page" : undefined} className="group flex w-14 flex-col items-center gap-1">
                 <span
-                  className={`flex size-12 items-center justify-center rounded-full text-[22px] ring-1 transition-all ${
+                  className={`flex size-12 items-center justify-center rounded-full ring-1 transition-all ${
                     isActive
-                      ? "bg-foreground/5 ring-2 ring-foreground"
+                      ? "bg-foreground text-background ring-foreground dark:bg-brand dark:text-brand-foreground dark:ring-brand"
                       : s.parked
-                        ? "bg-muted/60 opacity-50 ring-border grayscale group-hover:opacity-80"
-                        : "bg-card ring-border group-hover:ring-foreground/40"
+                        ? "bg-muted/60 text-muted-foreground/70 ring-border group-hover:text-foreground"
+                        : "bg-card text-foreground ring-border group-hover:ring-foreground/40"
                   }`}
                   aria-hidden
                 >
-                  {s.icon}
+                  <Glyph name={s.sport} className="size-6" />
                 </span>
                 <span
                   className={`text-[11px] font-semibold ${

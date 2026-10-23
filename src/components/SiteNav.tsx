@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
-import { AppIconMark } from "@/lib/appIcon";
+import { ArchrWordmark } from "@/components/brand/ArchrWordmark";
+import { Glyph } from "@/components/brand/Glyph";
 import { DESKTOP_NAV_ITEMS, navHref, isNavActive } from "@/lib/nav";
 
 /**
@@ -17,15 +18,10 @@ export function SiteNav() {
 
   return (
     <nav className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
-      <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
+      <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-3">
         <div className="flex min-w-0 items-center gap-4">
-          <Link href="/" className="flex shrink-0 items-center gap-2 font-mono text-sm font-semibold text-foreground">
-            <span className="block h-[18px] w-[18px] overflow-hidden rounded-[22%]">
-              <AppIconMark />
-            </span>
-            <span>
-              ARCHR<span className="ml-1 font-normal text-muted-foreground">Edge</span>
-            </span>
+          <Link href="/" aria-label="ARCHR Edge home" className="flex shrink-0 items-center">
+            <ArchrWordmark />
           </Link>
           {/* Desktop: full sport list in the top bar. On mobile it's hidden —
               the fixed BottomNav carries the primary tabs instead. Horizontal
@@ -45,7 +41,7 @@ export function SiteNav() {
                       : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                   }`}
                 >
-                  <span aria-hidden className="text-[13px] leading-none">{link.icon}</span>
+                  <Glyph name={link.icon} className="size-4" />
                   {link.label}
                 </Link>
               );

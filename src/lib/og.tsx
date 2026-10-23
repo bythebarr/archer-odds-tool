@@ -1,40 +1,22 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ImageResponse } from "next/og";
+import { BRAND } from "@/lib/brand/colors";
+import { MARK_PATH, MARK_VIEWBOX } from "@/lib/brand/mark";
 
 // Shared social-share card, used by both the Open Graph and Twitter image
 // routes so a shared ARCHR link renders one branded 1200×630 card everywhere.
 // Rendered by satori (next/og): flexbox + absolute positioning + transforms
-// only — no CSS grid. Colors mirror the app's dark theme (globals.css) and the
-// launch-intro target so the card, the app icon, and the opening animation all
-// read as one system.
+// only — no CSS grid. Same system as the app icon and the lobby banner: ink
+// ground, the mark flying off the edge, volt for the one loud word.
 export const ogSize = { width: 1200, height: 630 };
 export const ogContentType = "image/png";
 
-const BG = "#0a0e17";
-const INK = "#e6edf5";
-const MUTED = "#7c8aa0";
-const RING = "#2b3852";
-const CYAN = "#38bdf8";
+/** Saira ExtraBold Italic (SIL OFL), the app's display face, bundled for satori. */
+const DISPLAY_FONT = join(process.cwd(), "src/lib/brand/fonts/Saira-ExtraBoldItalic.ttf");
 
-/** One concentric target ring, centered in its relative parent. */
-function ring(diameter: number, borderWidth: number, color: string) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-        width: diameter,
-        height: diameter,
-        borderRadius: "50%",
-        border: `${borderWidth}px solid ${color}`,
-        display: "flex",
-      }}
-    />
-  );
-}
-
-export function OgImage(): ImageResponse {
+export async function OgImage(): Promise<ImageResponse> {
+  const saira = await readFile(DISPLAY_FONT);
   return new ImageResponse(
     (
       <div
@@ -42,102 +24,51 @@ export function OgImage(): ImageResponse {
           width: "100%",
           height: "100%",
           display: "flex",
-          flexDirection: "column",
-          background: BG,
-          color: INK,
+          position: "relative",
+          background: BRAND.ink,
+          color: "#eef0f4",
           fontFamily: "sans-serif",
+          overflow: "hidden",
         }}
       >
-        {/* Top accent bar — the app's primary cyan. */}
-        <div style={{ display: "flex", height: 12, width: "100%", background: CYAN }} />
-
-        {/* Main: target motif + wordmark. */}
-        <div
-          style={{
-            display: "flex",
-            flex: 1,
-            alignItems: "center",
-            gap: 64,
-            padding: "0 84px",
-          }}
+        {/* The mark, oversized and flying off the right edge. */}
+        <svg
+          viewBox={MARK_VIEWBOX}
+          width={640}
+          height={608}
+          style={{ position: "absolute", right: -90, top: 40, opacity: 0.95 }}
         >
-          {/* Archery target with an arrow struck into the bullseye. */}
-          <div style={{ position: "relative", width: 260, height: 260, display: "flex" }}>
-            {ring(260, 18, RING)}
-            {ring(188, 18, MUTED)}
-            {ring(116, 18, CYAN)}
-            {/* Bullseye */}
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: 48,
-                height: 48,
-                borderRadius: "50%",
-                background: CYAN,
-                display: "flex",
-              }}
-            />
-            {/* Arrow shaft, flying in from the left into the bullseye. */}
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: -70,
-                transform: "translateY(-50%)",
-                width: 210,
-                height: 8,
-                borderRadius: 4,
-                background: INK,
-                display: "flex",
-              }}
-            />
-            {/* Arrowhead chevron at the bullseye. */}
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: 118,
-                transform: "translate(-50%, -50%) rotate(45deg)",
-                width: 30,
-                height: 30,
-                borderTop: `8px solid ${INK}`,
-                borderRight: `8px solid ${INK}`,
-                display: "flex",
-              }}
-            />
-          </div>
+          <path fill={BRAND.volt} fillRule="evenodd" d={MARK_PATH} />
+        </svg>
 
-          {/* Wordmark + tagline. */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", alignItems: "baseline" }}>
-              <span style={{ fontSize: 104, fontWeight: 800, letterSpacing: "0.02em" }}>ARCHR</span>
-              <span style={{ fontSize: 104, fontWeight: 400, color: MUTED, marginLeft: 20 }}>Edge</span>
-            </div>
-            <div style={{ display: "flex", marginTop: 8, fontSize: 36, color: INK, maxWidth: 640 }}>
-              Every sport, one board — model leans, hit-rates &amp; EV.
-            </div>
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 84px", width: 720 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+            <span style={{ fontFamily: "Saira", fontSize: 46, letterSpacing: "0.02em" }}>ARCHR</span>
+            <span
+              style={{
+                display: "flex",
+                background: BRAND.volt,
+                color: BRAND.ink,
+                fontFamily: "Saira",
+                fontSize: 22,
+                letterSpacing: "0.16em",
+                padding: "6px 16px",
+                transform: "skewX(-14deg)",
+              }}
+            >
+              EDGE
+            </span>
           </div>
-        </div>
-
-        {/* Footer: the sport lineup + the honest disclaimer. */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 84px 56px",
-            fontSize: 26,
-            color: MUTED,
-          }}
-        >
-          <span style={{ letterSpacing: "0.12em" }}>MLB · UFC · F1 · TENNIS · SOCCER</span>
-          <span>Research &amp; discovery only</span>
+          <div style={{ display: "flex", flexDirection: "column", marginTop: 34, fontFamily: "Saira", fontSize: 104, lineHeight: 0.95 }}>
+            <span>BEST LINE.</span>
+            <span style={{ color: BRAND.volt }}>EVERY BOOK.</span>
+          </div>
+          <div style={{ display: "flex", marginTop: 30, fontSize: 30, color: BRAND.muted }}>
+            NBA · NFL · UFC — every price, side by side.
+          </div>
         </div>
       </div>
     ),
-    ogSize
+    { ...ogSize, fonts: [{ name: "Saira", data: saira, weight: 800, style: "italic" }] }
   );
 }

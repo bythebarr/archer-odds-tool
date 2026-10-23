@@ -69,7 +69,7 @@ export function PriceButton({
       }
       className={`relative flex h-12 flex-col items-center justify-center rounded-lg px-1 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         inSlip
-          ? "bg-primary text-primary-foreground"
+          ? "archr-pop bg-primary text-primary-foreground"
           : "bg-muted text-foreground hover:bg-muted-foreground/15"
       }`}
     >

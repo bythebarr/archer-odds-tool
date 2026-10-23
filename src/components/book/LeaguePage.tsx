@@ -9,6 +9,7 @@ import { SportCarousel } from "./SportCarousel";
 import { SportTabs } from "./SportTabs";
 import { DateStrip } from "./DateStrip";
 import { EventListHeader, EventRow } from "./EventRow";
+import { Glyph } from "@/components/brand/Glyph";
 
 /** The tabs every league page and its props page share. Props only where a league has a props product. */
 export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props") {
@@ -22,11 +23,9 @@ export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props") {
 export function LeagueHeader({ sport }: { sport: TeamLeagueSport }) {
   const meta = sportMetaByKey[sport];
   return (
-    <div className="mt-5 flex items-center gap-2.5">
-      <span className="text-2xl" aria-hidden>
-        {meta.icon}
-      </span>
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">{meta.label}</h1>
+    <div className="mt-5 flex items-center gap-2.5 text-foreground">
+      <Glyph name={sport} className="size-7" />
+      <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight">{meta.label}</h1>
     </div>
   );
 }

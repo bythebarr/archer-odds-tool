@@ -1,5 +1,6 @@
 "use client";
 
+import { ArchrMark } from "@/components/brand/ArchrMark";
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
 
@@ -41,7 +42,7 @@ export function NewHerePrimer() {
 
   return (
     <div className="relative flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3">
-      <span aria-hidden className="text-lg">🏹</span>
+      <ArchrMark className="h-6 w-auto shrink-0 text-foreground" />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-foreground">New to odds tools?</div>
         <Link href="/learn" className="text-xs font-medium text-primary hover:underline">

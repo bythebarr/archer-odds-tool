@@ -10,8 +10,8 @@ export function SportTabs({ tabs }: { tabs: { label: string; href: string; activ
             key={t.href}
             href={t.href}
             aria-current={t.active ? "page" : undefined}
-            className={`-mb-px border-b-2 pb-2.5 pt-1 text-sm font-semibold transition-colors ${
-              t.active ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            className={`-mb-px border-b-[3px] pb-2.5 pt-1 text-sm font-semibold transition-colors ${
+              t.active ? "border-foreground text-foreground dark:border-brand" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {t.label}

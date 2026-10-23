@@ -8,11 +8,12 @@
 // primary: shows in the mobile BottomNav (a bottom bar shouldn't scroll).
 // mobileOnly: hidden from the desktop top bar.
 import { SPORT_METAS, type NavSport } from "@/lib/engine/sportsMeta";
+import type { GlyphKey } from "@/components/brand/Glyph";
 
 export type NavItem = {
   href: string;
   label: string;
-  icon: string;
+  icon: GlyphKey;
   carriesDate: boolean;
   primary?: boolean;
   mobileOnly?: boolean;
@@ -29,17 +30,17 @@ const PRIMARY_SPORTS: ReadonlySet<NavSport> = new Set<NavSport>(["nba", "nfl", "
 const SPORT_TABS: NavItem[] = SPORT_METAS.filter((m) => !m.parked).map((m) => ({
   href: m.href,
   label: m.label,
-  icon: m.icon,
+  icon: m.sport,
   carriesDate: m.carriesDate,
   ...(PRIMARY_SPORTS.has(m.sport) ? { primary: true } : {}),
 }));
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Home", icon: "🏠", carriesDate: false, primary: true },
+  { href: "/", label: "Home", icon: "home", carriesDate: false, primary: true },
   ...SPORT_TABS,
   // Props points at the NBA finder, the in-season props product. (The MLB props
   // board at /props is parked with MLB; it's still reachable by URL.)
-  { href: "/nba/props", label: "Props", icon: "🎯", carriesDate: false, primary: true },
+  { href: "/nba/props", label: "Props", icon: "props", carriesDate: false, primary: true },
 ];
 
 /**

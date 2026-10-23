@@ -1,7 +1,11 @@
-const INK = "#18181b";
-const PAPER = "#fafafa";
+import { BRAND } from "@/lib/brand/colors";
+import { MARK_PATH, MARK_VIEWBOX } from "@/lib/brand/mark";
 
-/** Shared archery-target mark, rendered at whatever pixel size the caller's ImageResponse size config specifies — every ring is a relative percentage, so one JSX tree covers every icon size from 32px to 512px. */
+/**
+ * The app icon: the volt ARCHR mark on an ink tile. Sized by the caller's
+ * ImageResponse config — the mark is a percentage of the tile, so one tree
+ * covers 32px favicons through 512px home-screen icons.
+ */
 export function AppIconMark() {
   return (
     <div
@@ -11,55 +15,13 @@ export function AppIconMark() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: INK,
+        background: BRAND.ink,
         borderRadius: "22%",
       }}
     >
-      <div
-        style={{
-          width: "76%",
-          height: "76%",
-          borderRadius: "50%",
-          background: PAPER,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            width: "60%",
-            height: "60%",
-            borderRadius: "50%",
-            background: INK,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            style={{
-              width: "58%",
-              height: "58%",
-              borderRadius: "50%",
-              background: PAPER,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <div
-              style={{
-                width: "40%",
-                height: "40%",
-                borderRadius: "50%",
-                background: INK,
-                display: "flex",
-              }}
-            />
-          </div>
-        </div>
-      </div>
+      <svg viewBox={MARK_VIEWBOX} width="74%" height="74%">
+        <path fill={BRAND.volt} fillRule="evenodd" d={MARK_PATH} />
+      </svg>
     </div>
   );
 }
