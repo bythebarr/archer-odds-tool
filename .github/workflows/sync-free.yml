@@ -15,14 +15,25 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # Read-only health probe, printed to the log. The cron steps below only
+      # report an exit code when the site is down; these show the reason.
+      - name: Site health (read-only)
+        if: always()
+        run: |
+          for path in /api/health /api/status /; do
+            echo "== GET $path"
+            curl -sS -L -o /tmp/body -w "HTTP %{http_code}\n" "${{ secrets.APP_URL }}$path" || true
+            head -c 1500 /tmp/body; echo
+          done
+
       - name: Sync today's game statuses/scores (free)
         run: |
-          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Grade newly-final games (free)
         run: |
-          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       # ── MLB odds freshness ─────────────────────────────────────────────────
@@ -39,5 +50,5 @@ jobs:
       # are wrong" because by then they are.
       - name: Refresh MLB odds (ticks the self-throttling poller)
         run: |
-          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
