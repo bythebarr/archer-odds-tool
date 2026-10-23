@@ -71,6 +71,11 @@ export function espnTeamLogoUrl(league: "nba" | "nfl", abbreviation: string): st
   return `https://a.espncdn.com/i/teamlogos/${league}/500/${espnTeamCode(league, abbreviation)}.png`;
 }
 
+/** ESPN's college logo, keyed by ESPN's numeric team id (college programs have no stable short code). */
+export function espnNcaaLogoUrl(espnTeamId: string | number): string {
+  return `https://a.espncdn.com/i/teamlogos/ncaa/500/${espnTeamId}.png`;
+}
+
 /**
  * ESPN's public NBA headshot, keyed by the athlete id our game logs already
  * store — the counterpart to mlbHeadshotUrl. Built from the id rather than

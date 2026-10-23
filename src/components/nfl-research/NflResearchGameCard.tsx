@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { TeamBadge } from "@/components/TeamBadge";
+import { espnTeamLogoUrl } from "@/lib/logos";
 import { WinProbBar } from "@/components/WinProbBar";
 import { compareToModel, validateAmericanOdds, validateSpread } from "@/lib/nfl/research/manualMarket";
 import type { NflManualLineType } from "@/lib/nfl/research/manualMarket";
@@ -126,7 +127,7 @@ export function NflResearchGameCard({ game, homeIdentity, awayIdentity, predicti
         {/* Symmetric matchup header — mirrors the app's existing MLB game-detail pattern */}
         <div className="flex items-center justify-center gap-4 rounded-xl bg-muted/30 px-3 py-4 sm:gap-8 sm:px-4 sm:py-5">
           <div className="flex flex-1 flex-col items-center gap-2 text-center">
-            <TeamBadge abbreviation={awayIdentity.abbreviation} name={awayIdentity.espnName} size={44} />
+            <TeamBadge abbreviation={awayIdentity.abbreviation} name={awayIdentity.espnName} logoUrl={espnTeamLogoUrl("nfl", awayIdentity.abbreviation)} size={44} />
             <span className="text-xs font-semibold text-foreground sm:text-sm">{awayIdentity.espnName}</span>
             {game.awayScore !== null ? (
               <span className="font-mono text-xl font-bold text-foreground">{game.awayScore}</span>
@@ -134,7 +135,7 @@ export function NflResearchGameCard({ game, homeIdentity, awayIdentity, predicti
           </div>
           <span className="shrink-0 text-xs font-medium text-muted-foreground">@</span>
           <div className="flex flex-1 flex-col items-center gap-2 text-center">
-            <TeamBadge abbreviation={homeIdentity.abbreviation} name={homeIdentity.espnName} size={44} />
+            <TeamBadge abbreviation={homeIdentity.abbreviation} name={homeIdentity.espnName} logoUrl={espnTeamLogoUrl("nfl", homeIdentity.abbreviation)} size={44} />
             <span className="text-xs font-semibold text-foreground sm:text-sm">{homeIdentity.espnName}</span>
             {game.homeScore !== null ? (
               <span className="font-mono text-xl font-bold text-foreground">{game.homeScore}</span>
