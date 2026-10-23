@@ -1223,6 +1223,10 @@ model NbaPlayer {
   espnAthleteId String  @unique
   fullName      String
   headshotUrl   String?
+  /// ESPN's position as listed (PG, SG, G, SF, PF, F, C, …).
+  position      String?
+  /// G / F / C — the bucket defense-vs-position compares within.
+  positionGroup String?
   /// The team from the player's most recent box score.
   teamId        String?
   team          Team?   @relation(fields: [teamId], references: [id])
@@ -1235,26 +1239,28 @@ model NbaPlayer {
 /// One row per player per game played (DNPs are not stored — books void a
 /// prop on a player who doesn't play, so a DNP is not a miss).
 model NbaPlayerGameLog {
-  id          String    @id @default(cuid())
-  gameId      String
-  game        Game      @relation(fields: [gameId], references: [id])
+  id            String    @id @default(cuid())
+  gameId        String
+  game          Game      @relation(fields: [gameId], references: [id])
   /// Denormalized off Game.scheduledStartUtc, as PlayerGameLog does.
-  gameDate    DateTime
-  season      Int
-  nbaPlayerId String
-  nbaPlayer   NbaPlayer @relation(fields: [nbaPlayerId], references: [id])
-  teamId      String
-  team        Team      @relation(fields: [teamId], references: [id])
-  isHome      Boolean
-  starter     Boolean
-  minutes     Int
-  points      Int
-  rebounds    Int
-  assists     Int
-  threesMade  Int
-  steals      Int
-  blocks      Int
-  turnovers   Int
+  gameDate      DateTime
+  season        Int
+  nbaPlayerId   String
+  nbaPlayer     NbaPlayer @relation(fields: [nbaPlayerId], references: [id])
+  teamId        String
+  team          Team      @relation(fields: [teamId], references: [id])
+  isHome        Boolean
+  starter       Boolean
+  /// G / F / C, copied from the player — what the opponent's defense-by-position sums group on.
+  positionGroup String?
+  minutes       Int
+  points        Int
+  rebounds      Int
+  assists       Int
+  threesMade    Int
+  steals        Int
+  blocks        Int
+  turnovers     Int
 
   @@unique([nbaPlayerId, gameId])
   @@index([nbaPlayerId, gameDate])

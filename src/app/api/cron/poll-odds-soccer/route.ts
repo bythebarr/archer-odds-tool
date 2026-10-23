@@ -2,6 +2,7 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { decideFixedCadencePoll, recordPollLog } from "@/lib/pollingPolicy";
 import { pollAndStoreSoccerOdds } from "@/lib/soccer/ingest";
 import { classifyFetchStore, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
+import { skipIfOverBudget } from "@/lib/ops/computeBudget";
 
 const JOB_NAME = "poll-odds-soccer";
 /** Same conservative fixed-cadence pattern as tennis — see the soccer ingest module's credit budget note. */
@@ -15,6 +16,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
+  // Optional job: pauses when the month's database compute budget runs low.
+  const overBudget = await skipIfOverBudget(JOB_NAME);
+  if (overBudget) return overBudget;
 
   const decision = await decideFixedCadencePoll(JOB_NAME, MIN_INTERVAL_MINUTES);
 

@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { compareToModel, validateAmericanOdds, validateSpread, validateTotal } from "@/lib/cfb/manualMarket";
 import type { CfbGamePrediction, CfbGameStatus, CfbTeamRef, ManualMarketEntry } from "@/lib/cfb/types";
 import { useManualMarketEntry } from "./manualMarketStore";
+import { Logo } from "@/components/Logo";
+import { espnNcaaLogoUrl } from "@/lib/logos";
 import { resyncDraft } from "./lineFieldSync";
 
 const STATUS_LABEL: Record<CfbGameStatus, string> = {
@@ -36,16 +38,16 @@ function initialsFor(name: string): string {
   return (words.at(-1)?.slice(0, 2) ?? name.slice(0, 2)).toUpperCase();
 }
 
+/** ESPN's program logo, falling back to a stable-hued initials badge. */
 function TeamBadgeCfb({ team }: { team: CfbTeamRef }) {
-  const hue = hueFor(team.espnTeamId);
   return (
-    <span
-      className="flex size-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
-      style={{ backgroundColor: `hsl(${hue} 55% 40%)` }}
-      aria-hidden
-    >
-      {initialsFor(team.displayName)}
-    </span>
+    <Logo
+      sources={[espnNcaaLogoUrl(team.espnTeamId)]}
+      alt={team.displayName}
+      fallbackText={initialsFor(team.displayName)}
+      color={`hsl(${hueFor(team.espnTeamId)} 55% 40%)`}
+      size={28}
+    />
   );
 }
 

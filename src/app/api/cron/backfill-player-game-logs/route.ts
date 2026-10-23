@@ -2,6 +2,7 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { backfillMissingPlayerGameLogs } from "@/lib/props/syncGameLogs";
 import { classifyFetchStore, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
+import { skipIfOverBudget } from "@/lib/ops/computeBudget";
 
 const JOB_NAME = "backfill-player-game-logs";
 
@@ -24,6 +25,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
+  // Optional job: pauses when the month's database compute budget runs low.
+  const overBudget = await skipIfOverBudget(JOB_NAME);
+  if (overBudget) return overBudget;
 
   try {
     const summary = await backfillMissingPlayerGameLogs(BATCH_LIMIT);

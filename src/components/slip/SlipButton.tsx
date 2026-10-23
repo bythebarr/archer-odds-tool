@@ -28,7 +28,11 @@ export function SlipButton() {
         </svg>
         Slip
         {picks.length > 0 && (
-          <span className="flex size-5 items-center justify-center rounded-full bg-primary-foreground text-xs font-bold text-primary">
+          // Re-keyed on the count so the badge kicks each time a pick lands.
+          <span
+            key={picks.length}
+            className="archr-kick flex size-5 items-center justify-center rounded-full bg-brand text-xs font-bold text-brand-foreground dark:bg-primary-foreground dark:text-primary"
+          >
             {picks.length}
           </span>
         )}

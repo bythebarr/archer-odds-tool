@@ -1,28 +1,37 @@
 name: Sync scores & grade outcomes (free)
 
+# Manual only. This used to run every 15 minutes, and every run wakes the
+# database: that kept a scale-to-zero Postgres awake around the clock and used
+# up the database plan's compute quota on 2026-10-14, which took the site down.
+# Vercel Cron now runs sync-results, grade-outcomes and poll-odds in clustered
+# windows (see vercel.json), so this stays as a button: it prints the site's
+# health and runs one sync on demand.
 on:
-  schedule:
-    # Every 15 minutes. The first two steps hit only the free MLB Stats API /
-    # read already-stored odds history — no Odds API credits are ever spent.
-    # The third step (MLB odds refresh) is DORMANT: it runs only once the repo
-    # variable ODDS_FRESH_ENABLED is set to "true", which should happen only
-    # AFTER upgrading the Odds API to a paid tier. When enabled, the poller's
-    # own tier policy self-throttles the real cadence around game time.
-    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # Read-only health probe, printed to the log. The cron steps below only
+      # report an exit code when the site is down; these show the reason.
+      - name: Site health (read-only)
+        if: always()
+        run: |
+          for path in /api/health /api/status /; do
+            echo "== GET $path"
+            curl -sS -L -o /tmp/body -w "HTTP %{http_code}\n" "${{ secrets.APP_URL }}$path" || true
+            head -c 1500 /tmp/body; echo
+          done
+
       - name: Sync today's game statuses/scores (free)
         run: |
-          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Grade newly-final games (free)
         run: |
-          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       # ── MLB odds freshness ─────────────────────────────────────────────────
@@ -39,5 +48,5 @@ jobs:
       # are wrong" because by then they are.
       - name: Refresh MLB odds (ticks the self-throttling poller)
         run: |
-          curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

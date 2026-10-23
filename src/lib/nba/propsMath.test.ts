@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { booksAtPoint, propConsensusPoint, sortSummaries, summarizeProp, type GameLogPoint, type PropQuote, type SlateProp } from "./propsMath";
+import { booksAtPoint, packLog, propConsensusPoint, sortSummaries, summarizeProp, unpackLog, type GameLogPoint, type PropQuote, type SlateProp } from "./propsMath";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 
 const POINTS = NBA_PROP_STAT_BY_KEY.get("points")!;
@@ -48,6 +48,26 @@ describe("summarizeProp", () => {
     expect(s.hitRates.venue).toMatchObject({ hits: 3, sampleSize: 10 }); // only the home games
     expect(s.recent.slice(0, 5)).toEqual([true, false, true, false, true]);
     expect(s.avgL10).toBe(17.6);
+  });
+
+  it("adds L3, L15, last season and head-to-head, with averages", () => {
+    const withOpp = logs.map((l, i) => (i % 3 === 0 ? { ...l, opponent: "NYK" } : l));
+    const s = summarizeProp(prop, withOpp, POINTS, "over", { season: 2026, venue: "home", opponent: "NYK" })!;
+    expect(s.hitRates.l3).toEqual({ hits: 2, sampleSize: 3, hitRate: 2 / 3 });
+    expect(s.hitRates.l15).toMatchObject({ hits: 8, sampleSize: 15 });
+    expect(s.hitRates.lastSeason).toEqual({ hits: 5, sampleSize: 5, hitRate: 1 });
+    // Games 0, 3, 6, 9, 12 were vs NYK: 30, 22, 10, 10, 40.
+    expect(s.hitRates.h2h).toMatchObject({ hits: 2, sampleSize: 5 });
+    const h2h = s.splits.find((sp) => sp.key === "h2h")!;
+    expect(h2h.label).toBe("vs NYK");
+    expect(h2h.avg).toBeCloseTo(22.4);
+    expect(s.splits.map((sp) => sp.key)).toEqual(["l3", "l5", "l10", "l15", "l20", "season", "lastSeason", "venue", "h2h"]);
+    expect(s.avgMinutesSeason).toBe(34);
+  });
+
+  it("has an empty head-to-head with no opponent", () => {
+    const s = summarizeProp(prop, logs, POINTS, "over", { season: 2026, venue: null })!;
+    expect(s.hitRates.h2h).toEqual({ hits: 0, sampleSize: 0, hitRate: null });
   });
 
   it("flips for the Under", () => {
@@ -110,5 +130,12 @@ describe("booksAtPoint", () => {
       "draftkings:-115/-105",
       "pinnacle:105/null",
     ]);
+  });
+});
+
+describe("packLog / unpackLog", () => {
+  it("round-trips a game log", () => {
+    const l = log(31, { opponent: "NYK", isHome: false, season: 2025, minutes: 38 });
+    expect(unpackLog(packLog(l))).toEqual(l);
   });
 });

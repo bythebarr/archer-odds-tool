@@ -3,6 +3,7 @@ import { recordPollLog } from "@/lib/pollingPolicy";
 import { syncGameWeather } from "@/lib/mlb/syncWeather";
 import { todayEt, shiftEtDate } from "@/lib/dateEt";
 import { classifyFetchStore, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
+import { skipIfOverBudget } from "@/lib/ops/computeBudget";
 
 const JOB_NAME = "poll-weather";
 
@@ -23,6 +24,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
+  // Optional job: pauses when the month's database compute budget runs low.
+  const overBudget = await skipIfOverBudget(JOB_NAME);
+  if (overBudget) return overBudget;
 
   const today = todayEt();
   const endDate = shiftEtDate(today, FORECAST_WINDOW_DAYS);

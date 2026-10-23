@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ParlayPropRow } from "@/lib/odds/oddsApiClient";
-import { buildNbaPlayerIndex, groupNbaPropRows, lookupNbaPlayer, normalizePlayerName } from "./props";
+import { buildNbaPlayerIndex, groupNbaPropRows, toaEventToPropRows, lookupNbaPlayer, normalizePlayerName } from "./props";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 
 function row(overrides: Partial<ParlayPropRow> = {}): ParlayPropRow {
@@ -115,5 +115,44 @@ describe("combo stats", () => {
     expect(NBA_PROP_STAT_BY_KEY.get("pointsReboundsAssists")!.value(log)).toBe(42);
     expect(NBA_PROP_STAT_BY_KEY.get("reboundsAssists")!.value(log)).toBe(17);
     expect(NBA_PROP_STAT_BY_KEY.get("threes")!.value(log)).toBe(3);
+  });
+});
+
+describe("toaEventToPropRows", () => {
+  const event = {
+    id: "ev1",
+    sport_key: "basketball_nba",
+    commence_time: "2026-10-23T23:00:00Z",
+    home_team: "New York Knicks",
+    away_team: "Boston Celtics",
+    bookmakers: [
+      {
+        key: "caesars",
+        title: "Caesars",
+        markets: [
+          {
+            key: "player_points" as never,
+            outcomes: [
+              { name: "Over", description: "Jayson Tatum", price: -115, point: 26.5 },
+              { name: "Under", description: "Jayson Tatum", price: -105, point: 26.5 },
+              { name: "Over", description: "Jalen Brunson", price: 100, point: 27.5 },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  it("pairs Over and Under per book, market, player and line", () => {
+    const rows = toaEventToPropRows(event);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ bookmaker: "caesars", player: "Jayson Tatum", market_key: "player_points", line: 26.5, over_price: -115, under_price: -105 });
+    expect(rows[1]).toMatchObject({ player: "Jalen Brunson", over_price: 100, under_price: null });
+  });
+
+  it("feeds the same grouping path as Parlay rows", () => {
+    const grouped = groupNbaPropRows(toaEventToPropRows(event));
+    const quotes = grouped.events.get("ev1")!.quotes;
+    expect(quotes.filter((q) => q.player === "Jayson Tatum").map((q) => q.side).sort()).toEqual(["over", "under"]);
   });
 });

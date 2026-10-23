@@ -49,6 +49,14 @@ export interface SportMeta {
    * Jolpica), and the sport becomes tracked again with no other change.
    */
   signalOnly?: boolean;
+  /**
+   * Out of the lineup for now: hidden from the nav, Home, the Slate and the
+   * Discord card, and its data jobs are off in vercel.json. A PRODUCT choice,
+   * not a data fact — the code, pages and history all stay, so un-parking is
+   * flipping this back and restoring its cron entries. Parked sports are still
+   * one tap away in the /sports hub. See docs/architecture/operations.md.
+   */
+  parked?: boolean;
 }
 
 /**

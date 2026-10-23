@@ -15,6 +15,7 @@ import { findGameForResult } from "@/lib/teamLeague/results";
 import type { LeagueTeamInfo } from "@/lib/teamLeague/league";
 import { NBA_LEAGUE } from "./league";
 import { fetchNbaBoxScore, type EspnNbaPlayerLine } from "./espnBoxScore";
+import { positionGroup } from "./positions";
 
 export interface SyncNbaGameLogsSummary {
   datesChecked: string[];
@@ -81,10 +82,12 @@ async function storeLines(
     const teamId = isHome ? game.homeTeamId : game.awayTeamId;
     if (!teamId) continue;
 
+    const group = positionGroup(line.position);
+    const position = group ? { position: line.position, positionGroup: group } : {};
     const player = await prisma.nbaPlayer.upsert({
       where: { espnAthleteId: line.espnAthleteId },
-      create: { espnAthleteId: line.espnAthleteId, fullName: line.name, headshotUrl: line.headshotUrl, teamId },
-      update: { fullName: line.name, headshotUrl: line.headshotUrl ?? undefined, teamId },
+      create: { espnAthleteId: line.espnAthleteId, fullName: line.name, headshotUrl: line.headshotUrl, teamId, ...position },
+      update: { fullName: line.name, headshotUrl: line.headshotUrl ?? undefined, teamId, ...position },
     });
 
     const stats = {
@@ -93,6 +96,8 @@ async function storeLines(
       teamId,
       isHome,
       starter: line.starter,
+      // This game's listing first; else what the player already has on file.
+      positionGroup: group ?? player.positionGroup,
       minutes: line.minutes,
       points: line.points,
       rebounds: line.rebounds,

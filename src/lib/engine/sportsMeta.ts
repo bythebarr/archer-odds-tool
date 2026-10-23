@@ -14,24 +14,21 @@ import type { SportMeta } from "./types";
 export type { SportMeta };
 
 // `as const` keeps the literals so the unions below derive; `satisfies` checks
-// each entry's shape. Order is display order (MLB primary first) — nav, the Home
-// launcher, and the SportRail all render in it. `resultsOnly` and `signalOnly`
-// are set explicitly on every entry (not just the sports that need them) so both
-// are readable on the literal union at runtime.
+// each entry's shape. Order is display order — nav, the Home launcher, and the
+// SportRail all render in it. `resultsOnly`, `signalOnly` and `parked` are set
+// explicitly on every entry so all three are readable on the literal union.
 export const SPORT_METAS = [
-  { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false, signalOnly: false },
-  // Fully tracked: ESPN's free scoreboard is NFL's results authority (see
-  // teamLeague/results.ts), so games settle and plays grade like MLB's.
-  { sport: "nfl", label: "NFL", icon: "🏈", href: "/nfl", accent: "#f59e0b", carriesDate: false, resultsOnly: false, signalOnly: false },
-  // Same pipeline as NFL (src/lib/teamLeague): odds line-shopping, graded off
-  // ESPN's free scoreboard.
-  { sport: "nba", label: "NBA", icon: "🏀", href: "/nba", accent: "#c026d3", carriesDate: false, resultsOnly: false, signalOnly: false },
-  { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false, signalOnly: false },
-  // signalOnly cleared 2026-07-21: ESPN's free tennis scoreboard now settles
-  // matches (src/lib/tennis/results.ts), so tennis is tracked again.
-  { sport: "tennis", label: "Tennis", icon: "🎾", href: "/tennis", accent: "#a3e635", carriesDate: false, resultsOnly: false, signalOnly: false },
-  { sport: "soccer", label: "Soccer", icon: "⚽", href: "/soccer", accent: "#10b981", carriesDate: false, resultsOnly: false, signalOnly: false },
-  { sport: "f1", label: "F1", icon: "🏁", href: "/f1", accent: "#e10600", carriesDate: false, resultsOnly: true, signalOnly: false },
+  // The lineup — what the nav, Home, the Slate and the Discord card show.
+  // NBA, NFL: odds line-shopping, graded off ESPN's free scoreboard (teamLeague/results.ts).
+  { sport: "nba", label: "NBA", icon: "🏀", href: "/nba", accent: "#c026d3", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
+  { sport: "nfl", label: "NFL", icon: "🏈", href: "/nfl", accent: "#f59e0b", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
+  { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
+  // Parked (2026-10-23): MLB for the offseason; tennis, soccer and F1 until there's
+  // time to bring them up to the same standard. Pages and history stay.
+  { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false, signalOnly: false, parked: true },
+  { sport: "tennis", label: "Tennis", icon: "🎾", href: "/tennis", accent: "#a3e635", carriesDate: false, resultsOnly: false, signalOnly: false, parked: true },
+  { sport: "soccer", label: "Soccer", icon: "⚽", href: "/soccer", accent: "#10b981", carriesDate: false, resultsOnly: false, signalOnly: false, parked: true },
+  { sport: "f1", label: "F1", icon: "🏁", href: "/f1", accent: "#e10600", carriesDate: false, resultsOnly: true, signalOnly: false, parked: true },
 ] as const satisfies readonly SportMeta[];
 
 /** Every registered sport's key — `"mlb" | "nfl" | "nba" | "ufc" | …`, derived. */

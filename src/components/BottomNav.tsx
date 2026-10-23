@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { PRIMARY_NAV_ITEMS, navHref, isNavActive } from "@/lib/nav";
+import { Glyph } from "@/components/brand/Glyph";
 
 // The primary mobile destinations — a focused set (a bottom bar shouldn't
 // scroll), defined once in @/lib/nav so this can't drift from the desktop
@@ -33,13 +34,13 @@ export function BottomNav() {
               key={tab.href}
               href={href}
               aria-current={isActive ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center gap-1 pt-3.5 pb-6 text-[11px] font-medium transition-colors ${
-                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              className={`relative flex flex-1 flex-col items-center gap-1 pt-3 pb-6 text-[11px] font-semibold transition-colors ${
+                isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <span aria-hidden className="text-xl leading-none">
-                {tab.icon}
-              </span>
+              {/* Active tab: a short volt stroke at the arrow's angle. */}
+              {isActive && <span aria-hidden className="absolute top-0 h-[3px] w-7 -skew-x-[18deg] rounded-b-sm bg-brand" />}
+              <Glyph name={tab.icon} className="size-6" />
               {tab.label}
             </Link>
           );

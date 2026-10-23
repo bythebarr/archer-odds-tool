@@ -4,13 +4,39 @@
  * component tries each candidate in order and falls back to initials if none
  * of them exist yet, so nothing breaks before the files are added.
  */
-export function bookLogoSources(_bookKey: string): string[] {
-  // No book logo files ship today (public/logos/books is empty), and every book
-  // has a distinct colored-initials badge (BOOK_INITIALS + BOOK_COLORS) that IS
-  // its identity in this UI — so return nothing rather than probing paths that
-  // only 404 and spam the console. Re-add the `/logos/books/${bookKey}.{svg,png}`
-  // candidates here if real book logo files are ever added.
-  return [];
+/**
+ * Each book's own site, for its app icon. The icon is pulled through Google's
+ * favicon service at 128px — the same mark the book shows in a browser tab and
+ * on a phone's home screen — and the Logo component falls back to the colored
+ * initials badge if it ever fails to load.
+ */
+const BOOK_DOMAINS: Record<string, string> = {
+  draftkings: "sportsbook.draftkings.com",
+  fanduel: "sportsbook.fanduel.com",
+  betmgm: "sports.betmgm.com",
+  betrivers: "betrivers.com",
+  espnbet: "espnbet.com",
+  caesars: "sportsbook.caesars.com",
+  fanatics: "sportsbook.fanatics.com",
+  bet365: "bet365.com",
+  hardrock: "hardrock.bet",
+  parx: "betparx.com",
+  pinnacle: "pinnacle.com",
+};
+
+/**
+ * Book keys with a hand-placed file in public/logos/books (see its README) — a
+ * file there beats the favicon. Listed explicitly so no request probes a path
+ * that 404s.
+ */
+const LOCAL_BOOK_LOGOS = new Set<string>();
+
+export function bookLogoSources(bookKey: string): string[] {
+  const sources: string[] = [];
+  if (LOCAL_BOOK_LOGOS.has(bookKey)) sources.push(`/logos/books/${bookKey}.svg`);
+  const domain = BOOK_DOMAINS[bookKey];
+  if (domain) sources.push(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`);
+  return sources;
 }
 
 export function teamLogoSources(abbreviation: string): string[] {
@@ -62,9 +88,18 @@ const ESPN_LOGO_CODE: Record<"nba" | "nfl", Record<string, string>> = {
   nfl: { WAS: "wsh" },
 };
 
+/** ESPN's short code for a club — its logo key and its slug in ESPN's site API. */
+export function espnTeamCode(league: "nba" | "nfl", abbreviation: string): string {
+  return ESPN_LOGO_CODE[league][abbreviation] ?? abbreviation.toLowerCase();
+}
+
 export function espnTeamLogoUrl(league: "nba" | "nfl", abbreviation: string): string {
-  const code = ESPN_LOGO_CODE[league][abbreviation] ?? abbreviation.toLowerCase();
-  return `https://a.espncdn.com/i/teamlogos/${league}/500/${code}.png`;
+  return `https://a.espncdn.com/i/teamlogos/${league}/500/${espnTeamCode(league, abbreviation)}.png`;
+}
+
+/** ESPN's college logo, keyed by ESPN's numeric team id (college programs have no stable short code). */
+export function espnNcaaLogoUrl(espnTeamId: string | number): string {
+  return `https://a.espncdn.com/i/teamlogos/ncaa/500/${espnTeamId}.png`;
 }
 
 /**

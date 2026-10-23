@@ -38,7 +38,7 @@ npx prisma studio     # browse local DB
 Three GitHub Actions workflows call bearer-secret-protected `/api/cron/*` routes instead of paying for Vercel Pro cron. They're split by cost, so nothing spends Odds API credits without you asking it to:
 
 - `sync-schedule.yml` — **scheduled, once daily.** Extends the known MLB schedule window forward. Free (MLB Stats API).
-- `sync-free.yml` — **scheduled, every 15 minutes.** Refreshes today's game statuses/scores and grades any newly-final game. Free (MLB Stats API + already-stored odds history) — safe to leave running indefinitely.
+- `sync-free.yml` — **manual.** Prints the site's health (`/api/health`, `/api/status`) and runs one sync on demand. It used to run every 15 minutes, which kept the database awake and used up its compute quota; Vercel Cron runs the regular syncs now. See `docs/architecture/operations.md` for the schedule, the cleanup job, and the compute budget guard.
 - `poll-odds.yml` — **manual only** (`workflow_dispatch`). Polls The Odds API for current lines. This is the one that costs credits, so it's not on a schedule: trigger it from the repo's Actions tab ("Run workflow") or `gh workflow run poll-odds.yml` whenever you want fresh prices. The free tier (500 credits/month) comfortably covers on-demand use; it would exhaust in a day or two if run on the same tiered cadence continuously, which is exactly why this one isn't automatic. Bump the cadence back to scheduled once running unattended is worth the ~$25-30/mo 20K-credit tier.
 
 Once deployed, set these as GitHub repo secrets (Settings → Secrets and variables → Actions) so the workflows can reach the deployed app:

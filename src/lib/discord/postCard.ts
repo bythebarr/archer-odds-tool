@@ -247,9 +247,11 @@ export function excludeSignalOnly(plays: Play[]): Play[] {
 export async function collectPlays(dateEt: string): Promise<Play[]> {
   // Best-effort freshness (UFC pokes its gated odds poll); a failure must not
   // block the board. Registry-driven — no sport branch.
-  await Promise.allSettled(SPORTS.map((a) => a.refresh?.(dateEt) ?? Promise.resolve()));
+  // Parked sports sit out the card (see SportMeta.parked); their past plays still grade.
+  const lineup = SPORTS.filter((a) => !a.meta.parked);
+  await Promise.allSettled(lineup.map((a) => a.refresh?.(dateEt) ?? Promise.resolve()));
   const perSport = await Promise.all(
-    SPORTS.map(async (a) => {
+    lineup.map(async (a) => {
       try {
         return await a.listPlays(dateEt);
       } catch (err) {

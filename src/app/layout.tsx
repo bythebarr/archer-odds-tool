@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Saira } from "next/font/google";
 import { SiteNav } from "@/components/SiteNav";
 import { BottomNav } from "@/components/BottomNav";
 import { LaunchIntro } from "@/components/LaunchIntro";
+import { ArchrMarkSymbol } from "@/components/brand/ArchrMark";
 import { SlipProvider } from "@/lib/slip/SlipContext";
 import { SlipButton } from "@/components/slip/SlipButton";
 import { THEME_COLORS } from "@/lib/theme";
@@ -21,7 +22,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const SITE_DESCRIPTION = "Every sport, one board — model leans, hit-rates, and EV across MLB, UFC, F1, tennis & soccer. Research/discovery only.";
+// Display face: wordmark, page and section titles. Wide, athletic, with a
+// true italic that leans with the mark.
+const saira = Saira({
+  variable: "--font-saira",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+});
+
+const SITE_DESCRIPTION = "The sharpest line on every game and prop — every book, every sport, one app. Research/discovery only.";
 
 export const metadata: Metadata = {
   // Absolute base so social crawlers resolve the share card to a real image URL.
@@ -30,7 +39,7 @@ export const metadata: Metadata = {
   // out of search results (paired with robots.ts disallow + the proxy gate).
   robots: { index: false, follow: false },
   title: {
-    default: "ARCHR Edge — every-sport odds, model leans & EV",
+    default: "ARCHR Edge — best lines, every book",
     template: "%s · ARCHR Edge",
   },
   description: SITE_DESCRIPTION,
@@ -40,13 +49,13 @@ export const metadata: Metadata = {
   },
   openGraph: {
     siteName: "ARCHR Edge",
-    title: "ARCHR Edge — every-sport odds, model leans & EV",
+    title: "ARCHR Edge — best lines, every book",
     description: SITE_DESCRIPTION,
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ARCHR Edge — every-sport odds, model leans & EV",
+    title: "ARCHR Edge — best lines, every book",
     description: SITE_DESCRIPTION,
   },
 };
@@ -69,7 +78,7 @@ export default function RootLayout({
       lang="en"
       data-theme="light"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${saira.variable} h-full antialiased`}
     >
       <head>
         <meta id="theme-color-meta" name="theme-color" content={THEME_COLORS.light} />
@@ -77,6 +86,7 @@ export default function RootLayout({
       </head>
       {/* pb-16 clears the fixed mobile BottomNav; sm+ has no bottom bar. */}
       <body className="min-h-full flex flex-col pb-16 sm:pb-0">
+        <ArchrMarkSymbol />
         <LaunchIntro />
         <SlipProvider>
           <Suspense fallback={<div className="h-[57px] border-b border-border" />}>

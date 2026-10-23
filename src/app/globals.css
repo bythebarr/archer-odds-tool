@@ -17,6 +17,9 @@
      never actually resolves — it must name the self-hosted family directly. */
   --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-display: "Saira", "Saira Fallback", ui-sans-serif, system-ui, sans-serif;
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -50,51 +53,106 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* "Sharp data-terminal" palette: navy/near-black base, electric-blue accent.
+/* ARCHR palette: the mark is monochrome, so the UI is ink-and-paper with one
+   loud accent — volt (--brand). In dark mode volt is also the interactive
+   color; in light mode volt on white is unreadable as text, so --primary is
+   ink there and volt is reserved for fills (tags, badges, active bars).
    Positive/negative EV keep their own literal emerald/red (see evColorClass
-   in src/lib/odds/format.ts) — --destructive mirrors that red so shadcn's
-   destructive variants don't introduce a second, slightly different one. */
+   in src/lib/odds/format.ts); --destructive mirrors that red. */
 :root {
-  --background: #f7f9fc;
-  --foreground: #0b1120;
+  --background: #f5f6f8;
+  --foreground: #07080b;
   --card: #ffffff;
-  --card-foreground: #0b1120;
+  --card-foreground: #07080b;
   --popover: #ffffff;
-  --popover-foreground: #0b1120;
-  --primary: #2563eb;
-  --primary-foreground: #f8fafc;
-  --secondary: #eef2f7;
-  --secondary-foreground: #0b1120;
-  --muted: #eef2f7;
-  --muted-foreground: #5b6b82;
-  --accent: #eef2f7;
-  --accent-foreground: #0b1120;
+  --popover-foreground: #07080b;
+  --primary: #07080b;
+  --primary-foreground: #ffffff;
+  --secondary: #eceef2;
+  --secondary-foreground: #07080b;
+  --muted: #eceef2;
+  --muted-foreground: #5d6372;
+  --accent: #eceef2;
+  --accent-foreground: #07080b;
   --destructive: #dc2626;
-  --border: #dfe5ee;
-  --input: #dfe5ee;
-  --ring: color-mix(in oklch, #2563eb 50%, transparent);
-  --radius: 0.375rem;
+  --border: #e1e4ea;
+  --input: #e1e4ea;
+  --ring: color-mix(in oklch, #07080b 35%, transparent);
+  --brand: #c8f53a;
+  --brand-foreground: #07080b;
+  --radius: 0.5rem;
 }
 
 [data-theme="dark"] {
-  --background: #0a0e17;
-  --foreground: #e6edf5;
-  --card: #10151f;
-  --card-foreground: #e6edf5;
-  --popover: #10151f;
-  --popover-foreground: #e6edf5;
-  --primary: #38bdf8;
-  --primary-foreground: #04121c;
-  --secondary: #17202e;
-  --secondary-foreground: #e6edf5;
-  --muted: #131a26;
-  --muted-foreground: #7c8aa0;
-  --accent: #17202e;
-  --accent-foreground: #e6edf5;
+  --background: #07080b;
+  --foreground: #eef0f4;
+  --card: #111318;
+  --card-foreground: #eef0f4;
+  --popover: #111318;
+  --popover-foreground: #eef0f4;
+  --primary: #c8f53a;
+  --primary-foreground: #07080b;
+  --secondary: #1a1d24;
+  --secondary-foreground: #eef0f4;
+  --muted: #15181e;
+  --muted-foreground: #8a90a0;
+  --accent: #1a1d24;
+  --accent-foreground: #eef0f4;
   --destructive: #f87171;
-  --border: #1c2433;
-  --input: #1c2433;
-  --ring: color-mix(in oklch, #38bdf8 50%, transparent);
+  --border: #22262f;
+  --input: #22262f;
+  --ring: color-mix(in oklch, #c8f53a 50%, transparent);
+  --brand: #c8f53a;
+  --brand-foreground: #07080b;
+}
+
+/* The "EDGE" tag: a volt parallelogram cut at the arrow's flight angle. */
+.brand-tag {
+  display: inline-block;
+  background: var(--brand);
+  color: var(--brand-foreground);
+  clip-path: polygon(14% 0, 100% 0, 86% 100%, 0 100%);
+  padding-inline: 0.7em;
+}
+
+/* Section-title slash: the arrow's angle as a short volt stroke. */
+.brand-slash {
+  display: inline-block;
+  width: 0.32em;
+  height: 0.9em;
+  background: var(--brand);
+  transform: skewX(-18deg);
+  border-radius: 1px;
+}
+
+/* A price tapped into the slip: quick pop so the tap reads as "taken". */
+@keyframes archr-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+.archr-pop { animation: archr-pop 220ms ease-out; }
+
+/* Slip button when a pick lands: the arrow strikes, the button kicks. */
+@keyframes archr-kick {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-4px) scale(1.06); }
+  60% { transform: translateY(1px) scale(0.98); }
+  100% { transform: translateY(0) scale(1); }
+}
+.archr-kick { animation: archr-kick 420ms cubic-bezier(.3,1.4,.5,1); }
+
+/* Loading: a volt copy of the mark is revealed along the arrow's flight
+   path, over and over, on top of a muted copy (see BrandLoader). */
+@keyframes archr-flight {
+  0% { clip-path: inset(100% 100% 0 0); opacity: 1; }
+  60% { clip-path: inset(0 0 0 0); opacity: 1; }
+  100% { clip-path: inset(0 0 0 0); opacity: 0; }
+}
+.archr-flight { animation: archr-flight 1.2s cubic-bezier(.6,0,.3,1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .archr-pop, .archr-kick, .archr-flight { animation: none; }
 }
 
 /* Theme-toggle icons: both are always rendered so SSR and client HTML match

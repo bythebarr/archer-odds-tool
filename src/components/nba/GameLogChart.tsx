@@ -49,7 +49,10 @@ export function GameLogChart({
   const max = Math.max(point, ...values) * 1.12 || 1;
   const plotH = HEIGHT - PAD_TOP - PAD_BOTTOM;
   const y = (v: number) => PAD_TOP + plotH - (v / max) * plotH;
-  const barW = (PLOT_W - GAP * (Math.max(games.length, 10) - 1)) / Math.max(games.length, 10);
+  // A full season packs ~80 bars into the plot: tighter gaps, square bars.
+  const gap = games.length > 30 ? 1 : GAP;
+  const barW = (PLOT_W - gap * (Math.max(games.length, 10) - 1)) / Math.max(games.length, 10);
+  const rounded = barW >= 7;
   const shown = active ?? games.length - 1;
   const g = games[shown];
   const v = values[shown];
@@ -75,7 +78,7 @@ export function GameLogChart({
           const value = values[i];
           const cashed = side === "over" ? value > point : value < point;
           const top = y(Math.max(value, 0.0001));
-          const x = i * (barW + GAP);
+          const x = i * (barW + gap);
           const h = PAD_TOP + plotH - top;
           return (
             <g
@@ -86,18 +89,18 @@ export function GameLogChart({
             >
               {/* Hit target taller than the bar, so short bars are still easy to tap. */}
               <rect x={x} y={PAD_TOP} width={barW} height={plotH} fill="transparent" />
-              {h >= 6 ? (
+              {rounded && h >= 6 ? (
                 <path
                   d={`M${x},${PAD_TOP + plotH} v${-(h - 3)} q0,-3 3,-3 h${barW - 6} q3,0 3,3 v${h - 3} z`}
                   className={`${cashed ? HIT_FILL : MISS_FILL} ${i === shown ? "opacity-100" : "opacity-80"}`}
                 />
               ) : (
-                // A zero (or near-zero) game still gets a visible stub on the baseline.
+                // Thin (season-view) bars are plain rects; a zero game still gets a visible stub on the baseline.
                 <rect
                   x={x}
-                  y={PAD_TOP + plotH - 2}
+                  y={PAD_TOP + plotH - Math.max(h, 2)}
                   width={barW}
-                  height={2}
+                  height={Math.max(h, 2)}
                   className={`${cashed ? HIT_FILL : MISS_FILL} ${i === shown ? "opacity-100" : "opacity-80"}`}
                 />
               )}

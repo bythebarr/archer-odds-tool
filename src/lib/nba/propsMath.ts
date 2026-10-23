@@ -29,6 +29,22 @@ export interface GameLogPoint extends NbaStatLine {
   minutes: number;
 }
 
+/**
+ * A game log as a tuple for the wire: a night's slate ships two seasons of logs
+ * for every player, and positional arrays drop the repeated keys (about half the
+ * payload). [date, opponent, isHome, season, minutes, pts, reb, ast, 3pm, stl, blk]
+ */
+export type PackedLog = [string, string, 0 | 1, number, number, number, number, number, number, number, number];
+
+export function packLog(l: GameLogPoint): PackedLog {
+  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, l.minutes, l.points, l.rebounds, l.assists, l.threesMade, l.steals, l.blocks];
+}
+
+export function unpackLog(t: PackedLog): GameLogPoint {
+  const [date, opponent, isHome, season, minutes, points, rebounds, assists, threesMade, steals, blocks] = t;
+  return { date, opponent, isHome: isHome === 1, season, minutes, points, rebounds, assists, threesMade, steals, blocks };
+}
+
 export interface SlateProp {
   playerId: string;
   stat: NbaPropStat;
@@ -36,6 +52,25 @@ export interface SlateProp {
 }
 
 export type PropSort = "hitRate" | "margin" | "price";
+
+/** Every window a prop's history is cut by, in display order. */
+export type SplitKey = "l3" | "l5" | "l10" | "l15" | "l20" | "season" | "lastSeason" | "venue" | "h2h";
+
+export interface PropSplit {
+  key: SplitKey;
+  label: string;
+  rate: PropHitRateResult;
+  /** Average of the stat over the same games. */
+  avg: number | null;
+}
+
+/** What a prop's history is measured against: tonight's season, venue and opponent. */
+export interface PropContext {
+  season: number;
+  venue: "home" | "away" | null;
+  /** Tonight's opponent abbreviation, for the head-to-head split. */
+  opponent?: string | null;
+}
 
 export interface PropSummary {
   playerId: string;
@@ -47,11 +82,14 @@ export interface PropSummary {
   over: PropQuote | null;
   under: PropQuote | null;
   booksAtLine: number;
-  hitRates: { l5: PropHitRateResult; l10: PropHitRateResult; l20: PropHitRateResult; season: PropHitRateResult; venue: PropHitRateResult };
+  hitRates: Record<SplitKey, PropHitRateResult>;
+  /** The same windows with labels and averages, in display order. */
+  splits: PropSplit[];
   /** Last 10 games, most recent first: did the chosen side cash? (pushes count as not cashing) */
   recent: boolean[];
   avgL10: number | null;
   avgMinutesL5: number | null;
+  avgMinutesSeason: number | null;
 }
 
 function average(values: number[]): number | null {
@@ -72,17 +110,41 @@ export function summarizeProp(
   logs: GameLogPoint[],
   stat: NbaPropStatDef,
   side: PropDirection,
-  context: { season: number; venue: "home" | "away" | null },
+  context: PropContext,
   atPoint?: number
 ): PropSummary | null {
   const point = atPoint ?? propConsensusPoint(prop.quotes);
   if (point === null) return null;
 
-  const values = logs.map((l) => stat.value(l));
-  const tally = (v: number[]) => tallyPropHits(v, point, side);
   const cashes = (v: number) => (side === "over" ? v > point : v < point);
-  const venueLogs =
-    context.venue === null ? logs : logs.filter((l) => l.isHome === (context.venue === "home"));
+  const of = (games: GameLogPoint[]) => games.map((l) => stat.value(l));
+  const values = of(logs);
+  const seasonLogs = logs.filter((l) => l.season === context.season);
+  const windows: { key: SplitKey; label: string; values: number[] }[] = [
+    { key: "l3", label: "L3", values: values.slice(0, 3) },
+    { key: "l5", label: "L5", values: values.slice(0, 5) },
+    { key: "l10", label: "L10", values: values.slice(0, 10) },
+    { key: "l15", label: "L15", values: values.slice(0, 15) },
+    { key: "l20", label: "L20", values: values.slice(0, 20) },
+    { key: "season", label: "Season", values: of(seasonLogs) },
+    { key: "lastSeason", label: "Last szn", values: of(logs.filter((l) => l.season === context.season - 1)) },
+    {
+      key: "venue",
+      label: context.venue === "home" ? "Home" : context.venue === "away" ? "Away" : "Venue",
+      values: of((context.venue === null ? logs : logs.filter((l) => l.isHome === (context.venue === "home"))).slice(0, 20)),
+    },
+    {
+      key: "h2h",
+      label: context.opponent ? `vs ${context.opponent}` : "H2H",
+      values: context.opponent ? of(logs.filter((l) => l.opponent === context.opponent)) : [],
+    },
+  ];
+  const splits = windows.map((w) => ({
+    key: w.key,
+    label: w.label,
+    rate: tallyPropHits(w.values, point, side),
+    avg: average(w.values),
+  }));
 
   return {
     playerId: prop.playerId,
@@ -93,16 +155,12 @@ export function summarizeProp(
     under: bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point),
     booksAtLine: new Set(prop.quotes.filter((q) => q.point === point && isBettableBook(q.bookKey)).map((q) => q.bookKey))
       .size,
-    hitRates: {
-      l5: tally(values.slice(0, 5)),
-      l10: tally(values.slice(0, 10)),
-      l20: tally(values.slice(0, 20)),
-      season: tally(logs.filter((l) => l.season === context.season).map((l) => stat.value(l))),
-      venue: tally(venueLogs.slice(0, 20).map((l) => stat.value(l))),
-    },
+    hitRates: Object.fromEntries(splits.map((sp) => [sp.key, sp.rate])) as Record<SplitKey, PropHitRateResult>,
+    splits,
     recent: values.slice(0, 10).map(cashes),
     avgL10: average(values.slice(0, 10)),
     avgMinutesL5: average(logs.slice(0, 5).map((l) => l.minutes)),
+    avgMinutesSeason: average(seasonLogs.map((l) => l.minutes)),
   };
 }
 

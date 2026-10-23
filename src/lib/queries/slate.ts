@@ -9,6 +9,7 @@ import { getUfcMatchup } from "./ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { computeFinishProjection, scheduledRoundsForBout, type FinishMethod } from "@/lib/ufc/finishMath";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
+import { isParked } from "@/lib/sports";
 
 /**
  * The Slate: one normalized, cross-sport view of a day's card. Every sport
@@ -247,13 +248,16 @@ export function getUfcSlateItems(dateEt: string): Promise<SlateItem[]> {
 export const getSlateForDate = cache(async function getSlateForDate(dateEt: string): Promise<Slate> {
   const { gte, lt } = etDayBoundsUtc(dateEt);
 
+  // Parked sports are skipped outright: no queries, no rows (see SportMeta.parked).
+  const unlessParked = (sport: SlateSport, load: () => Promise<SlateItem[]>) =>
+    isParked(sport) ? Promise.resolve([]) : load();
   const [mlb, nfl, nba, tennis, soccer, ufc] = await Promise.all([
-    mlbItems(dateEt),
-    teamLeagueItems("nfl", gte, lt),
-    teamLeagueItems("nba", gte, lt),
-    tennisItems(gte, lt),
-    soccerItems(gte, lt),
-    ufcItems(dateEt),
+    unlessParked("mlb", () => mlbItems(dateEt)),
+    unlessParked("nfl", () => teamLeagueItems("nfl", gte, lt)),
+    unlessParked("nba", () => teamLeagueItems("nba", gte, lt)),
+    unlessParked("tennis", () => tennisItems(gte, lt)),
+    unlessParked("soccer", () => soccerItems(gte, lt)),
+    unlessParked("ufc", () => ufcItems(dateEt)),
   ]);
 
   const items = [...mlb, ...nfl, ...nba, ...tennis, ...soccer, ...ufc].sort(

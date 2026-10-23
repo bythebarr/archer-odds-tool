@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { cookies } from "next/headers";
-import { getNbaPropsSlate } from "@/lib/queries/nbaProps";
-import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
+import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { getFeedFreshness } from "@/lib/freshness";
-import { PageShell, PageHeader } from "@/components/PageShell";
-import { DateNav } from "@/components/DateNav";
+import { SportCarousel } from "@/components/book/SportCarousel";
+import { SportTabs } from "@/components/book/SportTabs";
+import { LeagueHeader, leagueTabs } from "@/components/book/LeaguePage";
+import { DateStrip } from "@/components/book/DateStrip";
+import { getLeagueDays } from "@/lib/queries/lobby";
 import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
-import { NbaPropsFinder, PROPS_PREFS_COOKIE, type PropsPrefs } from "@/components/nba/NbaPropsFinder";
-import type { NbaPropStat } from "@/generated/prisma/client";
+import { NbaPropsFinder } from "@/components/nba/NbaPropsFinder";
+import { readPropsPrefs } from "@/lib/nba/propsPrefs";
 
 export const metadata: Metadata = {
   title: "NBA Props — best price and hit rate at every line",
@@ -20,49 +20,30 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_PREFS: PropsPrefs = { stat: "points", side: "over", sort: "hitRate" };
-
-/** URL params win (a shared link), then the remembered cookie, then defaults. */
-function resolvePrefs(params: Record<string, string | undefined>, cookie: string | undefined): PropsPrefs {
-  let saved: Partial<PropsPrefs> = {};
-  try {
-    saved = cookie ? (JSON.parse(cookie) as Partial<PropsPrefs>) : {};
-  } catch {
-    saved = {};
-  }
-  const stat = [params.stat, saved.stat].find((s) => NBA_PROP_STAT_BY_KEY.has(s as NbaPropStat)) as NbaPropStat | undefined;
-  const side = [params.side, saved.side].find((s) => s === "over" || s === "under") as PropsPrefs["side"] | undefined;
-  const sort = [params.sort, saved.sort].find((s) => s === "hitRate" || s === "margin" || s === "price") as
-    | PropsPrefs["sort"]
-    | undefined;
-  return { stat: stat ?? DEFAULT_PREFS.stat, side: side ?? DEFAULT_PREFS.side, sort: sort ?? DEFAULT_PREFS.sort };
-}
-
 export default async function NbaPropsPage({
   searchParams,
 }: {
   searchParams: Promise<{ date?: string; stat?: string; side?: string; sort?: string; game?: string }>;
 }) {
   const params = await searchParams;
-  const date = params.date && isValidEtDate(params.date) ? params.date : todayEt();
-  const prefs = resolvePrefs(params, (await cookies()).get(PROPS_PREFS_COOKIE)?.value);
+  const days = await getLeagueDays("nba", todayEt());
+  const date = params.date && isValidEtDate(params.date) ? params.date : (days[0] ?? todayEt());
+  const prefs = await readPropsPrefs(params);
 
   const [slate, freshness] = await Promise.all([getNbaPropsSlate(date), getFeedFreshness("nbaProps")]);
   const initialGame = params.game && slate.games.some((g) => g.id === params.game) ? params.game : null;
 
   return (
-    <PageShell width="2xl">
-      <PageHeader
-        title="NBA Props"
-        description="Best price across books at the main line, next to how often each player cleared it."
-        right={
-          <Link href="/nba" className="text-xs text-muted-foreground underline underline-offset-2">
-            Game lines →
-          </Link>
-        }
-      />
+    <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
+      <SportCarousel active="nba" />
+      <LeagueHeader sport="nba" />
+      <div className="mt-3">
+        <SportTabs tabs={leagueTabs("nba", "props")} />
+      </div>
 
-      <DateNav basePath="/nba/props" date={date} />
+      <div className="mt-4">
+        <DateStrip days={days.includes(date) ? days : [date, ...days].sort()} active={date} href={(d) => `/nba/props?date=${d}`} />
+      </div>
 
       {slate.props.length === 0 ? (
         <div className="mt-8">
@@ -72,12 +53,12 @@ export default async function NbaPropsPage({
         </div>
       ) : (
         <>
-          <NbaPropsFinder slate={slate} initial={prefs} initialGame={initialGame} />
+          <NbaPropsFinder slate={toWireSlate(slate)} initial={prefs} initialGame={initialGame} />
           <div className="mt-6">
             <FreshnessStamp freshness={freshness} />
           </div>
         </>
       )}
-    </PageShell>
+    </div>
   );
 }

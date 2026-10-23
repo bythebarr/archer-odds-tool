@@ -8,6 +8,7 @@ import { sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 import { lookbackDatesEt } from "@/lib/teamLeague/results";
 import { pollAndStoreNbaProps } from "./props";
 import { syncNbaGameLogs } from "./gameLogs";
+import { syncNbaPositions } from "./positions";
 
 const NBA_PROPS_JOB = "poll-props-nba";
 const NBA_GAME_LOGS_JOB = "sync-gamelogs-nba";
@@ -40,9 +41,13 @@ export function runNbaPropsPoll() {
 
 export function runNbaGameLogSync() {
   return logged(NBA_GAME_LOGS_JOB, async () => {
-    const summary = await syncNbaGameLogs(lookbackDatesEt(new Date()));
+    const logs = await syncNbaGameLogs(lookbackDatesEt(new Date()));
+    // Positions after logs, so tonight's new players and logs are covered. A roster
+    // fetch failing costs only the by-position split, never the logs, so it's caught.
+    const positions = await syncNbaPositions().catch((error: unknown) => ({ error: String(error) }));
+    const summary = { ...logs, positions };
     // Already-logged games are skipped, so "considered" is the games that still needed logs.
-    const needed = summary.gamesLogged + summary.failures.length;
-    return { summary, status: writeOutcomeStatus(needed, summary.gamesLogged, "games logged") };
+    const needed = logs.gamesLogged + logs.failures.length;
+    return { summary, status: writeOutcomeStatus(needed, logs.gamesLogged, "games logged") };
   });
 }

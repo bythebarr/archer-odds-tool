@@ -18,11 +18,11 @@ import { tennisAdapter } from "./adapters/tennis";
 import { soccerAdapter } from "./adapters/soccer";
 import { f1Adapter } from "./adapters/f1";
 
-// Display order (MLB primary first): nav, the Home launcher, and the rail all
-// render in registry order. Each adapter's `meta` points at the client-safe
+// Same order as SPORT_METAS (the lineup first, then parked sports). Parked
+// adapters stay registered: their pages still work and past plays still grade. Each adapter's `meta` points at the client-safe
 // SPORT_METAS entry, so identity/display and behavior share one source without
 // forcing this server-only module (prisma, ingest) into the client bundle.
-export const SPORTS: SportAdapter[] = [mlbAdapter, nflAdapter, nbaAdapter, ufcAdapter, tennisAdapter, soccerAdapter, f1Adapter];
+export const SPORTS: SportAdapter[] = [nbaAdapter, nflAdapter, ufcAdapter, mlbAdapter, tennisAdapter, soccerAdapter, f1Adapter];
 
 // The sport-key unions derive from the client-safe meta list (see sportsMeta.ts);
 // re-exported here so `@/lib/engine` stays the one import for engine types.
