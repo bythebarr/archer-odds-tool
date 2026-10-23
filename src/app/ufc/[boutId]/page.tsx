@@ -39,13 +39,48 @@ function formatEventDate(date: Date): string {
   }).format(date);
 }
 
-function FighterColumn({ fighter, color }: { fighter: UfcFighterBio; color: string }) {
+function heightLabel(inches: number | null): string {
+  if (inches === null) return "—";
+  return `${Math.floor(inches / 12)}'${Math.round(inches % 12)}"`;
+}
+
+/** One tale-of-the-tape row: red's value, the label, blue's value — the bigger number bolded when it's an edge. */
+function TapeRow({
+  label,
+  red,
+  blue,
+  edge,
+}: {
+  label: string;
+  red: string;
+  blue: string;
+  /** Which side the comparison favors, when it's a measurable edge. */
+  edge?: "red" | "blue" | null;
+}) {
   return (
-    <div className="flex flex-1 flex-col items-center gap-1.5 text-center">
-      <FighterBadge name={fighter.name} imageUrl={fighter.imageUrl} color={color} size={44} />
-      <span className="text-sm font-semibold text-foreground">{fighter.name}</span>
-      {fighter.nickname ? <span className="text-xs italic text-muted-foreground">&ldquo;{fighter.nickname}&rdquo;</span> : null}
-      {fighter.record ? <span className="font-mono text-xs text-muted-foreground">{fighter.record}</span> : null}
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-2.5 text-sm">
+      <span className={`text-left font-mono ${edge === "red" ? "font-bold text-foreground" : "text-foreground/80"}`}>{red}</span>
+      <span className="text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className={`text-right font-mono ${edge === "blue" ? "font-bold text-foreground" : "text-foreground/80"}`}>{blue}</span>
+    </div>
+  );
+}
+
+function edgeOf(red: number | null, blue: number | null, minGap: number): "red" | "blue" | null {
+  if (red === null || blue === null || Math.abs(red - blue) < minGap) return null;
+  return red > blue ? "red" : "blue";
+}
+
+function FaceOffCorner({ fighter, color, prob }: { fighter: UfcFighterBio; color: string; prob: number | null }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
+      <span className="rounded-full p-[3px]" style={{ background: color }}>
+        <FighterBadge name={fighter.name} imageUrl={fighter.imageUrl} size={88} />
+      </span>
+      <span className="mt-1 w-full truncate text-[15px] font-semibold">{fighter.name}</span>
+      {fighter.nickname ? <span className="w-full truncate text-[11px] italic text-[#8a90a0]">&ldquo;{fighter.nickname}&rdquo;</span> : null}
+      <span className="font-mono text-xs text-[#8a90a0]">{fighter.record ?? ""}</span>
+      {prob !== null && <span className="mt-1 font-display text-2xl font-extrabold italic leading-none">{Math.round(prob * 100)}%</span>}
     </div>
   );
 }
@@ -78,62 +113,80 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
   const loser = winner ? (winner.id === header.red.id ? header.blue : header.red) : null;
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <BackLink fallbackHref="/ufc" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
-        ← Back
+    <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
+      <BackLink fallbackHref="/ufc" className="text-sm text-muted-foreground hover:text-foreground">
+        ← UFC
       </BackLink>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
-          {header.weightClass}
-        </span>
-        {header.titleBout ? (
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-            Title bout
+      {/* Face-off: always ink, the two corners squared up over their win odds. */}
+      <div className="relative mt-3 overflow-hidden rounded-2xl bg-[#07080b] bg-[radial-gradient(110%_90%_at_50%_120%,rgba(200,245,58,0.14),transparent_60%)] px-4 pb-5 pt-4 text-[#eef0f4] ring-1 ring-white/10">
+        <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
+          {header.titleBout ? (
+            <span className="rounded bg-amber-400 px-1.5 py-0.5 text-[#07080b]">Title fight</span>
+          ) : header.isMainEvent ? (
+            <span className="rounded bg-[#c8f53a] px-1.5 py-0.5 text-[#07080b]">Main event</span>
+          ) : null}
+          <span className="text-[#8a90a0]">
+            {header.weightClass} · {scheduledRounds} rounds
           </span>
-        ) : header.isMainEvent ? (
-          <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-secondary-foreground">
-            Main event
-          </span>
-        ) : null}
-        <span className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
-          {scheduledRounds} rounds
-        </span>
-      </div>
-
-      <p className="mt-2 text-xs text-muted-foreground">
-        {header.eventTitle} · {formatEventDate(header.eventDate)}
-        {header.location ? ` · ${header.location}` : ""}
-      </p>
-
-      {/* Matchup band */}
-      <div className="mt-4 rounded-lg border border-border bg-card p-5">
-        <div className="flex items-center justify-between gap-3">
-          <FighterColumn fighter={header.red} color={RED_CORNER} />
-          <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-muted-foreground">vs</span>
-          <FighterColumn fighter={header.blue} color={BLUE_CORNER} />
         </div>
-
+        <p className="mt-1 text-center text-[11px] text-[#8a90a0]">
+          {header.eventTitle} · {formatEventDate(header.eventDate)}
+          {header.location ? ` · ${header.location}` : ""}
+        </p>
+        <div className="mt-4 flex items-start justify-between gap-2">
+          <FaceOffCorner fighter={header.red} color={RED_CORNER} prob={projection?.fighterAProb ?? null} />
+          <span className="mt-9 shrink-0 font-display text-xl font-extrabold italic text-[#c8f53a]">VS</span>
+          <FaceOffCorner fighter={header.blue} color={BLUE_CORNER} prob={projection?.fighterBProb ?? null} />
+        </div>
+        {projection?.fighterAProb != null && (
+          <div className="mt-3">
+            <div className="flex h-1.5 overflow-hidden rounded-full" aria-hidden>
+              <span style={{ width: `${projection.fighterAProb * 100}%`, background: RED_CORNER }} />
+              <span className="flex-1" style={{ background: BLUE_CORNER }} />
+            </div>
+            <p className="mt-1.5 text-center text-[10px] uppercase tracking-wide text-[#8a90a0]">ARCHR fighter-math win probability</p>
+          </div>
+        )}
         {winner && loser ? (
-          <p className="mt-4 border-t border-border pt-3 text-center text-sm text-foreground">
+          <p className="mt-4 border-t border-white/10 pt-3 text-center text-sm">
             <span className="font-semibold">{winner.name}</span>
-            <span className="text-muted-foreground"> def. </span>
+            <span className="text-[#8a90a0]"> def. </span>
             <span>{loser.name}</span>
-            {header.method ? <span className="text-muted-foreground"> · {header.method}</span> : null}
-            {header.methodDetails ? <span className="text-muted-foreground"> ({header.methodDetails})</span> : null}
-            {header.resultRound ? <span className="text-muted-foreground"> · R{header.resultRound}</span> : null}
-            {header.resultTime ? <span className="text-muted-foreground"> {header.resultTime}</span> : null}
-          </p>
-        ) : header.method ? (
-          <p className="mt-4 border-t border-border pt-3 text-center text-sm text-muted-foreground">
-            {header.method}
-            {header.resultRound ? ` · R${header.resultRound}` : ""}
+            {header.method ? <span className="text-[#8a90a0]"> · {header.method}</span> : null}
+            {header.methodDetails ? <span className="text-[#8a90a0]"> ({header.methodDetails})</span> : null}
+            {header.resultRound ? <span className="text-[#8a90a0]"> · R{header.resultRound}</span> : null}
+            {header.resultTime ? <span className="text-[#8a90a0]"> {header.resultTime}</span> : null}
           </p>
         ) : null}
       </div>
+
+      <section className="mt-6">
+        <h2 className="mb-1 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
+          <span className="brand-slash" aria-hidden />
+          Tale of the tape
+        </h2>
+        <div className="divide-y divide-border rounded-xl border border-border bg-card px-3.5">
+          <TapeRow label="Record" red={header.red.record ?? "—"} blue={header.blue.record ?? "—"} />
+          <TapeRow
+            label="Height"
+            red={heightLabel(header.red.heightInches)}
+            blue={heightLabel(header.blue.heightInches)}
+            edge={edgeOf(header.red.heightInches, header.blue.heightInches, 1)}
+          />
+          <TapeRow
+            label="Reach"
+            red={header.red.reachInches === null ? "—" : `${header.red.reachInches}"`}
+            blue={header.blue.reachInches === null ? "—" : `${header.blue.reachInches}"`}
+            edge={edgeOf(header.red.reachInches, header.blue.reachInches, 1)}
+          />
+          <TapeRow label="Stance" red={header.red.stance ?? "—"} blue={header.blue.stance ?? "—"} />
+          <TapeRow label="Division" red={header.red.division ?? "—"} blue={header.blue.division ?? "—"} />
+        </div>
+      </section>
 
       {projection ? (
-        <div className="mt-4">
+        <div className="mt-6">
           <UfcWinProbabilityCard redName={header.red.name} blueName={header.blue.name} projection={projection} />
         </div>
       ) : null}

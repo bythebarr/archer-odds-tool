@@ -1,157 +1,129 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import {
-  listRecentUfcEvents,
-  listUpcomingUfcEvents,
-  type UfcBoutSummary,
-  type UfcEventSummary,
-} from "@/lib/queries/ufcEvents";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { FighterBadge } from "@/components/FighterBadge";
-import { PageShell, PageHeader } from "@/components/PageShell";
+import { listRecentUfcEvents, listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 import { refreshUfcOddsOnView } from "@/lib/ufc/refreshOddsOnView";
-import { formatAmerican } from "@/lib/odds/americanOdds";
+import { SportCarousel } from "@/components/book/SportCarousel";
+import { LeagueHeader } from "@/components/book/LeaguePage";
+import { SportTabs } from "@/components/book/SportTabs";
+import { UfcCardSections, UfcEventHero, formatFightDate } from "@/components/book/UfcFightCard";
+import { EmptyState } from "@/components/EmptyState";
 
 // UFC events are ingested by a daily backfill cron, so both the upcoming and
 // recent lists change day to day — render per request rather than statically.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "UFC — fighter-math matchups",
-  description:
-    "Upcoming UFC cards and recent results with ARCHR Edge's transparent fighter-math win-probability projections.",
+  title: "UFC — fight cards, best moneylines and fighter math",
+  description: "Every upcoming UFC card with the best moneyline across books, fighter photos and records, and ARCHR's fighter-math projections.",
 };
 
-// eventDate is a Cito date-only value stored at UTC midnight — format in UTC so
-// it doesn't roll back to the previous evening in ET ("Jul 11" → "Jul 10").
-function formatEventDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
-function BoutRow({ bout, upcoming = false }: { bout: UfcBoutSummary; upcoming?: boolean }) {
-  const redWon = bout.winnerFighterId === bout.red.id;
-  const blueWon = bout.winnerFighterId === bout.blue.id;
-
-  // Upcoming bouts have no result yet — show both fighters at full weight
-  // rather than dimming both (which would read as "both lost").
-  const redClass = upcoming ? "font-medium text-foreground" : redWon ? "font-semibold text-foreground" : "text-muted-foreground";
-  const blueClass = upcoming ? "font-medium text-foreground" : blueWon ? "font-semibold text-foreground" : "text-muted-foreground";
-
-  return (
-    <Link
-      href={`/ufc/${bout.id}`}
-      className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
-    >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-          <span className="inline-flex items-center gap-1.5">
-            <FighterBadge name={bout.red.name} imageUrl={bout.red.imageUrl} size={22} />
-            <span className={redClass}>{bout.red.name}</span>
-            {bout.red.moneyline !== null ? (
-              <span className="font-mono text-xs text-muted-foreground">{formatAmerican(bout.red.moneyline)}</span>
-            ) : null}
-          </span>
-          <span className="text-xs text-muted-foreground">vs</span>
-          <span className="inline-flex items-center gap-1.5">
-            <FighterBadge name={bout.blue.name} imageUrl={bout.blue.imageUrl} size={22} />
-            <span className={blueClass}>{bout.blue.name}</span>
-            {bout.blue.moneyline !== null ? (
-              <span className="font-mono text-xs text-muted-foreground">{formatAmerican(bout.blue.moneyline)}</span>
-            ) : null}
-          </span>
-        </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {bout.weightClass}
-          {!upcoming && bout.method ? ` · ${bout.method}${bout.resultRound ? ` R${bout.resultRound}` : ""}` : ""}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {bout.titleBout ? (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-            Title
-          </span>
-        ) : null}
-        {upcoming ? (
-          <span aria-hidden className="text-sm text-muted-foreground">
-            ›
-          </span>
-        ) : null}
-      </div>
-    </Link>
-  );
-}
-
-function EventCard({ event, upcoming = false }: { event: UfcEventSummary; upcoming?: boolean }) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <h3 className="text-sm font-semibold text-foreground">{event.title}</h3>
-        <p className="text-xs text-muted-foreground">
-          {formatEventDate(event.eventDate)}
-          {event.location ? ` · ${event.location}` : ""}
-        </p>
-      </CardHeader>
-      <CardContent className="divide-y divide-border/60">
-        {event.bouts.map((bout) => (
-          <BoutRow key={bout.id} bout={bout} upcoming={upcoming} />
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-export default async function UfcPage() {
-  // Read-side self-heal for the upcoming feed (Hobby crons fire unreliably) —
-  // backfills after the response when stale. See refreshUpcomingUfcOnView.
+/**
+ * UFC in the sportsbook layout: the sport switcher, Fight Cards / Results tabs,
+ * a strip of upcoming cards, then the chosen card's banner and its bouts grouped
+ * Main Card / Prelims — each corner with its best moneyline, tappable into the slip.
+ */
+export default async function UfcPage({ searchParams }: { searchParams: Promise<{ tab?: string; event?: string }> }) {
+  // Read-side self-heal for the upcoming feed and the moneylines (Hobby crons
+  // fire unreliably) — each refreshes after the response when stale.
   refreshUpcomingUfcOnView();
-  // Same on-view refresh for the moneyline feed, so the list rows show live lines.
   refreshUfcOddsOnView();
-  const [upcoming, recent] = await Promise.all([listUpcomingUfcEvents(), listRecentUfcEvents()]);
+  const { tab, event: eventParam } = await searchParams;
+  const results = tab === "results";
 
-  return (
-    <PageShell width="2xl">
-      <PageHeader
-        title="UFC"
-        description="Upcoming cards and recent results with ARCHR Edge's transparent fighter-math projections."
-      />
+  const tabs = [
+    { label: "Fight Cards", href: "/ufc", active: !results },
+    { label: "Results", href: "/ufc?tab=results", active: results },
+  ];
 
-      {upcoming.length > 0 ? (
-        <section className="mt-8">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Upcoming</h2>
-            <span className="text-xs text-muted-foreground">pre-fight projections</span>
-          </div>
-          <div className="mt-3 flex flex-col gap-4">
-            {upcoming.map((event) => (
-              <EventCard key={event.id} event={event} upcoming />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="mt-8">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent results</h2>
+  if (results) {
+    const recent = await listRecentUfcEvents(6);
+    return (
+      <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
+        <SportCarousel active="ufc" />
+        <LeagueHeader sport="ufc" />
+        <div className="mt-3">
+          <SportTabs tabs={tabs} />
+        </div>
         {recent.length === 0 ? (
-          <p className="mt-4 text-center text-sm text-muted-foreground">No UFC events ingested yet.</p>
+          <div className="mt-6">
+            <EmptyState title="No results yet" arrow="miss" supportContext="ufc-results-empty">
+              Results land the day after each card.
+            </EmptyState>
+          </div>
         ) : (
-          <div className="mt-3 flex flex-col gap-4">
-            {recent.map((event) => (
-              <EventCard key={event.id} event={event} />
+          <div className="mt-5 flex flex-col gap-8">
+            {recent.map((e) => (
+              <section key={e.id}>
+                <h2 className="font-display text-lg font-extrabold uppercase italic leading-tight tracking-tight text-foreground">{e.title}</h2>
+                <p className="mb-3 text-[11px] text-muted-foreground">
+                  {formatFightDate(e.eventDate, true)}
+                  {e.location ? ` · ${e.location}` : ""}
+                </p>
+                <UfcCardSections event={e} upcoming={false} />
+              </section>
             ))}
           </div>
         )}
-      </section>
+      </div>
+    );
+  }
 
-      <p className="mt-8 text-center text-xs text-muted-foreground">
-        Recent list shows fully-ingested events only. Fighter data via the Cito API.
-      </p>
-    </PageShell>
+  const upcoming = await listUpcomingUfcEvents();
+  const event = upcoming.find((e) => e.id === eventParam) ?? upcoming[0];
+
+  return (
+    <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
+      <SportCarousel active="ufc" />
+      <LeagueHeader sport="ufc" />
+      <div className="mt-3">
+        <SportTabs tabs={tabs} />
+      </div>
+
+      {upcoming.length > 1 && (
+        <div className="-mx-4 mt-4 overflow-x-auto px-4 [scrollbar-width:none]">
+          <div className="flex gap-2">
+            {upcoming.map((e) => {
+              const active = e.id === event?.id;
+              return (
+                <Link
+                  key={e.id}
+                  href={`/ufc?event=${e.id}`}
+                  scroll={false}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex max-w-[11rem] shrink-0 flex-col rounded-xl px-3 py-1.5 transition-colors ${
+                    active ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span className="truncate text-xs font-semibold">{e.title}</span>
+                  <span className="text-[10px] opacity-75">{formatFightDate(e.eventDate)}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!event ? (
+        <div className="mt-6">
+          <EmptyState title="No cards on the schedule" arrow="miss" supportContext="ufc-empty">
+            The next UFC card appears here as soon as it&apos;s announced.
+          </EmptyState>
+        </div>
+      ) : (
+        <>
+          <div className="mt-4">
+            <UfcEventHero event={event} />
+          </div>
+          <div className="mt-6">
+            <UfcCardSections event={event} upcoming />
+          </div>
+          <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
+            Best moneyline across bettable books; the dot on each price is the book. Tap a price to add it to your slip,
+            or Matchup for the tale of the tape and ARCHR&apos;s fighter math.
+          </p>
+        </>
+      )}
+    </div>
   );
 }
