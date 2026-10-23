@@ -49,3 +49,29 @@ export function mlbHeadshotUrl(mlbPersonId: number): string {
 export function mlbTeamLogoUrl(mlbTeamId: number): string {
   return `https://www.mlbstatic.com/team-logos/${mlbTeamId}.svg`;
 }
+
+/**
+ * ESPN's public logo CDN for NBA and NFL clubs — the counterpart to
+ * mlbTeamLogoUrl, from the provider whose scoreboards already settle these
+ * leagues. ESPN keys logos by its own short codes, which differ from ours for a
+ * handful of teams (NYK→ny, GSW→gs, WAS→wsh, …); everything else is our
+ * abbreviation lowercased.
+ */
+const ESPN_LOGO_CODE: Record<"nba" | "nfl", Record<string, string>> = {
+  nba: { NYK: "ny", GSW: "gs", WAS: "wsh", UTA: "utah", NOP: "no", SAS: "sa" },
+  nfl: { WAS: "wsh" },
+};
+
+export function espnTeamLogoUrl(league: "nba" | "nfl", abbreviation: string): string {
+  const code = ESPN_LOGO_CODE[league][abbreviation] ?? abbreviation.toLowerCase();
+  return `https://a.espncdn.com/i/teamlogos/${league}/500/${code}.png`;
+}
+
+/**
+ * ESPN's public NBA headshot, keyed by the athlete id our game logs already
+ * store — the counterpart to mlbHeadshotUrl. Built from the id rather than
+ * trusting a stored URL, so every player with a log has a photo.
+ */
+export function nbaHeadshotUrl(espnAthleteId: string): string {
+  return `https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${espnAthleteId}.png&w=192&h=140&scale=crop`;
+}

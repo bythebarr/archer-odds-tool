@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma, type StatCategory, type Handedness } from "@/generated/prisma/client";
+import { tallyPropHits, type PropDirection, type PropHitRateResult } from "./tally";
+
+// The pure tally lives in ./tally so client components can use it without pulling in Prisma.
+export { tallyPropHits, type PropDirection, type PropHitRateResult };
 
 export type PropWindow = 3 | 5 | 10 | 15 | "season";
-export type PropDirection = "over" | "under";
 
 type StatColumn =
   | "hits"
@@ -43,28 +46,6 @@ export interface PropHitRateParams {
   opposingHand?: Handedness | null;
 }
 
-export interface PropHitRateResult {
-  hits: number;
-  /** Games actually found — may be less than the requested window (e.g. early season, or a tight hand-split filter). */
-  sampleSize: number;
-  /** null when sampleSize is 0 — nothing to compute a rate from. */
-  hitRate: number | null;
-}
-
-/**
- * Pure hit-counting core, split out from computePropHitRate so it's testable
- * without a database — given the already-fetched stat values for whichever
- * games qualified (window + hand-filter already applied), just counts
- * over/under against the line.
- */
-export function tallyPropHits(values: number[], line: number, direction: PropDirection): PropHitRateResult {
-  const hits = values.filter((v) => (direction === "over" ? v > line : v < line)).length;
-  return {
-    hits,
-    sampleSize: values.length,
-    hitRate: values.length > 0 ? hits / values.length : null,
-  };
-}
 
 /**
  * Games where the relevant stat is null (e.g. a DH's pitching-stat columns,
