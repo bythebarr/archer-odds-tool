@@ -40,6 +40,23 @@ function oddsApiKey(): string {
 export function activeOddsProvider(): OddsProvider {
   return PROVIDER;
 }
+
+/**
+ * The Odds API's spellings for books we store under other keys. Parlay already
+ * uses our keys; TOA calls Caesars by its old William Hill name. Without this,
+ * those books would fail the allowlist and silently vanish on a TOA switch.
+ */
+export const TOA_BOOK_KEY_ALIASES: Record<string, string> = {
+  williamhill_us: "caesars",
+  hardrockbet: "hardrock",
+  betparx: "parx",
+};
+
+/** Rewrites bookmaker keys to ours, in place. A no-op for keys that already match. */
+export function canonicalizeBookmakers(event: OddsApiEvent): OddsApiEvent {
+  for (const b of event.bookmakers ?? []) b.key = TOA_BOOK_KEY_ALIASES[b.key] ?? b.key;
+  return event;
+}
 const MLB_SPORT_KEY = "baseball_mlb";
 
 export type OddsApiMarketKey =
@@ -127,7 +144,7 @@ export async function fetchOdds(
     throw new Error(`The Odds API request failed: ${res.status} ${res.statusText} — ${body}`);
   }
 
-  const events = (await res.json()) as OddsApiEvent[];
+  const events = ((await res.json()) as OddsApiEvent[]).map(canonicalizeBookmakers);
 
   return {
     events,
@@ -229,7 +246,7 @@ export async function fetchEventAlternateOdds(
     throw new Error(`The Odds API event-odds request failed: ${res.status} ${res.statusText} — ${body}`);
   }
 
-  const event = (await res.json()) as OddsApiEvent;
+  const event = canonicalizeBookmakers((await res.json()) as OddsApiEvent);
 
   return {
     event,
@@ -250,11 +267,12 @@ export async function fetchEventAlternateOdds(
 export async function fetchEventPlayerProps(
   eventId: string,
   markets: string[],
-  regions: string[]
+  regions: string[],
+  sportKey: string = MLB_SPORT_KEY
 ): Promise<FetchEventOddsResult> {
   const apiKey = oddsApiKey();
 
-  const url = new URL(`${BASE_URL}/sports/${MLB_SPORT_KEY}/events/${eventId}/odds`);
+  const url = new URL(`${BASE_URL}/sports/${sportKey}/events/${eventId}/odds`);
   url.searchParams.set("apiKey", apiKey);
   url.searchParams.set("regions", regions.join(","));
   url.searchParams.set("markets", markets.join(","));
@@ -267,7 +285,7 @@ export async function fetchEventPlayerProps(
     throw new Error(`The Odds API player-props request failed: ${res.status} ${res.statusText} — ${body}`);
   }
 
-  const event = (await res.json()) as OddsApiEvent;
+  const event = canonicalizeBookmakers((await res.json()) as OddsApiEvent);
 
   return {
     event,

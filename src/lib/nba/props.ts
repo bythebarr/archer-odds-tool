@@ -9,7 +9,13 @@
  * event ids are never joined against the game-lines feed's.
  */
 import { prisma } from "@/lib/prisma";
-import { activeOddsProvider, fetchBulkPlayerProps, type ParlayPropRow } from "@/lib/odds/oddsApiClient";
+import {
+  activeOddsProvider,
+  fetchBulkPlayerProps,
+  fetchEventPlayerProps,
+  type OddsApiEvent,
+  type ParlayPropRow,
+} from "@/lib/odds/oddsApiClient";
 import { ALLOWED_BOOK_KEYS } from "@/lib/odds/bookAllowlist";
 import { isCoherentMarket } from "@/lib/odds/marketSanity";
 import { looksLikePlayerName } from "@/lib/props/propMarkets";
@@ -100,6 +106,65 @@ export function groupNbaPropRows(rows: ParlayPropRow[]): GroupedNbaProps {
  * Name key for matching a book's spelling to ESPN's: no accents, case, or
  * punctuation ("P.J. Washington" = "PJ Washington", "Jokić" = "Jokic").
  */
+/**
+ * The Odds API's per-event props, reshaped into the flat Parlay rows the rest of
+ * this file reads: TOA nests bookmaker → market → outcomes with one outcome per
+ * side, keyed by player (`description`) and line (`point`). Pairing the two
+ * sides here means one grouping path serves both providers.
+ */
+export function toaEventToPropRows(event: OddsApiEvent): ParlayPropRow[] {
+  const rows = new Map<string, ParlayPropRow>();
+  for (const book of event.bookmakers ?? []) {
+    for (const market of book.markets ?? []) {
+      for (const o of market.outcomes ?? []) {
+        const side = o.name.toLowerCase();
+        if (!o.description || (side !== "over" && side !== "under")) continue;
+        const key = `${book.key}|${market.key}|${o.description}|${o.point ?? ""}`;
+        const row = rows.get(key) ?? {
+          event_id: event.id,
+          sport_key: event.sport_key,
+          home_team: event.home_team,
+          away_team: event.away_team,
+          commence_time: event.commence_time,
+          bookmaker: book.key,
+          bookmaker_title: book.title,
+          player: o.description,
+          market_key: market.key,
+          market: market.key,
+          line: o.point ?? null,
+          over_price: null,
+          under_price: null,
+        };
+        if (side === "over") row.over_price = o.price;
+        else row.under_price = o.price;
+        rows.set(key, row);
+      }
+    }
+  }
+  return [...rows.values()];
+}
+
+/** The Odds API's NBA prop markets we map (see NBA_MARKET_KEY_TO_STAT); billed per market returned, per region, per game. */
+export const TOA_NBA_PROP_MARKETS = [
+  "player_points",
+  "player_rebounds",
+  "player_assists",
+  "player_threes",
+  "player_points_rebounds_assists",
+  "player_points_rebounds",
+  "player_points_assists",
+  "player_rebounds_assists",
+  "player_steals",
+  "player_blocks",
+];
+const TOA_PROP_REGIONS = ["us", "us2"];
+/**
+ * TOA bills per game, so its props poll only covers games tipping within this
+ * window — books post props the morning of, and tomorrow's games are picked up
+ * by tomorrow's polls. Parlay's slate-wide call has no per-game cost.
+ */
+const TOA_LOOKAHEAD_HOURS = 14;
+
 export function normalizePlayerName(name: string): string {
   return name
     .normalize("NFD")
@@ -168,9 +233,9 @@ const ALLOWED = new Set<string>(ALLOWED_BOOK_KEYS);
 
 /**
  * Pulls every NBA prop on the board and refreshes CurrentNbaPropLine for each
- * upcoming game the feed covers. ParlayAPI only: its bulk endpoint makes the
- * whole slate one ~3-credit call, where The Odds API would charge markets x
- * regions per game.
+ * upcoming game the feed covers. ParlayAPI serves the whole slate in one ~3-credit
+ * call; The Odds API takes one call per game (markets × regions credits each),
+ * so it only covers games tipping within TOA_LOOKAHEAD_HOURS.
  */
 export async function pollAndStoreNbaProps(now: Date = new Date()): Promise<PollNbaPropsSummary> {
   const summary: PollNbaPropsSummary = {
@@ -187,7 +252,7 @@ export async function pollAndStoreNbaProps(now: Date = new Date()): Promise<Poll
     creditsUsed: null,
     creditsRemaining: null,
   };
-  if (activeOddsProvider() !== "parlay") return { ...summary, status: "unsupported-provider" };
+  const provider = activeOddsProvider();
 
   const games = await prisma.game.findMany({
     where: {
@@ -201,11 +266,32 @@ export async function pollAndStoreNbaProps(now: Date = new Date()): Promise<Poll
   summary.gamesConsidered = games.length;
   if (games.length === 0) return { ...summary, status: "no-games" };
 
-  const bulk = await fetchBulkPlayerProps(NBA_LEAGUE.oddsSportKey);
-  summary.rowsFetched = bulk.rows.length;
-  summary.creditsUsed = bulk.creditsUsed;
-  summary.creditsRemaining = bulk.creditsRemaining;
-  const grouped = groupNbaPropRows(bulk.rows);
+  let rows: ParlayPropRow[];
+  if (provider === "parlay") {
+    const bulk = await fetchBulkPlayerProps(NBA_LEAGUE.oddsSportKey);
+    rows = bulk.rows;
+    summary.creditsUsed = bulk.creditsUsed;
+    summary.creditsRemaining = bulk.creditsRemaining;
+  } else {
+    // The Odds API: one call per game, against the event id the game-lines poll stored.
+    rows = [];
+    let used = 0;
+    const cutoff = now.getTime() + TOA_LOOKAHEAD_HOURS * 3_600_000;
+    for (const game of games) {
+      if (!game.oddsApiEventId || game.scheduledStartUtc.getTime() > cutoff) continue;
+      try {
+        const res = await fetchEventPlayerProps(game.oddsApiEventId, TOA_NBA_PROP_MARKETS, TOA_PROP_REGIONS, NBA_LEAGUE.oddsSportKey);
+        rows.push(...toaEventToPropRows(res.event));
+        used += res.creditsUsed ?? 0;
+        summary.creditsRemaining = res.creditsRemaining;
+      } catch (error) {
+        summary.unmatchedEvents.push(`${game.id}: ${error instanceof Error ? error.message.slice(0, 120) : String(error)}`);
+      }
+    }
+    summary.creditsUsed = used;
+  }
+  summary.rowsFetched = rows.length;
+  const grouped = groupNbaPropRows(rows);
   summary.skipped = grouped.skipped;
   summary.unmappedMarketKeys = grouped.unmappedMarketKeys;
 
