@@ -8,7 +8,7 @@ interface BookBadgeProps {
   size?: number;
 }
 
-/** Sportsbook logo (falls back to a colored initials badge) — the Logo+bookLogoSources+BOOK_INITIALS/BOOK_COLORS wiring used everywhere a book is shown. */
+/** Sportsbook app icon (falls back to a colored initials badge) — the Logo+bookLogoSources+BOOK_INITIALS/BOOK_COLORS wiring used everywhere a book is shown. */
 export function BookBadge({ bookKey, bookName, size }: BookBadgeProps) {
   return (
     <Logo
@@ -17,6 +17,8 @@ export function BookBadge({ bookKey, bookName, size }: BookBadgeProps) {
       fallbackText={BOOK_INITIALS[bookKey] ?? bookKey.slice(0, 2).toUpperCase()}
       color={BOOK_COLORS[bookKey]}
       size={size}
+      // App icons are full-bleed squares; cover lets the round badge crop them like a home-screen icon.
+      fit="cover"
     />
   );
 }
