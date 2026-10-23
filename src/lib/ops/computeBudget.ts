@@ -5,8 +5,8 @@
  * The site went down on 2026-10-14 because cron traffic quietly used up the
  * database plan's compute quota. The schedule now clusters jobs into shared wake
  * windows (vercel.json), and this guard is the backstop: past WARN_RATIO of the
- * budget, optional jobs (see OPTIONAL_JOBS) skip themselves, so the core product
- * (NBA/NFL odds and props, results, grading, Discord) keeps the remaining hours.
+ * budget, optional jobs (see OPTIONAL_JOBS) skip themselves, so the lineup
+ * (NBA, NFL, UFC: odds, props, results, grading, Discord) keeps the remaining hours.
  *
  * Reading usage costs nothing against the budget: the API answers from Neon's
  * control plane without waking the database. It's opt-in (NEON_API_KEY +
@@ -23,7 +23,6 @@ export const WARN_RATIO = 0.8;
 /** Jobs that pause when the budget runs low. Everything else always runs. */
 export const OPTIONAL_JOBS = new Set([
   "backfill-player-game-logs",
-  "backfill-ufc",
   "backfill-f1",
   "poll-weather",
   "poll-odds-soccer",

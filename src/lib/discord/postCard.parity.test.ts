@@ -118,7 +118,8 @@ function embeds(plays: Parameters<typeof assembleSections>[0]) {
 
 describe("board rendering — sections come from the registry, no primary sport", () => {
   it("renders a section per sport that HAS plays, in registry order", () => {
-    expect(embeds([...mlbPlays, ...ufcPlays])).toEqual([oracleMlbEmbed(mlbPicks), oracleUfcEmbed(ufcBouts)]);
+    // Registry order puts UFC (in the lineup) ahead of MLB (parked) — input order doesn't matter.
+    expect(embeds([...mlbPlays, ...ufcPlays])).toEqual([oracleUfcEmbed(ufcBouts), oracleMlbEmbed(mlbPicks)]);
   });
 
   it("MLB only (nothing else running)", () => {

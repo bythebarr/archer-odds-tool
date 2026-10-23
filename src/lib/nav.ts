@@ -25,14 +25,12 @@ export type NavItem = {
 /**
  * Sports that earn a mobile bottom-nav slot (the bar can't scroll, so it can't
  * list every sport). A nav-presentation choice, not sport identity — kept here,
- * typed to NavSport so it can't name a sport the registry doesn't have. Follows
- * the calendar: NBA took MLB's slot for basketball season; MLB stays one tap
- * away in the Sports hub and in the desktop nav.
+ * typed to NavSport so it can't name a sport the registry doesn't have.
  */
-const PRIMARY_SPORTS: ReadonlySet<NavSport> = new Set<NavSport>(["nba", "ufc"]);
+const PRIMARY_SPORTS: ReadonlySet<NavSport> = new Set<NavSport>(["nba", "nfl", "ufc"]);
 
 /** The per-sport tabs, derived from each sport's display meta (registry order). */
-const SPORT_TABS: NavItem[] = SPORT_METAS.map((m) => ({
+const SPORT_TABS: NavItem[] = SPORT_METAS.filter((m) => !m.parked).map((m) => ({
   href: m.href,
   label: m.label,
   icon: m.icon,
@@ -44,20 +42,10 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", icon: "🏠", carriesDate: true, primary: true },
   { href: "/slate", label: "Slate", icon: "📊", carriesDate: true, primary: true },
   ...SPORT_TABS,
-  // CFB v0 is deliberately NOT a registry sport (see docs/architecture/CFB-V0.md
-  // — no Prisma model, no Sport enum entry, no Game/Team rows), so it's a fixed
-  // entry here rather than derived from SPORT_METAS, same as Props/Sports below.
-  // TEMPORARY v0 debt: this hand-append means CFB is invisible to every
-  // SPORT_METAS/registry consumer (SportRail, the /sports lobby, HomeLauncher,
-  // the site's "every sport" copy) — those don't claim to be exhaustive over
-  // every page in the app, only over the priced/graded sport product, so this
-  // is a known gap, not a false claim, but it IS debt. Exit condition: fold
-  // CFB into the registry only once a full adapter/storage/grading strategy
-  // for it is approved (see CFB-V0.md's roadmap) — not before, since the
-  // registry pulls in Prisma + the graded-play pipeline CFB v0 must not touch.
-  { href: "/cfb", label: "CFB", icon: "🎓", carriesDate: true, primary: true },
-  { href: "/props", label: "Props", icon: "🎯", carriesDate: false, primary: true },
-  // Mobile-only hub: one door to every sport (incl. Tennis/Soccer/F1) so the
+  // Props points at the NBA finder, the in-season props product. (The MLB props
+  // board at /props is parked with MLB; it's still reachable by URL.)
+  { href: "/nba/props", label: "Props", icon: "🎯", carriesDate: false, primary: true },
+  // Mobile-only hub: one door to every sport, including the parked ones, so the
   // bottom bar stays focused instead of listing each sport as its own tab.
   { href: "/sports", label: "Sports", icon: "🏟️", carriesDate: true, primary: true, mobileOnly: true },
 ];
@@ -71,7 +59,16 @@ export function navHref(item: NavItem, date: string | null): string {
   return item.carriesDate && date ? `${item.href}?date=${date}` : item.href;
 }
 
-/** Home is active only on exact "/"; every other tab matches its subtree. */
-export function isNavActive(item: NavItem, pathname: string): boolean {
-  return item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+function matches(item: NavItem, pathname: string): boolean {
+  return item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+/**
+ * Home is active only on exact "/"; every other tab matches its subtree — and
+ * when two tabs match (NBA's /nba and Props' /nba/props), only the more
+ * specific one lights up.
+ */
+export function isNavActive(item: NavItem, pathname: string, items: NavItem[] = NAV_ITEMS): boolean {
+  if (!matches(item, pathname)) return false;
+  return !items.some((other) => other.href.length > item.href.length && matches(other, pathname));
 }

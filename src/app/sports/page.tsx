@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { NAV_SPORT_META, PARKED_SPORT_ORDER } from "@/lib/sports";
 import { getSportNav } from "@/lib/queries/sportNav";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { SportCard } from "@/components/SportCard";
@@ -59,9 +61,26 @@ export default async function SportsLobbyPage({
         </section>
       )}
 
-      <p className="mt-7 text-center text-xs text-muted-foreground">
-        More sports coming as their seasons open.
-      </p>
+      {PARKED_SPORT_ORDER.length > 0 && (
+        <section className="mt-7">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Offseason</h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {PARKED_SPORT_ORDER.map((sport) => {
+              const meta = NAV_SPORT_META[sport];
+              return (
+                <Link
+                  key={sport}
+                  href={meta.href}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <span aria-hidden>{meta.icon}</span>
+                  {meta.label}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </PageShell>
   );
 }

@@ -18,21 +18,51 @@ Neon suspends a database after about 5 idle minutes, so each wake-up costs
 roughly 5 minutes or more of compute. Spread around the clock like that, the
 wake-ups left the database almost no time asleep.
 
+## The lineup and parked sports
+
+The nav, Home, the Slate and the Discord card show only **NBA, NFL and UFC**.
+MLB (offseason), tennis, soccer and F1 are **parked** (`parked: true` in
+`src/lib/engine/sportsMeta.ts`). For a parked sport:
+- it's hidden from the nav, Home, the Slate and the Discord card;
+- its data jobs are off;
+- its pages still work by URL and appear on the `/sports` hub's "Offseason"
+  shelf;
+- its adapter stays registered, so past plays still grade.
+
+**To bring a sport back:**
+1. Set `parked: false` for it.
+2. Restore its cron entries: `git log -p vercel.json` shows the schedule from
+   before it was parked.
+
+Restored entries go into the existing windows; don't give them times of their
+own.
+
 ## The schedule: clustered wake windows
 
-`vercel.json` groups every job into **18 hourly windows** (UTC). Inside a
-window:
+`vercel.json` runs **9 windows a day** (UTC: 00, 06, 09, 13, 14, 18, 20, 21,
+23). Inside a window:
 - primary jobs run at `:00`;
-- dependent jobs run at `:02`–`:04` (grade after sync, post results after
-  grading, the Discord card after polls).
+- dependent jobs run at `:02`–`:04` (the Discord card after the odds polls,
+  the results recap after the results syncs).
 
 Because everything in a window lands within a few minutes, a window costs one
-wake-up. Each job keeps roughly the same time of day it had before.
+database wake-up.
 
-**Rough cost:** 18 windows × ~10 minutes awake ≈ 3 hours a day ≈ 90 hours a
-month. At Neon's smallest compute size (0.25 CU) that's about 22 CU-hours, or
-roughly $5 a month at $0.22 per CU-hour. Page views wake the database too, on
-top of that.
+| Window (UTC) | Jobs |
+| --- | --- |
+| 00 | NBA odds + props · results recap |
+| 06 | NBA results + player game logs · results recap |
+| 09 | NFL odds · NFL results · UFC sync · cleanup |
+| 13 | NBA results · Discord card · results recap |
+| 14 | NBA odds + props · NFL results · Discord card |
+| 18, 23 | NBA odds + props · Discord card |
+| 20 | Discord card |
+| 21 | NBA odds + props · NFL odds · Discord card |
+
+**Rough cost:** 9 windows × ~10 minutes awake ≈ 1.5 hours a day ≈ 45 hours a
+month. At Neon's smallest compute size (0.25 CU) that's about 11 CU-hours, or
+roughly $2.50 a month at $0.22 per CU-hour. Page views wake the database too,
+on top of that.
 
 **Rules for adding a job:**
 - Put it in an existing window, not a new time.
@@ -78,9 +108,9 @@ set these in Vercel:
   budget). It reads Neon's control plane, which doesn't wake the database, so
   the number is there even while the database is refusing queries.
 - Past **80%** of the budget, these optional jobs return `skipped` instead of
-  running: weather, soccer odds, tennis odds and results, and the UFC/F1/MLB
-  backfills. NBA and NFL odds and props, results, grading, and Discord always
-  run.
+  running: weather, soccer odds, tennis odds and results, and the F1/MLB
+  backfills. They're all parked right now, so the guard matters once they come
+  back. The lineup (NBA, NFL, UFC, results, Discord) always runs.
 
 ## If it happens again
 

@@ -20,13 +20,23 @@ export const NAV_SPORT_META = Object.fromEntries(
   SPORT_METAS.map((m) => [m.sport, m])
 ) as Record<NavSport, SportMeta>;
 
-/** Nav/launcher display order — every registered sport, in registry order. */
-export const NAV_SPORT_ORDER = SPORT_METAS.map((m) => m.sport) as NavSport[];
+const ACTIVE_METAS = SPORT_METAS.filter((m) => !m.parked);
 
-/** Odds-Slate sports only (excludes results-only F1), in registry order. */
-export const SPORT_ORDER = SPORT_METAS.filter((m) => !m.resultsOnly).map(
+/** Nav/launcher display order — the lineup (every sport not parked), in registry order. */
+export const NAV_SPORT_ORDER = ACTIVE_METAS.map((m) => m.sport) as NavSport[];
+
+/** Parked sports, for the /sports hub's "Offseason" shelf. See SportMeta.parked. */
+export const PARKED_SPORT_ORDER = SPORT_METAS.filter((m) => m.parked).map((m) => m.sport) as NavSport[];
+
+/** Odds-Slate sports in the lineup (excludes parked and results-only), in registry order. */
+export const SPORT_ORDER = ACTIVE_METAS.filter((m) => !m.resultsOnly).map(
   (m) => m.sport
 ) as SlateSport[];
+
+/** True when a sport is out of the lineup — its Slate queries and Discord plays are skipped. */
+export function isParked(sport: string): boolean {
+  return SPORT_METAS.some((m) => m.sport === sport && m.parked);
+}
 
 /** Slate-sport display meta, keyed by SlateSport (indexed by the Slate's rows). */
 export const SPORT_META = Object.fromEntries(

@@ -1,6 +1,6 @@
 import { getSlateForDate } from "./slate";
 import { getNextRace } from "./f1";
-import { SPORT_ORDER, type NavSport } from "@/lib/sports";
+import { SPORT_ORDER, isParked, type NavSport } from "@/lib/sports";
 
 /** Per-sport "what's on today" for the rail + lobby: count and next start. */
 export interface SportNavItem {
@@ -29,6 +29,8 @@ export async function getSportNav(dateEt: string): Promise<SportNavItem[]> {
     nextStartUtc:
       (upcoming.find((i) => i.sport === sport) ?? byStart.find((i) => i.sport === sport))?.startUtc ?? null,
   }));
+
+  if (isParked("f1")) return slateItems;
 
   // F1 rides its own results feed, not the slate — surface the next Grand Prix
   // and mark it "on deck" (count 1) only when it's within race week.
