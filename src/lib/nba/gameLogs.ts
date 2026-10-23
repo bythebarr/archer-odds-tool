@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { fetchEspnScoreboard, type EspnTeamResult } from "@/lib/teamLeague/espnScoreboard";
 import { findGameForResult } from "@/lib/teamLeague/results";
-import type { LeagueTeamInfo } from "@/lib/teamLeague/league";
+import { teamIdForLeagueTeam } from "@/lib/teamLeague/schedule";
 import { NBA_LEAGUE } from "./league";
 import { fetchNbaBoxScore, type EspnNbaPlayerLine } from "./espnBoxScore";
 import { positionGroup } from "./positions";
@@ -28,32 +28,12 @@ export interface SyncNbaGameLogsSummary {
   failures: string[];
 }
 
-/**
- * The Team row for an allowlisted team. Matched on the canonical name the odds
- * ingest also stores, so a team first seen here and later seen in the odds feed
- * is one row, not two.
- */
-async function teamIdFor(team: LeagueTeamInfo): Promise<string> {
-  const existing = await prisma.team.findFirst({ where: { name: team.name }, select: { id: true } });
-  if (existing) return existing.id;
-  const created = await prisma.team.create({
-    data: {
-      name: team.name,
-      oddsApiName: team.name,
-      abbreviation: team.abbreviation,
-      league: team.conference,
-      division: team.division,
-    },
-  });
-  return created.id;
-}
-
 /** A final Game row built from an ESPN result, for a game the odds feed never listed. */
 async function createGameFromResult(result: EspnTeamResult) {
   const home = NBA_LEAGUE.lookupTeam(result.homeName);
   const away = NBA_LEAGUE.lookupTeam(result.awayName);
   if (!home || !away) return null; // an exhibition opponent — not an NBA game
-  const [homeTeamId, awayTeamId] = await Promise.all([teamIdFor(home), teamIdFor(away)]);
+  const [homeTeamId, awayTeamId] = await Promise.all([teamIdForLeagueTeam(home), teamIdForLeagueTeam(away)]);
   return prisma.game.create({
     data: {
       sport: "nba",

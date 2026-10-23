@@ -107,6 +107,36 @@ describe("parseScoreboard", () => {
     expect(parseScoreboard({ events: [noScore, missingTeam, oneCompetitor] })).toEqual([]);
   });
 
+  it("keeps an unplayed game that carries no score yet, for the schedule", () => {
+    const upcoming = event({
+      competitions: [
+        {
+          status: { type: { completed: false } },
+          competitors: [
+            { homeAway: "home", team: { displayName: "Cincinnati Bengals" } },
+            { homeAway: "away", team: { displayName: "Arizona Cardinals" } },
+          ],
+        },
+      ],
+    });
+    expect(parseScoreboard({ events: [upcoming] })).toMatchObject([{ completed: false, homeScore: 0, awayScore: 0 }]);
+  });
+
+  it("still drops a final with no score", () => {
+    const final = event({
+      competitions: [
+        {
+          status: { type: { completed: true } },
+          competitors: [
+            { homeAway: "home", team: { displayName: "Cincinnati Bengals" } },
+            { homeAway: "away", score: "14", team: { displayName: "Arizona Cardinals" } },
+          ],
+        },
+      ],
+    });
+    expect(parseScoreboard({ events: [final] })).toEqual([]);
+  });
+
   it("survives an empty or unexpected payload", () => {
     expect(parseScoreboard({})).toEqual([]);
     expect(parseScoreboard({ events: [] })).toEqual([]);
