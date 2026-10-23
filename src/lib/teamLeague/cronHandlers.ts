@@ -8,6 +8,7 @@ import { decideFixedCadencePoll, recordPollLog, writeOutcomeStatus } from "@/lib
 import { classifyFetchStore, ingestHttpStatus, sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 import { pollAndStoreTeamLeagueOdds } from "./ingest";
 import { syncAndGradeTeamLeagueResults } from "./results";
+import { syncTeamLeagueSchedule } from "./schedule";
 import type { TeamLeague } from "./league";
 
 /**
@@ -28,6 +29,19 @@ async function runRideAlong(job: RideAlongJob | undefined): Promise<{ also?: unk
 }
 
 /**
+ * Refreshes the league's schedule from ESPN. Runs on every odds and results
+ * tick, before the throttle and before any keyed provider, so the schedule
+ * shows up even when odds can't be fetched. Never throws.
+ */
+async function refreshSchedule(league: TeamLeague): Promise<{ schedule: unknown }> {
+  try {
+    return { schedule: await syncTeamLeagueSchedule(league) };
+  } catch (error) {
+    return { schedule: { status: "error", error: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)) } };
+  }
+}
+
+/**
  * Odds poll on the conservative fixed-cadence policy (tennis/soccer's), not MLB's
  * tiered near-first-pitch throttle. `minIntervalMinutes` is the floor between
  * polls; the cron schedule decides when ticks actually arrive.
@@ -41,11 +55,12 @@ export async function handleTeamLeagueOddsPoll(
   const authError = checkCronAuth(request);
   if (authError) return authError;
 
+  const schedule = await refreshSchedule(league);
   const jobName = league.oddsJobName;
   const decision = await decideFixedCadencePoll(jobName, minIntervalMinutes);
 
   if (!decision.shouldPoll) {
-    return Response.json({ polled: false, ...decision });
+    return Response.json({ polled: false, ...decision, ...schedule });
   }
 
   try {
@@ -66,7 +81,7 @@ export async function handleTeamLeagueOddsPoll(
     // After the game lines are stored, so a ride-along keyed on games sees them.
     const also = await runRideAlong(afterPoll);
     return Response.json(
-      { polled: true, status: outcome.status, ...decision, ...summary, ...also },
+      { polled: true, status: outcome.status, ...decision, ...summary, ...also, ...schedule },
       { status: ingestHttpStatus(outcome.status) }
     );
   } catch (error) {
@@ -74,7 +89,7 @@ export async function handleTeamLeagueOddsPoll(
     // crash the cron tick — log it so the next scheduled run can retry.
     const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
     await recordPollLog(jobName, `error: ${message}`);
-    return Response.json({ polled: false, status: "error", ...decision, error: message }, { status: 502 });
+    return Response.json({ polled: false, status: "error", ...decision, error: message, ...schedule }, { status: 502 });
   }
 }
 
@@ -92,6 +107,7 @@ export async function handleTeamLeagueResultsSync(
   if (authError) return authError;
 
   const jobName = `sync-results-${league.sport}`;
+  const schedule = await refreshSchedule(league);
   try {
     const summary = await syncAndGradeTeamLeagueResults(league);
     // Completed results fetched but nothing graded means every one failed to
@@ -104,12 +120,12 @@ export async function handleTeamLeagueResultsSync(
     );
     const also = await runRideAlong(afterSync);
     return Response.json(
-      { ok: outcome.status === "ok" || outcome.status === "empty", status: outcome.status, ...summary, ...also },
+      { ok: outcome.status === "ok" || outcome.status === "empty", status: outcome.status, ...summary, ...also, ...schedule },
       { status: ingestHttpStatus(outcome.status) }
     );
   } catch (error) {
     const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
     await recordPollLog(jobName, `error: ${message}`);
-    return Response.json({ ok: false, status: "error", error: message }, { status: 502 });
+    return Response.json({ ok: false, status: "error", error: message, ...schedule }, { status: 502 });
   }
 }

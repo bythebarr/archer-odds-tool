@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchOdds, type OddsApiEvent, type OddsApiMarketKey } from "@/lib/odds/oddsApiClient";
 import { storeBookmakerOdds } from "@/lib/odds/storeOdds";
 import type { LeagueTeamInfo, TeamLeague } from "./league";
+import { findGameByTeamsOnDay } from "./schedule";
 
 /**
  * Spreads and totals are the spine of both leagues — the opposite weighting to
@@ -64,6 +65,15 @@ async function upsertGameForEvent(
 ) {
   const existing = await prisma.game.findUnique({ where: { oddsApiEventId: event.id, sport: league.sport } });
   if (existing) return existing;
+
+  // A game the schedule sync (ESPN) already created: adopt it rather than add a
+  // second row for the same matchup. Only an unclaimed row — one already bound to
+  // a different event id is a different game (a doubleheader-style rematch).
+  const startUtc = new Date(event.commence_time);
+  const scheduled = await findGameByTeamsOnDay(league, home, away, startUtc);
+  if (scheduled && !scheduled.oddsApiEventId) {
+    return prisma.game.update({ where: { id: scheduled.id }, data: { oddsApiEventId: event.id, scheduledStartUtc: startUtc } });
+  }
 
   const [homeTeam, awayTeam] = await Promise.all([
     upsertTeam(home, event.home_team),

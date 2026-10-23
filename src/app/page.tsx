@@ -9,7 +9,7 @@ import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { SportCarousel } from "@/components/book/SportCarousel";
 import { EventListHeader, EventRow } from "@/components/book/EventRow";
 import { TopPropsStrip } from "@/components/book/TopPropsStrip";
-import { UfcCard } from "@/components/book/UfcCard";
+import { UfcCardSections, formatFightDate } from "@/components/book/UfcFightCard";
 import { NewHerePrimer } from "@/components/dashboard/NewHerePrimer";
 import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
 import { ArchrMark } from "@/components/brand/ArchrMark";
@@ -89,8 +89,14 @@ async function UfcSection() {
   if (!event || event.bouts.length === 0) return null;
   return (
     <section>
-      <SectionHeader icon="ufc" title="UFC" subtitle="Next card" href="/ufc" cta="Full card" />
-      <UfcCard event={event} limit={5} />
+      <SectionHeader
+        icon="ufc"
+        title="UFC"
+        subtitle={`${event.title} · ${formatFightDate(event.eventDate)}`}
+        href={`/ufc?event=${event.id}`}
+        cta="Full card"
+      />
+      <UfcCardSections event={event} upcoming limit={5} />
     </section>
   );
 }

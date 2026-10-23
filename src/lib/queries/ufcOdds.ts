@@ -2,6 +2,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { consensusFairProbability, type DevigPair } from "@/lib/odds/devig";
+import { isBettableBook } from "@/lib/odds/bestPrice";
 
 /**
  * Read layer for UFC moneyline odds. Returns the best (bettor-friendliest)
@@ -28,10 +29,16 @@ export interface UfcBoutOddsSummary {
   polledAt: Date | null;
 }
 
-/** Highest decimal odds = best price for the bettor; American isn't linearly comparable across ±100, so compare in decimal (see americanOdds.ts). */
+/**
+ * Highest decimal odds = best price for the bettor; American isn't linearly
+ * comparable across ±100, so compare in decimal (see americanOdds.ts). Bettable
+ * books only, like every other board: a sharp reference book is priced from,
+ * never pointed at.
+ */
 function bestLine(rows: { priceAmerican: number; bookKey: string }[]): UfcCornerBestLine | null {
   let best: UfcCornerBestLine | null = null;
   for (const r of rows) {
+    if (!isBettableBook(r.bookKey)) continue;
     if (best === null || americanToDecimal(r.priceAmerican) > americanToDecimal(best.priceAmerican)) {
       best = { priceAmerican: r.priceAmerican, bookKey: r.bookKey };
     }

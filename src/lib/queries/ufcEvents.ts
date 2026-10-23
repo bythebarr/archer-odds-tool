@@ -33,6 +33,8 @@ export interface UfcBoutCorner {
   imageUrl: string | null;
   /** Best available moneyline (American) across allowlisted books — attached for upcoming lists only; null when no odds ingested yet. */
   moneyline: number | null;
+  /** The same price with the book that has it, for a tappable price button. */
+  best: { priceAmerican: number; bookKey: string } | null;
 }
 
 export interface UfcBoutSummary {
@@ -155,6 +157,7 @@ function mapEventSummary(event: SummaryEvent): UfcEventSummary {
         record: formatFighterRecord(b.redCornerFighter.recordWins, b.redCornerFighter.recordLosses, b.redCornerFighter.recordDraws),
         imageUrl: b.redCornerFighter.imageUrl,
         moneyline: null,
+        best: null,
       },
       blue: {
         id: b.blueCornerFighter.id,
@@ -162,6 +165,7 @@ function mapEventSummary(event: SummaryEvent): UfcEventSummary {
         record: formatFighterRecord(b.blueCornerFighter.recordWins, b.blueCornerFighter.recordLosses, b.blueCornerFighter.recordDraws),
         imageUrl: b.blueCornerFighter.imageUrl,
         moneyline: null,
+        best: null,
       },
     });
   }
@@ -250,6 +254,8 @@ export const listUpcomingUfcEvents = cache(async (limit = 8): Promise<UfcEventSu
       if (!line) continue;
       bout.red.moneyline = line.red?.priceAmerican ?? null;
       bout.blue.moneyline = line.blue?.priceAmerican ?? null;
+      bout.red.best = line.red;
+      bout.blue.best = line.blue;
     }
   }
 
@@ -263,6 +269,9 @@ export interface UfcFighterBio {
   division: string | null;
   record: string | null;
   imageUrl: string | null;
+  stance: string | null;
+  heightInches: number | null;
+  reachInches: number | null;
 }
 
 export interface UfcBoutHeader {
@@ -293,6 +302,9 @@ function bioOf(f: {
   recordWins: number | null;
   recordLosses: number | null;
   recordDraws: number | null;
+  stance: string | null;
+  heightInches: number | null;
+  reachInches: number | null;
 }): UfcFighterBio {
   return {
     id: f.id,
@@ -301,6 +313,9 @@ function bioOf(f: {
     division: f.division,
     record: formatFighterRecord(f.recordWins, f.recordLosses, f.recordDraws),
     imageUrl: f.imageUrl,
+    stance: f.stance,
+    heightInches: f.heightInches,
+    reachInches: f.reachInches,
   };
 }
 

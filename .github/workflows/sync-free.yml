@@ -1,11 +1,13 @@
-name: Sync scores & grade outcomes (free)
+name: Refresh now (schedule, scores, odds)
 
 # Manual only. This used to run every 15 minutes, and every run wakes the
 # database: that kept a scale-to-zero Postgres awake around the clock and used
 # up the database plan's compute quota on 2026-10-14, which took the site down.
-# Vercel Cron now runs sync-results, grade-outcomes and poll-odds in clustered
-# windows (see vercel.json), so this stays as a button: it prints the site's
-# health and runs one sync on demand.
+# Vercel Cron runs these in clustered windows (see vercel.json); this is the
+# button for "refresh it now": it prints the site's health, then runs the NBA
+# and NFL results syncs (free — they also refresh each league's schedule from
+# ESPN) and the NBA odds poll (spends odds credits; self-throttled to one poll
+# per 50 minutes).
 on:
   workflow_dispatch:
 
@@ -13,40 +15,30 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # Read-only health probe, printed to the log. The cron steps below only
-      # report an exit code when the site is down; these show the reason.
+      # Read-only health probe, printed to the log, so a failure below shows its reason.
       - name: Site health (read-only)
         if: always()
         run: |
-          for path in /api/health /api/status /; do
+          for path in /api/health /api/status; do
             echo "== GET $path"
             curl -sS -L -o /tmp/body -w "HTTP %{http_code}\n" "${{ secrets.APP_URL }}$path" || true
             head -c 1500 /tmp/body; echo
           done
 
-      - name: Sync today's game statuses/scores (free)
+      - name: NBA schedule, scores and game logs (free)
+        if: always()
         run: |
-          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/sync-results" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/sync-results-nba" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" | head -c 2000; echo
 
-      - name: Grade newly-final games (free)
+      - name: NFL schedule and scores (free)
+        if: always()
         run: |
-          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/grade-outcomes" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/sync-results-nfl" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" | head -c 2000; echo
 
-      # ── MLB odds freshness ─────────────────────────────────────────────────
-      # This TICKS the poller; it does not force a fetch. /api/cron/poll-odds
-      # runs decidePollOdds first, which self-throttles by proximity to first
-      # pitch (60 min far / 20 approaching / 5 imminent) and refuses outright on
-      # low credits. So a frequent tick costs nothing extra — it just lets that
-      # policy do the job it was written for.
-      #
-      # It was gated behind ODDS_FRESH_ENABLED back when odds credits were the
-      # scarce thing. After the ParlayAPI switch a poll is 6 credits and props
-      # got 48x cheaper, while the gate quietly left game lines refreshing TWICE
-      # A DAY — a 7pm game priced off a 9:30am snapshot, which reads as "the odds
-      # are wrong" because by then they are.
-      - name: Refresh MLB odds (ticks the self-throttling poller)
+      - name: NBA odds and props (spends credits)
+        if: always()
         run: |
-          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          curl -sSL --fail-with-body -X POST "${{ secrets.APP_URL }}/api/cron/poll-odds-nba" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" | head -c 2000; echo

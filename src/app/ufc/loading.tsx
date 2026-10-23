@@ -1,5 +1,5 @@
-import { CardListPageSkeleton } from "@/components/Skeleton";
+import { BookPageSkeleton } from "@/components/brand/BrandLoader";
 
 export default function UfcLoading() {
-  return <CardListPageSkeleton />;
+  return <BookPageSkeleton />;
 }
