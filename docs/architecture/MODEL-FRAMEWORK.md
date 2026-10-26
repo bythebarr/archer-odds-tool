@@ -87,6 +87,33 @@ The same spine for moneyline, spread and total:
    rest and injury priors against what actually happened, and fits the market
    weight per market.
 
+## UFC fights: `src/lib/ufc/fightModel.ts` (v2)
+
+The fight is replayed in date order, and features are read before each bout:
+- opponent-adjusted Elo (finishes weigh more; debuts start from the pre-UFC record)
+- per-minute stats shrunk toward the league: striking differential, strike
+  defense, takedowns and takedown defense, knockdowns, submission attempts, control
+- reach, experience, layoff, and weight-class moves
+
+These are combined by L2 logistic regression (`stats/logistic.ts`).
+`backtest:ufc-fights` trains on the oldest 60%, tunes on the next 20%, and
+grades the newest 20% against v1 fighter math, Elo alone and the closing
+moneyline. The page headline switches to v2 only if it beats v1. Missing: age,
+the strongest single factor in public models, because our fight-data source
+has no dates of birth.
+
+## F1 races: `src/lib/f1/raceModel.ts`
+
+- Car and driver pace ratings, updated after each race by Plackett–Luce (the
+  multi-car Elo). The car learns faster and resets harder each season.
+- Mechanical retirements count against the team's reliability; crashes
+  count against the driver.
+- 20,000 simulations give win, podium, points, DNF and beat-your-teammate odds.
+- `backtest:f1` fits the learning rates on the winner's log loss (against a
+  uniform pick and a points-so-far baseline) and checks podium calibration.
+- Next: qualifying results (Jolpica `/qualifying`), since grid position is the
+  biggest single input once it's known. Also circuit-type adjustments.
+
 ## What drives each sport (research notes)
 
 Sources are mostly practitioner writing; academic work is cited where it
