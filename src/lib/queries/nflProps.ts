@@ -13,6 +13,8 @@ import { NFL_PROP_STAT_BY_KEY, nflPositionGroup, type NflStatLine } from "@/lib/
 import type { NflDefenseTable, NflPosition } from "@/lib/nfl/matchup";
 import { NFL_LOG_COLUMNS as COLUMNS, packNflLog, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
 import { EV_FLAG } from "@/lib/odds/marketValue";
+import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
+import type { Absence } from "@/lib/injuries/absence";
 import type { SlateGame, SlateTeam } from "./nbaProps";
 
 export interface NflSlatePlayer {
@@ -24,6 +26,7 @@ export interface NflSlatePlayer {
   team: SlateTeam | null;
   opponent: SlateTeam | null;
   venue: "home" | "away" | null;
+  injury: PlayerInjuryInfo | null;
 }
 
 export interface NflPropsSlate {
@@ -33,6 +36,8 @@ export interface NflPropsSlate {
   logs: Record<string, PackedNflLog[]>;
   props: NflSlateProp[];
   defense: NflDefenseTable;
+  /** Per team abbreviation: key players ruled out or doubtful this week. */
+  absences: Record<string, Absence[]>;
   lastPolledAt: string | null;
 }
 
@@ -105,6 +110,42 @@ export const getNflDefenseTable = cache(async (season: number): Promise<NflDefen
   return Object.keys(last).length ? { season: season - 1, fromLastSeason: true, teams: last } : { season, fromLastSeason: false, teams: current };
 });
 
+/** Touches + targets per game that make an absence matter to teammates (any QB counts). */
+const KEY_USAGE = 6;
+
+async function nflAbsences(
+  games: SlateGame[],
+  injuries: { espnAthleteId: string; teamName: string; status: string }[],
+  season: number,
+  before: Date
+): Promise<Record<string, Absence[]>> {
+  const teamNames = new Map(games.flatMap((g) => [[g.home.name, g.home.abbreviation], [g.away.name, g.away.abbreviation]] as const));
+  const injured = injuries.filter((i) => teamNames.has(i.teamName) && ["out", "doubtful"].includes(injuryLevel(i.status) ?? ""));
+  if (injured.length === 0) return {};
+  const players = await prisma.nflPlayer.findMany({
+    where: { espnAthleteId: { in: injured.map((i) => i.espnAthleteId) } },
+    include: {
+      gameLogs: {
+        where: { season: { in: [season - 1, season] }, gameDate: { lt: before } },
+        select: { gameDate: true, passAttempts: true, rushAttempts: true, targets: true, team: { select: { name: true } } },
+      },
+    },
+  });
+  const out: Record<string, Absence[]> = {};
+  for (const i of injured) {
+    const p = players.find((x) => x.espnAthleteId === i.espnAthleteId);
+    const abbr = teamNames.get(i.teamName);
+    if (!p || !abbr) continue;
+    const withTeam = p.gameLogs.filter((l) => l.team.name === i.teamName);
+    if (withTeam.length === 0) continue;
+    const qb = nflPositionGroup(p.position) === "QB";
+    const usage = withTeam.reduce((a, l) => a + (qb ? l.passAttempts : l.rushAttempts + l.targets), 0) / withTeam.length;
+    if (!qb && usage < KEY_USAGE) continue;
+    (out[abbr] ??= []).push({ name: p.fullName, status: i.status, playedDates: withTeam.map((l) => etDateOf(l.gameDate)), usage });
+  }
+  return out;
+}
+
 /** The coming week's NFL props (games starting from three hours ago through seven days out). */
 export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<NflPropsSlate> => {
   const season = NFL_LEAGUE.seasonOf(now);
@@ -117,7 +158,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
   });
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -149,6 +190,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
         team: venue === "home" ? team(g.homeTeam) : venue === "away" ? team(g.awayTeam) : null,
         opponent: venue === "home" ? team(g.awayTeam) : venue === "away" ? team(g.homeTeam) : null,
         venue,
+        injury: null,
       };
     }
     const key = `${p.id}:${line.stat}`;
@@ -177,7 +219,16 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     (logs[h.nflPlayerId] ??= []).push(packNflLog(point));
   }
 
-  return { season, games: slateGames, players, logs, props: [...props.values()], defense, lastPolledAt: lastPolledAt?.toISOString() ?? null };
+  const injuries = await prisma.playerInjury.findMany({ where: { sport: "nfl" } });
+  const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
+  const espnIds = new Map(lines.map((l) => [l.nflPlayer.id, l.nflPlayer.espnAthleteId]));
+  for (const player of Object.values(players)) {
+    const i = injuryById.get(espnIds.get(player.id) ?? "");
+    if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
+  }
+  const absences = await nflAbsences(slateGames, injuries, season, now);
+
+  return { season, games: slateGames, players, logs, props: [...props.values()], defense, absences, lastPolledAt: lastPolledAt?.toISOString() ?? null };
 });
 
 /** The week's NFL props whose best price beats the market's fair price, biggest edge first, one per player — for the lobby's value board. */
@@ -199,13 +250,20 @@ export async function getValueNflProps(limit = 6) {
     const player = slate.players[prop.playerId];
     const stat = NFL_PROP_STAT_BY_KEY.get(prop.stat);
     if (!player || !stat) continue;
+    if (player.injury?.level === "out" || player.injury?.level === "doubtful") continue;
     const logs = (slate.logs[prop.playerId] ?? []).map(unpackNflLog);
     for (const side of ["over", "under"] as const) {
       const s = summarizeNflProp(prop, logs, stat, side, {
         season: slate.season,
         venue: player.venue,
         opponent: player.opponent?.abbreviation ?? null,
-        projection: { defense: slate.defense, opponent: player.opponent?.abbreviation ?? null, position: player.position },
+        projection: {
+          defense: slate.defense,
+          opponent: player.opponent?.abbreviation ?? null,
+          position: player.position,
+          absences: player.team ? slate.absences[player.team.abbreviation] : undefined,
+        },
+        injury: player.injury?.level ?? null,
       });
       const best = s && (side === "over" ? s.over : s.under);
       const value = s && (side === "over" ? s.value.over : s.value.under);

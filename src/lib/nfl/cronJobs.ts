@@ -8,6 +8,7 @@ import { sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 import { lookbackDatesEt } from "@/lib/teamLeague/results";
 import { syncNflGameLogs, syncNflPositions } from "./gameLogs";
 import { pollAndStoreNflProps } from "./props";
+import { syncInjuries } from "@/lib/injuries/espnInjuries";
 
 const NFL_GAME_LOGS_JOB = "sync-gamelogs-nfl";
 
@@ -28,7 +29,8 @@ const NFL_PROPS_JOB = "poll-props-nfl";
 
 export async function runNflPropsPoll() {
   try {
-    const summary = await pollAndStoreNflProps();
+    const injuries = await syncInjuries("nfl").catch((error: unknown) => ({ error: String(error) }));
+    const summary = { ...(await pollAndStoreNflProps()), injuries };
     if (Object.keys(summary.unmappedMarketKeys).length) console.log(`${NFL_PROPS_JOB}: unmapped market keys`, summary.unmappedMarketKeys);
     await recordPollLog(
       NFL_PROPS_JOB,

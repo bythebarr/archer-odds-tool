@@ -16,6 +16,8 @@ import type { PropDirection } from "@/lib/props/tally";
 import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
 import { EvTag } from "@/components/EvTag";
+import { InjuryBadge } from "@/components/InjuryBadge";
+import type { Absence } from "@/lib/injuries/absence";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { GameLogChart } from "@/components/nba/GameLogChart";
@@ -87,6 +89,7 @@ function PropCard({ s, player, game, side, stat, defense, onOpen }: { s: NflProp
             <p className="truncate text-[15px] font-semibold leading-tight text-foreground">
               {player.name}
               {player.position && <span className="ml-1.5 text-[11px] font-medium text-muted-foreground">{player.position}</span>}
+              <InjuryBadge injury={player.injury} />
             </p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               {player.opponent && (
@@ -143,7 +146,7 @@ function PropCard({ s, player, game, side, stat, defense, onOpen }: { s: NflProp
   );
 }
 
-function Sheet({ player, props, logs, season, defense, initialStat, side: initialSide, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; season: number; defense: NflDefenseTable; initialStat: NflPropStat; side: PropDirection; onClose: () => void }) {
+function Sheet({ player, props, logs, season, defense, absences, initialStat, side: initialSide, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; season: number; defense: NflDefenseTable; absences?: Absence[]; initialStat: NflPropStat; side: PropDirection; onClose: () => void }) {
   const [statKey, setStatKey] = useState(initialStat);
   const [side, setSide] = useState(initialSide);
   const prop = props.find((p) => p.stat === statKey) ?? props[0];
@@ -151,7 +154,13 @@ function Sheet({ player, props, logs, season, defense, initialStat, side: initia
   const consensus = propConsensusPoint(prop.quotes);
   const [pointByStat, setPointByStat] = useState<Partial<Record<NflPropStat, number>>>({});
   const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? 0;
-  const ctx = { season, venue: player.venue, opponent: player.opponent?.abbreviation ?? null, projection: { defense, opponent: player.opponent?.abbreviation ?? null, position: player.position } };
+  const ctx = {
+    season,
+    venue: player.venue,
+    opponent: player.opponent?.abbreviation ?? null,
+    projection: { defense, opponent: player.opponent?.abbreviation ?? null, position: player.position, absences },
+    injury: player.injury?.level ?? null,
+  };
   const s = summarizeNflProp(prop, logs, stat, side, ctx, point);
   const books = booksAtPoint(prop.quotes, point, side);
   const pairs = twoSidedAt(prop.quotes, point);
@@ -187,6 +196,7 @@ function Sheet({ player, props, logs, season, defense, initialStat, side: initia
             <div className="min-w-0 flex-1">
               <p className="truncate text-base font-semibold text-foreground">
                 {player.name} {player.position && <span className="text-xs font-medium text-muted-foreground">{player.position}</span>}
+                <InjuryBadge injury={player.injury} />
               </p>
               <p className="text-xs text-muted-foreground">
                 {player.venue === "home" ? "vs" : "@"} {player.opponent?.abbreviation} · {player.team?.name}
@@ -234,6 +244,16 @@ function Sheet({ player, props, logs, season, defense, initialStat, side: initia
             </div>
           )}
 
+          {player.injury?.level && (
+            <p className={`rounded-lg px-3 py-2 text-xs ${player.injury.level === "out" || player.injury.level === "doubtful" ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
+              <span className="font-semibold">{player.injury.status}</span>
+              {player.injury.detail ? ` — ${player.injury.detail}` : ""}.{" "}
+              {player.injury.level === "out" || player.injury.level === "doubtful"
+                ? "No projection while he's listed this way; books usually pull his props."
+                : "The projection's confidence is widened until he's cleared."}
+            </p>
+          )}
+
           {m && (
             <section>
               <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
@@ -261,6 +281,12 @@ function Sheet({ player, props, logs, season, defense, initialStat, side: initia
                     )}
                   </div>
                 </div>
+                {m.projection.absence && (
+                  <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
+                    <span className="font-semibold text-foreground">Without {m.projection.absence.names.join(" & ")}</span> (out this week):{" "}
+                    {m.projection.absence.games} games averaging {m.projection.absence.perGame.toFixed(stat.shape === "yards" ? 0 : 1)} — blended in.
+                  </p>
+                )}
                 <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
                   Recent per-game production steadied by two seasons, × matchup {m.projection.matchupFactor.toFixed(2)}, from {m.projection.games}{" "}games. Check it against the
                   market&apos;s fair price below before trusting an edge.{" "}
@@ -364,7 +390,13 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
         season: slate.season,
         venue: player.venue,
         opponent: player.opponent?.abbreviation ?? null,
-        projection: { defense: slate.defense, opponent: player.opponent?.abbreviation ?? null, position: player.position },
+        projection: {
+          defense: slate.defense,
+          opponent: player.opponent?.abbreviation ?? null,
+          position: player.position,
+          absences: player.team ? slate.absences[player.team.abbreviation] : undefined,
+        },
+        injury: player.injury?.level ?? null,
       });
       if (s) out.push(s);
     }
@@ -439,6 +471,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           logs={logs[openPlayer.id] ?? []}
           season={slate.season}
           defense={slate.defense}
+          absences={openPlayer.team ? slate.absences[openPlayer.team.abbreviation] : undefined}
           initialStat={statKey}
           side={side}
           onClose={close}

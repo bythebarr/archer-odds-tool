@@ -11,6 +11,7 @@ import { bestBettableLine, consensusPoint, isBettableBook } from "@/lib/odds/bes
 import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
 import { calculateEv } from "@/lib/odds/devig";
 import { probOver, projectProp, type ProjectionContext, type PropProjection } from "./projection";
+import { injuryShrink, type InjuryLevel } from "@/lib/injuries/status";
 import { tallyPropHits, type PropDirection, type PropHitRateResult } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import type { NbaPropStatDef, NbaStatLine } from "./propStats";
@@ -75,6 +76,8 @@ export interface PropContext {
   opponent?: string | null;
   /** When given, the prop is also projected (see projection.ts). */
   projection?: ProjectionContext;
+  /** The player's own injury tag: out/doubtful withholds the model, questionable widens it. */
+  injury?: InjuryLevel;
 }
 
 /** ARCHR's model read on a prop at its line. */
@@ -182,8 +185,10 @@ export function summarizeProp(
   const over = bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point);
   const under = bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point);
   const pairs = twoSidedAt(prop.quotes, point);
-  const projection = context.projection ? projectProp(logs, stat, context.projection) : null;
-  const pOver = projection ? probOver(projection, point) : null;
+  const sitting = context.injury === "out" || context.injury === "doubtful";
+  const projection = context.projection && !sitting ? projectProp(logs, stat, context.projection) : null;
+  const shrinkBy = injuryShrink(context.injury ?? null);
+  const pOver = projection ? 0.5 + (probOver(projection, point) - 0.5) * shrinkBy : null;
   const model: PropModel | null =
     projection && pOver !== null
       ? {

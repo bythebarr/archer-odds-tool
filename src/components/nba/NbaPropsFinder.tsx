@@ -14,6 +14,7 @@ import { HitMeter, formatRate, rateTone } from "./HitMeter";
 import { PlayerPropSheet } from "./PlayerPropSheet";
 import { MatchupChip } from "./Matchup";
 import { EvTag } from "@/components/EvTag";
+import { InjuryBadge } from "@/components/InjuryBadge";
 import type { DefenseTable } from "@/lib/nba/matchup";
 import type { NbaPropStatDef } from "@/lib/nba/propStats";
 
@@ -110,7 +111,10 @@ function PropCard({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-semibold leading-tight text-foreground">{player.name}</p>
+            <p className="truncate text-[15px] font-semibold leading-tight text-foreground">
+              {player.name}
+              <InjuryBadge injury={player.injury} />
+            </p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               {player.opponent ? (
                 <>
@@ -248,7 +252,13 @@ export function NbaPropsFinder({
         season: slate.season,
         venue: player.venue,
         opponent: player.opponent?.abbreviation,
-        projection: { defense: slate.defense, opponent: player.opponent?.abbreviation ?? null, positionGroup: player.positionGroup },
+        projection: {
+          defense: slate.defense,
+          opponent: player.opponent?.abbreviation ?? null,
+          positionGroup: player.positionGroup,
+          absences: player.team ? slate.absences[player.team.abbreviation] : undefined,
+        },
+        injury: player.injury?.level ?? null,
       });
       if (s) out.push(s);
     }
@@ -389,6 +399,7 @@ export function NbaPropsFinder({
           logs={logs[openPlayer.id] ?? []}
           season={slate.season}
           defense={slate.defense}
+          absences={openPlayer.team ? slate.absences[openPlayer.team.abbreviation] : undefined}
           initialStat={prefs.stat}
           side={prefs.side}
           startLabel={(() => {

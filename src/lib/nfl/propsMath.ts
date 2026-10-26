@@ -13,6 +13,7 @@ import { tallyPropHits, type PropDirection, type PropHitRateResult } from "@/lib
 import { propConsensusPoint, twoSidedAt, type PropQuote, type PropSplit } from "@/lib/nba/propsMath";
 import type { NflPropStatDef, NflStatLine } from "./propStats";
 import { nflProbOver, projectNflProp, type NflProjection, type NflProjectionContext } from "./projection";
+import { injuryShrink, type InjuryLevel } from "@/lib/injuries/status";
 
 export interface NflLogPoint extends NflStatLine {
   date: string;
@@ -80,7 +81,14 @@ export function summarizeNflProp(
   logs: NflLogPoint[],
   stat: NflPropStatDef,
   side: PropDirection,
-  ctx: { season: number; venue: "home" | "away" | null; opponent: string | null; projection: NflProjectionContext },
+  ctx: {
+    season: number;
+    venue: "home" | "away" | null;
+    opponent: string | null;
+    projection: NflProjectionContext;
+    /** The player's own injury tag: out/doubtful withholds the model, questionable widens it. */
+    injury?: InjuryLevel;
+  },
   atPoint?: number
 ): NflPropSummary | null {
   const point = atPoint ?? propConsensusPoint(prop.quotes);
@@ -105,8 +113,9 @@ export function summarizeNflProp(
   const over = bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point);
   const under = bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point);
   const pairs = twoSidedAt(prop.quotes, point);
-  const projection = projectNflProp(logs, stat, ctx.projection);
-  const pOver = projection ? nflProbOver(projection, stat, point) : null;
+  const sitting = ctx.injury === "out" || ctx.injury === "doubtful";
+  const projection = sitting ? null : projectNflProp(logs, stat, ctx.projection);
+  const pOver = projection ? 0.5 + (nflProbOver(projection, stat, point) - 0.5) * injuryShrink(ctx.injury ?? null) : null;
 
   return {
     playerId: prop.playerId,

@@ -1451,3 +1451,20 @@ model ModelReport {
 
   @@index([model, createdAt])
 }
+
+/// The league injury report, from ESPN's free feed — replaced wholesale per
+/// sport on each sync, so a player off the report is healthy again.
+model PlayerInjury {
+  id            String   @id @default(cuid())
+  sport         Sport
+  espnAthleteId String
+  playerName    String
+  teamName      String
+  /// ESPN's status as listed: Out, Doubtful, Questionable, Day-To-Day, …
+  status        String
+  /// Short note, e.g. "Knee — expected back early November".
+  detail        String?
+  updatedAt     DateTime @updatedAt
+
+  @@unique([sport, espnAthleteId])
+}

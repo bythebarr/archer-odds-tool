@@ -139,3 +139,16 @@ describe("packLog / unpackLog", () => {
     expect(unpackLog(packLog(l))).toEqual(l);
   });
 });
+
+describe("injury handling", () => {
+  const logs = Array.from({ length: 12 }, (_, i) => log(26 + (i % 3)));
+  const proj = { defense: { season: 2026, fromLastSeason: false, teams: {} }, opponent: null, positionGroup: null };
+  it("withholds the model for a player ruled out", () => {
+    expect(summarizeProp(prop, logs, POINTS, "over", { season: 2026, venue: null, projection: proj, injury: "out" })!.model).toBeNull();
+  });
+  it("widens a questionable player's probabilities toward 50%", () => {
+    const healthy = summarizeProp(prop, logs, POINTS, "over", { season: 2026, venue: null, projection: proj })!.model!;
+    const q = summarizeProp(prop, logs, POINTS, "over", { season: 2026, venue: null, projection: proj, injury: "questionable" })!.model!;
+    expect(Math.abs(q.probOver - 0.5)).toBeLessThan(Math.abs(healthy.probOver - 0.5));
+  });
+});

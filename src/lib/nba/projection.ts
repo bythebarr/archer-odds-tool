@@ -25,6 +25,7 @@ import type { NbaPropStatDef } from "./propStats";
 import type { DefenseTable } from "./matchup";
 import { statMatchup, paceRank } from "./matchup";
 import type { PositionGroup } from "./positionGroups";
+import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
 
 const MINUTES_WINDOW = 20;
 const MINUTES_HALF_LIFE = 5;
@@ -55,7 +56,13 @@ export interface PropProjection {
   matchupFactor: number;
   paceFactor: number;
   games: number;
+  /** When rotation teammates are out: the games without them that were blended in. */
+  absence: { names: string[]; games: number; minutes: number; perMinute: number } | null;
 }
+
+/** The full-history estimate counts as this many games against the without-teammate games. */
+const ABSENCE_PRIOR_GAMES = 5;
+const MIN_WITHOUT_GAMES = 2;
 
 function weighted(values: number[], halfLife: number): { mean: number; weight: number } {
   let sum = 0;
@@ -77,6 +84,8 @@ export interface ProjectionContext {
   defense: DefenseTable;
   opponent: string | null;
   positionGroup: PositionGroup | null;
+  /** Rotation teammates out tonight (see injuries/absence). */
+  absences?: Absence[];
 }
 
 /** Projects one stat for one player from his logs (most recent first). Null with fewer than MIN_GAMES. */
@@ -100,7 +109,21 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
   const totalMinutes = played.reduce((a, l) => a + l.minutes, 0);
   const longRate = totalMinutes ? played.reduce((a, l) => a + stat.value(l), 0) / totalMinutes : 0;
   const recentWeight = Math.min(recent.length, RATE_WINDOW);
-  const perMinute = (recentRate * recentWeight + longRate * RATE_PRIOR_GAMES) / (recentWeight + RATE_PRIOR_GAMES);
+  let perMinute = (recentRate * recentWeight + longRate * RATE_PRIOR_GAMES) / (recentWeight + RATE_PRIOR_GAMES);
+  let minutesAdj = minutes;
+
+  // Teammates out tonight: lean on the games he's already played without them.
+  let absence: PropProjection["absence"] = null;
+  const without = ctx.absences?.length ? gamesWithout(played, ctx.absences) : [];
+  if (without.length >= MIN_WITHOUT_GAMES) {
+    const wMin = without.reduce((a, l) => a + l.minutes, 0);
+    const wMinutes = wMin / without.length;
+    const wRate = wMin ? without.reduce((a, l) => a + stat.value(l), 0) / wMin : perMinute;
+    const w = withoutWeight(without.length, ABSENCE_PRIOR_GAMES);
+    minutesAdj = minutes * (1 - w) + wMinutes * w;
+    perMinute = perMinute * (1 - w) + wRate * w;
+    absence = { names: ctx.absences!.map((a) => a.name), games: without.length, minutes: wMinutes, perMinute: wRate };
+  }
 
   let matchupFactor = 1;
   let paceFactor = 1;
@@ -113,7 +136,7 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     if (p && avg > 0) paceFactor = factor(p.combinedPoints / avg, PACE_REGRESSION, PACE_CAP);
   }
 
-  const mean = minutes * perMinute * matchupFactor * paceFactor;
+  const mean = minutesAdj * perMinute * matchupFactor * paceFactor;
 
   // Spread: the player's own game-to-game variance in this stat (last 20),
   // scaled to tonight's mean, never below Poisson.
@@ -123,7 +146,7 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
   const dispersion = sMean > 0 ? sVar / sMean : 1; // variance per unit of mean
   const variance = Math.max(mean, mean * Math.max(dispersion, 1));
 
-  return { mean, sd: Math.sqrt(variance), minutes, perMinute, matchupFactor, paceFactor, games: played.length };
+  return { mean, sd: Math.sqrt(variance), minutes: minutesAdj, perMinute, matchupFactor, paceFactor, games: played.length, absence };
 }
 
 /** log Γ via Lanczos — for the negative binomial's coefficients. */

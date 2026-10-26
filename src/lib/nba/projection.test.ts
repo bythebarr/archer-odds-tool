@@ -81,3 +81,16 @@ describe("probOver", () => {
     expect(p).toBeLessThan(0.65);
   });
 });
+
+describe("teammate absences", () => {
+  it("leans on the games without the absent teammate", () => {
+    // Recent 10 games: the star played in the odd ones; in the even ones our player
+    // took over (40 min, 35 pts). Mixed history overall.
+    const logs = Array.from({ length: 20 }, (_, i) => ({ ...log(i % 2 ? 22 : 35, i % 2 ? 30 : 40, i), date: `2026-10-${String(30 - i).padStart(2, "0")}` }));
+    const starDates = logs.filter((_, i) => i % 2).map((l) => l.date);
+    const base = projectProp(logs, PTS, { defense, opponent: "MID", positionGroup: null })!;
+    const adj = projectProp(logs, PTS, { defense, opponent: "MID", positionGroup: null, absences: [{ name: "Star", status: "Out", playedDates: starDates, usage: 34 }] })!;
+    expect(adj.absence).toMatchObject({ names: ["Star"], games: 10 });
+    expect(adj.mean).toBeGreaterThan(base.mean);
+  });
+});
