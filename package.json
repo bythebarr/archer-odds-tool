@@ -25,6 +25,7 @@
     "backtest:nfl-props": "tsx scripts/backtest-nfl-props.ts",
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
     "backtest:games": "tsx scripts/backtest-games.ts",
+    "backtest:ufc-fights": "tsx scripts/backtest-ufc-fights.ts",
     "backtest:mlb": "tsx scripts/backtest-mlb-calibration.ts",
     "backtest:mlb:totals": "tsx scripts/backtest-mlb-totals-calibration.ts",
     "backtest:tennis": "tsx scripts/backtest-tennis-calibration.ts",
