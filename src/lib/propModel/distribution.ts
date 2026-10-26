@@ -9,6 +9,9 @@
  *     sports) — normal with a continuity correction
  *   - atLeastOne: "anytime" props (TD scorer, goal scorer, home run) — Poisson
  *     chance of one or more
+ *   - pmf: an explicit probability for every value, for stats built outcome by
+ *     outcome (MLB total bases: each plate appearance a single, an extra-base
+ *     hit, a home run or an out)
  *
  * Over means strictly more than the line; on a whole-number line a push
  * refunds, so the side's chance excludes it.
@@ -17,7 +20,8 @@
 export type StatDistribution =
   | { kind: "count"; mean: number; variance: number }
   | { kind: "normal"; mean: number; sd: number }
-  | { kind: "atLeastOne"; mean: number };
+  | { kind: "atLeastOne"; mean: number }
+  | { kind: "pmf"; pmf: number[] };
 
 /** log Γ via Lanczos — for the negative binomial's coefficients. */
 function logGamma(z: number): number {
@@ -66,6 +70,12 @@ export function normalCdf(z: number): number {
 /** P(X ≤ k) for a whole-number stat under the distribution. */
 function cdfAt(d: StatDistribution, k: number): number {
   if (d.kind === "count") return countCdf(k, d.mean, d.variance);
+  if (d.kind === "pmf") {
+    if (k < 0) return 0;
+    let c = 0;
+    for (let i = 0; i <= Math.min(k, d.pmf.length - 1); i++) c += d.pmf[i];
+    return Math.min(c, 1);
+  }
   if (d.kind === "normal") return d.sd > 0 ? normalCdf((k + 0.5 - d.mean) / d.sd) : k >= d.mean ? 1 : 0;
   return k < 0 ? 0 : k >= 1 ? 1 : Math.exp(-Math.max(d.mean, 0)); // atLeastOne: only 0 vs 1+ matters
 }
