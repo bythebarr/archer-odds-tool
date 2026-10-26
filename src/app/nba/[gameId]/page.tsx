@@ -5,6 +5,8 @@ import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { readPropsPrefs } from "@/lib/nba/propsPrefs";
 import { etDateOf } from "@/lib/dateEt";
 import { TeamLeagueGame } from "@/components/TeamLeagueGame";
+import { GameModelPanel } from "@/components/GameModelPanel";
+import { getGameModelView } from "@/lib/queries/gameModel";
 import { NbaPropsFinder } from "@/components/nba/NbaPropsFinder";
 
 /** Shares getTeamGameWithLines's per-request cache() with the page below — same pattern as the MLB/tennis/soccer game pages. */
@@ -56,14 +58,17 @@ export default async function NbaGamePage({
     );
   }
 
+  const modelView = tab === "lines" ? await getGameModelView("nba", gameId, result.lines) : null;
+
   return (
     <TeamLeagueGame
+      modelPanel={modelView ? <GameModelPanel view={modelView} /> : null}
       sport="nba"
       result={result}
       tab={tab}
       propsHref={`/nba/${gameId}?tab=props`}
       propsPanel={propsPanel}
-      disclaimer="Game lines are line-shopping: the best price per side among bettable books at the consensus number, with a +EV tag where a price beats the market's fair price. ARCHR's projection model prices the player props."
+      disclaimer="The best price per side among bettable books at the consensus number, with a +EV tag where a price beats the market's fair price. The ARCHR line above blends the game model with that market."
     />
   );
 }

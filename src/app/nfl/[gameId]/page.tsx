@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTeamGameWithLines } from "@/lib/queries/teamLeagueGames";
 import { TeamLeagueGame } from "@/components/TeamLeagueGame";
+import { GameModelPanel } from "@/components/GameModelPanel";
+import { getGameModelView } from "@/lib/queries/gameModel";
 import { getNflPropsSlate } from "@/lib/queries/nflProps";
 import { NflPropsFinder } from "@/components/nfl/NflPropsFinder";
 
@@ -51,14 +53,17 @@ export default async function NflGamePage({
     );
   }
 
+  const modelView = tab === "lines" ? await getGameModelView("nfl", gameId, result.lines) : null;
+
   return (
     <TeamLeagueGame
+      modelPanel={modelView ? <GameModelPanel view={modelView} /> : null}
       sport="nfl"
       result={result}
       tab={tab}
       propsHref={`/nfl/${gameId}?tab=props`}
       propsPanel={propsPanel}
-      disclaimer="Game lines are line-shopping: the best price per side among bettable books at the consensus number, with a +EV tag where a price beats the market's fair price. ARCHR's projection model prices the player props."
+      disclaimer="The best price per side among bettable books at the consensus number, with a +EV tag where a price beats the market's fair price. The ARCHR line above blends the game model with that market."
     />
   );
 }
