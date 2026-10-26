@@ -6,7 +6,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { bestLinesBySide } from "@/lib/odds/bestPrice";
 import { SoccerTeamBadge } from "@/components/SoccerTeamBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
-import { PageShell, PageHeader } from "@/components/PageShell";
+import { SportPage } from "@/components/book/SportPage";
 import { EmptyState } from "@/components/EmptyState";
 import { getFeedFreshness } from "@/lib/freshness";
 
@@ -41,11 +41,7 @@ export default async function SoccerPage() {
   const [matches, freshness] = await Promise.all([listSoccerMatchesWithLines(), getFeedFreshness("soccerOdds")]);
 
   return (
-    <PageShell width="2xl">
-      <PageHeader
-        title="World Cup Soccer"
-        description="Odds line-shopping — moneyline (3-way) only, no Market EV yet."
-      />
+    <SportPage sport="soccer" title="World Cup Soccer" description="Odds line-shopping — moneyline (3-way) only, no Market EV yet.">
 
       {matches.length === 0 ? (
         <EmptyState title="No World Cup matches tracked right now" freshness={freshness} arrow="miss" supportContext="soccer-empty">
@@ -75,6 +71,6 @@ export default async function SoccerPage() {
           ))}
         </div>
       )}
-    </PageShell>
+    </SportPage>
   );
 }

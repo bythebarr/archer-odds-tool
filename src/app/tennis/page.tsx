@@ -6,7 +6,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { bestLinesBySide } from "@/lib/odds/bestPrice";
 import { TennisPlayerBadge } from "@/components/TennisPlayerBadge";
 import { MatchCard, type MatchCardChip } from "@/components/MatchCard";
-import { PageShell, PageHeader } from "@/components/PageShell";
+import { SportPage } from "@/components/book/SportPage";
 import { EmptyState } from "@/components/EmptyState";
 import { getFeedFreshness } from "@/lib/freshness";
 
@@ -51,22 +51,17 @@ export default async function TennisPage() {
   const [matches, freshness] = await Promise.all([listTennisMatchesWithLines(), getFeedFreshness("tennisOdds")]);
 
   return (
-    <PageShell width="2xl">
-      <PageHeader
-        title="Tennis"
-        description={
-          <>
-            Odds line-shopping — moneyline only, one tournament tracked at a time.{" "}
-            {/* The old "prices only, nothing settles" caveat is gone: ESPN's free
-                scoreboard settles matches now, so tennis is tracked like MLB.
-                See SportMeta.signalOnly and src/lib/tennis/results.ts. */}
-            <span className="text-muted-foreground/80">
-              Results come from ESPN&apos;s public scoreboard, so tennis plays grade
-              and count in the tracked record.
-            </span>
-          </>
-        }
-      />
+    <SportPage
+      sport="tennis"
+      description={
+        <>
+          Odds line-shopping — moneyline only, one tournament tracked at a time.{" "}
+          <span className="text-muted-foreground/80">
+            Results come from ESPN&apos;s public scoreboard, so tennis plays grade and count in the tracked record.
+          </span>
+        </>
+      }
+    >
 
       {matches.length === 0 ? (
         <EmptyState title="No tennis matches tracked right now" freshness={freshness} arrow="miss" supportContext="tennis-empty">
@@ -90,6 +85,6 @@ export default async function TennisPage() {
           ))}
         </div>
       )}
-    </PageShell>
+    </SportPage>
   );
 }
