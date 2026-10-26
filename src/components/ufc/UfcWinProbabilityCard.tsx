@@ -1,4 +1,4 @@
-import type { UfcMatchupProjection } from "@/lib/ufc/fighterMath";
+import type { ProjectionConfidence, UfcMatchupProjection } from "@/lib/ufc/fighterMath";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
@@ -11,6 +11,18 @@ interface UfcWinProbabilityCardProps {
   blueName: string;
   projection: UfcMatchupProjection;
 }
+
+const CONFIDENCE_TONE: Record<ProjectionConfidence, string> = {
+  high: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  medium: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  low: "bg-muted text-muted-foreground",
+};
+
+const CONFIDENCE_NOTE: Record<ProjectionConfidence, string> = {
+  high: "Both fighters have several UFC fights behind this number.",
+  medium: "At least one fighter has only a few UFC fights; their pro record carries part of the number.",
+  low: "A UFC debut: that fighter's side rests on their pro record, read against what UFC signees typically bring in, with a discount for the step up. Treat it as a starting point.",
+};
 
 function pct(p: number): string {
   return `${Math.round(p * 100)}%`;
@@ -64,7 +76,7 @@ function FactorRow({ label, hop, value, redName, blueName }: FactorRowProps) {
  * inputs rather than showing a single opaque number.
  */
 export function UfcWinProbabilityCard({ redName, blueName, projection }: UfcWinProbabilityCardProps) {
-  const { fighterAProb, fighterBProb, fighterAStrength, fighterBStrength, commonOpponentAdjustment, styleAdjustment } =
+  const { fighterAProb, fighterBProb, fighterAStrength, fighterBStrength, commonOpponentAdjustment, styleAdjustment, confidence } =
     projection;
 
   if (fighterAProb === null || fighterBProb === null) {
@@ -75,7 +87,8 @@ export function UfcWinProbabilityCard({ redName, blueName, projection }: UfcWinP
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Not enough fight history on file to project this matchup yet.
+            Neither a UFC fight nor a pro record on file for one of these fighters yet, so there&apos;s nothing honest to
+            project from.
           </p>
         </CardContent>
       </Card>
@@ -88,9 +101,22 @@ export function UfcWinProbabilityCard({ redName, blueName, projection }: UfcWinP
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-semibold text-foreground">Fighter-math projection</CardTitle>
+        <CardTitle className="flex items-center justify-between gap-2 text-sm font-semibold text-foreground">
+          Fighter-math projection
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${CONFIDENCE_TONE[confidence]}`}
+            title={CONFIDENCE_NOTE[confidence]}
+          >
+            {confidence} confidence
+          </span>
+        </CardTitle>
       </CardHeader>
       <CardContent>
+        {confidence === "low" && (
+          <p className="mb-3 rounded-md bg-muted px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+            {CONFIDENCE_NOTE.low}
+          </p>
+        )}
         {/* Probability bar */}
         <div className="flex items-center justify-between text-sm font-semibold">
           <span style={{ color: RED_CORNER }}>{pct(fighterAProb)}</span>
@@ -142,9 +168,9 @@ export function UfcWinProbabilityCard({ redName, blueName, projection }: UfcWinP
         ) : null}
 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-          A transparent, hand-tuned heuristic over each fighter&apos;s career (decay-weighted result quality, shared
-          opponents, and stat-based style edges) — directional, not a rigorous or backtested betting model, and not a
-          pre-fight market line.
+          A transparent model over each fighter&apos;s UFC career (decay-weighted result quality, shared opponents and
+          stat-based style edges), starting from their pre-UFC pro record, and calibrated against past fights so a
+          stated 60% has won about 60% of the time. Directional, not a guarantee.
         </p>
       </CardContent>
     </Card>

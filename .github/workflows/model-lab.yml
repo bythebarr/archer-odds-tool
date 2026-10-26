@@ -1,0 +1,47 @@
+name: Model lab (backtests and fits)
+
+# Runs a model backtest or fit against the production database and prints the
+# report — every model's accuracy, calibration and fitted constants come from
+# here, not from guesses. Needs a DATABASE_URL repository secret (Settings →
+# Secrets and variables → Actions). Read-only: the scripts never write.
+# Keeps the database awake for the run (a few minutes), so run it on purpose.
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Which report"
+        required: true
+        type: choice
+        default: "fit:ufc-prior"
+        options:
+          - fit:ufc-prior
+          - backtest:ufc
+          - backtest:nfl
+          - backtest:nfl:clv
+          - backtest:all
+      n:
+        description: "Sample size (N), where the script takes one"
+        required: false
+        default: ""
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Run ${{ inputs.script }}
+        env:
+          N: ${{ inputs.n }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then echo "Add a DATABASE_URL repository secret first."; exit 1; fi
+          [ -z "$N" ] && unset N
+          npm run --silent "${{ inputs.script }}"

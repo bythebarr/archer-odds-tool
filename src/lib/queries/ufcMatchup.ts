@@ -22,6 +22,13 @@ export interface UfcFighterHistory {
   fighterSlug: string;
   fighterName: string;
   fights: UfcFightRecord[]; // most recent first
+  /**
+   * The fighter's pro record from before the UFC: their listed pro record minus
+   * every UFC bout we hold. Null when the record isn't on file or doesn't cover
+   * the UFC bouts (a record that can't be split honestly isn't used). The same
+   * for every as-of date — it predates the first UFC bout — so it's lookahead-safe.
+   */
+  preUfcRecord: { wins: number; losses: number } | null;
 }
 
 export interface CrossBout {
@@ -114,7 +121,33 @@ export async function getUfcFightHistory(
     };
   });
 
-  return { fighterId: fighter.id, fighterSlug: fighter.citoSlug, fighterName: fighter.fullName, fights };
+  return {
+    fighterId: fighter.id,
+    fighterSlug: fighter.citoSlug,
+    fighterName: fighter.fullName,
+    fights,
+    preUfcRecord: await preUfcRecordOf(fighter),
+  };
+}
+
+/** See UfcFighterHistory.preUfcRecord. Counts every completed UFC bout on file, not just those before an as-of date. */
+async function preUfcRecordOf(fighter: { id: string; recordWins: number | null; recordLosses: number | null }) {
+  if (fighter.recordWins === null || fighter.recordLosses === null) return null;
+  const inUfc = { status: "completed", event: { hasStats: true } } as const;
+  const [ufcWins, ufcLosses] = await Promise.all([
+    prisma.ufcBout.count({ where: { ...inUfc, winnerFighterId: fighter.id } }),
+    prisma.ufcBout.count({
+      where: {
+        ...inUfc,
+        winnerFighterId: { not: null },
+        NOT: { winnerFighterId: fighter.id },
+        OR: [{ redCornerFighterId: fighter.id }, { blueCornerFighterId: fighter.id }],
+      },
+    }),
+  ]);
+  const wins = fighter.recordWins - ufcWins;
+  const losses = fighter.recordLosses - ufcLosses;
+  return wins < 0 || losses < 0 ? null : { wins, losses };
 }
 
 /**
