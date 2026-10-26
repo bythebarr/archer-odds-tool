@@ -76,6 +76,21 @@ export const BOOK_INITIALS: Record<string, string> = {
   pinnacle: "PIN",
 };
 
+/** Display name per book, for surfaces that only carry the key. */
+export const BOOK_NAMES: Record<string, string> = {
+  draftkings: "DraftKings",
+  fanduel: "FanDuel",
+  betmgm: "BetMGM",
+  betrivers: "BetRivers",
+  espnbet: "ESPN BET",
+  caesars: "Caesars",
+  fanatics: "Fanatics",
+  bet365: "bet365",
+  hardrock: "Hard Rock Bet",
+  parx: "betPARX",
+  pinnacle: "Pinnacle",
+};
+
 /** Approximate brand color per book, used for the same fallback badge — not an official asset. */
 export const BOOK_COLORS: Record<string, string> = {
   draftkings: "#53D337",

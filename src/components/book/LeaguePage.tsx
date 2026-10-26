@@ -20,7 +20,7 @@ export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props") {
 }
 
 /** Sport icon + name, the header every league surface opens with. */
-export function LeagueHeader({ sport }: { sport: TeamLeagueSport }) {
+export function LeagueHeader({ sport }: { sport: TeamLeagueSport | "ufc" }) {
   const meta = sportMetaByKey[sport];
   return (
     <div className="mt-5 flex items-center gap-2.5 text-foreground">

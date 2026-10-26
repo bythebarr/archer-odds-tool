@@ -81,8 +81,11 @@ export function parseScoreboard(payload: unknown): EspnTeamResult[] {
     const awayName = away?.team?.displayName;
     if (!homeName || !awayName) continue;
 
-    const homeScore = Number(home?.score);
-    const awayScore = Number(away?.score);
+    const completed = competition?.status?.type?.completed === true;
+    // A final needs real scores to grade; a game not yet played may carry none
+    // (the schedule sync only needs its teams and start).
+    const homeScore = Number(home?.score ?? (completed ? NaN : 0));
+    const awayScore = Number(away?.score ?? (completed ? NaN : 0));
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore)) continue;
 
     const startUtc = event.date ? new Date(event.date) : null;
@@ -95,7 +98,7 @@ export function parseScoreboard(payload: unknown): EspnTeamResult[] {
       awayName,
       homeScore,
       awayScore,
-      completed: competition?.status?.type?.completed === true,
+      completed,
     });
   }
 
