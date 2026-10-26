@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { NFL_PROP_STATS, NFL_PROP_STAT_BY_KEY, type NflPropStatDef } from "@/lib/nfl/propStats";
@@ -262,7 +263,10 @@ function Sheet({ player, props, logs, season, defense, initialStat, side: initia
                 </div>
                 <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
                   Recent per-game production steadied by two seasons, × matchup {m.projection.matchupFactor.toFixed(2)}, from {m.projection.games}{" "}games. Check it against the
-                  market&apos;s fair price below before trusting an edge.
+                  market&apos;s fair price below before trusting an edge.{" "}
+          <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
+            How accurate is it?
+          </Link>
                 </p>
               </div>
             </section>

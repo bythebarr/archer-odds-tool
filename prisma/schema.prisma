@@ -1427,3 +1427,27 @@ model CurrentNflPropLine {
   @@unique([gameId, nflPlayerId, bookKey, stat, side, point])
   @@index([gameId])
 }
+
+/// One model's backtest report card, saved by the Model lab workflow
+/// (SAVE_REPORT=1). The /models page shows the latest per model.
+model ModelReport {
+  id            String   @id @default(cuid())
+  /// Stable model key, e.g. "nba-props:points", "ufc", "mlb".
+  model         String
+  label         String
+  unit          String
+  n             Int
+  brier         Float
+  baseRateBrier Float
+  logLoss       Float
+  meanPred      Float
+  actual        Float
+  verdict       String
+  /// Reliability buckets and the time-split refit, as computed.
+  detail        Json
+  /// Model-specific extras: projection error vs baseline, fitted constants.
+  extra         Json?
+  createdAt     DateTime @default(now())
+
+  @@index([model, createdAt])
+}

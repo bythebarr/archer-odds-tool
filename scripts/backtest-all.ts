@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { SPORTS } from "@/lib/engine";
+import { saveReport } from "@/lib/engine/saveReport";
 import { scoreCalibration, formatCalibrationReport } from "@/lib/engine/calibration";
 
 /**
@@ -26,6 +27,7 @@ async function main() {
       const samples = await backtest.collect({ limit });
       const report = scoreCalibration(samples);
       console.log("\n" + formatCalibrationReport(adapter.meta.label, backtest.unit, report));
+      await saveReport(`${adapter.meta.sport}`, `${adapter.meta.label} — ${adapter.model!.describes}`, backtest.unit, report);
       summary.push({
         sport: adapter.meta.label,
         verdict: report.verdict,

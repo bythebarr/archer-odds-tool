@@ -98,6 +98,9 @@ export default function RootLayout({
               <Link href="/learn" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
                 How to read ARCHR · Glossary
               </Link>
+              <Link href="/models" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
+                Model report card
+              </Link>
               <Link href="/support" className="font-medium text-foreground/70 hover:text-foreground hover:underline">
                 Support &amp; feedback
               </Link>

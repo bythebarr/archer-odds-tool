@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
@@ -102,7 +103,10 @@ function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; 
         </div>
         <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
           Expected minutes × per-minute production × matchup × pace, from {p.games}{" "}logged games. A model opinion: check it
-          against the market&apos;s fair price below before trusting an edge.
+          against the market&apos;s fair price below before trusting an edge.{" "}
+          <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
+            How accurate is it?
+          </Link>
         </p>
       </div>
     </section>
