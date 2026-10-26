@@ -4,3 +4,5 @@ export * from "./scoreDist";
 export * from "./leagues";
 export * from "./adjust";
 export * from "./price";
+export * from "./markets";
+export * from "./offers";

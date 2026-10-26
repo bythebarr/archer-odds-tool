@@ -142,4 +142,21 @@ describe("parseScoreboard", () => {
     expect(parseScoreboard({ events: [] })).toEqual([]);
     expect(parseScoreboard(null)).toEqual([]);
   });
+
+  it("reads per-period scores, and none when one is unreadable", () => {
+    const withLines = event({
+      competitions: [
+        {
+          status: { type: { completed: true } },
+          competitors: [
+            { homeAway: "home", score: "37", team: { displayName: "Cincinnati Bengals" }, linescores: [{ value: 7 }, { value: 14 }, { value: 3 }, { value: 13 }] },
+            { homeAway: "away", score: "14", team: { displayName: "Arizona Cardinals" }, linescores: [{ value: 0 }, { value: 7 }, { value: "x" }, { value: 7 }] },
+          ],
+        },
+      ],
+    });
+    const [r] = parseScoreboard({ events: [withLines] });
+    expect(r!.homePeriods).toEqual([7, 14, 3, 13]);
+    expect(r!.awayPeriods).toEqual([]);
+  });
 });

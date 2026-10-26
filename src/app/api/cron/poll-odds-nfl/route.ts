@@ -1,6 +1,6 @@
 import { handleTeamLeagueOddsPoll } from "@/lib/teamLeague/cronHandlers";
 import { NFL_LEAGUE } from "@/lib/nfl/league";
-import { runNflPropsPoll } from "@/lib/nfl/cronJobs";
+import { runNflExtraMarketsPoll, runNflPropsPoll } from "@/lib/nfl/cronJobs";
 
 /**
  * Conservative fixed cadence at 6 credits/call. Set in July, when NFL book depth
@@ -15,6 +15,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  // Player props ride the same tick (see runNflPropsPoll).
-  return handleTeamLeagueOddsPoll(request, NFL_LEAGUE, MIN_INTERVAL_MINUTES, runNflPropsPoll);
+  // Player props and the extra game markets ride the same tick (see cronJobs.ts).
+  return handleTeamLeagueOddsPoll(request, NFL_LEAGUE, MIN_INTERVAL_MINUTES, async () => {
+    // Each half fails on its own: a props error never costs the extra markets, or the reverse.
+    const settle = (p: Promise<unknown>) => p.catch((error: unknown) => ({ status: "error", error: String(error).slice(0, 200) }));
+    return { props: await settle(runNflPropsPoll()), markets: await settle(runNflExtraMarketsPoll()) };
+  });
 }

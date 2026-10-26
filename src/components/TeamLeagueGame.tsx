@@ -32,6 +32,7 @@ export function TeamLeagueGame({
   propsHref,
   propsPanel,
   modelPanel,
+  marketBoard,
 }: {
   sport: TeamLeagueSport;
   result: TeamGameWithLines;
@@ -42,6 +43,8 @@ export function TeamLeagueGame({
   propsPanel?: ReactNode;
   /** ARCHR's game model, above the price ladder on the Game Lines tab. */
   modelPanel?: ReactNode;
+  /** Every line on the game, sportsbook-style (replaces the per-book ladder when given). */
+  marketBoard?: ReactNode;
 }) {
   const { game, lines } = result;
   const when = new Intl.DateTimeFormat("en-US", {
@@ -93,7 +96,7 @@ export function TeamLeagueGame({
       ) : (
         <div className="mt-2">
           {modelPanel}
-          <TeamGameLinesView sport={sport} game={game} lines={lines} disclaimer={disclaimer} />
+          {marketBoard ?? <TeamGameLinesView sport={sport} game={game} lines={lines} disclaimer={disclaimer} />}
         </div>
       )}
     </div>

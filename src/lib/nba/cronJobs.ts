@@ -10,6 +10,31 @@ import { pollAndStoreNbaProps } from "./props";
 import { syncNbaGameLogs } from "./gameLogs";
 import { syncNbaPositions } from "./positions";
 import { syncInjuries } from "@/lib/injuries/espnInjuries";
+import { pollExtraMarkets } from "@/lib/teamLeague/extraMarkets";
+import { NBA_LEAGUE } from "./league";
+
+/**
+ * Alternates, team totals, halves and quarters for games starting soon — on the
+ * same tick as props, logged on their own so a market-key change shows up there.
+ */
+const NBA_MARKETS_JOB = "poll-markets-nba";
+const NBA_MARKETS_LOOKAHEAD_HOURS = 14;
+export async function runNbaExtraMarketsPoll() {
+  try {
+    const summary = await pollExtraMarkets(NBA_LEAGUE, NBA_MARKETS_LOOKAHEAD_HOURS);
+    if (summary.rejectedKeys.length) console.log(`${NBA_MARKETS_JOB}: provider rejected`, summary.rejectedKeys);
+    await recordPollLog(
+      NBA_MARKETS_JOB,
+      summary.gamesConsidered === 0 ? "ok (no games)" : writeOutcomeStatus(summary.gamesConsidered, summary.gamesStored, "games with extra markets"),
+      summary.creditsUsed,
+      summary.creditsRemaining
+    );
+    return summary;
+  } catch (error) {
+    await recordPollLog(NBA_MARKETS_JOB, `error: ${sanitizeErrorMessage(error instanceof Error ? error.message : String(error))}`);
+    throw error;
+  }
+}
 
 const NBA_PROPS_JOB = "poll-props-nba";
 const NBA_GAME_LOGS_JOB = "sync-gamelogs-nba";

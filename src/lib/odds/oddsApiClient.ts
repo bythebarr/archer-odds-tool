@@ -82,7 +82,8 @@ export interface OddsApiOutcome {
 }
 
 export interface OddsApiMarket {
-  key: OddsApiMarketKey;
+  /** A featured key on the bulk endpoint; any provider key (props, periods, alternates) per event. */
+  key: OddsApiMarketKey | (string & {});
   // Present per-market on the per-event endpoint; the bulk endpoint instead
   // puts this on the bookmaker itself (see OddsApiBookmaker.last_update).
   last_update?: string;

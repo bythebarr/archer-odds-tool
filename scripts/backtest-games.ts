@@ -51,6 +51,8 @@ import { saveReport } from "@/lib/engine/saveReport";
 type Sport = "nba" | "nfl";
 
 interface G {
+  homePeriods: number[];
+  awayPeriods: number[];
   id: string;
   start: Date;
   season: number;
@@ -70,9 +72,9 @@ async function loadGames(sport: Sport): Promise<G[]> {
   const rows = await prisma.game.findMany({
     where: { sport, status: "final", homeScore: { not: null }, awayScore: { not: null }, homeTeamId: { not: null }, awayTeamId: { not: null } },
     orderBy: { scheduledStartUtc: "asc" },
-    select: { id: true, scheduledStartUtc: true, season: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
+    select: { id: true, scheduledStartUtc: true, season: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homePeriodScores: true, awayPeriodScores: true },
   });
-  return rows.map((r) => ({ id: r.id, start: r.scheduledStartUtc, season: r.season, home: r.homeTeamId!, away: r.awayTeamId!, hs: r.homeScore!, as: r.awayScore! }));
+  return rows.map((r) => ({ homePeriods: r.homePeriodScores, awayPeriods: r.awayPeriodScores, id: r.id, start: r.scheduledStartUtc, season: r.season, home: r.homeTeamId!, away: r.awayTeamId!, hs: r.homeScore!, as: r.awayScore! }));
 }
 
 async function loadClosing(sport: Sport): Promise<Map<string, Closing>> {
@@ -327,7 +329,41 @@ async function run(sport: Sport) {
     });
   }
 
-  // 6. The spread card: ATS calibration of the model alone at the closing number, with the fitted constants.
+  // 6. Halves and quarters, from the stored period scores: each period's share of
+  //    the points, of the expected margin, and its spread against √share × the game's.
+  const periods: Record<string, { share: number; marginShare: number; sdScale: number; n: number }> = {};
+  const withPeriods = preds.filter((p) => p.g.homePeriods.length >= 4 && p.g.awayPeriods.length >= 4);
+  if (withPeriods.length >= 50) {
+    const slices: Record<string, (xs: number[]) => number> = {
+      q1: (x) => x[0],
+      q2: (x) => x[1],
+      q3: (x) => x[2],
+      q4: (x) => x[3],
+      h1: (x) => x[0] + x[1],
+      h2: (x) => x.slice(2).reduce((a, b) => a + b, 0),
+    };
+    for (const [name, take] of Object.entries(slices)) {
+      let pts = 0;
+      let gamePts = 0;
+      let mm = 0;
+      let MM = 0;
+      for (const p of withPeriods) {
+        pts += take(p.g.homePeriods) + take(p.g.awayPeriods);
+        gamePts += p.g.hs + p.g.as;
+        const M = p.adjusted.home - p.adjusted.away;
+        mm += (take(p.g.homePeriods) - take(p.g.awayPeriods)) * M;
+        MM += M * M;
+      }
+      const share = pts / gamePts;
+      const marginShare = MM > 0 ? mm / MM : share;
+      const resid = withPeriods.map((p) => take(p.g.homePeriods) - take(p.g.awayPeriods) - (p.adjusted.home - p.adjusted.away) * marginShare);
+      const sdScale = sd(resid) / (marginSd * Math.sqrt(share));
+      periods[name] = { share, marginShare, sdScale, n: withPeriods.length };
+      console.log(`  ${name}: ${(share * 100).toFixed(1)}% of points, ${(marginShare * 100).toFixed(1)}% of the margin, spread ×${sdScale.toFixed(2)} (${withPeriods.length} games)`);
+    }
+  }
+
+  // 7. The spread card: ATS calibration of the model alone at the closing number, with the fitted constants.
   const ats = blendSets.spread
     .map((s) => {
       const favA = s.pModel >= 0.5;
@@ -340,6 +376,7 @@ async function run(sport: Sport) {
     totalSd,
     k: bestK,
     injurySlope: Number.isFinite(slope) ? slope : null,
+    periods: Object.keys(periods).length ? periods : null,
     // Both errors on the same games: those with a closing spread.
     projectionMae: withSpread.length ? mean(withSpread.map((p) => Math.abs(p.g.hs - p.g.as - (p.adjusted.home - p.adjusted.away)))) : null,
     baselineMae: withSpread.length ? mean(withSpread.map((p) => Math.abs(p.g.hs - p.g.as + closing.get(p.g.id)!.spread!.point))) : null,

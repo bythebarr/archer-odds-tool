@@ -4,6 +4,9 @@ import { getTeamGameWithLines } from "@/lib/queries/teamLeagueGames";
 import { TeamLeagueGame } from "@/components/TeamLeagueGame";
 import { GameModelPanel } from "@/components/GameModelPanel";
 import { getGameModelView } from "@/lib/queries/gameModel";
+import { getGameOffers } from "@/lib/queries/gameMarkets";
+import { GameMarketBoard } from "@/components/game/GameMarketBoard";
+import { espnTeamLogoUrl } from "@/lib/logos";
 import { getNflPropsSlate } from "@/lib/queries/nflProps";
 import { NflPropsFinder } from "@/components/nfl/NflPropsFinder";
 
@@ -54,10 +57,17 @@ export default async function NflGamePage({
   }
 
   const modelView = tab === "lines" ? await getGameModelView("nfl", gameId, result.lines) : null;
+  const offers = tab === "lines" ? await getGameOffers("nfl", gameId, result.lines, modelView) : [];
+  const team = (t: { name: string; abbreviation: string }) => ({ name: t.name, abbreviation: t.abbreviation, logoUrl: espnTeamLogoUrl("nfl", t.abbreviation) });
 
   return (
     <TeamLeagueGame
       modelPanel={modelView ? <GameModelPanel view={modelView} /> : null}
+      marketBoard={
+        offers.length > 0 ? (
+          <GameMarketBoard offers={offers} teams={{ home: team(result.game.homeTeam), away: team(result.game.awayTeam) }} sport="nfl" matchId={gameId} />
+        ) : undefined
+      }
       sport="nfl"
       result={result}
       tab={tab}

@@ -26,6 +26,7 @@ import {
   type PricedMarket,
 } from "@/lib/gameModel";
 import { quotesFor } from "@/lib/gameModel/quotes";
+import { PERIOD_SPECS, type Period, type PeriodSpec } from "@/lib/gameModel/markets";
 import { injuryLevel } from "@/lib/injuries/status";
 import { getModelWeights } from "./modelWeights";
 import { MIN_FIT_SAMPLES } from "@/lib/propModel/market";
@@ -60,6 +61,10 @@ export interface GameModelView {
   markets: PricedMarket[];
   marginSd: number;
   totalSd: number;
+  /** Period shares and spreads: fitted from period scores once there are enough, else priors. */
+  periodSpecs: Record<Exclude<Period, "game">, PeriodSpec>;
+  /** The fitted model-vs-market weights (absent → default). */
+  weights: Partial<Record<"ml" | "spread" | "total", number>>;
 }
 
 /** Every finished game for the league, replayed through the ratings once per request. */
@@ -79,11 +84,16 @@ const replay = cache(async (sport: Sport) => {
   return ratings;
 });
 
-/** The fitted margin/total spreads from the latest games backtest, when it has enough games. */
-async function fittedSpreads(sport: Sport): Promise<{ marginSd: number; totalSd: number } | null> {
+/** The fitted margin/total spreads (and period splits) from the latest games backtest, when it has enough games. */
+async function fittedSpreads(
+  sport: Sport
+): Promise<{ marginSd: number; totalSd: number; periods: Record<Exclude<Period, "game">, PeriodSpec> | null } | null> {
   const r = await prisma.modelReport.findFirst({ where: { model: `${sport}-games:spread` }, orderBy: { createdAt: "desc" }, select: { n: true, extra: true } });
-  const e = r?.extra as { marginSd?: number; totalSd?: number } | null | undefined;
-  return r && r.n >= MIN_FIT_SAMPLES && e?.marginSd && e?.totalSd ? { marginSd: e.marginSd, totalSd: e.totalSd } : null;
+  const e = r?.extra as { marginSd?: number; totalSd?: number; periods?: Record<string, PeriodSpec & { n: number }> | null } | null | undefined;
+  if (!r || r.n < MIN_FIT_SAMPLES || !e?.marginSd || !e?.totalSd) return null;
+  const p = e.periods;
+  const periods = p && ["h1", "h2", "q1", "q2", "q3", "q4"].every((k) => p[k] && p[k].n >= MIN_FIT_SAMPLES) ? (p as Record<Exclude<Period, "game">, PeriodSpec>) : null;
+  return { marginSd: e.marginSd, totalSd: e.totalSd, periods };
 }
 
 async function daysSincePrevious(sport: Sport, teamId: string, start: Date): Promise<number | null> {
@@ -210,5 +220,7 @@ export async function getGameModelView(sport: Sport, gameId: string, lines: Game
     markets,
     marginSd,
     totalSd,
+    periodSpecs: fitted?.periods ?? PERIOD_SPECS[sport],
+    weights: { ml: weights.ml, spread: weights.spread, total: weights.total },
   };
 }
