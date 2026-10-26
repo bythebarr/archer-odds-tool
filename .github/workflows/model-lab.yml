@@ -7,6 +7,10 @@ name: Model lab (backtests and fits)
 # Secrets and variables → Actions). The scripts only write their own report cards (ModelReport).
 # Keeps the database awake for the run (a few minutes), so run it on purpose.
 on:
+  # Weekly refresh of every report card (Monday morning ET). GitHub's scheduler
+  # can skip a run; the manual trigger below always works.
+  schedule:
+    - cron: "17 10 * * 1"
   workflow_dispatch:
     inputs:
       script:
@@ -46,15 +50,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx prisma generate
-      - name: Run ${{ inputs.script }}
+      - name: Run ${{ inputs.script || 'report:all' }}
         env:
-          N: ${{ inputs.n }}
+          N: ${{ inputs.n || '' }}
           # Saves each report card for the in-app /models page.
           SAVE_REPORT: "1"
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "Add a DATABASE_URL repository secret first."; exit 1; fi
           [ -z "$N" ] && unset N
-          if [ "${{ inputs.script }}" = "report:all" ]; then
+          if [ "${{ inputs.script || 'report:all' }}" = "report:all" ]; then
             # Every model's report card; one failing doesn't stop the rest.
             status=0
             for s in backtest:all backtest:nba-props backtest:nfl-props backtest:props-market backtest:games backtest:ufc-fights backtest:f1; do
@@ -62,4 +66,4 @@ jobs:
             done
             exit $status
           fi
-          npm run --silent "${{ inputs.script }}"
+          npm run --silent "${{ inputs.script || 'report:all' }}"

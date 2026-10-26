@@ -34,7 +34,7 @@ function statLine(s: {
 
 export async function loadUfcHistory(): Promise<UfcHistory> {
   const [fighterRows, boutRows] = await Promise.all([
-    prisma.ufcFighter.findMany({ select: { id: true, reachInches: true, recordWins: true, recordLosses: true } }),
+    prisma.ufcFighter.findMany({ select: { id: true, reachInches: true, recordWins: true, recordLosses: true, birthDate: true } }),
     prisma.ufcBout.findMany({
       where: { status: "completed" },
       orderBy: [{ event: { eventDate: "asc" } }, { boutOrder: "desc" }],

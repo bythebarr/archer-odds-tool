@@ -752,6 +752,8 @@ model UfcFighter {
 
   heightInches Float?
   reachInches  Float?
+  /// From Wikidata (lib/ufc/birthDates.ts) — the fight data source carries none.
+  birthDate    DateTime?
 
   recordWins      Int?
   recordLosses    Int?

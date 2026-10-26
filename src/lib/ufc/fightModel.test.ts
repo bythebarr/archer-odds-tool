@@ -5,7 +5,7 @@ import { fitLogistic, predictLogistic } from "@/lib/stats/logistic";
 /** A deterministic league: fighter i has skill i; the more skilled fighter usually wins and outstrikes. */
 function league(nFighters = 40, nBouts = 1500) {
   const fighters = new Map<string, FighterInfo>();
-  for (let i = 0; i < nFighters; i++) fighters.set(`f${i}`, { id: `f${i}`, reachInches: 70 + (i % 7), recordWins: 10, recordLosses: 2 });
+  for (let i = 0; i < nFighters; i++) fighters.set(`f${i}`, { id: `f${i}`, reachInches: 70 + (i % 7), recordWins: 10, recordLosses: 2, birthDate: new Date(Date.UTC(1990 + (i % 8), 0, 1)) });
   const bouts: BoutRecord[] = [];
   let seed = 7;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);

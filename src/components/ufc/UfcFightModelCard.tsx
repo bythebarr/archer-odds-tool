@@ -16,6 +16,7 @@ const STAT_ROWS: { label: string; get: (p: FighterProfile) => number | null; fmt
   { label: "Knockdowns / 15 min", get: (p) => p.kd15, fmt: (v) => v.toFixed(2), higherBetter: true },
   { label: "Control time share", get: (p) => p.control, fmt: pct, higherBetter: true },
   { label: "UFC fights", get: (p) => p.fights, fmt: (v) => v.toFixed(0), higherBetter: true },
+  { label: "Age", get: (p) => p.age, fmt: (v) => v.toFixed(1), higherBetter: false },
 ];
 
 /**
@@ -90,7 +91,7 @@ export function UfcFightModelCard({ view, redName, blueName }: { view: UfcFightM
 
         <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
           An opponent-adjusted rating plus per-minute fighting stats (recency-weighted, steadied toward the league for short careers), reach,
-          experience, layoff and weight moves —{" "}
+          experience, layoff, weight moves and age —{" "}
           {view.coefficientsFitted ? "weighted by a regression fitted on every past UFC fight" : "weighted by research priors until the backtest fits them"}
           , then blended with the moneyline market ({pct(view.modelWeight)} model
           {view.weightFitted ? ", fitted on closing lines" : ", default until fitted"}).{" "}
