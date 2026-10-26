@@ -1427,3 +1427,44 @@ model CurrentNflPropLine {
   @@unique([gameId, nflPlayerId, bookKey, stat, side, point])
   @@index([gameId])
 }
+
+/// One model's backtest report card, saved by the Model lab workflow
+/// (SAVE_REPORT=1). The /models page shows the latest per model.
+model ModelReport {
+  id            String   @id @default(cuid())
+  /// Stable model key, e.g. "nba-props:points", "ufc", "mlb".
+  model         String
+  label         String
+  unit          String
+  n             Int
+  brier         Float
+  baseRateBrier Float
+  logLoss       Float
+  meanPred      Float
+  actual        Float
+  verdict       String
+  /// Reliability buckets and the time-split refit, as computed.
+  detail        Json
+  /// Model-specific extras: projection error vs baseline, fitted constants.
+  extra         Json?
+  createdAt     DateTime @default(now())
+
+  @@index([model, createdAt])
+}
+
+/// The league injury report, from ESPN's free feed — replaced wholesale per
+/// sport on each sync, so a player off the report is healthy again.
+model PlayerInjury {
+  id            String   @id @default(cuid())
+  sport         Sport
+  espnAthleteId String
+  playerName    String
+  teamName      String
+  /// ESPN's status as listed: Out, Doubtful, Questionable, Day-To-Day, …
+  status        String
+  /// Short note, e.g. "Knee — expected back early November".
+  detail        String?
+  updatedAt     DateTime @updatedAt
+
+  @@unique([sport, espnAthleteId])
+}

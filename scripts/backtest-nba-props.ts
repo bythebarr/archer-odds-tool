@@ -6,6 +6,7 @@ import { probOver, projectProp } from "@/lib/nba/projection";
 import type { GameLogPoint } from "@/lib/nba/propsMath";
 import type { DefenseTable } from "@/lib/nba/matchup";
 import { scoreCalibration, formatCalibrationReport, type CalibrationSample } from "@/lib/engine/calibration";
+import { saveReport } from "@/lib/engine/saveReport";
 
 /**
  * Backtest for the NBA prop projection (projection.ts). Every logged game with
@@ -80,6 +81,11 @@ async function main() {
     const report = scoreCalibration(samples.slice(0, limit));
     console.log(`\n${stat.label}: projection MAE ${(modelErr / n).toFixed(2)} vs L10-average MAE ${(naiveErr / n).toFixed(2)} over ${n} games`);
     console.log(formatCalibrationReport(`NBA ${stat.shortLabel} projection`, "player-game", report));
+    await saveReport(`nba-props:${key}`, `NBA props — ${stat.label}`, "player-game", report, {
+      projectionMae: modelErr / n,
+      baselineMae: naiveErr / n,
+      baseline: "L10 average",
+    });
   }
 }
 

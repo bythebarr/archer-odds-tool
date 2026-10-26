@@ -9,6 +9,7 @@ import { lookbackDatesEt } from "@/lib/teamLeague/results";
 import { pollAndStoreNbaProps } from "./props";
 import { syncNbaGameLogs } from "./gameLogs";
 import { syncNbaPositions } from "./positions";
+import { syncInjuries } from "@/lib/injuries/espnInjuries";
 
 const NBA_PROPS_JOB = "poll-props-nba";
 const NBA_GAME_LOGS_JOB = "sync-gamelogs-nba";
@@ -26,7 +27,9 @@ async function logged<T>(jobName: string, run: () => Promise<{ summary: T; statu
 
 export function runNbaPropsPoll() {
   return logged(NBA_PROPS_JOB, async () => {
-    const summary = await pollAndStoreNbaProps();
+    // The injury report first (free): tonight's props are read against it.
+    const injuries = await syncInjuries("nba").catch((error: unknown) => ({ error: String(error) }));
+    const summary = { ...(await pollAndStoreNbaProps()), injuries };
     if (Object.keys(summary.unmappedMarketKeys).length) {
       // The list to read when a market seems missing from the board.
       console.log(`${NBA_PROPS_JOB}: unmapped market keys`, summary.unmappedMarketKeys);

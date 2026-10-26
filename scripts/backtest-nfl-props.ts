@@ -5,6 +5,7 @@ import { NFL_PROP_STAT_BY_KEY } from "@/lib/nfl/propStats";
 import { nflProbOver, projectNflProp } from "@/lib/nfl/projection";
 import type { NflLogPoint } from "@/lib/nfl/propsMath";
 import { scoreCalibration, formatCalibrationReport, type CalibrationSample } from "@/lib/engine/calibration";
+import { saveReport } from "@/lib/engine/saveReport";
 
 /**
  * Backtest for the NFL prop projection (src/lib/nfl/projection.ts), the NBA
@@ -52,7 +53,13 @@ async function main() {
     }
     samples.sort((a, b) => (a.date < b.date ? 1 : -1));
     console.log(`\n${stat.label}: projection MAE ${(modelErr / n).toFixed(2)} vs L5-average MAE ${(naiveErr / n).toFixed(2)} over ${n} games`);
-    console.log(formatCalibrationReport(`NFL ${stat.shortLabel} projection`, "player-game", scoreCalibration(samples)));
+    const report = scoreCalibration(samples);
+    console.log(formatCalibrationReport(`NFL ${stat.shortLabel} projection`, "player-game", report));
+    await saveReport(`nfl-props:${key}`, `NFL props — ${stat.label}`, "player-game", report, {
+      projectionMae: modelErr / n,
+      baselineMae: naiveErr / n,
+      baseline: "L5 average",
+    });
   }
 }
 

@@ -19,6 +19,7 @@ import type { NflPropStatDef } from "./propStats";
 import { countCdf } from "@/lib/nba/projection";
 import { nflStatMatchup, type NflDefenseTable, type NflPosition } from "./matchup";
 import type { NflLogPoint } from "./propsMath";
+import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
 
 const HALF_LIFE = 4;
 const WINDOW = 17;
@@ -36,12 +37,19 @@ export interface NflProjection {
   sd: number;
   matchupFactor: number;
   games: number;
+  /** When key teammates are out: the games without them that were blended in. */
+  absence: { names: string[]; games: number; perGame: number } | null;
 }
+
+/** The full-history estimate counts as this many games against the without-teammate games. */
+const ABSENCE_PRIOR_GAMES = 3;
 
 export interface NflProjectionContext {
   defense: NflDefenseTable;
   opponent: string | null;
   position: NflPosition | null;
+  /** Key teammates out this week (see injuries/absence). */
+  absences?: Absence[];
 }
 
 export function projectNflProp(logs: NflLogPoint[], stat: NflPropStatDef, ctx: NflProjectionContext): NflProjection | null {
@@ -57,7 +65,17 @@ export function projectNflProp(logs: NflLogPoint[], stat: NflPropStatDef, ctx: N
   const recent = s / w;
   const long = values.reduce((a, b) => a + b, 0) / values.length;
   const n = Math.min(values.length, WINDOW);
-  const base = (recent * n + long * PRIOR_GAMES) / (n + PRIOR_GAMES);
+  let base = (recent * n + long * PRIOR_GAMES) / (n + PRIOR_GAMES);
+
+  // Key teammates out: lean on the games he's already played without them.
+  let absence: NflProjection["absence"] = null;
+  const without = ctx.absences?.length ? gamesWithout(logs, ctx.absences) : [];
+  if (without.length >= 2) {
+    const perGame = without.reduce((a, l) => a + stat.value(l), 0) / without.length;
+    const w = withoutWeight(without.length, ABSENCE_PRIOR_GAMES);
+    base = base * (1 - w) + perGame * w;
+    absence = { names: ctx.absences!.map((a) => a.name), games: without.length, perGame };
+  }
 
   let matchupFactor = 1;
   if (ctx.opponent) {
@@ -79,7 +97,7 @@ export function projectNflProp(logs: NflLogPoint[], stat: NflPropStatDef, ctx: N
     const dispersion = sMean > 0 ? Math.max(sVar / sMean, 1) : 1;
     sd = Math.sqrt(Math.max(mean, mean * dispersion));
   }
-  return { mean, sd, matchupFactor, games: logs.length };
+  return { mean, sd, matchupFactor, games: logs.length, absence };
 }
 
 /** Standard normal CDF (Abramowitz–Stegun 26.2.17; error < 7.5e-8). */

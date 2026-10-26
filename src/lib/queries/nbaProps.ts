@@ -7,6 +7,8 @@ import { packLog, summarizeProp, type GameLogPoint, type PackedLog, type SlatePr
 import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import type { DefenseTable, TeamDefenseRow } from "@/lib/nba/matchup";
 import { EV_FLAG } from "@/lib/odds/marketValue";
+import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
+import type { Absence } from "@/lib/injuries/absence";
 import { positionGroup, type PositionGroup } from "@/lib/nba/positionGroups";
 import type { NbaPropStat } from "@/generated/prisma/client";
 
@@ -35,6 +37,8 @@ export interface SlatePlayer {
   venue: "home" | "away" | null;
   /** G / F / C, for defense by position; null until the player's position is known. */
   positionGroup: PositionGroup | null;
+  /** On tonight's injury report; null when he isn't. */
+  injury: PlayerInjuryInfo | null;
 }
 
 /** Everything the props finder needs for one ET date, in one payload. */
@@ -48,6 +52,8 @@ export interface NbaPropsSlate {
   props: SlateProp[];
   /** Opponent defense and pace, for the matchup read. */
   defense: DefenseTable;
+  /** Per team abbreviation: rotation players ruled out or doubtful tonight (see injuries/absence). */
+  absences: Record<string, Absence[]>;
   lastPolledAt: string | null;
 }
 
@@ -56,6 +62,42 @@ export type WireNbaPropsSlate = Omit<NbaPropsSlate, "logs"> & { logs: Record<str
 
 export function toWireSlate(slate: NbaPropsSlate): WireNbaPropsSlate {
   return { ...slate, logs: Object.fromEntries(Object.entries(slate.logs).map(([id, logs]) => [id, logs.map(packLog)])) };
+}
+
+/** Average minutes that make an absence matter to teammates' projections. */
+const ROTATION_MINUTES = 18;
+
+/**
+ * Per team on the slate: players ruled out or doubtful tonight who play real
+ * minutes, with the dates they've played for that team (two seasons) — the raw
+ * material for teammates' with/without splits.
+ */
+async function nbaAbsences(games: SlateGame[], season: number, before: Date): Promise<Record<string, Absence[]>> {
+  const teamNames = new Map(games.flatMap((g) => [[g.home.name, g.home.abbreviation], [g.away.name, g.away.abbreviation]] as const));
+  const injured = (await prisma.playerInjury.findMany({ where: { sport: "nba", teamName: { in: [...teamNames.keys()] } } })).filter((i) => {
+    const level = injuryLevel(i.status);
+    return level === "out" || level === "doubtful";
+  });
+  if (injured.length === 0) return {};
+  const players = await prisma.nbaPlayer.findMany({
+    where: { espnAthleteId: { in: injured.map((i) => i.espnAthleteId) } },
+    include: {
+      team: { select: { name: true } },
+      gameLogs: { where: { season: { in: [season - 1, season] }, gameDate: { lt: before } }, select: { gameDate: true, minutes: true, team: { select: { name: true } } } },
+    },
+  });
+  const out: Record<string, Absence[]> = {};
+  for (const i of injured) {
+    const p = players.find((x) => x.espnAthleteId === i.espnAthleteId);
+    const abbr = teamNames.get(i.teamName);
+    if (!p || !abbr) continue;
+    const withTeam = p.gameLogs.filter((l) => l.team.name === i.teamName);
+    if (withTeam.length === 0) continue;
+    const usage = withTeam.reduce((a, l) => a + l.minutes, 0) / withTeam.length;
+    if (usage < ROTATION_MINUTES) continue;
+    (out[abbr] ??= []).push({ name: p.fullName, status: i.status, playedDates: withTeam.map((l) => etDateOf(l.gameDate)), usage });
+  }
+  return out;
 }
 
 /** Below this many games a team's season-to-date defense is noise; read last season instead. */
@@ -160,6 +202,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     logs: {},
     props: [],
     defense: { season, fromLastSeason: false, teams: {} },
+    absences: {},
     lastPolledAt: null,
   };
 
@@ -201,6 +244,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
         opponent: venue === "home" ? team(g.awayTeam) : venue === "away" ? team(g.homeTeam) : null,
         venue,
         positionGroup: positionGroup(p.positionGroup),
+        injury: null,
       };
     }
     const key = `${p.id}:${line.stat}`;
@@ -241,6 +285,15 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     });
   }
 
+  const absences = await nbaAbsences(slateGames, season, gte);
+  const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
+  const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
+  const espnIds = new Map(lines.map((l) => [l.nbaPlayer.id, l.nbaPlayer.espnAthleteId]));
+  for (const player of Object.values(players)) {
+    const i = injuryById.get(espnIds.get(player.id) ?? "");
+    if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
+  }
+
   return {
     date: dateEt,
     season,
@@ -249,6 +302,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     logs,
     props: [...propsByKey.values()],
     defense,
+    absences,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
 });
@@ -273,6 +327,7 @@ export async function getValueNbaProps(dateEt: string, limit = 6): Promise<Value
     const stat = NBA_PROP_STAT_BY_KEY.get(prop.stat);
     if (!player || !stat) continue;
     for (const side of ["over", "under"] as const) {
+      if (player.injury?.level === "out" || player.injury?.level === "doubtful") continue;
       const s = summarizeProp(prop, slate.logs[prop.playerId] ?? [], stat, side, { season: slate.season, venue: player.venue, opponent: player.opponent?.abbreviation });
       const best = s && (side === "over" ? s.over : s.under);
       const value = s && (side === "over" ? s.value.over : s.value.under);
@@ -335,7 +390,7 @@ export async function getTopNbaProps(dateEt: string, limit = 8): Promise<TopProp
     if (!TOP_PROP_STATS.includes(prop.stat)) continue;
     const player = slate.players[prop.playerId];
     const stat = NBA_PROP_STAT_BY_KEY.get(prop.stat);
-    if (!player || !stat) continue;
+    if (!player || !stat || player.injury?.level === "out" || player.injury?.level === "doubtful") continue;
     for (const side of ["over", "under"] as const) {
       const s = summarizeProp(prop, slate.logs[prop.playerId] ?? [], stat, side, { season: slate.season, venue: player.venue, opponent: player.opponent?.abbreviation });
       const best = s && (side === "over" ? s.over : s.under);

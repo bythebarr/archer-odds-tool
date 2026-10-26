@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
@@ -7,6 +8,8 @@ import { booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameL
 import { fairPrice, valueOf } from "@/lib/odds/marketValue";
 import { decimalToAmerican } from "@/lib/odds/americanOdds";
 import { EvTag } from "@/components/EvTag";
+import { InjuryBadge } from "@/components/InjuryBadge";
+import type { Absence } from "@/lib/injuries/absence";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
@@ -94,6 +97,12 @@ function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; 
             )}
           </div>
         </div>
+        {p.absence && (
+          <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
+            <span className="font-semibold text-foreground">Without {p.absence.names.join(" & ")}</span> (out tonight): {p.absence.games}{" "}
+            games, {p.absence.minutes.toFixed(1)} min, {p.absence.perMinute.toFixed(2)} {statShort}/min — blended into the numbers below.
+          </p>
+        )}
         <div className="mt-3 grid grid-cols-4 gap-1.5">
           <Factor label="Minutes" value={p.minutes.toFixed(1)} />
           <Factor label={`${statShort}/min`} value={p.perMinute.toFixed(2)} />
@@ -102,7 +111,10 @@ function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; 
         </div>
         <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
           Expected minutes × per-minute production × matchup × pace, from {p.games}{" "}logged games. A model opinion: check it
-          against the market&apos;s fair price below before trusting an edge.
+          against the market&apos;s fair price below before trusting an edge.{" "}
+          <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
+            How accurate is it?
+          </Link>
         </p>
       </div>
     </section>
@@ -129,6 +141,7 @@ export function PlayerPropSheet({
   logs,
   season,
   defense,
+  absences,
   initialStat,
   side: initialSide,
   startLabel,
@@ -140,6 +153,8 @@ export function PlayerPropSheet({
   logs: GameLogPoint[];
   season: number;
   defense: DefenseTable;
+  /** Rotation teammates out tonight. */
+  absences?: Absence[];
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
@@ -159,11 +174,12 @@ export function PlayerPropSheet({
           season,
           venue: player.venue,
           opponent: player.opponent?.abbreviation,
-          projection: { defense, opponent: player.opponent?.abbreviation ?? null, positionGroup: player.positionGroup },
+          projection: { defense, opponent: player.opponent?.abbreviation ?? null, positionGroup: player.positionGroup, absences },
+          injury: player.injury?.level ?? null,
         },
         point
       ),
-    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, player.positionGroup, defense, point]
+    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, player.positionGroup, player.injury?.level, defense, absences, point]
   );
   const books = useMemo(() => booksAtPoint(prop.quotes, point, side), [prop.quotes, point, side]);
   const pairs = useMemo(() => twoSidedAt(prop.quotes, point), [prop.quotes, point]);
@@ -207,7 +223,10 @@ export function PlayerPropSheet({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-semibold text-foreground">{player.name}</p>
+              <p className="truncate text-base font-semibold text-foreground">
+                {player.name}
+                <InjuryBadge injury={player.injury} />
+              </p>
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {player.opponent && (
                   <>
@@ -285,6 +304,16 @@ export function PlayerPropSheet({
               </div>
             )}
           </section>
+
+          {player.injury?.level && (
+            <p className={`rounded-lg px-3 py-2 text-xs ${player.injury.level === "out" || player.injury.level === "doubtful" ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
+              <span className="font-semibold">{player.injury.status}</span>
+              {player.injury.detail ? ` — ${player.injury.detail}` : ""}.{" "}
+              {player.injury.level === "out" || player.injury.level === "doubtful"
+                ? "No projection while he's listed this way; books usually pull his props."
+                : "The projection's confidence is widened until he's cleared."}
+            </p>
+          )}
 
           {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} />}
 
