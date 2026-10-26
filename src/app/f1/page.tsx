@@ -7,6 +7,8 @@ import { FlagBadge } from "@/components/FlagBadge";
 import { SportPage } from "@/components/book/SportPage";
 import { RaceCountdown } from "@/components/f1/RaceCountdown";
 import { EmptyState } from "@/components/EmptyState";
+import { F1RaceOddsCard } from "@/components/f1/F1RaceOddsCard";
+import { getF1RaceModel } from "@/lib/queries/f1RaceModel";
 
 // F1 data is ingested by a backfill cron and self-healed on view; the next
 // race and standings shift race to race, so render per request.
@@ -162,9 +164,10 @@ export default async function F1Page() {
   }
 
   const { nextRace, latestRace, driverStandings, constructorStandings, roundsCompleted } = season;
+  const raceModel = nextRace ? await getF1RaceModel() : null;
 
   return (
-    <SportPage sport="f1" description={`${season.season} season · ${roundsCompleted} rounds run · free, results-driven (no odds).`}>
+    <SportPage sport="f1" description={`${season.season} season · ${roundsCompleted} rounds run · ARCHR race odds from the race model.`}>
 
       {/* Next race hero — or a between-seasons note when the calendar is dry. */}
       {nextRace ? (
@@ -195,6 +198,8 @@ export default async function F1Page() {
           </CardContent>
         </Card>
       )}
+
+      {raceModel ? <F1RaceOddsCard view={raceModel} /> : null}
 
       {/* Championship standings */}
       <section className="mt-8 grid gap-4 md:grid-cols-2">

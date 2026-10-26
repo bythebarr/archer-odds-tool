@@ -7,7 +7,7 @@ import { MIN_FIT_SAMPLES } from "@/lib/propModel/market";
  * A stat whose fit has fewer than MIN_FIT_SAMPLES graded props is left out, so
  * the pipeline's default holds for it.
  */
-export async function getModelWeights(sport: "nba" | "nfl"): Promise<Record<string, number>> {
+export async function getModelWeights(sport: "nba" | "nfl" | "ufc" | "f1"): Promise<Record<string, number>> {
   const reports = await prisma.modelReport.findMany({
     where: { model: { startsWith: `market-blend:${sport}:` } },
     orderBy: { createdAt: "desc" },

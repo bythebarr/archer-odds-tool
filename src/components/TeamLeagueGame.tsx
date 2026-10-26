@@ -31,6 +31,7 @@ export function TeamLeagueGame({
   tab = "lines",
   propsHref,
   propsPanel,
+  modelPanel,
 }: {
   sport: TeamLeagueSport;
   result: TeamGameWithLines;
@@ -39,6 +40,8 @@ export function TeamLeagueGame({
   /** Link to this game's props tab; omitted for leagues without a props product. */
   propsHref?: string;
   propsPanel?: ReactNode;
+  /** ARCHR's game model, above the price ladder on the Game Lines tab. */
+  modelPanel?: ReactNode;
 }) {
   const { game, lines } = result;
   const when = new Intl.DateTimeFormat("en-US", {
@@ -89,6 +92,7 @@ export function TeamLeagueGame({
         propsPanel
       ) : (
         <div className="mt-2">
+          {modelPanel}
           <TeamGameLinesView sport={sport} game={game} lines={lines} disclaimer={disclaimer} />
         </div>
       )}

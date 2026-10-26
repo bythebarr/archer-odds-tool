@@ -60,6 +60,60 @@ them (`components/props/ModelPieces.tsx`).
 6. Finder UI from the shared pieces (`HitMeter`, `SplitGrid`, `GameLogChart`, `ModelPieces`).
 7. `backtest-<sport>-props.ts`, plus the sport's branch in `backtest-props-market.ts`, both added to Model lab's `report:all`.
 
+## Game lines (NBA, NFL): `src/lib/gameModel/`
+
+The same spine for moneyline, spread and total:
+
+1. **Ratings** (`ratings.ts`): opponent-adjusted offense and defense in points,
+   updated after every game (a points-based Elo), reverted between seasons. The
+   league average and home edge are learned as it goes. Margin and total come
+   out of one model.
+2. **Adjustments** (`adjust.ts`): rest (NBA back-to-back about −1.25
+   ([inpredictable](https://www.inpredictable.com/2012/02/nba-home-court-advantage-and-rest.html));
+   NFL bye +0.75, short week −0.5), and who's out. An NBA player's impact is
+   his box production above replacement in the same minutes. An NFL starting
+   QB is worth 4.5 points, and other high-usage skill players a little.
+3. **Distribution** (`scoreDist.ts`): margin and total as whole-point
+   distributions. NBA ties go to overtime (spread to ±1–5). NFL margins are
+   reweighted to their key numbers: 3 ≈ 15%, 7 ≈ 9%, 10 ≈ 6%
+   ([deucescracked](https://www.deucescracked.com/blog/nfl-margin-of-victory-data-1999-2025),
+   [docsports](https://www.docsports.com/2026/study-of-nfl-games-reveals-shifting-key-betting-numbers.html)).
+   That's why −2.5 and −3.5 are priced so differently.
+4. **Pricing** (`price.ts`, `quotes.ts`): each market at the consensus number,
+   blended with the no-vig market by the fitted weight, then EV of the best price.
+5. **Backtest** (`npm run backtest:games`): replays every game in date order. It
+   refits the rating speed k, measures error against the closing spread and total,
+   fits the margin and total spreads (the live model reads them back), checks the
+   rest and injury priors against what actually happened, and fits the market
+   weight per market.
+
+## UFC fights: `src/lib/ufc/fightModel.ts` (v2)
+
+The fight is replayed in date order, and features are read before each bout:
+- opponent-adjusted Elo (finishes weigh more; debuts start from the pre-UFC record)
+- per-minute stats shrunk toward the league: striking differential, strike
+  defense, takedowns and takedown defense, knockdowns, submission attempts, control
+- reach, experience, layoff, and weight-class moves
+
+These are combined by L2 logistic regression (`stats/logistic.ts`).
+`backtest:ufc-fights` trains on the oldest 60%, tunes on the next 20%, and
+grades the newest 20% against v1 fighter math, Elo alone and the closing
+moneyline. The page headline switches to v2 only if it beats v1. Missing: age,
+the strongest single factor in public models, because our fight-data source
+has no dates of birth.
+
+## F1 races: `src/lib/f1/raceModel.ts`
+
+- Car and driver pace ratings, updated after each race by Plackett–Luce (the
+  multi-car Elo). The car learns faster and resets harder each season.
+- Mechanical retirements count against the team's reliability; crashes
+  count against the driver.
+- 20,000 simulations give win, podium, points, DNF and beat-your-teammate odds.
+- `backtest:f1` fits the learning rates on the winner's log loss (against a
+  uniform pick and a points-so-far baseline) and checks podium calibration.
+- Next: qualifying results (Jolpica `/qualifying`), since grid position is the
+  biggest single input once it's known. Also circuit-type adjustments.
+
 ## What drives each sport (research notes)
 
 Sources are mostly practitioner writing; academic work is cited where it

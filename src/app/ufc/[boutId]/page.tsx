@@ -12,6 +12,8 @@ import { UfcWinProbabilityCard, RED_CORNER, BLUE_CORNER } from "@/components/ufc
 import { UfcOddsEvCard } from "@/components/ufc/UfcOddsEvCard";
 import { UfcFinishProjectionCard } from "@/components/ufc/UfcFinishProjectionCard";
 import { UfcFightHistory } from "@/components/ufc/UfcFightHistory";
+import { UfcFightModelCard } from "@/components/ufc/UfcFightModelCard";
+import { getUfcFightModel } from "@/lib/queries/ufcFightModel";
 
 // Odds refresh after the response (see refreshUfcOddsOnView) needs a live
 // request, and the moneyline should reflect current lines — render per request.
@@ -90,14 +92,18 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
   // Read-side self-heal for the odds feed (Hobby crons fire unreliably) —
   // refreshes all UFC moneylines after the response when stale. See refreshUfcOddsOnView.
   refreshUfcOddsOnView();
-  const [header, matchup, odds] = await Promise.all([
+  const [header, matchup, odds, fightModel] = await Promise.all([
     getUfcBoutHeader(boutId),
     getUfcMatchup(boutId),
     getUfcBoutOdds(boutId),
+    getUfcFightModel(boutId),
   ]);
   if (!header) notFound();
 
-  const projection = matchup ? computeUfcWinProbability(matchup) : null;
+  const v1 = matchup ? computeUfcWinProbability(matchup) : null;
+  // The fitted v2 model takes over the headline numbers only once its backtest beat v1 out of sample.
+  const projection =
+    v1 && fightModel?.beatsV1 ? { ...v1, fighterAProb: fightModel.probRed, fighterBProb: 1 - fightModel.probRed } : v1;
   // 5 rounds for title fights AND main events (every UFC headliner goes 5,
   // belt or not), 3 otherwise — see scheduledRoundsForBout.
   const scheduledRounds = scheduledRoundsForBout(header);
@@ -145,7 +151,7 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
               <span style={{ width: `${projection.fighterAProb * 100}%`, background: RED_CORNER }} />
               <span className="flex-1" style={{ background: BLUE_CORNER }} />
             </div>
-            <p className="mt-1.5 text-center text-[10px] uppercase tracking-wide text-[#8a90a0]">ARCHR fighter-math win probability</p>
+            <p className="mt-1.5 text-center text-[10px] uppercase tracking-wide text-[#8a90a0]">{fightModel?.beatsV1 ? "ARCHR fight model win probability" : "ARCHR fighter-math win probability"}</p>
           </div>
         )}
         {winner && loser ? (
@@ -185,9 +191,15 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
         </div>
       </section>
 
-      {projection ? (
+      {fightModel ? (
         <div className="mt-6">
-          <UfcWinProbabilityCard redName={header.red.name} blueName={header.blue.name} projection={projection} />
+          <UfcFightModelCard view={fightModel} redName={header.red.name} blueName={header.blue.name} />
+        </div>
+      ) : null}
+
+      {v1 ? (
+        <div className="mt-6">
+          <UfcWinProbabilityCard redName={header.red.name} blueName={header.blue.name} projection={v1} />
         </div>
       ) : null}
 
