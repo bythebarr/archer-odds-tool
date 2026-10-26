@@ -120,7 +120,7 @@ export async function getNbaDefenseTable(season: number): Promise<DefenseTable> 
   const sums = await prisma.nbaPlayerGameLog.groupBy({
     by: ["season", "gameId", "teamId", "positionGroup"],
     where: { season: { in: [season - 1, season] } },
-    _sum: { points: true, rebounds: true, assists: true, threesMade: true, steals: true, blocks: true },
+    _sum: { points: true, rebounds: true, assists: true, threesMade: true, steals: true, blocks: true, turnovers: true },
   });
   const abbr = new Map(
     (await prisma.team.findMany({ where: { id: { in: [...new Set(sums.map((r) => r.teamId))] } }, select: { id: true, abbreviation: true } }))
@@ -128,7 +128,7 @@ export async function getNbaDefenseTable(season: number): Promise<DefenseTable> 
   );
 
   type Line = TeamDefenseRow["allowed"];
-  const zero = (): Line => ({ points: 0, rebounds: 0, assists: 0, threesMade: 0, steals: 0, blocks: 0 });
+  const zero = (): Line => ({ points: 0, rebounds: 0, assists: 0, threesMade: 0, steals: 0, blocks: 0, turnovers: 0 });
   const addInto = (into: Line, from: (typeof sums)[number]["_sum"]) => {
     for (const k of Object.keys(into) as (keyof Line)[]) into[k] += from[k] ?? 0;
   };
@@ -291,6 +291,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
       threesMade: h.threesMade,
       steals: h.steals,
       blocks: h.blocks,
+      turnovers: h.turnovers,
     });
   }
 

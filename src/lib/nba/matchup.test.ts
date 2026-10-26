@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { matchupGrade, ordinal, paceRank, statMatchup, type DefenseTable } from "./matchup";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 
-const line = (points: number, rebounds = 40, assists = 25) => ({ points, rebounds, assists, threesMade: 12, steals: 8, blocks: 5 });
+const line = (points: number, rebounds = 40, assists = 25) => ({ points, rebounds, assists, threesMade: 12, steals: 8, blocks: 5, turnovers: 0 });
 const table: DefenseTable = {
   season: 2026,
   fromLastSeason: false,

@@ -206,3 +206,35 @@ export function rawOver(proj: PropProjection, point: number): number {
 export function probOver(proj: PropProjection, point: number): number {
   return shrinkLogit(rawOver(proj, point), CALIBRATION_SHRINK);
 }
+
+/**
+ * A Yes/No milestone (double- or triple-double): each component stat's chance
+ * of reaching 10 from its own projection, combined into the chance that at
+ * least `needed` of them do. The components are treated as independent, which
+ * slightly understates a player whose big nights come all at once (minutes
+ * drive them together) — the props backtest's calibration catches that.
+ * Returned as a projection whose distribution prices "Over 0.5" at that chance.
+ */
+export function projectMilestone(
+  logs: GameLogPoint[],
+  components: NbaPropStatDef[],
+  needed: number,
+  ctx: ProjectionContext
+): PropProjection | null {
+  const projections = components.map((c) => projectProp(logs, c, ctx));
+  if (projections.some((p) => p === null)) return null;
+  const p10 = projections.map((p) => rawOver(p!, 9.5));
+  // P(exactly k of them reach 10), built up one component at a time.
+  let dist = [1];
+  for (const p of p10) {
+    const next = new Array(dist.length + 1).fill(0);
+    dist.forEach((q, k) => {
+      next[k] += q * (1 - p);
+      next[k + 1] += q * p;
+    });
+    dist = next;
+  }
+  const prob = Math.min(Math.max(dist.slice(needed).reduce((a, b) => a + b, 0), 1e-6), 1 - 1e-6);
+  const base = projections[0]!;
+  return { ...base, mean: prob, sd: 0, distribution: { kind: "atLeastOne", mean: -Math.log(1 - prob) } };
+}

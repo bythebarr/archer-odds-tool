@@ -27,6 +27,14 @@ const VOLUME_ELASTICITY: Record<NflPropStat, number> = {
   passAttempts: 0.15,
   rushAttempts: 0.35,
   interceptions: 0,
+  longestRush: 0.2,
+  longestReception: 0.2,
+  kickingPoints: 0.6,
+  fieldGoals: 0.4,
+  extraPoints: 0.9,
+  sacks: 0,
+  soloTackles: 0,
+  tacklesAssists: 0,
 };
 const VOLUME_CAP = 0.15;
 
@@ -43,6 +51,14 @@ const SCRIPT_SLOPE: Record<NflPropStat, number> = {
   rushRecYards: -0.003,
   passTds: 0,
   anytimeTd: 0,
+  longestRush: -0.004,
+  longestReception: 0.003,
+  kickingPoints: 0,
+  fieldGoals: 0,
+  extraPoints: 0,
+  sacks: 0,
+  soloTackles: 0,
+  tacklesAssists: 0,
 };
 const SCRIPT_CAP = 0.08;
 

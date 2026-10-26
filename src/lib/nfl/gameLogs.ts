@@ -3,14 +3,14 @@
  * computed from. The NBA pipeline (src/lib/nba/gameLogs.ts) for football: for
  * each completed game on ESPN's scoreboard, find (or create) our Game row by
  * team names + ET day, pull the box score once, and upsert a row per player
- * with a passing, rushing or receiving line. Idempotent — a game that already
- * has logs is skipped.
+ * with a passing, rushing, receiving, kicking or defensive line. Idempotent — a
+ * game already logged with its defensive tables is skipped.
  */
 import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { espnTeamCode } from "@/lib/logos";
 import { fetchEspnScoreboard, type EspnTeamResult } from "@/lib/teamLeague/espnScoreboard";
-import { findGameForResult } from "@/lib/teamLeague/results";
+import { findGameForResult, storePeriodScores } from "@/lib/teamLeague/results";
 import { teamIdForLeagueTeam } from "@/lib/teamLeague/schedule";
 import { parseEspnRoster } from "@/lib/nba/positions";
 import { NFL_LEAGUE } from "./league";
@@ -86,6 +86,14 @@ async function storeLines(
       targets: line.targets,
       recYards: line.recYards,
       recTds: line.recTds,
+      rushLongest: line.rushLongest,
+      recLongest: line.recLongest,
+      fieldGoalsMade: line.fieldGoalsMade,
+      extraPointsMade: line.extraPointsMade,
+      kickingPoints: line.kickingPoints,
+      tackles: line.tackles,
+      soloTackles: line.soloTackles,
+      sacks: line.sacks,
     };
     await prisma.nflPlayerGameLog.upsert({
       where: { nflPlayerId_gameId: { nflPlayerId: player.id, gameId: game.id } },
@@ -107,7 +115,11 @@ export async function syncNflGameLogs(datesEt: string[]): Promise<SyncNflGameLog
       summary.completedGames++;
       const label = `${result.awayName} @ ${result.homeName} (${etDateOf(result.startUtc)})`;
       let game = await findGameForResult(NFL_LEAGUE, result);
-      if (game && (await prisma.nflPlayerGameLog.count({ where: { gameId: game.id } })) > 0) continue;
+      // Period scores ride along (cheap: the scoreboard is already in hand), so a history backfill fills halves and quarters too.
+      if (game) await storePeriodScores(game, result);
+      // Logged already — and with the defense/kicking tables (logs from before those
+      // were read get one more pass, which fills them in).
+      if (game && (await prisma.nflPlayerGameLog.count({ where: { gameId: game.id, tackles: { not: null } } })) > 0) continue;
       if (!game) {
         game = await createGameFromResult(result);
         if (!game) continue;

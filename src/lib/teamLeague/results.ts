@@ -131,3 +131,11 @@ export async function syncAndGradeTeamLeagueResults(
 
   return { datesChecked, resultsFetched, gamesFinalized, gamesGraded, unmatched };
 }
+
+/** Stores a finished game's per-period scores if it has none yet (they must add up to the final). */
+export async function storePeriodScores(game: { id: string; homePeriodScores: number[] }, result: EspnTeamResult): Promise<void> {
+  if (game.homePeriodScores.length > 0 || result.homePeriods.length < 4) return;
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  if (sum(result.homePeriods) !== result.homeScore || sum(result.awayPeriods) !== result.awayScore) return;
+  await prisma.game.update({ where: { id: game.id }, data: { homePeriodScores: result.homePeriods, awayPeriodScores: result.awayPeriods } });
+}

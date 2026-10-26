@@ -1293,6 +1293,10 @@ enum NbaPropStat {
   pointsRebounds
   pointsAssists
   reboundsAssists
+  turnovers
+  blocksSteals
+  doubleDouble
+  tripleDouble
 }
 
 /// Append-only NBA prop prices — PlayerPropSnapshot's shape, keyed to NbaPlayer.
@@ -1351,6 +1355,14 @@ enum NflPropStat {
   recYards
   rushRecYards
   anytimeTd
+  longestRush
+  longestReception
+  kickingPoints
+  fieldGoals
+  extraPoints
+  sacks
+  soloTackles
+  tacklesAssists
 }
 
 model NflPlayer {
@@ -1393,6 +1405,17 @@ model NflPlayerGameLog {
   targets         Int       @default(0)
   recYards        Int       @default(0)
   recTds          Int       @default(0)
+  /// Longest rush / reception, kicking and defense — null where the box score
+  /// didn't carry the table (older logs, or a key ESPN renamed), so a missing
+  /// read is never mistaken for a zero.
+  rushLongest     Int?
+  recLongest      Int?
+  fieldGoalsMade  Int?
+  extraPointsMade Int?
+  kickingPoints   Int?
+  tackles         Int?
+  soloTackles     Int?
+  sacks           Float?
 
   @@unique([nflPlayerId, gameId])
   @@index([nflPlayerId, gameDate])

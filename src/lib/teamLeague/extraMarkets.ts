@@ -5,13 +5,13 @@
  * only per event, billed per market returned × region, so the poll covers
  * games starting within each league's lookahead.
  *
- * A market key the provider doesn't recognize fails the whole request
- * (INVALID_MARKET), so keys are requested in small batches. A rejected batch
- * is split until the bad key is found, and that key is skipped from then on
- * (reported in the summary). One unknown key never costs the rest.
+ * A market key the provider doesn't recognize would fail the whole request,
+ * so the fetch goes through fetchEventMarketsGuarded (odds/guardedEventFetch.ts),
+ * which isolates and skips it. Rejected keys are reported in the summary.
  */
 import { prisma } from "@/lib/prisma";
-import { fetchEventPlayerProps, type OddsApiEvent } from "@/lib/odds/oddsApiClient";
+import type { OddsApiEvent } from "@/lib/odds/oddsApiClient";
+import { fetchEventMarketsGuarded, type GuardedFetchResult } from "@/lib/odds/guardedEventFetch";
 import { ALLOWED_BOOK_KEYS } from "@/lib/odds/bookAllowlist";
 import type { TeamLeague } from "./league";
 
@@ -92,40 +92,7 @@ export function eventToMarketRows(event: OddsApiEvent): MarketLineRow[] {
   return out;
 }
 
-/** Keys the provider rejected this process — skipped on later polls. */
-const rejectedKeys = new Set<string>();
-const BATCH = 8;
 const REGIONS = ["us", "us2"];
-
-function invalidMarket(error: unknown): boolean {
-  return /INVALID_MARKET|422/i.test(error instanceof Error ? error.message : String(error));
-}
-
-/** Fetches `keys` for one event, splitting rejected batches until each bad key is isolated. */
-async function fetchKeys(
-  league: TeamLeague,
-  eventId: string,
-  keys: string[],
-  acc: { events: OddsApiEvent[]; credits: number; remaining: number | null; rejected: string[] }
-): Promise<void> {
-  if (keys.length === 0) return;
-  try {
-    const res = await fetchEventPlayerProps(eventId, keys, REGIONS, league.oddsSportKey);
-    acc.events.push(res.event);
-    acc.credits += res.creditsUsed ?? 0;
-    acc.remaining = res.creditsRemaining;
-  } catch (error) {
-    if (!invalidMarket(error)) throw error;
-    if (keys.length === 1) {
-      rejectedKeys.add(keys[0]);
-      acc.rejected.push(keys[0]);
-      return;
-    }
-    const mid = Math.ceil(keys.length / 2);
-    await fetchKeys(league, eventId, keys.slice(0, mid), acc);
-    await fetchKeys(league, eventId, keys.slice(mid), acc);
-  }
-}
 
 export interface ExtraMarketsSummary {
   gamesConsidered: number;
@@ -149,19 +116,17 @@ export async function pollExtraMarkets(league: TeamLeague, lookaheadHours: numbe
     select: { id: true, oddsApiEventId: true },
   });
   const summary: ExtraMarketsSummary = { gamesConsidered: games.length, gamesStored: 0, linesStored: 0, rejectedKeys: [], failures: [], creditsUsed: 0, creditsRemaining: null };
-  const keys = EXTRA_MARKET_KEYS.filter((k) => !rejectedKeys.has(k));
-
   for (const game of games) {
-    const acc = { events: [] as OddsApiEvent[], credits: 0, remaining: null as number | null, rejected: [] as string[] };
+    let acc: GuardedFetchResult;
     try {
-      for (let i = 0; i < keys.length; i += BATCH) await fetchKeys(league, game.oddsApiEventId!, keys.slice(i, i + BATCH), acc);
+      acc = await fetchEventMarketsGuarded(game.oddsApiEventId!, EXTRA_MARKET_KEYS, REGIONS, league.oddsSportKey);
     } catch (error) {
       summary.failures.push(`${game.id}: ${error instanceof Error ? error.message.slice(0, 120) : String(error)}`);
       continue;
     }
-    summary.creditsUsed += acc.credits;
-    summary.creditsRemaining = acc.remaining ?? summary.creditsRemaining;
-    summary.rejectedKeys.push(...acc.rejected.filter((k) => !summary.rejectedKeys.includes(k)));
+    summary.creditsUsed += acc.creditsUsed;
+    summary.creditsRemaining = acc.creditsRemaining ?? summary.creditsRemaining;
+    summary.rejectedKeys.push(...acc.rejectedKeys.filter((k) => !summary.rejectedKeys.includes(k)));
 
     // Last write wins per unique key (a book can repeat a line across batches).
     const unique = new Map<string, MarketLineRow>();

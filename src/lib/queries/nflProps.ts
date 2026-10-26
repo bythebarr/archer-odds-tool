@@ -11,7 +11,7 @@ import { espnTeamLogoUrl } from "@/lib/logos";
 import { NFL_LEAGUE } from "@/lib/nfl/league";
 import { NFL_PROP_STAT_BY_KEY, nflPositionGroup, type NflStatLine } from "@/lib/nfl/propStats";
 import type { NflDefenseTable, NflPosition } from "@/lib/nfl/matchup";
-import { NFL_LOG_COLUMNS as COLUMNS, packNflLog, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
+import { NFL_EXTRA_COLUMNS, NFL_LOG_COLUMNS as COLUMNS, emptyNflExtras, packNflLog, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
 import { EV_FLAG } from "@/lib/odds/marketValue";
 import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
 import type { Absence } from "@/lib/injuries/absence";
@@ -88,7 +88,7 @@ function team(t: { abbreviation: string; name: string } | null): SlateTeam | nul
 }
 
 const MIN_DEFENSE_GAMES = 4;
-const STAT_SUMS = Object.fromEntries(COLUMNS.map((c) => [c, true])) as Record<keyof NflStatLine, true>;
+const STAT_SUMS = Object.fromEntries(COLUMNS.map((c) => [c, true])) as Record<(typeof COLUMNS)[number], true>;
 
 /** Per team, what each position group produces against it per game; this season once teams have 4 games, else last. */
 export const getNflDefenseTable = cache(async (season: number): Promise<NflDefenseTable> => {
@@ -100,7 +100,7 @@ export const getNflDefenseTable = cache(async (season: number): Promise<NflDefen
   const abbr = new Map(
     (await prisma.team.findMany({ where: { id: { in: [...new Set(sums.map((r) => r.teamId))] } }, select: { id: true, abbreviation: true } })).map((t) => [t.id, t.abbreviation])
   );
-  const zero = (): NflStatLine => Object.fromEntries(COLUMNS.map((c) => [c, 0])) as unknown as NflStatLine;
+  const zero = (): NflStatLine => ({ ...(Object.fromEntries(COLUMNS.map((c) => [c, 0])) as unknown as NflStatLine), ...emptyNflExtras() });
 
   const build = (forSeason: number): NflDefenseTable["teams"] => {
     const games = new Map<string, Map<string, Map<NflPosition, NflStatLine>>>();
@@ -251,7 +251,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
       opponent: (h.isHome ? h.game.awayTeam?.abbreviation : h.game.homeTeam?.abbreviation) ?? "",
       isHome: h.isHome,
       season: h.season,
-      ...(Object.fromEntries(COLUMNS.map((c) => [c, h[c]])) as unknown as NflStatLine),
+      ...(Object.fromEntries([...COLUMNS, ...NFL_EXTRA_COLUMNS].map((c) => [c, h[c]])) as unknown as NflStatLine),
     };
     (logs[h.nflPlayerId] ??= []).push(packNflLog(point));
   }

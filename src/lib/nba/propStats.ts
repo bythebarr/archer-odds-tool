@@ -12,6 +12,12 @@ export interface NbaStatLine {
   threesMade: number;
   steals: number;
   blocks: number;
+  turnovers: number;
+}
+
+/** 10+ in at least `needed` of points, rebounds, assists, steals, blocks — a double- (2) or triple-double (3). */
+function tens(l: NbaStatLine): number {
+  return [l.points, l.rebounds, l.assists, l.steals, l.blocks].filter((v) => v >= 10).length;
 }
 
 export interface NbaPropStatDef {
@@ -19,6 +25,12 @@ export interface NbaPropStatDef {
   label: string;
   shortLabel: string;
   value: (log: NbaStatLine) => number;
+  /**
+   * Yes/No milestones (double-double, triple-double): the log value is 1 when it
+   * happened, and the model prices it from the component stats' projections —
+   * the chance at least `needed` of them reach 10.
+   */
+  milestone?: { components: NbaPropStat[]; needed: number };
 }
 
 /** Display order: the singles books lead with, then the combos. */
@@ -33,6 +45,22 @@ export const NBA_PROP_STATS: NbaPropStatDef[] = [
   { key: "reboundsAssists", label: "Reb + Ast", shortLabel: "R+A", value: (l) => l.rebounds + l.assists },
   { key: "steals", label: "Steals", shortLabel: "STL", value: (l) => l.steals },
   { key: "blocks", label: "Blocks", shortLabel: "BLK", value: (l) => l.blocks },
+  { key: "blocksSteals", label: "Steals + Blocks", shortLabel: "STK", value: (l) => l.steals + l.blocks },
+  { key: "turnovers", label: "Turnovers", shortLabel: "TO", value: (l) => l.turnovers },
+  {
+    key: "doubleDouble",
+    label: "Double-Double",
+    shortLabel: "DD",
+    value: (l) => (tens(l) >= 2 ? 1 : 0),
+    milestone: { components: ["points", "rebounds", "assists", "steals", "blocks"], needed: 2 },
+  },
+  {
+    key: "tripleDouble",
+    label: "Triple-Double",
+    shortLabel: "TD",
+    value: (l) => (tens(l) >= 3 ? 1 : 0),
+    milestone: { components: ["points", "rebounds", "assists", "steals", "blocks"], needed: 3 },
+  },
 ];
 
 export const NBA_PROP_STAT_BY_KEY = new Map(NBA_PROP_STATS.map((s) => [s.key, s]));
@@ -64,7 +92,18 @@ export const NBA_MARKET_KEY_TO_STAT: Record<string, NbaPropStat> = {
   player_points_rebounds: "pointsRebounds",
   player_points_assists: "pointsAssists",
   player_rebounds_assists: "reboundsAssists",
+  player_turnovers: "turnovers",
+  player_blocks_steals: "blocksSteals",
+  player_steals_blocks: "blocksSteals",
+  player_double_double: "doubleDouble",
+  player_triple_double: "tripleDouble",
 };
+
+/** The Odds API's alternate ladders (`player_points_alternate`…): ordinary over/unders at more numbers. */
+export function nbaAlternateMarketStat(marketKey: string): NbaPropStat | null {
+  if (!marketKey.endsWith("_alternate")) return null;
+  return NBA_MARKET_KEY_TO_STAT[marketKey.slice(0, -"_alternate".length)] ?? null;
+}
 
 /**
  * `*_alt` keys. On this provider MLB's turned out to be MILESTONE markets ("1 or

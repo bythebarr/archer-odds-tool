@@ -22,23 +22,34 @@ export interface NflLogPoint extends NflStatLine {
   season: number;
 }
 
-/** A log as a tuple: [date, opponent, isHome, season, ...the 12 stat columns in NflStatLine order]. */
-export type PackedNflLog = [string, string, 0 | 1, number, ...number[]];
+/** A log as a tuple: [date, opponent, isHome, season, ...core columns, ...extra columns (null = not on the box score)]. */
+export type PackedNflLog = [string, string, 0 | 1, number, ...(number | null)[]];
 
-/** NflStatLine's columns in wire order. */
-export const NFL_LOG_COLUMNS: (keyof NflStatLine)[] = [
+/** The always-present columns, in wire order — also what the defense-by-position table sums. */
+export const NFL_LOG_COLUMNS = [
   "passAttempts", "passCompletions", "passYards", "passTds", "interceptions",
   "rushAttempts", "rushYards", "rushTds", "receptions", "targets", "recYards", "recTds",
-];
+] as const satisfies readonly (keyof NflStatLine)[];
+
+/** Columns a box score may not carry (null when missing), after the core ones on the wire. */
+export const NFL_EXTRA_COLUMNS = [
+  "rushLongest", "recLongest", "fieldGoalsMade", "extraPointsMade", "kickingPoints", "tackles", "soloTackles", "sacks",
+] as const satisfies readonly (keyof NflStatLine)[];
 
 export function packNflLog(l: NflLogPoint): PackedNflLog {
-  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, ...NFL_LOG_COLUMNS.map((c) => l[c])];
+  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, ...NFL_LOG_COLUMNS.map((c) => l[c]), ...NFL_EXTRA_COLUMNS.map((c) => l[c])];
 }
 
 export function unpackNflLog(t: PackedNflLog): NflLogPoint {
   const [date, opponent, isHome, season, ...rest] = t;
-  const line = Object.fromEntries(NFL_LOG_COLUMNS.map((c, i) => [c, rest[i] ?? 0])) as unknown as NflStatLine;
-  return { date, opponent, isHome: isHome === 1, season, ...line };
+  const core = Object.fromEntries(NFL_LOG_COLUMNS.map((c, i) => [c, rest[i] ?? 0]));
+  const extra = Object.fromEntries(NFL_EXTRA_COLUMNS.map((c, i) => [c, rest[NFL_LOG_COLUMNS.length + i] ?? null]));
+  return { date, opponent, isHome: isHome === 1, season, ...core, ...extra } as unknown as NflLogPoint;
+}
+
+/** A stat line with every extra column empty — for sums and fixtures. */
+export function emptyNflExtras(): Pick<NflStatLine, (typeof NFL_EXTRA_COLUMNS)[number]> {
+  return Object.fromEntries(NFL_EXTRA_COLUMNS.map((c) => [c, null])) as Pick<NflStatLine, (typeof NFL_EXTRA_COLUMNS)[number]>;
 }
 
 export interface NflSlateProp {
@@ -75,7 +86,7 @@ const avg = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length
 
 export function summarizeNflProp(
   prop: NflSlateProp,
-  logs: NflLogPoint[],
+  allLogs: NflLogPoint[],
   stat: NflPropStatDef,
   side: PropDirection,
   ctx: {
@@ -92,6 +103,7 @@ export function summarizeNflProp(
 ): NflPropSummary | null {
   const point = atPoint ?? propConsensusPoint(prop.quotes);
   if (point === null) return null;
+  const logs = stat.available ? allLogs.filter(stat.available) : allLogs;
   const of = (g: NflLogPoint[]) => g.map((l) => stat.value(l));
   const values = of(logs);
   const windows: { key: PropSplit["key"]; label: string; values: number[] }[] = [
@@ -112,7 +124,7 @@ export function summarizeNflProp(
   const over = bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point);
   const under = bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point);
   const pairs = twoSidedAt(prop.quotes, point);
-  const projection = modelWithheld(ctx.injury) ? null : projectNflProp(logs, stat, { season: ctx.season, ...ctx.projection });
+  const projection = modelWithheld(ctx.injury) ? null : projectNflProp(allLogs, stat, { season: ctx.season, ...ctx.projection });
 
   return {
     playerId: prop.playerId,

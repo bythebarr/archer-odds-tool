@@ -12,16 +12,16 @@ import { prisma } from "@/lib/prisma";
 import {
   activeOddsProvider,
   fetchBulkPlayerProps,
-  fetchEventPlayerProps,
   type OddsApiEvent,
   type ParlayPropRow,
 } from "@/lib/odds/oddsApiClient";
 import { ALLOWED_BOOK_KEYS } from "@/lib/odds/bookAllowlist";
+import { fetchEventMarketsGuarded } from "@/lib/odds/guardedEventFetch";
 import { isCoherentMarket } from "@/lib/odds/marketSanity";
 import { looksLikePlayerName } from "@/lib/props/propMarkets";
 import type { NbaPropStat, Side } from "@/generated/prisma/client";
 import { NBA_LEAGUE } from "./league";
-import { NBA_MARKET_KEY_TO_STAT, nbaAltMarketStat } from "./propStats";
+import { NBA_MARKET_KEY_TO_STAT, nbaAltMarketStat, nbaAlternateMarketStat } from "./propStats";
 
 export interface NbaPropQuote {
   bookKey: string;
@@ -63,7 +63,7 @@ export function groupNbaPropRows(rows: ParlayPropRow[]): GroupedNbaProps {
     }
 
     const altStat = nbaAltMarketStat(row.market_key);
-    const stat = altStat ?? NBA_MARKET_KEY_TO_STAT[row.market_key];
+    const stat = altStat ?? nbaAlternateMarketStat(row.market_key) ?? NBA_MARKET_KEY_TO_STAT[row.market_key];
     if (!stat) {
       skipped.unmappedMarket++;
       unmappedMarketKeys[row.market_key] = (unmappedMarketKeys[row.market_key] ?? 0) + 1;
@@ -113,8 +113,10 @@ export function toaEventToPropRows(event: OddsApiEvent): ParlayPropRow[] {
   for (const book of event.bookmakers ?? []) {
     for (const market of book.markets ?? []) {
       for (const o of market.outcomes ?? []) {
-        const side = o.name.toLowerCase();
-        if (!o.description || (side !== "over" && side !== "under")) continue;
+        // Yes/No milestones (double-double) read as Over/Under 0.5, like the NFL's anytime TD.
+        const name = o.name.toLowerCase();
+        const side = name === "over" || name === "yes" ? "over" : name === "under" || name === "no" ? "under" : null;
+        if (!o.description || !side) continue;
         const key = `${book.key}|${market.key}|${o.description}|${o.point ?? ""}`;
         const row = rows.get(key) ?? {
           event_id: event.id,
@@ -127,7 +129,7 @@ export function toaEventToPropRows(event: OddsApiEvent): ParlayPropRow[] {
           player: o.description,
           market_key: market.key,
           market: market.key,
-          line: o.point ?? null,
+          line: o.point ?? (name === "yes" || name === "no" ? 0.5 : null),
           over_price: null,
           under_price: null,
         };
@@ -152,6 +154,22 @@ export const TOA_NBA_PROP_MARKETS = [
   "player_rebounds_assists",
   "player_steals",
   "player_blocks",
+  "player_blocks_steals",
+  "player_turnovers",
+  "player_double_double",
+  "player_triple_double",
+  // Alternate ladders: the same stats at every number the books hang.
+  "player_points_alternate",
+  "player_rebounds_alternate",
+  "player_assists_alternate",
+  "player_threes_alternate",
+  "player_points_rebounds_assists_alternate",
+  "player_points_rebounds_alternate",
+  "player_points_assists_alternate",
+  "player_rebounds_assists_alternate",
+  "player_steals_alternate",
+  "player_blocks_alternate",
+  "player_turnovers_alternate",
 ];
 const TOA_PROP_REGIONS = ["us", "us2"];
 /**
@@ -280,10 +298,11 @@ export async function pollAndStoreNbaProps(now: Date = new Date()): Promise<Poll
     for (const game of games) {
       if (!game.oddsApiEventId || game.scheduledStartUtc.getTime() > cutoff) continue;
       try {
-        const res = await fetchEventPlayerProps(game.oddsApiEventId, TOA_NBA_PROP_MARKETS, TOA_PROP_REGIONS, NBA_LEAGUE.oddsSportKey);
-        rows.push(...toaEventToPropRows(res.event));
-        used += res.creditsUsed ?? 0;
-        summary.creditsRemaining = res.creditsRemaining;
+        const res = await fetchEventMarketsGuarded(game.oddsApiEventId, TOA_NBA_PROP_MARKETS, TOA_PROP_REGIONS, NBA_LEAGUE.oddsSportKey);
+        for (const e of res.events) rows.push(...toaEventToPropRows(e));
+        used += res.creditsUsed;
+        summary.creditsRemaining = res.creditsRemaining ?? summary.creditsRemaining;
+        for (const k of res.rejectedKeys) summary.unmappedMarketKeys[`rejected:${k}`] = 1;
       } catch (error) {
         summary.unmatchedEvents.push(`${game.id}: ${error instanceof Error ? error.message.slice(0, 120) : String(error)}`);
       }

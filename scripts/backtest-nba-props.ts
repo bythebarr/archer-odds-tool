@@ -49,6 +49,7 @@ async function main() {
       threesMade: true,
       steals: true,
       blocks: true,
+      turnovers: true,
     },
   });
   const [closing, baselines] = await Promise.all([closingGameLines("nba"), teamBaselinesByGame("nba", 30)]);
@@ -56,7 +57,7 @@ async function main() {
   const byPlayer = new Map<string, Log[]>();
   for (const r of rows) {
     const list = byPlayer.get(r.nbaPlayerId) ?? [];
-    list.push({ gameId: r.gameId, date: etDateOf(r.gameDate), opponent: "", isHome: r.isHome, season: r.season, minutes: r.minutes, points: r.points, rebounds: r.rebounds, assists: r.assists, threesMade: r.threesMade, steals: r.steals, blocks: r.blocks });
+    list.push({ gameId: r.gameId, date: etDateOf(r.gameDate), opponent: "", isHome: r.isHome, season: r.season, minutes: r.minutes, points: r.points, rebounds: r.rebounds, assists: r.assists, threesMade: r.threesMade, steals: r.steals, blocks: r.blocks, turnovers: r.turnovers });
     byPlayer.set(r.nbaPlayerId, list);
   }
   console.log(`${rows.length} player-games from ${byPlayer.size} players.`);

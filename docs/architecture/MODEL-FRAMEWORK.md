@@ -87,6 +87,25 @@ The same spine for moneyline, spread and total:
    rest and injury priors against what actually happened, and fits the market
    weight per market.
 
+## Market coverage (NBA, NFL)
+
+| Market | Ingest | Model |
+|---|---|---|
+| Spread / total / moneyline, full game | bulk poll (`CurrentOddsLine`) | game model |
+| Alternate spreads and totals | per-event (`GameMarketLine`) | same distribution, any number |
+| Team totals (+ alternates) | per-event | each team's points distribution |
+| 1st/2nd half, every quarter: ML, spread, total (+ 1H/1Q team totals, alternates) | per-event | period slice of the game (fitted shares and spreads); ties are real (2-way refunds, 3-way draw) |
+| NBA props: PTS, REB, AST, 3PM, PRA, P+R, P+A, R+A, STL, BLK, STL+BLK, TO, double-double, triple-double (+ every alternate ladder) | per-event | projection; DD/TD from each component's chance of 10+ |
+| NFL props: pass/rush/rec yards, TDs, completions, attempts, INTs, receptions, rush+rec, anytime TD, longest rush/reception, kicking points, FGs, XPs, tackles+assists, solo tackles, sacks (+ alternates) | per-event | projection; kicking/defense columns are null when the box score lacks them, never 0 |
+
+Not yet: first/last TD scorer and first basket (they need play-by-play order),
+player quarter props, and same-game parlays (they need the joint simulation in
+the roadmap).
+
+All per-event fetches go through `odds/guardedEventFetch.ts`. A market key the
+provider rejects is isolated and skipped instead of failing the call, and it's
+listed in the poll log.
+
 ## UFC fights: `src/lib/ufc/fightModel.ts` (v2)
 
 The fight is replayed in date order, and features are read before each bout:

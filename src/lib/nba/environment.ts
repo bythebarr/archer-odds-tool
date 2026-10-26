@@ -27,6 +27,10 @@ const TOTAL_ELASTICITY: Record<NbaPropStat, number> = {
   pointsRebounds: 0.75,
   pointsAssists: 0.85,
   reboundsAssists: 0.5,
+  blocksSteals: 0.4,
+  turnovers: 0.6,
+  doubleDouble: 0,
+  tripleDouble: 0,
 };
 const TOTAL_CAP = 0.1;
 /** A baseline outside this range is a data gap (partial box scores), not an environment — ignored. */

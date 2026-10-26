@@ -5,7 +5,7 @@ import { summarizeNflProp, type NflLogPoint } from "./propsMath";
 import type { NflDefenseTable } from "./matchup";
 
 const stat = (k: Parameters<typeof NFL_PROP_STAT_BY_KEY.get>[0]) => NFL_PROP_STAT_BY_KEY.get(k)!;
-const zero = { passAttempts: 0, passCompletions: 0, passYards: 0, passTds: 0, interceptions: 0, rushAttempts: 0, rushYards: 0, rushTds: 0, receptions: 0, targets: 0, recYards: 0, recTds: 0 };
+const zero = { passAttempts: 0, passCompletions: 0, passYards: 0, passTds: 0, interceptions: 0, rushAttempts: 0, rushYards: 0, rushTds: 0, receptions: 0, targets: 0, recYards: 0, recTds: 0, rushLongest: null, recLongest: null, fieldGoalsMade: null, extraPointsMade: null, kickingPoints: null, tackles: null, soloTackles: null, sacks: null };
 const log = (o: Partial<NflLogPoint>, i = 0): NflLogPoint => ({ date: `2026-10-${String(25 - i).padStart(2, "0")}`, opponent: "BUF", isHome: true, season: 2026, ...zero, ...o });
 const wr = (yards: number[], tds: number[] = []) => yards.map((y, i) => log({ receptions: Math.round(y / 12), recYards: y, recTds: tds[i] ?? 0 }, i));
 

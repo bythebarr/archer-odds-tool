@@ -11,7 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { fetchEspnScoreboard, type EspnTeamResult } from "@/lib/teamLeague/espnScoreboard";
-import { findGameForResult } from "@/lib/teamLeague/results";
+import { findGameForResult, storePeriodScores } from "@/lib/teamLeague/results";
 import { teamIdForLeagueTeam } from "@/lib/teamLeague/schedule";
 import { NBA_LEAGUE } from "./league";
 import { fetchNbaBoxScore, type EspnNbaPlayerLine } from "./espnBoxScore";
@@ -116,6 +116,8 @@ export async function syncNbaGameLogs(datesEt: string[]): Promise<SyncNbaGameLog
       const label = `${result.awayName} @ ${result.homeName} (${etDateOf(result.startUtc)})`;
 
       let game = await findGameForResult(NBA_LEAGUE, result);
+      // Period scores ride along (cheap: the scoreboard is already in hand), so a history backfill fills halves and quarters too.
+      if (game) await storePeriodScores(game, result);
       if (game && (await prisma.nbaPlayerGameLog.count({ where: { gameId: game.id } })) > 0) continue;
       if (!game) {
         game = await createGameFromResult(result);
