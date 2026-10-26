@@ -103,10 +103,6 @@ export function groupNbaPropRows(rows: ParlayPropRow[]): GroupedNbaProps {
 }
 
 /**
- * Name key for matching a book's spelling to ESPN's: no accents, case, or
- * punctuation ("P.J. Washington" = "PJ Washington", "Jokić" = "Jokic").
- */
-/**
  * The Odds API's per-event props, reshaped into the flat Parlay rows the rest of
  * this file reads: TOA nests bookmaker → market → outcomes with one outcome per
  * side, keyed by player (`description`) and line (`point`). Pairing the two
@@ -165,6 +161,10 @@ const TOA_PROP_REGIONS = ["us", "us2"];
  */
 const TOA_LOOKAHEAD_HOURS = 14;
 
+/**
+ * Name key for matching a book's spelling to ESPN's: no accents, case, or
+ * punctuation ("P.J. Washington" = "PJ Washington", "Jokić" = "Jokic").
+ */
 export function normalizePlayerName(name: string): string {
   return name
     .normalize("NFD")

@@ -7,6 +7,7 @@ import { recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 import { lookbackDatesEt } from "@/lib/teamLeague/results";
 import { syncNflGameLogs, syncNflPositions } from "./gameLogs";
+import { pollAndStoreNflProps } from "./props";
 
 const NFL_GAME_LOGS_JOB = "sync-gamelogs-nfl";
 
@@ -19,6 +20,25 @@ export async function runNflGameLogSync() {
     return { ...logs, positions };
   } catch (error) {
     await recordPollLog(NFL_GAME_LOGS_JOB, `error: ${sanitizeErrorMessage(error instanceof Error ? error.message : String(error))}`);
+    throw error;
+  }
+}
+
+const NFL_PROPS_JOB = "poll-props-nfl";
+
+export async function runNflPropsPoll() {
+  try {
+    const summary = await pollAndStoreNflProps();
+    if (Object.keys(summary.unmappedMarketKeys).length) console.log(`${NFL_PROPS_JOB}: unmapped market keys`, summary.unmappedMarketKeys);
+    await recordPollLog(
+      NFL_PROPS_JOB,
+      summary.gamesConsidered === 0 ? "ok (no games)" : writeOutcomeStatus(summary.rowsFetched, summary.quotesStored, "prop quotes"),
+      summary.creditsUsed,
+      summary.creditsRemaining
+    );
+    return summary;
+  } catch (error) {
+    await recordPollLog(NFL_PROPS_JOB, `error: ${sanitizeErrorMessage(error instanceof Error ? error.message : String(error))}`);
     throw error;
   }
 }
