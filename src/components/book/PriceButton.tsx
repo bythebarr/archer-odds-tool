@@ -5,6 +5,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { buildSlipPickId, useSlip, type SlipSport } from "@/lib/slip/SlipContext";
 import { BOOK_COLORS, BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
 import type { EventPrice } from "@/lib/queries/lobby";
+import { EV_FLAG } from "@/lib/odds/marketValue";
 
 /**
  * One sportsbook-style price cell: the number on top, the best price below, the
@@ -44,12 +45,14 @@ export function PriceButton({
 
   const id = buildSlipPickId({ sport, matchId, marketType, side, point: price.point, bookKey: price.bookKey });
   const inSlip = isInSlip(id);
+  // A price that beats the rest of the market's fair price by more than the noise floor.
+  const ev = price.value && price.value.ev >= EV_FLAG ? price.value.ev : null;
 
   return (
     <button
       type="button"
       aria-pressed={inSlip}
-      aria-label={`${selectionLabel} ${formatAmerican(price.priceAmerican)} at ${price.bookName}`}
+      aria-label={`${selectionLabel} ${formatAmerican(price.priceAmerican)} at ${price.bookName}${ev !== null ? `, plus ${(ev * 100).toFixed(1)} percent expected value` : ""}`}
       onClick={() =>
         inSlip
           ? removePick(id)
@@ -70,9 +73,15 @@ export function PriceButton({
       className={`relative flex h-12 flex-col items-center justify-center rounded-lg px-1 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         inSlip
           ? "archr-pop bg-primary text-primary-foreground"
-          : "bg-muted text-foreground hover:bg-muted-foreground/15"
+          : `bg-muted text-foreground hover:bg-muted-foreground/15 ${ev !== null ? "ring-1 ring-inset ring-brand" : ""}`
       }`}
+      title={price.value ? `Fair ${formatAmerican(price.value.fairAmerican)} from ${price.value.booksUsed} other books` : undefined}
     >
+      {ev !== null && (
+        <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 rounded bg-brand px-1 font-mono text-[9px] font-bold leading-[14px] text-brand-foreground">
+          +{(ev * 100).toFixed(1)}%
+        </span>
+      )}
       {label && (
         <span className={`text-[11px] font-medium leading-tight ${inSlip ? "text-primary-foreground/85" : "text-muted-foreground"}`}>
           {label}

@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
-import { booksAtPoint, propConsensusPoint, summarizeProp, type GameLogPoint, type SlateProp } from "@/lib/nba/propsMath";
+import { booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type SlateProp } from "@/lib/nba/propsMath";
+import { fairPrice, valueOf } from "@/lib/odds/marketValue";
+import { decimalToAmerican } from "@/lib/odds/americanOdds";
+import { EvTag } from "@/components/EvTag";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
@@ -98,6 +101,8 @@ export function PlayerPropSheet({
     [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, point]
   );
   const books = useMemo(() => booksAtPoint(prop.quotes, point, side), [prop.quotes, point, side]);
+  const pairs = useMemo(() => twoSidedAt(prop.quotes, point), [prop.quotes, point]);
+  const fair = fairPrice(pairs);
   const bestBook = side === "over" ? summary?.over?.bookKey : summary?.under?.bookKey;
 
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -254,14 +259,23 @@ export function PlayerPropSheet({
           </section>
 
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Every book at {point}
-            </h3>
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Every book at {point}</h3>
+              {fair && (
+                <span className="text-[11px] text-muted-foreground" title="The market's no-vig price: every book's two sides with the margin removed, averaged">
+                  Fair{" "}
+                  <span className="font-mono font-semibold text-foreground">
+                    O {formatAmerican(Math.round(decimalToAmerican(1 / fair.probA)))} · U{" "}
+                    {formatAmerican(Math.round(decimalToAmerican(1 / (1 - fair.probA))))}
+                  </span>
+                </span>
+              )}
+            </div>
             {books.length === 0 ? (
               <p className="text-sm text-muted-foreground">No book prices this number.</p>
             ) : (
               <ul className="divide-y divide-border rounded-xl border border-border">
-                <li className="grid grid-cols-[1fr_4.5rem_4.5rem] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <li className="grid grid-cols-[1fr_5.75rem_5.75rem] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   <span>Book</span>
                   <span className="text-right">Over</span>
                   <span className="text-right">Under</span>
@@ -271,7 +285,7 @@ export function PlayerPropSheet({
                   return (
                     <li
                       key={b.bookKey}
-                      className={`grid grid-cols-[1fr_4.5rem_4.5rem] items-center px-3 py-2 ${best ? "bg-emerald-500/10" : ""} ${b.bettable ? "" : "opacity-60"}`}
+                      className={`grid grid-cols-[1fr_5.75rem_5.75rem] items-center px-3 py-2 ${best ? "bg-emerald-500/10" : ""} ${b.bettable ? "" : "opacity-60"}`}
                     >
                       <span className="flex min-w-0 items-center gap-2 text-sm">
                         <BookBadge bookKey={b.bookKey} bookName={b.bookName} size={20} />
@@ -286,8 +300,11 @@ export function PlayerPropSheet({
                       {(["over", "under"] as const).map((s) => (
                         <span
                           key={s}
-                          className={`text-right font-mono text-sm ${s === side ? "font-semibold text-foreground" : "text-muted-foreground"}`}
+                          className={`flex items-center justify-end gap-1 text-right font-mono text-sm ${s === side ? "font-semibold text-foreground" : "text-muted-foreground"}`}
                         >
+                          {s === side && b[s] !== null && b.bettable && (
+                            <EvTag value={valueOf(pairs, s === "over" ? "A" : "B", b[s]!, b.bookKey)} className="text-[9px]" />
+                          )}
                           {b[s] === null ? "—" : formatAmerican(b[s]!)}
                         </span>
                       ))}

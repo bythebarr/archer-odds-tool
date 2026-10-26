@@ -13,6 +13,7 @@ import { BookBadge } from "@/components/BookBadge";
 import { HitMeter, formatRate, rateTone } from "./HitMeter";
 import { PlayerPropSheet } from "./PlayerPropSheet";
 import { MatchupChip } from "./Matchup";
+import { EvTag } from "@/components/EvTag";
 import type { DefenseTable } from "@/lib/nba/matchup";
 import type { NbaPropStatDef } from "@/lib/nba/propStats";
 
@@ -21,6 +22,7 @@ const SORTS: { key: PropSort; label: string }[] = [
   { key: "hitRate", label: "Hit rate" },
   { key: "margin", label: "Avg vs line" },
   { key: "price", label: "Best price" },
+  { key: "value", label: "Value (EV)" },
 ];
 
 function startLabel(iso: string): string {
@@ -62,6 +64,7 @@ function PropCard({
 }) {
   const best = side === "over" ? summary.over : summary.under;
   const other = side === "over" ? summary.under : summary.over;
+  const value = side === "over" ? summary.value.over : summary.value.under;
   const statShort = stat.shortLabel;
   const rates = summary.hitRates;
   // The card's split strip: short and long form, the season, and head-to-head when they've met.
@@ -114,6 +117,7 @@ function PropCard({
         <div className="mt-3 flex items-center justify-between gap-2">
           <HitMeter recent={summary.recent} rate={rates.l10} />
           <div className="flex items-center gap-1.5">
+            <EvTag value={value} />
             {best ? (
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1 ring-1 ring-emerald-500/30">
                 <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{side === "over" ? "O" : "U"}</span>

@@ -11,6 +11,7 @@ import { EventListHeader, EventRow } from "@/components/book/EventRow";
 import { TopPropsStrip } from "@/components/book/TopPropsStrip";
 import { UfcCardSections, formatFightDate } from "@/components/book/UfcFightCard";
 import { NewHerePrimer } from "@/components/dashboard/NewHerePrimer";
+import { ValueBoard } from "@/components/book/ValueBoard";
 import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
 import { ArchrMark } from "@/components/brand/ArchrMark";
 
@@ -140,6 +141,7 @@ export default async function Home() {
       <LobbyHero dateLabel={formatEtDateLabel(today)} />
 
       <div className="mt-6 flex flex-col gap-8">
+        <ValueBoard today={today} />
         <LeagueSection sport="nba" today={today} />
         <NbaPropsSection today={today} />
         <LeagueSection sport="nfl" today={today} />

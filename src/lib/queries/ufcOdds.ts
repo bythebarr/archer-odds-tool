@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { consensusFairProbability, type DevigPair } from "@/lib/odds/devig";
 import { isBettableBook } from "@/lib/odds/bestPrice";
+import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
 
 /**
  * Read layer for UFC moneyline odds. Returns the best (bettor-friendliest)
@@ -16,6 +17,8 @@ import { isBettableBook } from "@/lib/odds/bestPrice";
 export interface UfcCornerBestLine {
   priceAmerican: number;
   bookKey: string;
+  /** This price against the rest of the market's fair price (see marketValue); null when too few books. */
+  value: PriceValue | null;
 }
 
 export interface UfcBoutOddsSummary {
@@ -40,7 +43,7 @@ function bestLine(rows: { priceAmerican: number; bookKey: string }[]): UfcCorner
   for (const r of rows) {
     if (!isBettableBook(r.bookKey)) continue;
     if (best === null || americanToDecimal(r.priceAmerican) > americanToDecimal(best.priceAmerican)) {
-      best = { priceAmerican: r.priceAmerican, bookKey: r.bookKey };
+      best = { priceAmerican: r.priceAmerican, bookKey: r.bookKey, value: null };
     }
   }
   return best;
@@ -65,10 +68,17 @@ export async function getBestLinesForBouts(
     byBout.set(r.boutId, list);
   }
   for (const [boutId, boutRows] of byBout) {
-    result.set(boutId, {
-      red: bestLine(boutRows.filter((r) => r.corner === "red")),
-      blue: bestLine(boutRows.filter((r) => r.corner === "blue")),
-    });
+    const red = bestLine(boutRows.filter((r) => r.corner === "red"));
+    const blue = bestLine(boutRows.filter((r) => r.corner === "blue"));
+    // Red as side A: each book's two corners, de-vigged against each other.
+    const byBook = new Map<string, { red?: number; blue?: number }>();
+    for (const r of boutRows) byBook.set(r.bookKey, { ...byBook.get(r.bookKey), [r.corner]: r.priceAmerican });
+    const pairs: TwoSidedQuote[] = [...byBook].flatMap(([bookKey, p]) =>
+      p.red !== undefined && p.blue !== undefined ? [{ bookKey, priceA: p.red, priceB: p.blue }] : []
+    );
+    if (red) red.value = valueOf(pairs, "A", red.priceAmerican, red.bookKey);
+    if (blue) blue.value = valueOf(pairs, "B", blue.priceAmerican, blue.bookKey);
+    result.set(boutId, { red, blue });
   }
   return result;
 }

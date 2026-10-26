@@ -35,7 +35,7 @@ const bout = {
 describe("pickFromBout (Archer EV selection)", () => {
   it("backs the higher-EV (value) side and reports its price/EV", () => {
     // red 52.5% @ +100 → EV +5%; blue 47.5% @ -110 → EV ~-9.3%. Red is the value side.
-    const play = pickFromBout(bout, 0.525, 0.475, { priceAmerican: 100, bookKey: "draftkings" }, { priceAmerican: -110, bookKey: "fanduel" });
+    const play = pickFromBout(bout, 0.525, 0.475, { priceAmerican: 100, bookKey: "draftkings", value: null }, { priceAmerican: -110, bookKey: "fanduel", value: null });
     expect(play).not.toBeNull();
     expect(play!.side).toBe("red");
     expect(play!.pickName).toBe("Red Fighter");
@@ -48,7 +48,7 @@ describe("pickFromBout (Archer EV selection)", () => {
 
   it("backs the underdog when the model rates it above the market", () => {
     // blue 52% @ +110 → EV ~+9.2% (the value); red 48% @ -140 → EV negative.
-    const play = pickFromBout(bout, 0.48, 0.52, { priceAmerican: -140, bookKey: "betmgm" }, { priceAmerican: 110, bookKey: "draftkings" });
+    const play = pickFromBout(bout, 0.48, 0.52, { priceAmerican: -140, bookKey: "betmgm", value: null }, { priceAmerican: 110, bookKey: "draftkings", value: null });
     expect(play!.side).toBe("blue");
     expect(play!.pickName).toBe("Blue Fighter");
     expect(play!.bestPrice).toBe(110);
@@ -57,27 +57,27 @@ describe("pickFromBout (Archer EV selection)", () => {
 
   it("posts any positive edge — no floor (a thin +1% still plays)", () => {
     // red 50.5% @ +100 → EV +1%. No floor now: it's an edge, it posts.
-    const play = pickFromBout(bout, 0.505, 0.495, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" });
+    const play = pickFromBout(bout, 0.505, 0.495, { priceAmerican: 100, bookKey: "dk", value: null }, { priceAmerican: -110, bookKey: "fd", value: null });
     expect(play!.side).toBe("red");
     expect(play!.archerEv).toBeCloseTo(0.01, 3);
   });
 
   it("posts big edges too — no ceiling (the record is the judge)", () => {
     // red 70% @ +100 → EV +40%. No ceiling now: it posts.
-    const play = pickFromBout(bout, 0.7, 0.3, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" });
+    const play = pickFromBout(bout, 0.7, 0.3, { priceAmerican: 100, bookKey: "dk", value: null }, { priceAmerican: -110, bookKey: "fd", value: null });
     expect(play!.side).toBe("red");
     expect(play!.archerEv).toBeCloseTo(0.4, 3);
   });
 
   it("still drops a non-positive edge (nothing to post)", () => {
     // red 45% @ -110 / blue 55% @ -140: best side's EV is <= 0.
-    expect(pickFromBout(bout, 0.45, 0.55, { priceAmerican: -110, bookKey: "dk" }, { priceAmerican: -140, bookKey: "fd" })).toBeNull();
+    expect(pickFromBout(bout, 0.45, 0.55, { priceAmerican: -110, bookKey: "dk", value: null }, { priceAmerican: -140, bookKey: "fd", value: null })).toBeNull();
   });
 
   it("prices the only side that has a line", () => {
-    const play = pickFromBout(bout, 0.525, 0.475, { priceAmerican: 100, bookKey: "dk" }, null);
+    const play = pickFromBout(bout, 0.525, 0.475, { priceAmerican: 100, bookKey: "dk", value: null }, null);
     expect(play!.side).toBe("red");
-    const play2 = pickFromBout(bout, 0.475, 0.525, null, { priceAmerican: 100, bookKey: "fd" });
+    const play2 = pickFromBout(bout, 0.475, 0.525, null, { priceAmerican: 100, bookKey: "fd", value: null });
     expect(play2!.side).toBe("blue");
   });
 
@@ -86,7 +86,7 @@ describe("pickFromBout (Archer EV selection)", () => {
   });
 
   it("returns null when the model couldn't price the bout (thin history)", () => {
-    expect(pickFromBout(bout, null, null, { priceAmerican: 100, bookKey: "dk" }, { priceAmerican: -110, bookKey: "fd" })).toBeNull();
+    expect(pickFromBout(bout, null, null, { priceAmerican: 100, bookKey: "dk", value: null }, { priceAmerican: -110, bookKey: "fd", value: null })).toBeNull();
   });
 });
 
