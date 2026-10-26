@@ -15,6 +15,7 @@ on:
         default: "fit:ufc-prior"
         options:
           - fit:ufc-prior
+          - backtest:nba-props
           - backtest:ufc
           - backtest:nfl
           - backtest:nfl:clv

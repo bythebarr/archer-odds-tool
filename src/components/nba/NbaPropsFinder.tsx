@@ -22,7 +22,8 @@ const SORTS: { key: PropSort; label: string }[] = [
   { key: "hitRate", label: "Hit rate" },
   { key: "margin", label: "Avg vs line" },
   { key: "price", label: "Best price" },
-  { key: "value", label: "Value (EV)" },
+  { key: "value", label: "Market value" },
+  { key: "model", label: "Model edge" },
 ];
 
 function startLabel(iso: string): string {
@@ -44,6 +45,27 @@ function chip(active: boolean): string {
     active ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"
   }`;
 }
+
+/** ARCHR's chance for the chosen side, volt when the model sees an edge at the best price. */
+function ModelChip({ summary, side }: { summary: PropSummary; side: PropDirection }) {
+  const m = summary.model;
+  if (!m) return null;
+  const p = side === "over" ? m.probOver : m.probUnder;
+  const ev = side === "over" ? m.evOver : m.evUnder;
+  const edge = ev !== null && ev >= MODEL_EV_FLAG;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${edge ? "bg-brand text-brand-foreground" : "bg-muted"}`}
+      title={ev === null ? undefined : `Model EV at the best price: ${(ev * 100).toFixed(1)}%`}
+    >
+      <span className={`text-[10px] font-semibold uppercase ${edge ? "" : "text-muted-foreground"}`}>Model</span>
+      <span className={`font-mono font-semibold ${edge ? "" : "text-foreground"}`}>{Math.round(p * 100)}%</span>
+    </span>
+  );
+}
+
+/** The model must clear a wider bar than the market read: it's one opinion against the whole market. */
+const MODEL_EV_FLAG = 0.03;
 
 function PropCard({
   summary,
@@ -67,9 +89,9 @@ function PropCard({
   const value = side === "over" ? summary.value.over : summary.value.under;
   const statShort = stat.shortLabel;
   const rates = summary.hitRates;
-  // The card's split strip: short and long form, the season, and head-to-head when they've met.
+  // The card's split strip: short form, the season, and head-to-head when they've met (every window is in the sheet).
   const cardSplits = summary.splits.filter(
-    (sp) => ["l3", "l5", "l15", "season"].includes(sp.key) || (sp.key === "h2h" && sp.rate.sampleSize > 0)
+    (sp) => ["l3", "l5", "season"].includes(sp.key) || (sp.key === "h2h" && sp.rate.sampleSize > 0)
   );
   return (
     <li>
@@ -108,8 +130,13 @@ function PropCard({
               {summary.point}
               <span className="ml-1 font-sans text-[10px] font-semibold text-muted-foreground">{statShort}</span>
             </p>
-            {summary.avgL10 !== null && (
-              <p className="mt-1 text-[11px] text-muted-foreground">avg {summary.avgL10.toFixed(1)} L10</p>
+            {summary.model ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                proj <span className="font-mono font-semibold text-foreground">{summary.model.projection.mean.toFixed(1)}</span>
+                {summary.avgL10 !== null && <> · avg {summary.avgL10.toFixed(1)}</>}
+              </p>
+            ) : (
+              summary.avgL10 !== null && <p className="mt-1 text-[11px] text-muted-foreground">avg {summary.avgL10.toFixed(1)} L10</p>
             )}
           </div>
         </div>
@@ -142,6 +169,7 @@ function PropCard({
             </span>
           ))}
           <span className="ml-auto flex items-center gap-2">
+            <ModelChip summary={summary} side={side} />
             <MatchupChip defense={defense} opponent={player.opponent?.abbreviation} stat={stat} side={side} group={player.positionGroup} />
             <span className="hidden sm:inline">
               {summary.booksAtLine} book{summary.booksAtLine === 1 ? "" : "s"}
@@ -220,6 +248,7 @@ export function NbaPropsFinder({
         season: slate.season,
         venue: player.venue,
         opponent: player.opponent?.abbreviation,
+        projection: { defense: slate.defense, opponent: player.opponent?.abbreviation ?? null, positionGroup: player.positionGroup },
       });
       if (s) out.push(s);
     }

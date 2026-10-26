@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
-import { booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type SlateProp } from "@/lib/nba/propsMath";
+import { booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
 import { fairPrice, valueOf } from "@/lib/odds/marketValue";
 import { decimalToAmerican } from "@/lib/odds/americanOdds";
 import { EvTag } from "@/components/EvTag";
@@ -48,6 +48,64 @@ function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+function Factor({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="font-mono text-sm font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+/** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
+function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; point: number; side: PropDirection; statShort: string }) {
+  const p = model.projection;
+  const ev = side === "over" ? model.evOver : model.evUnder;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const mult = (x: number) => `×${x.toFixed(2)}`;
+  return (
+    <section>
+      <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
+        <span className="brand-slash" aria-hidden />
+        ARCHR projection
+      </h3>
+      <div className="rounded-xl border border-border bg-card p-3.5">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="font-mono text-3xl font-semibold leading-none tracking-tight text-foreground">
+              {p.mean.toFixed(1)}
+              <span className="ml-1 font-sans text-xs font-semibold text-muted-foreground">{statShort}</span>
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">± {p.sd.toFixed(1)} typical swing</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">
+              at {point}: <span className="font-mono font-semibold text-foreground">O {pct(model.probOver)}</span> ·{" "}
+              <span className="font-mono font-semibold text-foreground">U {pct(model.probUnder)}</span>
+            </p>
+            {ev !== null && (
+              <p className={`mt-1 font-mono text-sm font-bold ${ev >= 0.03 ? "text-emerald-600 dark:text-brand" : ev < 0 ? "text-muted-foreground" : "text-foreground"}`}>
+                {ev >= 0 ? "+" : ""}
+                {(ev * 100).toFixed(1)}% model EV
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-4 gap-1.5">
+          <Factor label="Minutes" value={p.minutes.toFixed(1)} />
+          <Factor label={`${statShort}/min`} value={p.perMinute.toFixed(2)} />
+          <Factor label="Matchup" value={mult(p.matchupFactor)} />
+          <Factor label="Pace" value={mult(p.paceFactor)} />
+        </div>
+        <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
+          Expected minutes × per-minute production × matchup × pace, from {p.games}{" "}logged games. A model opinion: check it
+          against the market&apos;s fair price below before trusting an edge.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -97,8 +155,15 @@ export function PlayerPropSheet({
   const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? 0;
 
   const summary = useMemo(
-    () => summarizeProp(prop, logs, statDef, side, { season, venue: player.venue, opponent: player.opponent?.abbreviation }, point),
-    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, point]
+    () => summarizeProp(prop, logs, statDef, side, {
+          season,
+          venue: player.venue,
+          opponent: player.opponent?.abbreviation,
+          projection: { defense, opponent: player.opponent?.abbreviation ?? null, positionGroup: player.positionGroup },
+        },
+        point
+      ),
+    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, player.positionGroup, defense, point]
   );
   const books = useMemo(() => booksAtPoint(prop.quotes, point, side), [prop.quotes, point, side]);
   const pairs = useMemo(() => twoSidedAt(prop.quotes, point), [prop.quotes, point]);
@@ -220,6 +285,8 @@ export function PlayerPropSheet({
               </div>
             )}
           </section>
+
+          {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} />}
 
           {summary && (
             <section>
