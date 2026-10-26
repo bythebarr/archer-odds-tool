@@ -82,6 +82,8 @@ model Team {
   playerGameLogs PlayerGameLog[]
   nbaPlayers     NbaPlayer[]
   nbaGameLogs    NbaPlayerGameLog[]
+  nflPlayers     NflPlayer[]
+  nflGameLogs    NflPlayerGameLog[]
 
   @@index([mlbTeamId])
 }
@@ -234,6 +236,9 @@ model Game {
   nbaGameLogs            NbaPlayerGameLog[]
   nbaPropSnapshots       NbaPropSnapshot[]
   currentNbaPropLines    CurrentNbaPropLine[]
+  nflGameLogs            NflPlayerGameLog[]
+  nflPropSnapshots       NflPropSnapshot[]
+  currentNflPropLines    CurrentNflPropLine[]
 
   @@index([scheduledStartUtc])
   @@index([status])
@@ -475,6 +480,8 @@ model Sportsbook {
   ufcBoutOdds            UfcBoutOdds[]
   nbaPropSnapshots       NbaPropSnapshot[]
   currentNbaPropLines    CurrentNbaPropLine[]
+  nflPropSnapshots       NflPropSnapshot[]
+  currentNflPropLines    CurrentNflPropLine[]
 }
 
 /// Append-only fact table: every polled price, forever. Source of truth for
@@ -1318,5 +1325,105 @@ model CurrentNbaPropLine {
   polledAt      DateTime
 
   @@unique([gameId, nbaPlayerId, bookKey, stat, side, point])
+  @@index([gameId])
+}
+
+// ─── NFL player props ──────────────────────────────────────────────────────
+// The NBA props design, for football: ESPN box scores give every player's
+// per-game passing, rushing and receiving line; prop odds are stored as
+// snapshots plus a current-line table the finder reads. See src/lib/nfl/props.
+
+enum NflPropStat {
+  passYards
+  passTds
+  passCompletions
+  passAttempts
+  interceptions
+  rushYards
+  rushAttempts
+  receptions
+  recYards
+  rushRecYards
+  anytimeTd
+}
+
+model NflPlayer {
+  id            String  @id @default(cuid())
+  espnAthleteId String  @unique
+  fullName      String
+  /// ESPN's position (QB, RB, WR, TE, …) — defense-by-position groups on it.
+  position      String?
+  /// The team from the player's most recent box score.
+  teamId        String?
+  team          Team?   @relation(fields: [teamId], references: [id])
+
+  gameLogs         NflPlayerGameLog[]
+  propSnapshots    NflPropSnapshot[]
+  currentPropLines CurrentNflPropLine[]
+}
+
+model NflPlayerGameLog {
+  id              String    @id @default(cuid())
+  gameId          String
+  game            Game      @relation(fields: [gameId], references: [id])
+  gameDate        DateTime
+  season          Int
+  nflPlayerId     String
+  nflPlayer       NflPlayer @relation(fields: [nflPlayerId], references: [id])
+  teamId          String
+  team            Team      @relation(fields: [teamId], references: [id])
+  isHome          Boolean
+  /// Copied from the player when logged — what the opponent's by-position sums group on.
+  position        String?
+  passAttempts    Int       @default(0)
+  passCompletions Int       @default(0)
+  passYards       Int       @default(0)
+  passTds         Int       @default(0)
+  interceptions   Int       @default(0)
+  rushAttempts    Int       @default(0)
+  rushYards       Int       @default(0)
+  rushTds         Int       @default(0)
+  receptions      Int       @default(0)
+  targets         Int       @default(0)
+  recYards        Int       @default(0)
+  recTds          Int       @default(0)
+
+  @@unique([nflPlayerId, gameId])
+  @@index([nflPlayerId, gameDate])
+  @@index([gameId])
+}
+
+model NflPropSnapshot {
+  id            String      @id @default(cuid())
+  gameId        String
+  game          Game        @relation(fields: [gameId], references: [id])
+  nflPlayerId   String
+  nflPlayer     NflPlayer   @relation(fields: [nflPlayerId], references: [id])
+  bookKey       String
+  book          Sportsbook  @relation(fields: [bookKey], references: [key])
+  stat          NflPropStat
+  side          Side
+  point         Float
+  priceAmerican Int
+  polledAt      DateTime    @default(now())
+
+  @@index([gameId, nflPlayerId, stat, bookKey, polledAt])
+}
+
+model CurrentNflPropLine {
+  id            String      @id @default(cuid())
+  gameId        String
+  game          Game        @relation(fields: [gameId], references: [id])
+  nflPlayerId   String
+  nflPlayer     NflPlayer   @relation(fields: [nflPlayerId], references: [id])
+  bookKey       String
+  book          Sportsbook  @relation(fields: [bookKey], references: [key])
+  stat          NflPropStat
+  side          Side
+  point         Float
+  priceAmerican Int
+  polledAt      DateTime
+
+  @@unique([gameId, nflPlayerId, bookKey, stat, side, point])
   @@index([gameId])
 }
