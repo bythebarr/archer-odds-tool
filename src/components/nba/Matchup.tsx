@@ -61,16 +61,17 @@ function SplitTile({ split }: { split: PropSplit }) {
 
 /** Every window as a tile: recent form on one row, season and situational splits below. */
 export function SplitGrid({ splits }: { splits: PropSplit[] }) {
+  // Recent-form windows on the first row (NBA: L3–L20, NFL: L3/L5/L8), the rest below.
   const recent = splits.filter((s) => ["l3", "l5", "l10", "l15", "l20"].includes(s.key));
   const situational = splits.filter((s) => !["l3", "l5", "l10", "l15", "l20"].includes(s.key));
   return (
     <div className="space-y-1.5">
-      <div className="grid grid-cols-5 gap-1.5">
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${recent.length}, minmax(0, 1fr))` }}>
         {recent.map((s) => (
           <SplitTile key={s.key} split={s} />
         ))}
       </div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${situational.length}, minmax(0, 1fr))` }}>
         {situational.map((s) => (
           <SplitTile key={s.key} split={s} />
         ))}

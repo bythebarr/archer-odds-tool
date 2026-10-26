@@ -21,6 +21,25 @@ export interface NflLogPoint extends NflStatLine {
   season: number;
 }
 
+/** A log as a tuple: [date, opponent, isHome, season, ...the 12 stat columns in NflStatLine order]. */
+export type PackedNflLog = [string, string, 0 | 1, number, ...number[]];
+
+/** NflStatLine's columns in wire order. */
+export const NFL_LOG_COLUMNS: (keyof NflStatLine)[] = [
+  "passAttempts", "passCompletions", "passYards", "passTds", "interceptions",
+  "rushAttempts", "rushYards", "rushTds", "receptions", "targets", "recYards", "recTds",
+];
+
+export function packNflLog(l: NflLogPoint): PackedNflLog {
+  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, ...NFL_LOG_COLUMNS.map((c) => l[c])];
+}
+
+export function unpackNflLog(t: PackedNflLog): NflLogPoint {
+  const [date, opponent, isHome, season, ...rest] = t;
+  const line = Object.fromEntries(NFL_LOG_COLUMNS.map((c, i) => [c, rest[i] ?? 0])) as unknown as NflStatLine;
+  return { date, opponent, isHome: isHome === 1, season, ...line };
+}
+
 export interface NflSlateProp {
   playerId: string;
   stat: NflPropStat;

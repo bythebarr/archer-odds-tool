@@ -74,7 +74,7 @@ describe("summarizeNflProp", () => {
 
 describe("packNflLog / unpackNflLog", () => {
   it("round-trips", async () => {
-    const { packNflLog, unpackNflLog } = await import("@/lib/queries/nflProps");
+    const { packNflLog, unpackNflLog } = await import("./propsMath");
     const l = log({ passYards: 288, passTds: 2, rushYards: 14, opponent: "KC", isHome: false, season: 2025 });
     expect(unpackNflLog(packNflLog(l))).toEqual(l);
   });

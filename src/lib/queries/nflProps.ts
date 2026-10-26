@@ -9,9 +9,10 @@ import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { espnTeamLogoUrl } from "@/lib/logos";
 import { NFL_LEAGUE } from "@/lib/nfl/league";
-import { nflPositionGroup, type NflStatLine } from "@/lib/nfl/propStats";
+import { NFL_PROP_STAT_BY_KEY, nflPositionGroup, type NflStatLine } from "@/lib/nfl/propStats";
 import type { NflDefenseTable, NflPosition } from "@/lib/nfl/matchup";
-import type { NflLogPoint, NflSlateProp } from "@/lib/nfl/propsMath";
+import { NFL_LOG_COLUMNS as COLUMNS, packNflLog, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
+import { EV_FLAG } from "@/lib/odds/marketValue";
 import type { SlateGame, SlateTeam } from "./nbaProps";
 
 export interface NflSlatePlayer {
@@ -23,24 +24,6 @@ export interface NflSlatePlayer {
   team: SlateTeam | null;
   opponent: SlateTeam | null;
   venue: "home" | "away" | null;
-}
-
-/** A log as a tuple: [date, opponent, isHome, season, ...the 12 stat columns in NflStatLine order]. */
-export type PackedNflLog = [string, string, 0 | 1, number, ...number[]];
-
-const COLUMNS: (keyof NflStatLine)[] = [
-  "passAttempts", "passCompletions", "passYards", "passTds", "interceptions",
-  "rushAttempts", "rushYards", "rushTds", "receptions", "targets", "recYards", "recTds",
-];
-
-export function packNflLog(l: NflLogPoint): PackedNflLog {
-  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, ...COLUMNS.map((c) => l[c])];
-}
-
-export function unpackNflLog(t: PackedNflLog): NflLogPoint {
-  const [date, opponent, isHome, season, ...rest] = t;
-  const line = Object.fromEntries(COLUMNS.map((c, i) => [c, rest[i] ?? 0])) as unknown as NflStatLine;
-  return { date, opponent, isHome: isHome === 1, season, ...line };
 }
 
 export interface NflPropsSlate {
@@ -196,3 +179,53 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
 
   return { season, games: slateGames, players, logs, props: [...props.values()], defense, lastPolledAt: lastPolledAt?.toISOString() ?? null };
 });
+
+/** The week's NFL props whose best price beats the market's fair price, biggest edge first, one per player — for the lobby's value board. */
+export async function getValueNflProps(limit = 6) {
+  const slate = await getNflPropsSlate();
+  const out: {
+    key: string;
+    label: string;
+    sub: string;
+    href: string;
+    price: number;
+    bookKey: string;
+    ev: number;
+    fairAmerican: number;
+    booksUsed: number;
+    playerId: string;
+  }[] = [];
+  for (const prop of slate.props) {
+    const player = slate.players[prop.playerId];
+    const stat = NFL_PROP_STAT_BY_KEY.get(prop.stat);
+    if (!player || !stat) continue;
+    const logs = (slate.logs[prop.playerId] ?? []).map(unpackNflLog);
+    for (const side of ["over", "under"] as const) {
+      const s = summarizeNflProp(prop, logs, stat, side, {
+        season: slate.season,
+        venue: player.venue,
+        opponent: player.opponent?.abbreviation ?? null,
+        projection: { defense: slate.defense, opponent: player.opponent?.abbreviation ?? null, position: player.position },
+      });
+      const best = s && (side === "over" ? s.over : s.under);
+      const value = s && (side === "over" ? s.value.over : s.value.under);
+      if (!s || !best || !value || value.ev < EV_FLAG) continue;
+      const what = stat.shape === "anytime" ? `${side === "over" ? "TD" : "No TD"}` : `${side === "over" ? "O" : "U"} ${s.point} ${stat.shortLabel}`;
+      out.push({
+        key: `nfl:${prop.playerId}:${prop.stat}:${side}`,
+        label: `${player.name} ${what}`,
+        sub: `${player.venue === "home" ? "vs" : "@"} ${player.opponent?.abbreviation ?? ""} · ${s.l5.hits}/${s.l5.sampleSize} L5`,
+        href: `/nfl/${player.gameId}?tab=props`,
+        price: best.priceAmerican,
+        bookKey: best.bookKey,
+        ev: value.ev,
+        fairAmerican: value.fairAmerican,
+        booksUsed: value.booksUsed,
+        playerId: prop.playerId,
+      });
+    }
+  }
+  out.sort((a, b) => b.ev - a.ev);
+  const seen = new Set<string>();
+  return out.filter((p) => !seen.has(p.playerId) && seen.add(p.playerId)).slice(0, limit);
+}
