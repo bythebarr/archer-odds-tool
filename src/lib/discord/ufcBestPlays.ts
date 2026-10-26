@@ -175,6 +175,9 @@ export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard |
       const matchup = await getUfcMatchup(bout.id);
       if (!matchup) return null;
       const proj = computeUfcWinProbability(matchup, now);
+      // A debut's number rests on a pro-record prior: shown on the bout page as
+      // a starting point, never posted as a play.
+      if (proj.confidence === "low") return null;
       const line = lines.get(bout.id);
       // fighterA = red corner, fighterB = blue corner (see getUfcMatchup).
       const play = pickFromBout(

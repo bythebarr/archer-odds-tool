@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
 import { espnTeamLogoUrl, nbaHeadshotUrl } from "@/lib/logos";
@@ -5,6 +6,7 @@ import { NBA_LEAGUE } from "@/lib/nba/league";
 import { packLog, summarizeProp, type GameLogPoint, type PackedLog, type SlateProp } from "@/lib/nba/propsMath";
 import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import type { DefenseTable, TeamDefenseRow } from "@/lib/nba/matchup";
+import { EV_FLAG } from "@/lib/odds/marketValue";
 import { positionGroup, type PositionGroup } from "@/lib/nba/positionGroups";
 import type { NbaPropStat } from "@/generated/prisma/client";
 
@@ -146,7 +148,8 @@ function team(t: { abbreviation: string; name: string } | null): SlateTeam | nul
   return t ? { abbreviation: t.abbreviation, name: t.name, logoUrl: espnTeamLogoUrl("nba", t.abbreviation) } : null;
 }
 
-export async function getNbaPropsSlate(dateEt: string): Promise<NbaPropsSlate> {
+/** Request-cached: the lobby's top-props strip and value board read the same slate. */
+export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSlate> => {
   const { gte, lt } = etDayBoundsUtc(dateEt);
   const season = NBA_LEAGUE.seasonOf(gte);
   const empty: NbaPropsSlate = {
@@ -248,6 +251,56 @@ export async function getNbaPropsSlate(dateEt: string): Promise<NbaPropsSlate> {
     defense,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
+});
+
+export interface ValueProp extends TopProp {
+  /** Expected value of the best price against the rest of the market (see marketValue). */
+  ev: number;
+  fairAmerican: number;
+  booksUsed: number;
+}
+
+/**
+ * The day's props whose best price beats the market's fair price by more than
+ * the noise floor, biggest edge first, one per player — the props half of the
+ * lobby's value board.
+ */
+export async function getValueNbaProps(dateEt: string, limit = 6): Promise<ValueProp[]> {
+  const slate = await getNbaPropsSlate(dateEt);
+  const out: ValueProp[] = [];
+  for (const prop of slate.props) {
+    const player = slate.players[prop.playerId];
+    const stat = NBA_PROP_STAT_BY_KEY.get(prop.stat);
+    if (!player || !stat) continue;
+    for (const side of ["over", "under"] as const) {
+      const s = summarizeProp(prop, slate.logs[prop.playerId] ?? [], stat, side, { season: slate.season, venue: player.venue, opponent: player.opponent?.abbreviation });
+      const best = s && (side === "over" ? s.over : s.under);
+      const value = s && (side === "over" ? s.value.over : s.value.under);
+      if (!s || !best || !value || value.ev < EV_FLAG) continue;
+      out.push({
+        gameId: player.gameId,
+        playerId: player.id,
+        playerName: player.name,
+        headshotUrl: player.headshotUrl,
+        matchup: player.opponent ? `${player.venue === "home" ? "vs" : "@"} ${player.opponent.abbreviation}` : "",
+        stat: prop.stat,
+        statShort: stat.shortLabel,
+        side,
+        point: s.point,
+        hits: s.hitRates.l10.hits,
+        sample: s.hitRates.l10.sampleSize,
+        priceAmerican: best.priceAmerican,
+        bookKey: best.bookKey,
+        bookName: best.bookName,
+        ev: value.ev,
+        fairAmerican: value.fairAmerican,
+        booksUsed: value.booksUsed,
+      });
+    }
+  }
+  out.sort((a, b) => b.ev - a.ev);
+  const seen = new Set<string>();
+  return out.filter((c) => !seen.has(c.playerId) && seen.add(c.playerId)).slice(0, limit);
 }
 
 export interface TopProp {

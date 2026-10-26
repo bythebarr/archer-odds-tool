@@ -86,18 +86,62 @@ function layoffConfidence(monthsSinceLastFight: number): number {
 }
 
 /**
- * Decay-weighted, confidence-shrunk [0,1] strength score for one fighter.
- * Null only if the fighter has no completed-bout history at all.
+ * The pro-record prior: where a fighter starts before their UFC fights say
+ * anything. Regional records are inflated — prospects are matched to win, and
+ * UFC signees average roughly an 80% win rate — so the prior reads a record
+ * against that baseline, not against 50%, and a debut carries a discount for
+ * the jump in competition. Tunable; fit from historical debuts with
+ * `npm run fit:ufc-prior` (scripts/fit-ufc-prior.ts).
  */
-export function computeFighterStrength(history: UfcFighterHistory, now: Date = new Date()): number | null {
-  if (history.fights.length === 0) return null;
+export interface PriorParams {
+  /** Win rate of a typical UFC signee's pre-UFC record — the record the prior is read against. */
+  signeeBaseline: number;
+  /** Pseudo-fights at that baseline, shrinking a short record's win rate toward it. */
+  pseudoFights: number;
+  /** Strength per unit of win rate above/below the baseline. */
+  scale: number;
+  /** Strength subtracted for the step up from regional to UFC competition. */
+  debutDiscount: number;
+}
+
+export const DEFAULT_PRIOR: PriorParams = { signeeBaseline: 0.8, pseudoFights: 5, scale: 0.6, debutDiscount: 0.03 };
+
+const PRIOR_MIN = 0.3;
+const PRIOR_MAX = 0.7;
+
+/**
+ * [0,1] starting strength from the pre-UFC record. With no record on file it's
+ * a plain 0.5 — nothing known, nothing claimed (and no debut discount, since
+ * whether the record is short or just missing can't be told apart).
+ */
+export function priorStrength(history: UfcFighterHistory, params: PriorParams = DEFAULT_PRIOR): number {
+  const rec = history.preUfcRecord;
+  if (!rec) return 0.5;
+  const n = rec.wins + rec.losses;
+  const winRate = (rec.wins + params.signeeBaseline * params.pseudoFights) / (n + params.pseudoFights);
+  return clamp(0.5 - params.debutDiscount + params.scale * (winRate - params.signeeBaseline), PRIOR_MIN, PRIOR_MAX);
+}
+
+/**
+ * Decay-weighted, confidence-shrunk [0,1] strength score for one fighter. A
+ * short UFC sample shrinks toward the fighter's own pro-record prior (not a
+ * coin flip), and a debutant IS their prior — so every fighter with a record on
+ * file gets a projection. Null only with no UFC fights and no usable record.
+ */
+export function computeFighterStrength(
+  history: UfcFighterHistory,
+  now: Date = new Date(),
+  prior: PriorParams = DEFAULT_PRIOR
+): number | null {
+  const anchor = priorStrength(history, prior);
+  if (history.fights.length === 0) return history.preUfcRecord ? anchor : null;
 
   const weighted = history.fights.map(
     (fight): [number, number] => [fightScore(fight), decayWeight(monthsBetween(fight.eventDate, now))]
   );
   const rawStrength = weightedAverage(weighted)!;
 
-  const sampleShrunk = shrinkToward(rawStrength, 0.5, sampleConfidence(history.fights.length, FULL_CONFIDENCE_FIGHTS));
+  const sampleShrunk = shrinkToward(rawStrength, anchor, sampleConfidence(history.fights.length, FULL_CONFIDENCE_FIGHTS));
 
   const monthsSinceLastFight = monthsBetween(history.fights[0].eventDate, now);
   return shrinkToward(sampleShrunk, 0.5, layoffConfidence(monthsSinceLastFight));

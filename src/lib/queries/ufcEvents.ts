@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { getBestLinesForBouts } from "./ufcOdds";
+import { getBestLinesForBouts, type UfcCornerBestLine } from "./ufcOdds";
 import { identifyMainEventBoutId } from "@/lib/ufc/mainEvent";
 
 /**
@@ -34,7 +34,7 @@ export interface UfcBoutCorner {
   /** Best available moneyline (American) across allowlisted books — attached for upcoming lists only; null when no odds ingested yet. */
   moneyline: number | null;
   /** The same price with the book that has it, for a tappable price button. */
-  best: { priceAmerican: number; bookKey: string } | null;
+  best: UfcCornerBestLine | null;
 }
 
 export interface UfcBoutSummary {

@@ -8,6 +8,9 @@
  */
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { bestBettableLine, consensusPoint, isBettableBook } from "@/lib/odds/bestPrice";
+import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
+import { calculateEv } from "@/lib/odds/devig";
+import { probOver, projectProp, type ProjectionContext, type PropProjection } from "./projection";
 import { tallyPropHits, type PropDirection, type PropHitRateResult } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import type { NbaPropStatDef, NbaStatLine } from "./propStats";
@@ -51,7 +54,7 @@ export interface SlateProp {
   quotes: PropQuote[];
 }
 
-export type PropSort = "hitRate" | "margin" | "price";
+export type PropSort = "hitRate" | "margin" | "price" | "value" | "model";
 
 /** Every window a prop's history is cut by, in display order. */
 export type SplitKey = "l3" | "l5" | "l10" | "l15" | "l20" | "season" | "lastSeason" | "venue" | "h2h";
@@ -70,6 +73,18 @@ export interface PropContext {
   venue: "home" | "away" | null;
   /** Tonight's opponent abbreviation, for the head-to-head split. */
   opponent?: string | null;
+  /** When given, the prop is also projected (see projection.ts). */
+  projection?: ProjectionContext;
+}
+
+/** ARCHR's model read on a prop at its line. */
+export interface PropModel {
+  projection: PropProjection;
+  probOver: number;
+  probUnder: number;
+  /** EV of the best price on each side if the model's probability is right. */
+  evOver: number | null;
+  evUnder: number | null;
 }
 
 export interface PropSummary {
@@ -90,6 +105,24 @@ export interface PropSummary {
   avgL10: number | null;
   avgMinutesL5: number | null;
   avgMinutesSeason: number | null;
+  /** The best price on each side against the rest of the market's fair price (see marketValue). */
+  value: { over: PriceValue | null; under: PriceValue | null };
+  /** ARCHR's projection and model EV; null without a projection context or enough games. */
+  model: PropModel | null;
+}
+
+/** Every book that prices both sides of `point`, as Over (A) / Under (B) pairs. */
+export function twoSidedAt(quotes: PropQuote[], point: number): TwoSidedQuote[] {
+  const byBook = new Map<string, { over?: number; under?: number }>();
+  for (const q of quotes) {
+    if (q.point !== point) continue;
+    const row = byBook.get(q.bookKey) ?? {};
+    row[q.side] = q.priceAmerican;
+    byBook.set(q.bookKey, row);
+  }
+  return [...byBook].flatMap(([bookKey, r]) =>
+    r.over !== undefined && r.under !== undefined ? [{ bookKey, priceA: r.over, priceB: r.under }] : []
+  );
 }
 
 function average(values: number[]): number | null {
@@ -146,13 +179,34 @@ export function summarizeProp(
     avg: average(w.values),
   }));
 
+  const over = bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point);
+  const under = bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point);
+  const pairs = twoSidedAt(prop.quotes, point);
+  const projection = context.projection ? projectProp(logs, stat, context.projection) : null;
+  const pOver = projection ? probOver(projection, point) : null;
+  const model: PropModel | null =
+    projection && pOver !== null
+      ? {
+          projection,
+          probOver: pOver,
+          probUnder: 1 - pOver,
+          evOver: over ? calculateEv(pOver, over.priceAmerican) : null,
+          evUnder: under ? calculateEv(1 - pOver, under.priceAmerican) : null,
+        }
+      : null;
+
   return {
     playerId: prop.playerId,
     stat: prop.stat,
     point,
     points: [...new Set(prop.quotes.map((q) => q.point))].sort((a, b) => a - b),
-    over: bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point),
-    under: bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point),
+    over,
+    under,
+    value: {
+      over: over ? valueOf(pairs, "A", over.priceAmerican, over.bookKey) : null,
+      under: under ? valueOf(pairs, "B", under.priceAmerican, under.bookKey) : null,
+    },
+    model,
     booksAtLine: new Set(prop.quotes.filter((q) => q.point === point && isBettableBook(q.bookKey)).map((q) => q.bookKey))
       .size,
     hitRates: Object.fromEntries(splits.map((sp) => [sp.key, sp.rate])) as Record<SplitKey, PropHitRateResult>,
@@ -180,6 +234,9 @@ export function sortSummaries(summaries: PropSummary[], sort: PropSort, side: Pr
     hitRate: (s) => (s.hitRates.l10.hitRate ?? -1) + Math.min(s.hitRates.l10.sampleSize, 10) / 1000,
     margin: (s) => marginOf(s, side),
     price,
+    // Unrated props (too few books) sort below every rated one.
+    value: (s) => (side === "over" ? s.value.over : s.value.under)?.ev ?? -Infinity,
+    model: (s) => (side === "over" ? s.model?.evOver : s.model?.evUnder) ?? -Infinity,
   };
   return summaries.sort((a, b) => key[sort](b) - key[sort](a));
 }

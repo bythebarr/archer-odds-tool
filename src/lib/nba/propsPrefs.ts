@@ -15,7 +15,7 @@ function resolvePrefs(params: Record<string, string | undefined>, cookie: string
   }
   const stat = [params.stat, saved.stat].find((s) => NBA_PROP_STAT_BY_KEY.has(s as NbaPropStat)) as NbaPropStat | undefined;
   const side = [params.side, saved.side].find((s) => s === "over" || s === "under") as PropsPrefs["side"] | undefined;
-  const sort = [params.sort, saved.sort].find((s) => s === "hitRate" || s === "margin" || s === "price") as
+  const sort = [params.sort, saved.sort].find((s) => s === "hitRate" || s === "margin" || s === "price" || s === "value" || s === "model") as
     | PropsPrefs["sort"]
     | undefined;
   return { stat: stat ?? DEFAULT_PREFS.stat, side: side ?? DEFAULT_PREFS.side, sort: sort ?? DEFAULT_PREFS.sort };

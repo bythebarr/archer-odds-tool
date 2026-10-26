@@ -76,6 +76,7 @@ function fighterHistory(fights: UfcFightRecord[], overrides: Partial<UfcFighterH
     fighterSlug: "fighter-a",
     fighterName: "Fighter A",
     fights,
+    preUfcRecord: null,
     ...overrides,
   };
 }
@@ -213,5 +214,37 @@ describe("computeUfcWinProbability", () => {
     const result = computeUfcWinProbability(matchup({ fighterA: dominant, fighterB: overmatched }), NOW);
     expect(result.fighterAProb!).toBeCloseTo(0.8, 10);
     expect(result.fighterBProb!).toBeCloseTo(0.2, 10);
+  });
+});
+
+describe("pro-record prior", () => {
+  const debut = (wins: number, losses: number, id = "a"): UfcFighterHistory =>
+    fighterHistory([], { fighterId: id, fighterSlug: id, fighterName: id, preUfcRecord: { wins, losses } });
+  const matchup = (a: UfcFighterHistory, b: UfcFighterHistory): UfcMatchup => ({ fighterA: a, fighterB: b, crossBouts: [] });
+
+  it("projects a debut-vs-debut fight from the pro records, favoring the better one", () => {
+    const p = computeUfcWinProbability(matchup(debut(15, 0), debut(8, 4, "b")), NOW);
+    expect(p.fighterAProb).not.toBeNull();
+    expect(p.fighterAProb!).toBeGreaterThan(0.5);
+    expect(p.confidence).toBe("low");
+  });
+
+  it("still declines when neither side has UFC fights or a record", () => {
+    const blank = fighterHistory([], { preUfcRecord: null });
+    expect(computeUfcWinProbability(matchup(blank, { ...blank, fighterId: "b" }), NOW).fighterAProb).toBeNull();
+  });
+
+  it("shrinks a short UFC run toward the fighter's own prior, not a coin flip", () => {
+    const oneWin = steadyWins(1);
+    const strong = fighterHistory(oneWin, { preUfcRecord: { wins: 18, losses: 0 } });
+    const weak = fighterHistory(oneWin, { fighterId: "b", preUfcRecord: { wins: 6, losses: 5 } });
+    const p = computeUfcWinProbability(matchup(strong, weak), NOW);
+    expect(p.fighterAProb!).toBeGreaterThan(0.5);
+    expect(p.confidence).toBe("medium");
+  });
+
+  it("is high confidence once both have several UFC fights", () => {
+    const p = computeUfcWinProbability(matchup(fighterHistory(steadyWins(6)), fighterHistory(steadyWins(5, "x"), { fighterId: "b" })), NOW);
+    expect(p.confidence).toBe("high");
   });
 });

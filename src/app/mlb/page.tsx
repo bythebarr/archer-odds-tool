@@ -6,7 +6,7 @@ import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns, type ExpectedRuns } from "@/lib/archer/expectedRuns";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { MlbBoard } from "@/components/MlbBoard";
-import { PageShell, PageHeader } from "@/components/PageShell";
+import { SportPage } from "@/components/book/SportPage";
 import { DateNav } from "@/components/DateNav";
 import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
@@ -56,11 +56,7 @@ export default async function MlbPage({
   }
 
   return (
-    <PageShell width="3xl">
-      <PageHeader
-        title="MLB"
-        description="The day's games at their best price — tap in to shop every book. Or flip to All lines to scan the whole slate."
-      />
+    <SportPage sport="mlb" width="3xl" description="The day's games at their best price — tap in to shop every book. Or flip to All lines to scan the whole slate.">
 
       <DateNav basePath="/mlb" date={date} />
 
@@ -86,6 +82,6 @@ export default async function MlbPage({
           />
         </div>
       )}
-    </PageShell>
+    </SportPage>
   );
 }

@@ -58,7 +58,7 @@ function fighter(id: string, winMethod: string, wins: number, lossMethod: string
   let month = 1;
   for (let i = 0; i < wins; i++) fights.push(rec(id, "win", winMethod, month++));
   for (let i = 0; i < losses; i++) fights.push(rec(id, "loss", lossMethod, month++));
-  return { fighterId: id, fighterSlug: id, fighterName: id, fights };
+  return { fighterId: id, fighterSlug: id, fighterName: id, fights, preUfcRecord: null };
 }
 
 function rec(
@@ -88,7 +88,7 @@ function rec(
 function roundOneFinisher(id: string): UfcFighterHistory {
   const fights: UfcFightRecord[] = [];
   for (let i = 0; i < 8; i++) fights.push(rec(id, "win", "KO/TKO", i + 1, 1)); // all R1 finishes
-  return { fighterId: id, fighterSlug: id, fighterName: id, fights };
+  return { fighterId: id, fighterSlug: id, fighterName: id, fights, preUfcRecord: null };
 }
 
 describe("computeFinishProjection", () => {

@@ -1,5 +1,5 @@
 import type { UfcMatchup } from "@/lib/queries/ufcMatchup";
-import { computeFighterStrength } from "./fighterStrength";
+import { computeFighterStrength, DEFAULT_PRIOR, type PriorParams } from "./fighterStrength";
 import { computeCommonOpponentAdjustment, type CommonOpponentAdjustment } from "./commonOpponents";
 import { computeStyleAdjustment, computeStyleProfile, type StyleAdjustment } from "./styleMatchup";
 
@@ -45,7 +45,21 @@ function logistic(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
 
+/**
+ * How much the projection rests on UFC evidence: "high" when both fighters
+ * have several UFC fights, "low" when either is debuting (the number is then
+ * mostly the pro-record prior), "medium" between.
+ */
+export type ProjectionConfidence = "high" | "medium" | "low";
+
+export function projectionConfidence(fightsA: number, fightsB: number): ProjectionConfidence {
+  const fewest = Math.min(fightsA, fightsB);
+  if (fewest === 0) return "low";
+  return fewest < 4 ? "medium" : "high";
+}
+
 export interface UfcMatchupProjection {
+  confidence: ProjectionConfidence;
   fighterAProb: number | null;
   fighterBProb: number | null;
   fighterAStrength: number | null;
@@ -61,9 +75,14 @@ export interface UfcMatchupProjection {
  * way ArcherWinProbability already returns homeStrength/awayStrength
  * alongside the final probability.
  */
-export function computeUfcWinProbability(matchup: UfcMatchup, now: Date = new Date()): UfcMatchupProjection {
-  const fighterAStrength = computeFighterStrength(matchup.fighterA, now);
-  const fighterBStrength = computeFighterStrength(matchup.fighterB, now);
+export function computeUfcWinProbability(
+  matchup: UfcMatchup,
+  now: Date = new Date(),
+  prior: PriorParams = DEFAULT_PRIOR
+): UfcMatchupProjection {
+  const fighterAStrength = computeFighterStrength(matchup.fighterA, now, prior);
+  const fighterBStrength = computeFighterStrength(matchup.fighterB, now, prior);
+  const confidence = projectionConfidence(matchup.fighterA.fights.length, matchup.fighterB.fights.length);
 
   const commonOpponentAdjustment = computeCommonOpponentAdjustment(
     matchup.fighterA,
@@ -79,6 +98,7 @@ export function computeUfcWinProbability(matchup: UfcMatchup, now: Date = new Da
 
   if (fighterAStrength === null || fighterBStrength === null) {
     return {
+      confidence,
       fighterAProb: null,
       fighterBProb: null,
       fighterAStrength,
@@ -100,6 +120,7 @@ export function computeUfcWinProbability(matchup: UfcMatchup, now: Date = new Da
   const fighterAProb = Math.min(Math.max(rawProb, PROB_FLOOR), PROB_CEILING);
 
   return {
+    confidence,
     fighterAProb,
     fighterBProb: 1 - fighterAProb,
     fighterAStrength,

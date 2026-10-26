@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
-import { booksAtPoint, propConsensusPoint, summarizeProp, type GameLogPoint, type SlateProp } from "@/lib/nba/propsMath";
+import { booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
+import { fairPrice, valueOf } from "@/lib/odds/marketValue";
+import { decimalToAmerican } from "@/lib/odds/americanOdds";
+import { EvTag } from "@/components/EvTag";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
@@ -45,6 +48,64 @@ function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+function Factor({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="font-mono text-sm font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+/** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
+function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; point: number; side: PropDirection; statShort: string }) {
+  const p = model.projection;
+  const ev = side === "over" ? model.evOver : model.evUnder;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const mult = (x: number) => `×${x.toFixed(2)}`;
+  return (
+    <section>
+      <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
+        <span className="brand-slash" aria-hidden />
+        ARCHR projection
+      </h3>
+      <div className="rounded-xl border border-border bg-card p-3.5">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="font-mono text-3xl font-semibold leading-none tracking-tight text-foreground">
+              {p.mean.toFixed(1)}
+              <span className="ml-1 font-sans text-xs font-semibold text-muted-foreground">{statShort}</span>
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">± {p.sd.toFixed(1)} typical swing</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">
+              at {point}: <span className="font-mono font-semibold text-foreground">O {pct(model.probOver)}</span> ·{" "}
+              <span className="font-mono font-semibold text-foreground">U {pct(model.probUnder)}</span>
+            </p>
+            {ev !== null && (
+              <p className={`mt-1 font-mono text-sm font-bold ${ev >= 0.03 ? "text-emerald-600 dark:text-brand" : ev < 0 ? "text-muted-foreground" : "text-foreground"}`}>
+                {ev >= 0 ? "+" : ""}
+                {(ev * 100).toFixed(1)}% model EV
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-4 gap-1.5">
+          <Factor label="Minutes" value={p.minutes.toFixed(1)} />
+          <Factor label={`${statShort}/min`} value={p.perMinute.toFixed(2)} />
+          <Factor label="Matchup" value={mult(p.matchupFactor)} />
+          <Factor label="Pace" value={mult(p.paceFactor)} />
+        </div>
+        <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
+          Expected minutes × per-minute production × matchup × pace, from {p.games}{" "}logged games. A model opinion: check it
+          against the market&apos;s fair price below before trusting an edge.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -94,10 +155,19 @@ export function PlayerPropSheet({
   const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? 0;
 
   const summary = useMemo(
-    () => summarizeProp(prop, logs, statDef, side, { season, venue: player.venue, opponent: player.opponent?.abbreviation }, point),
-    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, point]
+    () => summarizeProp(prop, logs, statDef, side, {
+          season,
+          venue: player.venue,
+          opponent: player.opponent?.abbreviation,
+          projection: { defense, opponent: player.opponent?.abbreviation ?? null, positionGroup: player.positionGroup },
+        },
+        point
+      ),
+    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, player.positionGroup, defense, point]
   );
   const books = useMemo(() => booksAtPoint(prop.quotes, point, side), [prop.quotes, point, side]);
+  const pairs = useMemo(() => twoSidedAt(prop.quotes, point), [prop.quotes, point]);
+  const fair = fairPrice(pairs);
   const bestBook = side === "over" ? summary?.over?.bookKey : summary?.under?.bookKey;
 
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -216,6 +286,8 @@ export function PlayerPropSheet({
             )}
           </section>
 
+          {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} />}
+
           {summary && (
             <section>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hit rates</h3>
@@ -254,14 +326,23 @@ export function PlayerPropSheet({
           </section>
 
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Every book at {point}
-            </h3>
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Every book at {point}</h3>
+              {fair && (
+                <span className="text-[11px] text-muted-foreground" title="The market's no-vig price: every book's two sides with the margin removed, averaged">
+                  Fair{" "}
+                  <span className="font-mono font-semibold text-foreground">
+                    O {formatAmerican(Math.round(decimalToAmerican(1 / fair.probA)))} · U{" "}
+                    {formatAmerican(Math.round(decimalToAmerican(1 / (1 - fair.probA))))}
+                  </span>
+                </span>
+              )}
+            </div>
             {books.length === 0 ? (
               <p className="text-sm text-muted-foreground">No book prices this number.</p>
             ) : (
               <ul className="divide-y divide-border rounded-xl border border-border">
-                <li className="grid grid-cols-[1fr_4.5rem_4.5rem] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <li className="grid grid-cols-[1fr_5.75rem_5.75rem] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   <span>Book</span>
                   <span className="text-right">Over</span>
                   <span className="text-right">Under</span>
@@ -271,7 +352,7 @@ export function PlayerPropSheet({
                   return (
                     <li
                       key={b.bookKey}
-                      className={`grid grid-cols-[1fr_4.5rem_4.5rem] items-center px-3 py-2 ${best ? "bg-emerald-500/10" : ""} ${b.bettable ? "" : "opacity-60"}`}
+                      className={`grid grid-cols-[1fr_5.75rem_5.75rem] items-center px-3 py-2 ${best ? "bg-emerald-500/10" : ""} ${b.bettable ? "" : "opacity-60"}`}
                     >
                       <span className="flex min-w-0 items-center gap-2 text-sm">
                         <BookBadge bookKey={b.bookKey} bookName={b.bookName} size={20} />
@@ -286,8 +367,11 @@ export function PlayerPropSheet({
                       {(["over", "under"] as const).map((s) => (
                         <span
                           key={s}
-                          className={`text-right font-mono text-sm ${s === side ? "font-semibold text-foreground" : "text-muted-foreground"}`}
+                          className={`flex items-center justify-end gap-1 text-right font-mono text-sm ${s === side ? "font-semibold text-foreground" : "text-muted-foreground"}`}
                         >
+                          {s === side && b[s] !== null && b.bettable && (
+                            <EvTag value={valueOf(pairs, s === "over" ? "A" : "B", b[s]!, b.bookKey)} className="text-[9px]" />
+                          )}
                           {b[s] === null ? "—" : formatAmerican(b[s]!)}
                         </span>
                       ))}

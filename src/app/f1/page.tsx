@@ -4,7 +4,7 @@ import { getF1Season, type F1DriverStanding, type F1ConstructorStanding, type F1
 import { refreshF1OnView } from "@/lib/f1/refreshOnView";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FlagBadge } from "@/components/FlagBadge";
-import { PageShell, PageHeader } from "@/components/PageShell";
+import { SportPage } from "@/components/book/SportPage";
 import { RaceCountdown } from "@/components/f1/RaceCountdown";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -152,24 +152,19 @@ export default async function F1Page() {
 
   if (!season || season.driverStandings.length === 0) {
     return (
-      <PageShell width="2xl">
-        <PageHeader title="F1" description="Formula 1 championship, the latest podium, and the next Grand Prix." />
+      <SportPage sport="f1" description="Formula 1 championship, the latest podium, and the next Grand Prix.">
         <EmptyState title="No F1 season data yet" arrow="miss" supportContext="f1-empty">
           Standings and results build from the season&apos;s completed races. If it&apos;s mid-season and this is
           still empty, the results feed may be catching up.
         </EmptyState>
-      </PageShell>
+      </SportPage>
     );
   }
 
   const { nextRace, latestRace, driverStandings, constructorStandings, roundsCompleted } = season;
 
   return (
-    <PageShell width="2xl">
-      <PageHeader
-        title="F1"
-        description={`${season.season} season · ${roundsCompleted} rounds run · free, results-driven (no odds).`}
-      />
+    <SportPage sport="f1" description={`${season.season} season · ${roundsCompleted} rounds run · free, results-driven (no odds).`}>
 
       {/* Next race hero — or a between-seasons note when the calendar is dry. */}
       {nextRace ? (
@@ -256,6 +251,6 @@ export default async function F1Page() {
       <p className="mt-8 text-center text-xs text-muted-foreground">
         Results via the free Jolpica/Ergast F1 API · no betting markets, research only.
       </p>
-    </PageShell>
+    </SportPage>
   );
 }
