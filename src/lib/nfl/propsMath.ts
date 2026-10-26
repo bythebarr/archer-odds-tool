@@ -8,12 +8,12 @@
 import type { NflPropStat } from "@/generated/prisma/client";
 import { bestBettableLine, isBettableBook } from "@/lib/odds/bestPrice";
 import { valueOf, type PriceValue } from "@/lib/odds/marketValue";
-import { calculateEv } from "@/lib/odds/devig";
 import { tallyPropHits, type PropDirection, type PropHitRateResult } from "@/lib/props/tally";
 import { propConsensusPoint, twoSidedAt, type PropQuote, type PropSplit } from "@/lib/nba/propsMath";
 import type { NflPropStatDef, NflStatLine } from "./propStats";
-import { nflProbOver, projectNflProp, type NflProjection, type NflProjectionContext } from "./projection";
-import { injuryShrink, type InjuryLevel } from "@/lib/injuries/status";
+import { NFL_CALIBRATION_SHRINK, nflRawOver, projectNflProp, type NflProjection, type NflProjectionContext } from "./projection";
+import type { InjuryLevel } from "@/lib/injuries/status";
+import { modelWithheld, priceProp, type PricedProp } from "@/lib/propModel/price";
 
 export interface NflLogPoint extends NflStatLine {
   date: string;
@@ -49,12 +49,9 @@ export interface NflSlateProp {
 
 export type NflPropSort = "hitRate" | "value" | "model" | "price";
 
-export interface NflPropModel {
+/** ARCHR's read on a prop at its line: the projection, blended with the market (see propModel/price). */
+export interface NflPropModel extends PricedProp {
   projection: NflProjection;
-  probOver: number;
-  probUnder: number;
-  evOver: number | null;
-  evUnder: number | null;
 }
 
 export interface NflPropSummary {
@@ -88,6 +85,8 @@ export function summarizeNflProp(
     projection: NflProjectionContext;
     /** The player's own injury tag: out/doubtful withholds the model, questionable widens it. */
     injury?: InjuryLevel;
+    /** The model's weight against the market for this stat (see propModel/market). */
+    modelWeight?: number;
   },
   atPoint?: number
 ): NflPropSummary | null {
@@ -113,9 +112,7 @@ export function summarizeNflProp(
   const over = bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point);
   const under = bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point);
   const pairs = twoSidedAt(prop.quotes, point);
-  const sitting = ctx.injury === "out" || ctx.injury === "doubtful";
-  const projection = sitting ? null : projectNflProp(logs, stat, ctx.projection);
-  const pOver = projection ? 0.5 + (nflProbOver(projection, stat, point) - 0.5) * injuryShrink(ctx.injury ?? null) : null;
+  const projection = modelWithheld(ctx.injury) ? null : projectNflProp(logs, stat, { season: ctx.season, ...ctx.projection });
 
   return {
     playerId: prop.playerId,
@@ -133,16 +130,20 @@ export function summarizeNflProp(
       over: over ? valueOf(pairs, "A", over.priceAmerican, over.bookKey) : null,
       under: under ? valueOf(pairs, "B", under.priceAmerican, under.bookKey) : null,
     },
-    model:
-      projection && pOver !== null
-        ? {
-            projection,
-            probOver: pOver,
-            probUnder: 1 - pOver,
-            evOver: over ? calculateEv(pOver, over.priceAmerican) : null,
-            evUnder: under ? calculateEv(1 - pOver, under.priceAmerican) : null,
-          }
-        : null,
+    model: projection
+      ? {
+          projection,
+          ...priceProp({
+            rawProbOver: nflRawOver(projection, point),
+            calibrationShrink: NFL_CALIBRATION_SHRINK,
+            injury: ctx.injury,
+            pairs,
+            modelWeight: ctx.modelWeight,
+            overPrice: over?.priceAmerican ?? null,
+            underPrice: under?.priceAmerican ?? null,
+          }),
+        }
+      : null,
   };
 }
 

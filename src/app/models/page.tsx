@@ -17,7 +17,8 @@ const VERDICT: Record<string, { label: string; tone: string; note: string }> = {
 };
 
 const SPORT_ORDER = ["nba", "nfl", "ufc", "mlb", "tennis", "soccer", "f1"];
-const sportOf = (model: string) => model.split(/[-:]/)[0];
+/** "nba-props:points" and "market-blend:nba:points" both file under NBA. */
+const sportOf = (model: string) => (model.startsWith("market-blend:") ? model.split(":")[1] : model.split(/[-:]/)[0]);
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 /** Predicted vs actual per probability bucket: the bars should sit on the diagonal. */
@@ -90,6 +91,20 @@ function Card({ c }: { c: ModelCard }) {
           </p>
         </div>
       </div>
+      {c.market && (
+        <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
+          Against real closing prices: log loss model <span className="font-mono text-foreground">{c.market.modelLogLoss.toFixed(3)}</span>, market{" "}
+          <span className="font-mono text-foreground">{c.market.marketLogLoss.toFixed(3)}</span>, blend{" "}
+          <span className="font-mono text-foreground">{c.market.blendLogLoss.toFixed(3)}</span> — the model earns{" "}
+          <span className="font-semibold text-foreground">{Math.round(c.market.modelWeight * 100)}%</span> of the vote.
+        </p>
+      )}
+      {c.noLinesMae !== null && c.projectionMae !== null && (
+        <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
+          Game lines layer: error {c.projectionMae.toFixed(2)} with it vs {c.noLinesMae.toFixed(2)} without
+          {c.projectionMae <= c.noLinesMae ? " — it helps." : " — not helping yet; due for a refit."}
+        </p>
+      )}
       <Calibration buckets={c.buckets} />
     </div>
   );

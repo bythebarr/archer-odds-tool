@@ -73,19 +73,22 @@ The common recipe, used by books and serious modelers alike:
 | Ingredient | NBA props | NFL props | Status |
 |---|---|---|---|
 | Minutes / volume base | minutes × per-minute rate | per-game rate (no snap/route share) | NBA ✅, NFL partial |
-| Recency weighting + shrink | yes | half-life 4, 4 prior games | ✅ |
+| Recency weighting + shrink | yes, this season vs last shown | half-life 4, 4 prior games, same | ✅ |
 | Matchup by position | G/F/C, ±12% | QB/RB/WR/TE, ±15% | ✅ |
 | Pace | ±5% | — | NBA ✅ |
-| Game lines (spread/total) | — | — | ❌ biggest gap |
+| Game lines (spread/total) | total vs team normal; blowout minutes | implied points; pass/run script | ✅ priors, backtested |
 | Injuries: player's own status | out/doubtful withheld, Q shrunk | same | ✅ (this PR) |
 | Teammates out (WOWY) | minutes + per-minute blend | per-game blend | ✅ (this PR), coarse |
 | Rest / back-to-back | — | — | ❌ |
 | Full distribution, median-aware | negative binomial, push-aware | normal (yards), NB, Poisson | ✅ |
 | Calibration | shrink 0.8, backtested | backtested | ✅ |
-| Market anchor (sharp prop price) | value engine only | value engine only | ❌ not blended |
+| Market anchor (sharp prop price) | blended, weight fitted per stat | same | ✅ |
 | CLV tracking | — | — | ❌ |
 
 ## 4. Roadmap (ranked)
+
+Items 1 and 2 shipped on the shared framework (MODEL-FRAMEWORK.md).
+
 
 1. **Blend the model with the market.** The cheapest big win. Final
    probability = a weighted mix (on the log-odds scale) of our projection and

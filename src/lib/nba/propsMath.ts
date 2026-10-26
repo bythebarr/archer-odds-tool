@@ -9,9 +9,9 @@
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { bestBettableLine, consensusPoint, isBettableBook } from "@/lib/odds/bestPrice";
 import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
-import { calculateEv } from "@/lib/odds/devig";
-import { probOver, projectProp, type ProjectionContext, type PropProjection } from "./projection";
-import { injuryShrink, type InjuryLevel } from "@/lib/injuries/status";
+import { CALIBRATION_SHRINK, projectProp, rawOver, type ProjectionContext, type PropProjection } from "./projection";
+import type { InjuryLevel } from "@/lib/injuries/status";
+import { modelWithheld, priceProp, type PricedProp } from "@/lib/propModel/price";
 import { tallyPropHits, type PropDirection, type PropHitRateResult } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import type { NbaPropStatDef, NbaStatLine } from "./propStats";
@@ -78,16 +78,13 @@ export interface PropContext {
   projection?: ProjectionContext;
   /** The player's own injury tag: out/doubtful withholds the model, questionable widens it. */
   injury?: InjuryLevel;
+  /** The model's weight against the market for this stat (see propModel/market). */
+  modelWeight?: number;
 }
 
-/** ARCHR's model read on a prop at its line. */
-export interface PropModel {
+/** ARCHR's read on a prop at its line: the projection, blended with the market (see propModel/price). */
+export interface PropModel extends PricedProp {
   projection: PropProjection;
-  probOver: number;
-  probUnder: number;
-  /** EV of the best price on each side if the model's probability is right. */
-  evOver: number | null;
-  evUnder: number | null;
 }
 
 export interface PropSummary {
@@ -185,20 +182,22 @@ export function summarizeProp(
   const over = bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point);
   const under = bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point);
   const pairs = twoSidedAt(prop.quotes, point);
-  const sitting = context.injury === "out" || context.injury === "doubtful";
-  const projection = context.projection && !sitting ? projectProp(logs, stat, context.projection) : null;
-  const shrinkBy = injuryShrink(context.injury ?? null);
-  const pOver = projection ? 0.5 + (probOver(projection, point) - 0.5) * shrinkBy : null;
-  const model: PropModel | null =
-    projection && pOver !== null
-      ? {
-          projection,
-          probOver: pOver,
-          probUnder: 1 - pOver,
-          evOver: over ? calculateEv(pOver, over.priceAmerican) : null,
-          evUnder: under ? calculateEv(1 - pOver, under.priceAmerican) : null,
-        }
-      : null;
+  const projection =
+    context.projection && !modelWithheld(context.injury) ? projectProp(logs, stat, { season: context.season, ...context.projection }) : null;
+  const model: PropModel | null = projection
+    ? {
+        projection,
+        ...priceProp({
+          rawProbOver: rawOver(projection, point),
+          calibrationShrink: CALIBRATION_SHRINK,
+          injury: context.injury,
+          pairs,
+          modelWeight: context.modelWeight,
+          overPrice: over?.priceAmerican ?? null,
+          underPrice: under?.priceAmerican ?? null,
+        }),
+      }
+    : null;
 
   return {
     playerId: prop.playerId,

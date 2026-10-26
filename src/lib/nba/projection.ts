@@ -12,13 +12,20 @@
  * - Matchup: what the opponent allows to the player's position (or team-wide)
  *   against the league, half-regressed and capped — defensive effects are real
  *   but noisy.
- * - Pace: the opponent's combined points against the league, the same way.
+ * - Game environment (nba/environment.ts): tonight's total against his
+ *   team's normal scales production, and the spread trims starters' minutes
+ *   in likely blowouts. With no lines posted, the opponent's pace (combined
+ *   points against the league) stands in for the total.
+ *
+ * Early in a season most of the weight sits on last season's games — the
+ * projection reports that split (seasonMix) so the panel can say so.
  *
  * The chance of clearing a line comes from a negative binomial with the
  * projection as its mean and the player's own game-to-game spread in this stat
  * (never tighter than Poisson): counts, over-dispersed, right-skewed — how box
  * score stats actually fall. A final logit shrink (CALIBRATION_SHRINK) pulls
- * probabilities toward 50% until `npm run backtest:nba-props` says otherwise.
+ * probabilities toward 50% until `npm run backtest:nba-props` says otherwise;
+ * the props pipeline (propModel/price.ts) then blends that with the market.
  */
 import type { GameLogPoint } from "./propsMath";
 import type { NbaPropStatDef } from "./propStats";
@@ -26,6 +33,12 @@ import type { DefenseTable } from "./matchup";
 import { statMatchup, paceRank } from "./matchup";
 import type { PositionGroup } from "./positionGroups";
 import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
+import { countCdf, rawProbOver, shrinkLogit, type StatDistribution } from "@/lib/propModel/distribution";
+import { NO_LINES, type GameLines } from "@/lib/propModel/environment";
+import { seasonMix, type SeasonMix } from "@/lib/propModel/seasonMix";
+import { nbaEnvironment, type NbaEnvironment } from "./environment";
+
+export { countCdf };
 
 const MINUTES_WINDOW = 20;
 const MINUTES_HALF_LIFE = 5;
@@ -58,6 +71,11 @@ export interface PropProjection {
   games: number;
   /** When rotation teammates are out: the games without them that were blended in. */
   absence: { names: string[]; games: number; minutes: number; perMinute: number } | null;
+  /** Game total and blowout adjustments from tonight's lines (neutral without them). */
+  env: NbaEnvironment;
+  /** How much of the per-minute rate rests on this season vs last. */
+  seasons: SeasonMix;
+  distribution: StatDistribution;
 }
 
 /** The full-history estimate counts as this many games against the without-teammate games. */
@@ -86,6 +104,14 @@ export interface ProjectionContext {
   positionGroup: PositionGroup | null;
   /** Rotation teammates out tonight (see injuries/absence). */
   absences?: Absence[];
+  /** Tonight's consensus spread and total. */
+  lines?: GameLines;
+  /** His side tonight; null when unknown (the spread can't be read). */
+  isHome?: boolean | null;
+  /** His team's average combined score — the environment his logs were played in. */
+  baselineTotal?: number | null;
+  /** Tonight's season, for the season mix (default: his latest game's). */
+  season?: number;
 }
 
 /** Projects one stat for one player from his logs (most recent first). Null with fewer than MIN_GAMES. */
@@ -96,20 +122,21 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
   const minutes = weighted(played.slice(0, MINUTES_WINDOW).map((l) => l.minutes), MINUTES_HALF_LIFE).mean;
 
   const recent = played.slice(0, RATE_WINDOW);
-  const recentRate = (() => {
-    let s = 0;
-    let m = 0;
-    recent.forEach((l, i) => {
-      const w = Math.pow(0.5, i / RATE_HALF_LIFE);
-      s += stat.value(l) * w;
-      m += l.minutes * w;
-    });
-    return m ? s / m : 0;
-  })();
+  const decay = recent.map((l, i) => Math.pow(0.5, i / RATE_HALF_LIFE) * l.minutes);
+  const decayMinutes = decay.reduce((a, b) => a + b, 0);
+  const recentRate = decayMinutes ? recent.reduce((a, l, i) => a + (stat.value(l) * decay[i]) / l.minutes, 0) / decayMinutes : 0;
   const totalMinutes = played.reduce((a, l) => a + l.minutes, 0);
   const longRate = totalMinutes ? played.reduce((a, l) => a + stat.value(l), 0) / totalMinutes : 0;
   const recentWeight = Math.min(recent.length, RATE_WINDOW);
-  let perMinute = (recentRate * recentWeight + longRate * RATE_PRIOR_GAMES) / (recentWeight + RATE_PRIOR_GAMES);
+  const recentShare = recentWeight / (recentWeight + RATE_PRIOR_GAMES);
+  let perMinute = recentRate * recentShare + longRate * (1 - recentShare);
+  // Each game's pull on the rate: its share of the recency-weighted part plus its share of the long baseline.
+  const gameWeights = played.map(
+    (l, i) =>
+      (i < recent.length && decayMinutes ? (recentShare * decay[i]) / decayMinutes : 0) +
+      (totalMinutes ? ((1 - recentShare) * l.minutes) / totalMinutes : 0)
+  );
+  const seasons = seasonMix(played, gameWeights, ctx.season ?? played[0].season, stat.value);
   let minutesAdj = minutes;
 
   // Teammates out tonight: lean on the games he's already played without them.
@@ -125,18 +152,24 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     absence = { names: ctx.absences!.map((a) => a.name), games: without.length, minutes: wMinutes, perMinute: wRate };
   }
 
+  const env = nbaEnvironment(ctx.lines ?? NO_LINES, ctx.isHome ?? null, stat.key, minutesAdj, ctx.baselineTotal ?? null);
+  minutesAdj *= env.minutesFactor;
+
   let matchupFactor = 1;
   let paceFactor = 1;
   if (ctx.opponent) {
     const m = statMatchup(ctx.defense, ctx.opponent, stat, ctx.positionGroup);
     if (m && m.leagueAvg > 0) matchupFactor = factor(m.perGame / m.leagueAvg, MATCHUP_REGRESSION, MATCHUP_CAP);
-    const p = paceRank(ctx.defense, ctx.opponent);
-    const all = Object.values(ctx.defense.teams).map((t) => t.combinedPoints);
-    const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0;
-    if (p && avg > 0) paceFactor = factor(p.combinedPoints / avg, PACE_REGRESSION, PACE_CAP);
+    // The posted total already prices both teams' pace; the opponent's pace only stands in without it.
+    if (env.total === null) {
+      const p = paceRank(ctx.defense, ctx.opponent);
+      const all = Object.values(ctx.defense.teams).map((t) => t.combinedPoints);
+      const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0;
+      if (p && avg > 0) paceFactor = factor(p.combinedPoints / avg, PACE_REGRESSION, PACE_CAP);
+    }
   }
 
-  const mean = minutesAdj * perMinute * matchupFactor * paceFactor;
+  const mean = minutesAdj * perMinute * matchupFactor * paceFactor * env.totalFactor;
 
   // Spread: the player's own game-to-game variance in this stat (last 20),
   // scaled to tonight's mean, never below Poisson.
@@ -146,49 +179,24 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
   const dispersion = sMean > 0 ? sVar / sMean : 1; // variance per unit of mean
   const variance = Math.max(mean, mean * Math.max(dispersion, 1));
 
-  return { mean, sd: Math.sqrt(variance), minutes: minutesAdj, perMinute, matchupFactor, paceFactor, games: played.length, absence };
+  return {
+    mean,
+    sd: Math.sqrt(variance),
+    minutes: minutesAdj,
+    perMinute,
+    matchupFactor,
+    paceFactor,
+    games: played.length,
+    absence,
+    env,
+    seasons,
+    distribution: { kind: "count", mean, variance },
+  };
 }
 
-/** log Γ via Lanczos — for the negative binomial's coefficients. */
-function logGamma(z: number): number {
-  const g = 7;
-  const c = [
-    0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
-    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
-  ];
-  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - logGamma(1 - z);
-  z -= 1;
-  let x = c[0];
-  for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
-  const t = z + g + 0.5;
-  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
-}
-
-/** P(X ≤ k) for a count with this mean and variance: negative binomial, or Poisson when variance ≤ mean. */
-export function countCdf(k: number, mean: number, variance: number): number {
-  if (k < 0) return 0;
-  if (mean <= 0) return 1;
-  let cdf = 0;
-  if (variance <= mean * 1.0001) {
-    let term = Math.exp(-mean);
-    for (let i = 0; i <= k; i++) {
-      if (i > 0) term *= mean / i;
-      cdf += term;
-    }
-    return Math.min(cdf, 1);
-  }
-  const r = (mean * mean) / (variance - mean);
-  const p = r / (r + mean);
-  for (let i = 0; i <= k; i++) {
-    cdf += Math.exp(logGamma(i + r) - logGamma(r) - logGamma(i + 1) + r * Math.log(p) + i * Math.log(1 - p));
-  }
-  return Math.min(cdf, 1);
-}
-
-function shrink(p: number): number {
-  const clamped = Math.min(Math.max(p, 1e-4), 1 - 1e-4);
-  const logit = Math.log(clamped / (1 - clamped)) * CALIBRATION_SHRINK;
-  return 1 / (1 + Math.exp(-logit));
+/** The model's uncalibrated chance the Over cashes at `point` (pushes refund). */
+export function rawOver(proj: PropProjection, point: number): number {
+  return rawProbOver(proj.distribution, point);
 }
 
 /**
@@ -196,10 +204,5 @@ function shrink(p: number): number {
  * on a whole number a push is neither side). Calibrated by CALIBRATION_SHRINK.
  */
 export function probOver(proj: PropProjection, point: number): number {
-  const variance = proj.sd * proj.sd;
-  const atOrBelow = countCdf(Math.floor(point), proj.mean, variance);
-  const push = Number.isInteger(point) ? atOrBelow - countCdf(point - 1, proj.mean, variance) : 0;
-  const over = 1 - atOrBelow;
-  // A push refunds: the side's chance is over / (1 − push).
-  return shrink(over / Math.max(1 - push, 1e-6));
+  return shrinkLogit(rawOver(proj, point), CALIBRATION_SHRINK);
 }

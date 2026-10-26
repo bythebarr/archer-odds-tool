@@ -19,6 +19,7 @@ on:
           - fit:ufc-prior
           - backtest:nba-props
           - backtest:nfl-props
+          - backtest:props-market
           - backtest:ufc
           - backtest:nfl
           - backtest:nfl:clv
@@ -53,7 +54,7 @@ jobs:
           if [ "${{ inputs.script }}" = "report:all" ]; then
             # Every model's report card; one failing doesn't stop the rest.
             status=0
-            for s in backtest:all backtest:nba-props backtest:nfl-props; do
+            for s in backtest:all backtest:nba-props backtest:nfl-props backtest:props-market; do
               echo "::group::$s"; npm run --silent "$s" || status=1; echo "::endgroup::"
             done
             exit $status

@@ -6,6 +6,8 @@
  *          shrunk toward the player's two-season per-game rate (4 games' weight)
  *          × matchup (what the opponent allows to his position vs the league,
  *            half-regressed, capped ±15%)
+ *          × game environment (nfl/environment.ts: the team's implied points
+ *            vs its normal, and the spread's pass/run script)
  *
  * Probabilities by the stat's shape:
  *   - yards: normal around the mean with the player's own game-to-game spread
@@ -13,10 +15,14 @@
  *   - counts: negative binomial (over-dispersed, never tighter than Poisson)
  *   - anytime TD: Poisson chance of at least one
  * then pulled toward 50% by CALIBRATION_SHRINK until `npm run backtest:nfl-props`
- * refits it.
+ * refits it; the props pipeline (propModel/price.ts) then blends that with the
+ * market.
  */
 import type { NflPropStatDef } from "./propStats";
-import { countCdf } from "@/lib/nba/projection";
+import { rawProbOver, shrinkLogit, type StatDistribution } from "@/lib/propModel/distribution";
+import { NO_LINES, type GameLines } from "@/lib/propModel/environment";
+import { seasonMix, type SeasonMix } from "@/lib/propModel/seasonMix";
+import { nflEnvironment, type NflEnvironment } from "./environment";
 import { nflStatMatchup, type NflDefenseTable, type NflPosition } from "./matchup";
 import type { NflLogPoint } from "./propsMath";
 import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
@@ -39,6 +45,11 @@ export interface NflProjection {
   games: number;
   /** When key teammates are out: the games without them that were blended in. */
   absence: { names: string[]; games: number; perGame: number } | null;
+  /** Implied points and script from this week's lines (neutral without them). */
+  env: NflEnvironment;
+  /** How much of the projection rests on this season vs last. */
+  seasons: SeasonMix;
+  distribution: StatDistribution;
 }
 
 /** The full-history estimate counts as this many games against the without-teammate games. */
@@ -50,22 +61,30 @@ export interface NflProjectionContext {
   position: NflPosition | null;
   /** Key teammates out this week (see injuries/absence). */
   absences?: Absence[];
+  /** This week's consensus spread and total. */
+  lines?: GameLines;
+  isHome?: boolean | null;
+  /** What his team usually scores — the environment his logs were played in. */
+  baselinePoints?: number | null;
+  season?: number;
 }
 
 export function projectNflProp(logs: NflLogPoint[], stat: NflPropStatDef, ctx: NflProjectionContext): NflProjection | null {
   if (logs.length < MIN_NFL_GAMES) return null;
   const values = logs.map((l) => stat.value(l));
-  let s = 0;
-  let w = 0;
-  values.slice(0, WINDOW).forEach((v, i) => {
-    const wi = Math.pow(0.5, i / HALF_LIFE);
-    s += v * wi;
-    w += wi;
-  });
-  const recent = s / w;
+  const decay = values.slice(0, WINDOW).map((_, i) => Math.pow(0.5, i / HALF_LIFE));
+  const decaySum = decay.reduce((a, b) => a + b, 0);
+  const recent = decay.reduce((a, wi, i) => a + values[i] * wi, 0) / decaySum;
   const long = values.reduce((a, b) => a + b, 0) / values.length;
   const n = Math.min(values.length, WINDOW);
-  let base = (recent * n + long * PRIOR_GAMES) / (n + PRIOR_GAMES);
+  const recentShare = n / (n + PRIOR_GAMES);
+  let base = recent * recentShare + long * (1 - recentShare);
+  const seasons = seasonMix(
+    logs,
+    values.map((_, i) => (i < decay.length ? (recentShare * decay[i]) / decaySum : 0) + (1 - recentShare) / values.length),
+    ctx.season ?? logs[0].season,
+    stat.value
+  );
 
   // Key teammates out: lean on the games he's already played without them.
   let absence: NflProjection["absence"] = null;
@@ -85,7 +104,8 @@ export function projectNflProp(logs: NflLogPoint[], stat: NflPropStatDef, ctx: N
       matchupFactor = Math.min(1 + MATCHUP_CAP, Math.max(1 - MATCHUP_CAP, f));
     }
   }
-  const mean = base * matchupFactor;
+  const env = nflEnvironment(ctx.lines ?? NO_LINES, ctx.isHome ?? null, stat.key, ctx.baselinePoints ?? null);
+  const mean = base * matchupFactor * env.volumeFactor * env.scriptFactor;
 
   const sample = values.slice(0, WINDOW);
   const sMean = sample.reduce((a, b) => a + b, 0) / sample.length;
@@ -97,34 +117,21 @@ export function projectNflProp(logs: NflLogPoint[], stat: NflPropStatDef, ctx: N
     const dispersion = sMean > 0 ? Math.max(sVar / sMean, 1) : 1;
     sd = Math.sqrt(Math.max(mean, mean * dispersion));
   }
-  return { mean, sd, matchupFactor, games: logs.length, absence };
+  const distribution: StatDistribution =
+    stat.shape === "anytime"
+      ? { kind: "atLeastOne", mean }
+      : stat.shape === "yards"
+        ? { kind: "normal", mean, sd }
+        : { kind: "count", mean, variance: sd * sd };
+  return { mean, sd, matchupFactor, games: logs.length, absence, env, seasons, distribution };
 }
 
-/** Standard normal CDF (Abramowitz–Stegun 26.2.17; error < 7.5e-8). */
-function normalCdf(z: number): number {
-  const t = 1 / (1 + 0.2316419 * Math.abs(z));
-  const d = 0.3989422804014327 * Math.exp((-z * z) / 2);
-  const p = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-  return z > 0 ? 1 - p : p;
+/** The model's uncalibrated chance the Over cashes at `point` (pushes refund). */
+export function nflRawOver(proj: NflProjection, point: number): number {
+  return rawProbOver(proj.distribution, point);
 }
 
-function shrink(p: number): number {
-  const c = Math.min(Math.max(p, 1e-4), 1 - 1e-4);
-  return 1 / (1 + Math.exp(-Math.log(c / (1 - c)) * NFL_CALIBRATION_SHRINK));
-}
-
-/** The model's chance the Over cashes at `point` (pushes on whole numbers refund, so the side's chance excludes them). */
-export function nflProbOver(proj: NflProjection, stat: NflPropStatDef, point: number): number {
-  if (stat.shape === "anytime") {
-    // At least one TD at rate λ = the projected TDs per game.
-    return shrink(1 - Math.exp(-Math.max(proj.mean, 0)));
-  }
-  if (stat.shape === "yards") {
-    // Continuity: yards are whole numbers, so "over 262.5" is "263 or more".
-    return shrink(1 - normalCdf((Math.floor(point) + 0.5 - proj.mean) / proj.sd));
-  }
-  const variance = proj.sd * proj.sd;
-  const atOrBelow = countCdf(Math.floor(point), proj.mean, variance);
-  const push = Number.isInteger(point) ? atOrBelow - countCdf(point - 1, proj.mean, variance) : 0;
-  return shrink((1 - atOrBelow) / Math.max(1 - push, 1e-6));
+/** The model's chance the Over cashes at `point`, calibrated by NFL_CALIBRATION_SHRINK. */
+export function nflProbOver(proj: NflProjection, _stat: NflPropStatDef, point: number): number {
+  return shrinkLogit(nflRawOver(proj, point), NFL_CALIBRATION_SHRINK);
 }

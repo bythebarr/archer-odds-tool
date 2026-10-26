@@ -11,6 +11,9 @@ import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
 import type { Absence } from "@/lib/injuries/absence";
 import { positionGroup, type PositionGroup } from "@/lib/nba/positionGroups";
 import type { NbaPropStat } from "@/generated/prisma/client";
+import type { GameLines } from "@/lib/propModel/environment";
+import { getConsensusGameLines } from "./gameLines";
+import { getModelWeights } from "./modelWeights";
 
 export interface SlateTeam {
   abbreviation: string;
@@ -54,6 +57,10 @@ export interface NbaPropsSlate {
   defense: DefenseTable;
   /** Per team abbreviation: rotation players ruled out or doubtful tonight (see injuries/absence). */
   absences: Record<string, Absence[]>;
+  /** Game id → tonight's consensus spread and total (the projection's game environment). */
+  lines: Record<string, GameLines>;
+  /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
+  modelWeights: Record<string, number>;
   lastPolledAt: string | null;
 }
 
@@ -203,6 +210,8 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     props: [],
     defense: { season, fromLastSeason: false, teams: {} },
     absences: {},
+    lines: {},
+    modelWeights: {},
     lastPolledAt: null,
   };
 
@@ -285,7 +294,11 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     });
   }
 
-  const absences = await nbaAbsences(slateGames, season, gte);
+  const [absences, gameLines, modelWeights] = await Promise.all([
+    nbaAbsences(slateGames, season, gte),
+    getConsensusGameLines(slateGames.map((g) => g.id)),
+    getModelWeights("nba"),
+  ]);
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
   const espnIds = new Map(lines.map((l) => [l.nbaPlayer.id, l.nbaPlayer.espnAthleteId]));
@@ -303,6 +316,8 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     props: [...propsByKey.values()],
     defense,
     absences,
+    lines: gameLines,
+    modelWeights,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { nbaProjectionContext } from "@/lib/nba/slateContext";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { PROPS_PREFS_COOKIE, type PropsPrefs } from "@/lib/nba/propsPrefsShared";
@@ -252,13 +253,9 @@ export function NbaPropsFinder({
         season: slate.season,
         venue: player.venue,
         opponent: player.opponent?.abbreviation,
-        projection: {
-          defense: slate.defense,
-          opponent: player.opponent?.abbreviation ?? null,
-          positionGroup: player.positionGroup,
-          absences: player.team ? slate.absences[player.team.abbreviation] : undefined,
-        },
+        projection: nbaProjectionContext(slate, player),
         injury: player.injury?.level ?? null,
+        modelWeight: slate.modelWeights[prop.stat],
       });
       if (s) out.push(s);
     }
@@ -399,7 +396,8 @@ export function NbaPropsFinder({
           logs={logs[openPlayer.id] ?? []}
           season={slate.season}
           defense={slate.defense}
-          absences={openPlayer.team ? slate.absences[openPlayer.team.abbreviation] : undefined}
+          projection={nbaProjectionContext(slate, openPlayer)}
+          modelWeights={slate.modelWeights}
           initialStat={prefs.stat}
           side={prefs.side}
           startLabel={(() => {
