@@ -16,6 +16,7 @@ on:
         options:
           - fit:ufc-prior
           - backtest:nba-props
+          - backtest:nfl-props
           - backtest:ufc
           - backtest:nfl
           - backtest:nfl:clv

@@ -1,5 +1,6 @@
 import { handleTeamLeagueOddsPoll } from "@/lib/teamLeague/cronHandlers";
 import { NFL_LEAGUE } from "@/lib/nfl/league";
+import { runNflPropsPoll } from "@/lib/nfl/cronJobs";
 
 /**
  * Conservative fixed cadence at 6 credits/call. Set in July, when NFL book depth
@@ -14,5 +15,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  return handleTeamLeagueOddsPoll(request, NFL_LEAGUE, MIN_INTERVAL_MINUTES);
+  // Player props ride the same tick (see runNflPropsPoll).
+  return handleTeamLeagueOddsPoll(request, NFL_LEAGUE, MIN_INTERVAL_MINUTES, runNflPropsPoll);
 }

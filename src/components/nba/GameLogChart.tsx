@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import type { GameLogPoint } from "@/lib/nba/propsMath";
-import type { NbaPropStatDef } from "@/lib/nba/propStats";
 import type { PropDirection } from "@/lib/props/tally";
 import { HIT_FILL, MISS_FILL } from "./HitMeter";
 
@@ -25,15 +23,24 @@ function shortDate(date: string): string {
  * when the chosen side cashed; the dashed rule is the line itself. Tapping (or
  * hovering) a bar shows that game in the readout above the plot.
  */
-export function GameLogChart({
+/** Any league's game log: what the chart reads besides the stat itself. */
+export interface ChartLog {
+  date: string;
+  opponent: string;
+  isHome: boolean;
+  /** Shown in the readout when the league logs it (NBA). */
+  minutes?: number;
+}
+
+export function GameLogChart<L extends ChartLog>({
   logs,
   stat,
   point,
   side,
   count = 20,
 }: {
-  logs: GameLogPoint[];
-  stat: NbaPropStatDef;
+  logs: L[];
+  stat: { label: string; shortLabel: string; value: (log: L) => number };
   point: number;
   side: PropDirection;
   count?: number;
@@ -61,7 +68,8 @@ export function GameLogChart({
     <div>
       <p className="mb-1 flex items-baseline justify-between text-xs text-muted-foreground">
         <span>
-          {shortDate(g.date)} {g.isHome ? "vs" : "@"} {g.opponent} · {g.minutes} min
+          {shortDate(g.date)} {g.isHome ? "vs" : "@"} {g.opponent}
+          {g.minutes !== undefined && ` · ${g.minutes} min`}
         </span>
         <span className="font-mono text-sm font-semibold text-foreground">
           {v} {stat.shortLabel}

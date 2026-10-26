@@ -15,7 +15,10 @@ import { Glyph } from "@/components/brand/Glyph";
 export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props") {
   const tabs = [{ label: "Game Lines", href: `/${sport}`, active: active === "lines" }];
   if (sport === "nba") tabs.push({ label: "Player Props", href: "/nba/props", active: active === "props" });
-  if (sport === "nfl") tabs.push({ label: "Research", href: "/nfl/research", active: false });
+  if (sport === "nfl") {
+    tabs.push({ label: "Player Props", href: "/nfl/props", active: active === "props" });
+    tabs.push({ label: "Research", href: "/nfl/research", active: false });
+  }
   return tabs;
 }
 

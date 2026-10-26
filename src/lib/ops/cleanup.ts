@@ -24,7 +24,7 @@ export const RETENTION_DAYS = 90;
 const GAMES_PER_BATCH = 50;
 const TIME_BUDGET_MS = 25_000;
 
-const SNAPSHOT_TABLES = ["OddsSnapshot", "PlayerPropSnapshot", "NbaPropSnapshot"] as const;
+const SNAPSHOT_TABLES = ["OddsSnapshot", "PlayerPropSnapshot", "NbaPropSnapshot", "NflPropSnapshot"] as const;
 
 export interface CleanupSummary {
   cutoff: string;
@@ -65,10 +65,9 @@ export async function runRetentionCleanup(now: Date = new Date()): Promise<Clean
     }
   }
 
-  const staleNbaLines = await prisma.currentNbaPropLine.deleteMany({
-    where: { game: { scheduledStartUtc: { lt: new Date(now.getTime() - 2 * 86_400_000) } } },
-  });
-  deleted.CurrentNbaPropLine = staleNbaLines.count;
+  const pastGames = { game: { scheduledStartUtc: { lt: new Date(now.getTime() - 2 * 86_400_000) } } };
+  deleted.CurrentNbaPropLine = (await prisma.currentNbaPropLine.deleteMany({ where: pastGames })).count;
+  deleted.CurrentNflPropLine = (await prisma.currentNflPropLine.deleteMany({ where: pastGames })).count;
 
   const creditLog = await prisma.pollCreditLog.deleteMany({ where: { polledAt: { lt: cutoff } } });
   deleted.PollCreditLog = creditLog.count;

@@ -63,7 +63,7 @@ export default async function NbaGamePage({
       tab={tab}
       propsHref={`/nba/${gameId}?tab=props`}
       propsPanel={propsPanel}
-      disclaimer="Line-shopping only — the best price per side among bettable books, compared at the consensus number. No model EV for NBA: no model here has been shown to beat a closing line."
+      disclaimer="Game lines are line-shopping: the best price per side among bettable books at the consensus number, with a +EV tag where a price beats the market's fair price. ARCHR's projection model prices the player props."
     />
   );
 }

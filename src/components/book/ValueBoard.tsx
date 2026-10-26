@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { MarketType } from "@/generated/prisma/client";
 import { getLeagueDays, getLeagueEvents, type EventPrice } from "@/lib/queries/lobby";
 import { getValueNbaProps } from "@/lib/queries/nbaProps";
+import { getValueNflProps } from "@/lib/queries/nflProps";
 import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { EV_FLAG } from "@/lib/odds/marketValue";
 import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
@@ -86,18 +87,19 @@ async function ufcPlays(): Promise<ValuePlay[]> {
 
 /**
  * The lobby's value board: every price on today's slates — NBA and NFL lines,
- * NBA props, the next UFC card — that beats the rest of the market's fair
+ * NBA and NFL props, the next UFC card — that beats the rest of the market's fair
  * (no-vig) price by more than the noise floor, biggest edge first. A market
  * read, not a model pick: it says a price is better than where the books
  * collectively put it.
  */
 export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: number }) {
   const [nbaDay] = await getLeagueDays("nba", today);
-  const [nba, nfl, ufc, props] = await Promise.all([
+  const [nba, nfl, ufc, props, nflProps] = await Promise.all([
     linePlays("nba", today),
     linePlays("nfl", today),
     ufcPlays(),
     nbaDay ? getValueNbaProps(nbaDay, limit) : Promise.resolve([]),
+    getValueNflProps(limit),
   ]);
   const plays: ValuePlay[] = [
     ...nba,
@@ -117,6 +119,7 @@ export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: 
         booksUsed: p.booksUsed,
       })
     ),
+    ...nflProps.map((p): ValuePlay => ({ kind: "prop", ...p })),
   ]
     .sort((a, b) => b.ev - a.ev)
     .slice(0, limit);

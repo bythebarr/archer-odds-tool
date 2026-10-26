@@ -14,7 +14,7 @@ const MAX_DAYS = 7;
  * `from` forward, `days` ET dates per call, and answers with the `next` date to
  * call with (null once it reaches yesterday). Idempotent — games that already
  * have logs are skipped — so a rerun or an overlap costs nothing. Driven by the
- * "Backfill NBA history" workflow; not on the cron schedule, since the daily
+ * "Backfill player history" workflow; not on the cron schedule, since the daily
  * results sync keeps the last four days current on its own. The last call also
  * fills positions from the rosters.
  *

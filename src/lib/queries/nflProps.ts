@@ -1,0 +1,231 @@
+/**
+ * Everything the NFL props finder needs for the week ahead, in one payload —
+ * the NBA slate (queries/nbaProps.ts) for football: the games with prop lines,
+ * their players, two seasons of game logs (packed for the wire), the current
+ * lines, and the defense-by-position table.
+ */
+import { cache } from "react";
+import { prisma } from "@/lib/prisma";
+import { etDateOf } from "@/lib/dateEt";
+import { espnTeamLogoUrl } from "@/lib/logos";
+import { NFL_LEAGUE } from "@/lib/nfl/league";
+import { NFL_PROP_STAT_BY_KEY, nflPositionGroup, type NflStatLine } from "@/lib/nfl/propStats";
+import type { NflDefenseTable, NflPosition } from "@/lib/nfl/matchup";
+import { NFL_LOG_COLUMNS as COLUMNS, packNflLog, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
+import { EV_FLAG } from "@/lib/odds/marketValue";
+import type { SlateGame, SlateTeam } from "./nbaProps";
+
+export interface NflSlatePlayer {
+  id: string;
+  name: string;
+  headshotUrl: string;
+  position: NflPosition | null;
+  gameId: string;
+  team: SlateTeam | null;
+  opponent: SlateTeam | null;
+  venue: "home" | "away" | null;
+}
+
+export interface NflPropsSlate {
+  season: number;
+  games: SlateGame[];
+  players: Record<string, NflSlatePlayer>;
+  logs: Record<string, PackedNflLog[]>;
+  props: NflSlateProp[];
+  defense: NflDefenseTable;
+  lastPolledAt: string | null;
+}
+
+/** ESPN's NFL headshot, keyed by athlete id. */
+export function nflHeadshotUrl(espnAthleteId: string): string {
+  return `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${espnAthleteId}.png&w=192&h=140&scale=crop`;
+}
+
+function team(t: { abbreviation: string; name: string } | null): SlateTeam | null {
+  return t ? { abbreviation: t.abbreviation, name: t.name, logoUrl: espnTeamLogoUrl("nfl", t.abbreviation) } : null;
+}
+
+const MIN_DEFENSE_GAMES = 4;
+const STAT_SUMS = Object.fromEntries(COLUMNS.map((c) => [c, true])) as Record<keyof NflStatLine, true>;
+
+/** Per team, what each position group produces against it per game; this season once teams have 4 games, else last. */
+export const getNflDefenseTable = cache(async (season: number): Promise<NflDefenseTable> => {
+  const sums = await prisma.nflPlayerGameLog.groupBy({
+    by: ["season", "gameId", "teamId", "position"],
+    where: { season: { in: [season - 1, season] } },
+    _sum: STAT_SUMS,
+  });
+  const abbr = new Map(
+    (await prisma.team.findMany({ where: { id: { in: [...new Set(sums.map((r) => r.teamId))] } }, select: { id: true, abbreviation: true } })).map((t) => [t.id, t.abbreviation])
+  );
+  const zero = (): NflStatLine => Object.fromEntries(COLUMNS.map((c) => [c, 0])) as unknown as NflStatLine;
+
+  const build = (forSeason: number): NflDefenseTable["teams"] => {
+    const games = new Map<string, Map<string, Map<NflPosition, NflStatLine>>>();
+    for (const r of sums) {
+      if (r.season !== forSeason) continue;
+      const pos = nflPositionGroup(r.position);
+      const teams = games.get(r.gameId) ?? new Map();
+      const groups = teams.get(r.teamId) ?? new Map<NflPosition, NflStatLine>();
+      if (pos) {
+        const line = groups.get(pos) ?? zero();
+        for (const c of COLUMNS) line[c] += r._sum[c] ?? 0;
+        groups.set(pos, line);
+      }
+      teams.set(r.teamId, groups);
+      games.set(r.gameId, teams);
+    }
+    const out: NflDefenseTable["teams"] = {};
+    for (const teams of games.values()) {
+      if (teams.size !== 2) continue;
+      const [[idA, a], [idB, b]] = [...teams.entries()];
+      for (const [us, them] of [[idA, b], [idB, a]] as const) {
+        const key = abbr.get(us);
+        if (!key) continue;
+        const row = (out[key] ??= { games: 0, byPosition: {} });
+        row.games++;
+        for (const p of ["QB", "RB", "WR", "TE"] as const) {
+          const d = (row.byPosition[p] ??= { games: 0, allowed: zero() });
+          d.games++;
+          const line = them.get(p);
+          if (line) for (const c of COLUMNS) d.allowed[c] += line[c];
+        }
+      }
+    }
+    for (const row of Object.values(out)) {
+      for (const d of Object.values(row.byPosition)) for (const c of COLUMNS) d.allowed[c] /= d.games;
+    }
+    return out;
+  };
+
+  const current = build(season);
+  const counts = Object.values(current).map((t) => t.games).sort((x, y) => x - y);
+  if ((counts[Math.floor(counts.length / 2)] ?? 0) >= MIN_DEFENSE_GAMES) return { season, fromLastSeason: false, teams: current };
+  const last = build(season - 1);
+  return Object.keys(last).length ? { season: season - 1, fromLastSeason: true, teams: last } : { season, fromLastSeason: false, teams: current };
+});
+
+/** The coming week's NFL props (games starting from three hours ago through seven days out). */
+export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<NflPropsSlate> => {
+  const season = NFL_LEAGUE.seasonOf(now);
+  const games = await prisma.game.findMany({
+    where: {
+      sport: "nfl",
+      scheduledStartUtc: { gte: new Date(now.getTime() - 3 * 3_600_000), lte: new Date(now.getTime() + 7 * 86_400_000) },
+      currentNflPropLines: { some: {} },
+    },
+    orderBy: { scheduledStartUtc: "asc" },
+    include: { homeTeam: true, awayTeam: true },
+  });
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, lastPolledAt: null };
+  if (games.length === 0) return empty;
+
+  const slateGames: SlateGame[] = games.flatMap((g) => {
+    const home = team(g.homeTeam);
+    const away = team(g.awayTeam);
+    return home && away ? [{ id: g.id, startUtc: g.scheduledStartUtc.toISOString(), home, away }] : [];
+  });
+  const lines = await prisma.currentNflPropLine.findMany({
+    where: { gameId: { in: slateGames.map((g) => g.id) } },
+    include: { book: { select: { displayName: true } }, nflPlayer: true },
+  });
+
+  const byId = new Map(games.map((g) => [g.id, g]));
+  const players: Record<string, NflSlatePlayer> = {};
+  const props = new Map<string, NflSlateProp>();
+  let lastPolledAt: Date | null = null;
+  for (const line of lines) {
+    if (!lastPolledAt || line.polledAt > lastPolledAt) lastPolledAt = line.polledAt;
+    const p = line.nflPlayer;
+    if (!players[p.id]) {
+      const g = byId.get(line.gameId)!;
+      const venue = p.teamId === g.homeTeamId ? "home" : p.teamId === g.awayTeamId ? "away" : null;
+      players[p.id] = {
+        id: p.id,
+        name: p.fullName,
+        headshotUrl: nflHeadshotUrl(p.espnAthleteId),
+        position: nflPositionGroup(p.position),
+        gameId: g.id,
+        team: venue === "home" ? team(g.homeTeam) : venue === "away" ? team(g.awayTeam) : null,
+        opponent: venue === "home" ? team(g.awayTeam) : venue === "away" ? team(g.homeTeam) : null,
+        venue,
+      };
+    }
+    const key = `${p.id}:${line.stat}`;
+    const prop = props.get(key) ?? { playerId: p.id, stat: line.stat, quotes: [] };
+    prop.quotes.push({ bookKey: line.bookKey, bookName: line.book.displayName, side: line.side === "under" ? "under" : "over", point: line.point, priceAmerican: line.priceAmerican });
+    props.set(key, prop);
+  }
+
+  const [history, defense] = await Promise.all([
+    prisma.nflPlayerGameLog.findMany({
+      where: { nflPlayerId: { in: Object.keys(players) }, gameDate: { lt: now }, season: { in: [season - 1, season] } },
+      orderBy: { gameDate: "desc" },
+      include: { game: { select: { homeTeam: { select: { abbreviation: true } }, awayTeam: { select: { abbreviation: true } } } } },
+    }),
+    getNflDefenseTable(season),
+  ]);
+  const logs: Record<string, PackedNflLog[]> = {};
+  for (const h of history) {
+    const point: NflLogPoint = {
+      date: etDateOf(h.gameDate),
+      opponent: (h.isHome ? h.game.awayTeam?.abbreviation : h.game.homeTeam?.abbreviation) ?? "",
+      isHome: h.isHome,
+      season: h.season,
+      ...(Object.fromEntries(COLUMNS.map((c) => [c, h[c]])) as unknown as NflStatLine),
+    };
+    (logs[h.nflPlayerId] ??= []).push(packNflLog(point));
+  }
+
+  return { season, games: slateGames, players, logs, props: [...props.values()], defense, lastPolledAt: lastPolledAt?.toISOString() ?? null };
+});
+
+/** The week's NFL props whose best price beats the market's fair price, biggest edge first, one per player — for the lobby's value board. */
+export async function getValueNflProps(limit = 6) {
+  const slate = await getNflPropsSlate();
+  const out: {
+    key: string;
+    label: string;
+    sub: string;
+    href: string;
+    price: number;
+    bookKey: string;
+    ev: number;
+    fairAmerican: number;
+    booksUsed: number;
+    playerId: string;
+  }[] = [];
+  for (const prop of slate.props) {
+    const player = slate.players[prop.playerId];
+    const stat = NFL_PROP_STAT_BY_KEY.get(prop.stat);
+    if (!player || !stat) continue;
+    const logs = (slate.logs[prop.playerId] ?? []).map(unpackNflLog);
+    for (const side of ["over", "under"] as const) {
+      const s = summarizeNflProp(prop, logs, stat, side, {
+        season: slate.season,
+        venue: player.venue,
+        opponent: player.opponent?.abbreviation ?? null,
+        projection: { defense: slate.defense, opponent: player.opponent?.abbreviation ?? null, position: player.position },
+      });
+      const best = s && (side === "over" ? s.over : s.under);
+      const value = s && (side === "over" ? s.value.over : s.value.under);
+      if (!s || !best || !value || value.ev < EV_FLAG) continue;
+      const what = stat.shape === "anytime" ? `${side === "over" ? "TD" : "No TD"}` : `${side === "over" ? "O" : "U"} ${s.point} ${stat.shortLabel}`;
+      out.push({
+        key: `nfl:${prop.playerId}:${prop.stat}:${side}`,
+        label: `${player.name} ${what}`,
+        sub: `${player.venue === "home" ? "vs" : "@"} ${player.opponent?.abbreviation ?? ""} · ${s.l5.hits}/${s.l5.sampleSize} L5`,
+        href: `/nfl/${player.gameId}?tab=props`,
+        price: best.priceAmerican,
+        bookKey: best.bookKey,
+        ev: value.ev,
+        fairAmerican: value.fairAmerican,
+        booksUsed: value.booksUsed,
+        playerId: prop.playerId,
+      });
+    }
+  }
+  out.sort((a, b) => b.ev - a.ev);
+  const seen = new Set<string>();
+  return out.filter((p) => !seen.has(p.playerId) && seen.add(p.playerId)).slice(0, limit);
+}
