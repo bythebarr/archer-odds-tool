@@ -16,6 +16,10 @@ export interface ModelCard {
   projectionMae: number | null;
   baselineMae: number | null;
   baseline: string | null;
+  /** Projection error without the game-lines layer, when the backtest measured it. */
+  noLinesMae: number | null;
+  /** Market-blend fits: the model's fitted weight and each side's log loss. */
+  market: { modelWeight: number; modelLogLoss: number; marketLogLoss: number; blendLogLoss: number } | null;
   runAt: Date;
   /** The previous run's Brier, for the trend. */
   previousBrier: number | null;
@@ -28,7 +32,16 @@ export async function getModelCards(): Promise<ModelCard[]> {
   for (const r of rows) byModel.set(r.model, [...(byModel.get(r.model) ?? []), r]);
   return [...byModel.values()].map(([latest, previous]) => {
     const detail = latest.detail as { buckets?: ReliabilityBucket[]; refit?: RefitResult };
-    const extra = (latest.extra ?? {}) as { projectionMae?: number; baselineMae?: number; baseline?: string };
+    const extra = (latest.extra ?? {}) as {
+      projectionMae?: number;
+      baselineMae?: number;
+      baseline?: string;
+      noLinesMae?: number;
+      modelWeight?: number;
+      modelLogLoss?: number;
+      marketLogLoss?: number;
+      blendLogLoss?: number;
+    };
     return {
       model: latest.model,
       label: latest.label,
@@ -44,6 +57,11 @@ export async function getModelCards(): Promise<ModelCard[]> {
       projectionMae: extra.projectionMae ?? null,
       baselineMae: extra.baselineMae ?? null,
       baseline: extra.baseline ?? null,
+      noLinesMae: extra.noLinesMae ?? null,
+      market:
+        extra.modelWeight !== undefined && extra.modelLogLoss !== undefined && extra.marketLogLoss !== undefined && extra.blendLogLoss !== undefined
+          ? { modelWeight: extra.modelWeight, modelLogLoss: extra.modelLogLoss, marketLogLoss: extra.marketLogLoss, blendLogLoss: extra.blendLogLoss }
+          : null,
       runAt: latest.createdAt,
       previousBrier: previous?.brier ?? null,
     };

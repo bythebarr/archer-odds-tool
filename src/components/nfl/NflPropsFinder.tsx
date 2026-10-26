@@ -17,7 +17,9 @@ import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import type { Absence } from "@/lib/injuries/absence";
+import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
+import type { NflProjectionContext } from "@/lib/nfl/projection";
+import { nflProjectionContext } from "@/lib/nfl/slateContext";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { GameLogChart } from "@/components/nba/GameLogChart";
@@ -146,7 +148,7 @@ function PropCard({ s, player, game, side, stat, defense, onOpen }: { s: NflProp
   );
 }
 
-function Sheet({ player, props, logs, season, defense, absences, initialStat, side: initialSide, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; season: number; defense: NflDefenseTable; absences?: Absence[]; initialStat: NflPropStat; side: PropDirection; onClose: () => void }) {
+function Sheet({ player, props, logs, season, projection, modelWeights, initialStat, side: initialSide, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; initialStat: NflPropStat; side: PropDirection; onClose: () => void }) {
   const [statKey, setStatKey] = useState(initialStat);
   const [side, setSide] = useState(initialSide);
   const prop = props.find((p) => p.stat === statKey) ?? props[0];
@@ -158,8 +160,9 @@ function Sheet({ player, props, logs, season, defense, absences, initialStat, si
     season,
     venue: player.venue,
     opponent: player.opponent?.abbreviation ?? null,
-    projection: { defense, opponent: player.opponent?.abbreviation ?? null, position: player.position, absences },
+    projection,
     injury: player.injury?.level ?? null,
+    modelWeight: modelWeights[prop.stat],
   };
   const s = summarizeNflProp(prop, logs, stat, side, ctx, point);
   const books = booksAtPoint(prop.quotes, point, side);
@@ -281,6 +284,18 @@ function Sheet({ player, props, logs, season, defense, absences, initialStat, si
                     )}
                   </div>
                 </div>
+                <BlendLine model={m} side={side} />
+                <SeasonMixLine seasons={m.projection.seasons} digits={stat.shape === "yards" ? 0 : stat.shape === "anytime" ? 2 : 1} />
+                <EnvLine
+                  parts={[
+                    ...(m.projection.env.impliedPoints !== null ? [`implied ${m.projection.env.impliedPoints.toFixed(1)} pts`] : []),
+                    ...(m.projection.env.spread !== null ? [`spread ${signed(m.projection.env.spread)}`] : []),
+                  ]}
+                  effects={[
+                    { label: "volume", factor: m.projection.env.volumeFactor },
+                    { label: "script", factor: m.projection.env.scriptFactor },
+                  ]}
+                />
                 {m.projection.absence && (
                   <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
                     <span className="font-semibold text-foreground">Without {m.projection.absence.names.join(" & ")}</span> (out this week):{" "}
@@ -288,8 +303,8 @@ function Sheet({ player, props, logs, season, defense, absences, initialStat, si
                   </p>
                 )}
                 <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
-                  Recent per-game production steadied by two seasons, × matchup {m.projection.matchupFactor.toFixed(2)}, from {m.projection.games}{" "}games. Check it against the
-                  market&apos;s fair price below before trusting an edge.{" "}
+                  Recent per-game production steadied by two seasons, × matchup {m.projection.matchupFactor.toFixed(2)} × game environment, from {m.projection.games}{" "}games, then
+                  blended with the market.{" "}
           <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
             How accurate is it?
           </Link>
@@ -390,13 +405,9 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
         season: slate.season,
         venue: player.venue,
         opponent: player.opponent?.abbreviation ?? null,
-        projection: {
-          defense: slate.defense,
-          opponent: player.opponent?.abbreviation ?? null,
-          position: player.position,
-          absences: player.team ? slate.absences[player.team.abbreviation] : undefined,
-        },
+        projection: nflProjectionContext(slate, player),
         injury: player.injury?.level ?? null,
+        modelWeight: slate.modelWeights[prop.stat],
       });
       if (s) out.push(s);
     }
@@ -470,8 +481,8 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           props={slate.props.filter((p) => p.playerId === openPlayer.id)}
           logs={logs[openPlayer.id] ?? []}
           season={slate.season}
-          defense={slate.defense}
-          absences={openPlayer.team ? slate.absences[openPlayer.team.abbreviation] : undefined}
+          projection={nflProjectionContext(slate, openPlayer)}
+          modelWeights={slate.modelWeights}
           initialStat={statKey}
           side={side}
           onClose={close}

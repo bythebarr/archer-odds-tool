@@ -16,6 +16,10 @@ import { EV_FLAG } from "@/lib/odds/marketValue";
 import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
 import type { Absence } from "@/lib/injuries/absence";
 import type { SlateGame, SlateTeam } from "./nbaProps";
+import type { GameLines } from "@/lib/propModel/environment";
+import { nflProjectionContext } from "@/lib/nfl/slateContext";
+import { getConsensusGameLines } from "./gameLines";
+import { getModelWeights } from "./modelWeights";
 
 export interface NflSlatePlayer {
   id: string;
@@ -38,7 +42,40 @@ export interface NflPropsSlate {
   defense: NflDefenseTable;
   /** Per team abbreviation: key players ruled out or doubtful this week. */
   absences: Record<string, Absence[]>;
+  /** Game id → this week's consensus spread and total (the projection's game environment). */
+  lines: Record<string, GameLines>;
+  /** Team abbreviation → points per game over its recent games, the baseline for implied points. */
+  teamPoints: Record<string, number>;
+  /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
+  modelWeights: Record<string, number>;
   lastPolledAt: string | null;
+}
+
+/** Recent games a team's scoring baseline averages over. */
+const TEAM_POINTS_GAMES = 17;
+
+/** Each team's points per game over its last TEAM_POINTS_GAMES finished games. */
+async function nflTeamPoints(teams: { id: string; abbreviation: string }[], before: Date): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  await Promise.all(
+    teams.map(async (t) => {
+      const games = await prisma.game.findMany({
+        where: {
+          sport: "nfl",
+          status: "final",
+          scheduledStartUtc: { lt: before },
+          OR: [{ homeTeamId: t.id }, { awayTeamId: t.id }],
+          homeScore: { not: null },
+          awayScore: { not: null },
+        },
+        orderBy: { scheduledStartUtc: "desc" },
+        take: TEAM_POINTS_GAMES,
+        select: { homeTeamId: true, homeScore: true, awayScore: true },
+      });
+      if (games.length >= 4) out[t.abbreviation] = games.reduce((a, g) => a + (g.homeTeamId === t.id ? g.homeScore! : g.awayScore!), 0) / games.length;
+    })
+  );
+  return out;
 }
 
 /** ESPN's NFL headshot, keyed by athlete id. */
@@ -158,7 +195,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
   });
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -226,9 +263,26 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     const i = injuryById.get(espnIds.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
   }
-  const absences = await nflAbsences(slateGames, injuries, season, now);
+  const [absences, gameLines, teamPoints, modelWeights] = await Promise.all([
+    nflAbsences(slateGames, injuries, season, now),
+    getConsensusGameLines(slateGames.map((g) => g.id)),
+    nflTeamPoints(games.flatMap((g) => [g.homeTeam, g.awayTeam].filter((t) => t !== null)), now),
+    getModelWeights("nfl"),
+  ]);
 
-  return { season, games: slateGames, players, logs, props: [...props.values()], defense, absences, lastPolledAt: lastPolledAt?.toISOString() ?? null };
+  return {
+    season,
+    games: slateGames,
+    players,
+    logs,
+    props: [...props.values()],
+    defense,
+    absences,
+    lines: gameLines,
+    teamPoints,
+    modelWeights,
+    lastPolledAt: lastPolledAt?.toISOString() ?? null,
+  };
 });
 
 /** The week's NFL props whose best price beats the market's fair price, biggest edge first, one per player — for the lobby's value board. */
@@ -257,13 +311,9 @@ export async function getValueNflProps(limit = 6) {
         season: slate.season,
         venue: player.venue,
         opponent: player.opponent?.abbreviation ?? null,
-        projection: {
-          defense: slate.defense,
-          opponent: player.opponent?.abbreviation ?? null,
-          position: player.position,
-          absences: player.team ? slate.absences[player.team.abbreviation] : undefined,
-        },
+        projection: nflProjectionContext(slate, player),
         injury: player.injury?.level ?? null,
+        modelWeight: slate.modelWeights[prop.stat],
       });
       const best = s && (side === "over" ? s.over : s.under);
       const value = s && (side === "over" ? s.value.over : s.value.under);

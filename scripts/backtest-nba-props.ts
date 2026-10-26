@@ -7,6 +7,8 @@ import type { GameLogPoint } from "@/lib/nba/propsMath";
 import type { DefenseTable } from "@/lib/nba/matchup";
 import { scoreCalibration, formatCalibrationReport, type CalibrationSample } from "@/lib/engine/calibration";
 import { saveReport } from "@/lib/engine/saveReport";
+import { NO_LINES } from "@/lib/propModel/environment";
+import { closingGameLines, teamBaselinesByGame } from "./props/history";
 
 /**
  * Backtest for the NBA prop projection (projection.ts). Every logged game with
@@ -17,10 +19,12 @@ import { saveReport } from "@/lib/engine/saveReport";
  *   - projection error (MAE) next to the L10 average's, the naive baseline
  *   - calibration of the model's favored side at the stand-in line (Brier vs
  *     base rate, reliability buckets, and the logit shrink that would fit)
- * The matchup and pace layers are held at neutral here: rebuilding each team's
- * defense as-of every date is a follow-up, so this measures the minutes × rate
- * × distribution core. Real book lines replace the stand-in once enough prop
- * snapshots are stored.
+ * The game environment (nba/environment.ts) is applied from each game's
+ * closing spread and total, against the team's scoring before that game; the
+ * report shows projection error with and without it, so its priors can be
+ * judged. The matchup and pace layers are held at neutral: rebuilding each
+ * team's defense as-of every date is a follow-up. Graded against real book
+ * prices: `npm run backtest:props-market`.
  *
  * Run: `npm run backtest:nba-props` (optionally `N=40000`).
  */
@@ -33,6 +37,7 @@ async function main() {
     where: { minutes: { gt: 0 } },
     orderBy: [{ nbaPlayerId: "asc" }, { gameDate: "asc" }],
     select: {
+      gameId: true,
       nbaPlayerId: true,
       gameDate: true,
       season: true,
@@ -46,10 +51,12 @@ async function main() {
       blocks: true,
     },
   });
-  const byPlayer = new Map<string, GameLogPoint[]>();
+  const [closing, baselines] = await Promise.all([closingGameLines("nba"), teamBaselinesByGame("nba", 30)]);
+  type Log = GameLogPoint & { gameId: string };
+  const byPlayer = new Map<string, Log[]>();
   for (const r of rows) {
     const list = byPlayer.get(r.nbaPlayerId) ?? [];
-    list.push({ date: etDateOf(r.gameDate), opponent: "", isHome: r.isHome, season: r.season, minutes: r.minutes, points: r.points, rebounds: r.rebounds, assists: r.assists, threesMade: r.threesMade, steals: r.steals, blocks: r.blocks });
+    list.push({ gameId: r.gameId, date: etDateOf(r.gameDate), opponent: "", isHome: r.isHome, season: r.season, minutes: r.minutes, points: r.points, rebounds: r.rebounds, assists: r.assists, threesMade: r.threesMade, steals: r.steals, blocks: r.blocks });
     byPlayer.set(r.nbaPlayerId, list);
   }
   console.log(`${rows.length} player-games from ${byPlayer.size} players.`);
@@ -58,7 +65,9 @@ async function main() {
     const stat = NBA_PROP_STAT_BY_KEY.get(key)!;
     const samples: (CalibrationSample & { date: string })[] = [];
     let modelErr = 0;
+    let noLinesErr = 0;
     let naiveErr = 0;
+    let withLines = 0;
     let n = 0;
     for (const games of byPlayer.values()) {
       for (let i = 10; i < games.length; i++) {
@@ -66,10 +75,24 @@ async function main() {
         const l10 = history.slice(0, 10).reduce((a, g) => a + stat.value(g), 0) / 10;
         if (l10 < 1) continue; // a line nobody hangs
         const line = Math.round(l10 - 0.5) + 0.5;
-        const proj = projectProp(history, stat, { defense: NEUTRAL, opponent: null, positionGroup: null });
-        if (!proj) continue;
-        const actual = stat.value(games[i]);
+        const game = games[i];
+        const lines = closing.get(game.gameId) ?? NO_LINES;
+        const base = baselines.get(game.gameId);
+        const proj = projectProp(history, stat, {
+          defense: NEUTRAL,
+          opponent: null,
+          positionGroup: null,
+          lines,
+          isHome: game.isHome,
+          baselineTotal: (game.isHome ? base?.home : base?.away)?.combined ?? null,
+          season: game.season,
+        });
+        const plain = projectProp(history, stat, { defense: NEUTRAL, opponent: null, positionGroup: null });
+        if (!proj || !plain) continue;
+        const actual = stat.value(game);
+        if (lines.total !== null) withLines++;
         modelErr += Math.abs(proj.mean - actual);
+        noLinesErr += Math.abs(plain.mean - actual);
         naiveErr += Math.abs(l10 - actual);
         n++;
         const pOver = probOver(proj, line);
@@ -79,12 +102,16 @@ async function main() {
     }
     samples.sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first, for the time-split refit
     const report = scoreCalibration(samples.slice(0, limit));
-    console.log(`\n${stat.label}: projection MAE ${(modelErr / n).toFixed(2)} vs L10-average MAE ${(naiveErr / n).toFixed(2)} over ${n} games`);
+    console.log(
+      `\n${stat.label}: projection MAE ${(modelErr / n).toFixed(3)} (without game lines ${(noLinesErr / n).toFixed(3)}) vs L10-average MAE ${(naiveErr / n).toFixed(3)} over ${n} games, ${withLines} with closing lines`
+    );
     console.log(formatCalibrationReport(`NBA ${stat.shortLabel} projection`, "player-game", report));
     await saveReport(`nba-props:${key}`, `NBA props — ${stat.label}`, "player-game", report, {
       projectionMae: modelErr / n,
       baselineMae: naiveErr / n,
       baseline: "L10 average",
+      noLinesMae: noLinesErr / n,
+      gamesWithLines: withLines,
     });
   }
 }

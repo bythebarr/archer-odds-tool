@@ -9,11 +9,12 @@ import { fairPrice, valueOf } from "@/lib/odds/marketValue";
 import { decimalToAmerican } from "@/lib/odds/americanOdds";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import type { Absence } from "@/lib/injuries/absence";
+import type { ProjectionContext } from "@/lib/nba/projection";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import { Logo } from "@/components/Logo";
+import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
 import { BookBadge } from "@/components/BookBadge";
 import { GameLogChart } from "./GameLogChart";
 import { MatchupPanel, SplitGrid } from "./Matchup";
@@ -97,6 +98,18 @@ function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; 
             )}
           </div>
         </div>
+        <BlendLine model={model} side={side} />
+        <SeasonMixLine seasons={p.seasons} />
+        <EnvLine
+          parts={[
+            ...(p.env.total !== null ? [`total ${p.env.total}`] : []),
+            ...(p.env.spread !== null ? [`spread ${signed(p.env.spread)}`] : []),
+          ]}
+          effects={[
+            { label: "production", factor: p.env.totalFactor },
+            { label: "minutes", factor: p.env.minutesFactor },
+          ]}
+        />
         {p.absence && (
           <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
             <span className="font-semibold text-foreground">Without {p.absence.names.join(" & ")}</span> (out tonight): {p.absence.games}{" "}
@@ -107,11 +120,11 @@ function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; 
           <Factor label="Minutes" value={p.minutes.toFixed(1)} />
           <Factor label={`${statShort}/min`} value={p.perMinute.toFixed(2)} />
           <Factor label="Matchup" value={mult(p.matchupFactor)} />
-          <Factor label="Pace" value={mult(p.paceFactor)} />
+          {p.env.total !== null ? <Factor label="Game total" value={mult(p.env.totalFactor)} /> : <Factor label="Pace" value={mult(p.paceFactor)} />}
         </div>
         <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
-          Expected minutes × per-minute production × matchup × pace, from {p.games}{" "}logged games. A model opinion: check it
-          against the market&apos;s fair price below before trusting an edge.{" "}
+          Expected minutes × per-minute production × matchup × game environment, from {p.games}{" "}logged games, then blended with the
+          market.{" "}
           <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
             How accurate is it?
           </Link>
@@ -141,7 +154,8 @@ export function PlayerPropSheet({
   logs,
   season,
   defense,
-  absences,
+  projection,
+  modelWeights,
   initialStat,
   side: initialSide,
   startLabel,
@@ -153,8 +167,10 @@ export function PlayerPropSheet({
   logs: GameLogPoint[];
   season: number;
   defense: DefenseTable;
-  /** Rotation teammates out tonight. */
-  absences?: Absence[];
+  /** Tonight's projection inputs (see nba/slateContext). */
+  projection: ProjectionContext;
+  /** Stat → the model's fitted weight against the market. */
+  modelWeights: Record<string, number>;
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
@@ -174,12 +190,13 @@ export function PlayerPropSheet({
           season,
           venue: player.venue,
           opponent: player.opponent?.abbreviation,
-          projection: { defense, opponent: player.opponent?.abbreviation ?? null, positionGroup: player.positionGroup, absences },
+          projection,
           injury: player.injury?.level ?? null,
+          modelWeight: modelWeights[prop.stat],
         },
         point
       ),
-    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, player.positionGroup, player.injury?.level, defense, absences, point]
+    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, player.injury?.level, projection, modelWeights, point]
   );
   const books = useMemo(() => booksAtPoint(prop.quotes, point, side), [prop.quotes, point, side]);
   const pairs = useMemo(() => twoSidedAt(prop.quotes, point), [prop.quotes, point]);
