@@ -38,13 +38,13 @@ describe("groupNbaPropRows", () => {
 
   it("counts unmapped markets by key instead of guessing", () => {
     const { events, skipped, unmappedMarketKeys } = groupNbaPropRows([
-      row({ market_key: "player_double_double" }),
-      row({ market_key: "player_double_double" }),
+      row({ market_key: "player_first_basket" }),
+      row({ market_key: "player_first_basket" }),
       row({ market_key: "player_points_h2h" }),
     ]);
     expect(events.size).toBe(0);
     expect(skipped.unmappedMarket).toBe(3);
-    expect(unmappedMarketKeys).toEqual({ player_double_double: 2, player_points_h2h: 1 });
+    expect(unmappedMarketKeys).toEqual({ player_first_basket: 2, player_points_h2h: 1 });
   });
 
   it("drops DFS pick-em rows and label-not-a-player rows", () => {
@@ -111,7 +111,7 @@ describe("player name matching", () => {
 
 describe("combo stats", () => {
   it("sums the logged columns", () => {
-    const log = { points: 25, rebounds: 10, assists: 7, threesMade: 3, steals: 1, blocks: 2 };
+    const log = { points: 25, rebounds: 10, assists: 7, threesMade: 3, steals: 1, blocks: 2, turnovers: 3 };
     expect(NBA_PROP_STAT_BY_KEY.get("pointsReboundsAssists")!.value(log)).toBe(42);
     expect(NBA_PROP_STAT_BY_KEY.get("reboundsAssists")!.value(log)).toBe(17);
     expect(NBA_PROP_STAT_BY_KEY.get("threes")!.value(log)).toBe(3);

@@ -95,15 +95,25 @@ export async function syncAndGradeTeamLeagueResults(
         continue;
       }
 
+      // Period scores only when they add up to the final (overtime included).
+      const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+      const periodsOk =
+        result.homePeriods.length >= 4 && sum(result.homePeriods) === result.homeScore && sum(result.awayPeriods) === result.awayScore;
       const needsScores =
         game.homeScore !== result.homeScore ||
         game.awayScore !== result.awayScore ||
-        game.status !== "final";
+        game.status !== "final" ||
+        (periodsOk && game.homePeriodScores.length === 0);
 
       if (needsScores) {
         await prisma.game.update({
           where: { id: game.id },
-          data: { homeScore: result.homeScore, awayScore: result.awayScore, status: "final" },
+          data: {
+            homeScore: result.homeScore,
+            awayScore: result.awayScore,
+            status: "final",
+            ...(periodsOk ? { homePeriodScores: result.homePeriods, awayPeriodScores: result.awayPeriods } : {}),
+          },
         });
         gamesFinalized++;
       }
@@ -120,4 +130,12 @@ export async function syncAndGradeTeamLeagueResults(
   }
 
   return { datesChecked, resultsFetched, gamesFinalized, gamesGraded, unmatched };
+}
+
+/** Stores a finished game's per-period scores if it has none yet (they must add up to the final). */
+export async function storePeriodScores(game: { id: string; homePeriodScores: number[] }, result: EspnTeamResult): Promise<void> {
+  if (game.homePeriodScores.length > 0 || result.homePeriods.length < 4) return;
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  if (sum(result.homePeriods) !== result.homeScore || sum(result.awayPeriods) !== result.awayScore) return;
+  await prisma.game.update({ where: { id: game.id }, data: { homePeriodScores: result.homePeriods, awayPeriodScores: result.awayPeriods } });
 }

@@ -48,7 +48,23 @@ function empty(): NflStatLine {
     targets: 0,
     recYards: 0,
     recTds: 0,
+    rushLongest: null,
+    recLongest: null,
+    fieldGoalsMade: null,
+    extraPointsMade: null,
+    kickingPoints: null,
+    tackles: null,
+    soloTackles: null,
+    sacks: null,
   };
+}
+
+/** A column's number, or null when the table doesn't carry that key. */
+function opt(stats: string[], keys: string[], key: string): number | null {
+  const i = keys.indexOf(key);
+  if (i < 0) return null;
+  const v = Number(stats[i]);
+  return Number.isFinite(v) ? v : null;
 }
 
 /** Per category: which key fills which column. Composite keys ("completions/passingAttempts") fill two. */
@@ -67,6 +83,7 @@ const READERS: Record<string, (stats: string[], keys: string[], line: NflStatLin
     line.rushAttempts = ints(at("rushingAttempts"))[0] ?? 0;
     line.rushYards = ints(at("rushingYards"))[0] ?? 0;
     line.rushTds = ints(at("rushingTouchdowns"))[0] ?? 0;
+    line.rushLongest = opt(stats, keys, "longRushing");
   },
   receiving: (stats, keys, line) => {
     const at = (k: string) => stats[keys.indexOf(k)];
@@ -74,6 +91,19 @@ const READERS: Record<string, (stats: string[], keys: string[], line: NflStatLin
     line.recYards = ints(at("receivingYards"))[0] ?? 0;
     line.recTds = ints(at("receivingTouchdowns"))[0] ?? 0;
     line.targets = ints(at("receivingTargets"))[0] ?? 0;
+    line.recLongest = opt(stats, keys, "longReception");
+  },
+  kicking: (stats, keys, line) => {
+    const fg = ints(stats[keys.indexOf("fieldGoalsMade/fieldGoalAttempts")]);
+    const xp = ints(stats[keys.indexOf("extraPointsMade/extraPointAttempts")]);
+    line.fieldGoalsMade = fg[0] ?? null;
+    line.extraPointsMade = xp[0] ?? null;
+    line.kickingPoints = opt(stats, keys, "totalKickingPoints");
+  },
+  defensive: (stats, keys, line) => {
+    line.tackles = opt(stats, keys, "totalTackles");
+    line.soloTackles = opt(stats, keys, "soloTackles");
+    line.sacks = opt(stats, keys, "sacks");
   },
 };
 
@@ -82,6 +112,8 @@ const REQUIRED_KEY: Record<string, string> = {
   passing: "passingYards",
   rushing: "rushingYards",
   receiving: "receivingYards",
+  kicking: "totalKickingPoints",
+  defensive: "totalTackles",
 };
 
 /** Parses one summary payload. Exported for tests against a captured payload. */
@@ -96,7 +128,7 @@ export function parseNflBoxScore(payload: unknown): { lines: EspnNflPlayerLine[]
     for (const cat of block.statistics ?? []) {
       const name = cat.name ?? "";
       const read = READERS[name];
-      if (!read) continue; // defense, kicking, punting… not prop stats
+      if (!read) continue; // punting, returns, fumbles… not prop stats
       const keys = cat.keys ?? [];
       if (!keys.includes(REQUIRED_KEY[name])) {
         rejected.push(`${teamName} ${name}`);

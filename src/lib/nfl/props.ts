@@ -11,16 +11,16 @@ import { prisma } from "@/lib/prisma";
 import {
   activeOddsProvider,
   fetchBulkPlayerProps,
-  fetchEventPlayerProps,
   type OddsApiEvent,
   type ParlayPropRow,
 } from "@/lib/odds/oddsApiClient";
 import { ALLOWED_BOOK_KEYS } from "@/lib/odds/bookAllowlist";
+import { fetchEventMarketsGuarded } from "@/lib/odds/guardedEventFetch";
 import { looksLikePlayerName } from "@/lib/props/propMarkets";
 import { buildNbaPlayerIndex as buildPlayerIndex, lookupNbaPlayer as lookupPlayer } from "@/lib/nba/props";
 import type { NflPropStat, Side } from "@/generated/prisma/client";
 import { NFL_LEAGUE } from "./league";
-import { NFL_MARKET_KEY_TO_STAT } from "./propStats";
+import { NFL_MARKET_KEY_TO_STAT, nflAlternateMarketStat } from "./propStats";
 
 export interface NflPropQuote {
   bookKey: string;
@@ -40,7 +40,7 @@ export function groupNflPropRows(rows: ParlayPropRow[]) {
   const unmappedMarketKeys: Record<string, number> = {};
   let skipped = 0;
   for (const row of rows) {
-    const stat = NFL_MARKET_KEY_TO_STAT[row.market_key];
+    const stat = NFL_MARKET_KEY_TO_STAT[row.market_key] ?? nflAlternateMarketStat(row.market_key);
     if (!stat) {
       unmappedMarketKeys[row.market_key] = (unmappedMarketKeys[row.market_key] ?? 0) + 1;
       continue;
@@ -109,6 +109,24 @@ export const TOA_NFL_PROP_MARKETS = [
   "player_reception_yds",
   "player_rush_reception_yds",
   "player_anytime_td",
+  "player_reception_longest",
+  "player_rush_longest",
+  "player_kicking_points",
+  "player_field_goals",
+  "player_pats",
+  "player_tackles_assists",
+  "player_solo_tackles",
+  "player_sacks",
+  // Alternate ladders: the same stats at every number the books hang.
+  "player_pass_yds_alternate",
+  "player_pass_tds_alternate",
+  "player_pass_completions_alternate",
+  "player_pass_attempts_alternate",
+  "player_rush_yds_alternate",
+  "player_rush_attempts_alternate",
+  "player_receptions_alternate",
+  "player_reception_yds_alternate",
+  "player_rush_reception_yds_alternate",
 ];
 const TOA_PROP_REGIONS = ["us", "us2"];
 /** Props post a day or two ahead; 30 hours covers a Sunday slate from Saturday's evening poll. */
@@ -162,10 +180,11 @@ export async function pollAndStoreNflProps(now: Date = new Date()): Promise<Poll
     for (const game of games) {
       if (!game.oddsApiEventId) continue;
       try {
-        const res = await fetchEventPlayerProps(game.oddsApiEventId, TOA_NFL_PROP_MARKETS, TOA_PROP_REGIONS, NFL_LEAGUE.oddsSportKey);
-        rows.push(...toaNflEventToPropRows(res.event));
-        used += res.creditsUsed ?? 0;
-        summary.creditsRemaining = res.creditsRemaining;
+        const res = await fetchEventMarketsGuarded(game.oddsApiEventId, TOA_NFL_PROP_MARKETS, TOA_PROP_REGIONS, NFL_LEAGUE.oddsSportKey);
+        for (const e of res.events) rows.push(...toaNflEventToPropRows(e));
+        used += res.creditsUsed;
+        summary.creditsRemaining = res.creditsRemaining ?? summary.creditsRemaining;
+        for (const k of res.rejectedKeys) summary.unmappedMarketKeys[`rejected:${k}`] = 1;
       } catch (error) {
         summary.unmatchedEvents.push(`${game.id}: ${error instanceof Error ? error.message.slice(0, 120) : String(error)}`);
       }

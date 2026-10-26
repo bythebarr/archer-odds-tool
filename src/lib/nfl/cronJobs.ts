@@ -9,6 +9,31 @@ import { lookbackDatesEt } from "@/lib/teamLeague/results";
 import { syncNflGameLogs, syncNflPositions } from "./gameLogs";
 import { pollAndStoreNflProps } from "./props";
 import { syncInjuries } from "@/lib/injuries/espnInjuries";
+import { pollExtraMarkets } from "@/lib/teamLeague/extraMarkets";
+import { NFL_LEAGUE } from "./league";
+
+/**
+ * Alternates, team totals, halves and quarters for games starting soon — on the
+ * same tick as props, logged on their own so a market-key change shows up there.
+ */
+const NFL_MARKETS_JOB = "poll-markets-nfl";
+const NFL_MARKETS_LOOKAHEAD_HOURS = 30;
+export async function runNflExtraMarketsPoll() {
+  try {
+    const summary = await pollExtraMarkets(NFL_LEAGUE, NFL_MARKETS_LOOKAHEAD_HOURS);
+    if (summary.rejectedKeys.length) console.log(`${NFL_MARKETS_JOB}: provider rejected`, summary.rejectedKeys);
+    await recordPollLog(
+      NFL_MARKETS_JOB,
+      summary.gamesConsidered === 0 ? "ok (no games)" : writeOutcomeStatus(summary.gamesConsidered, summary.gamesStored, "games with extra markets"),
+      summary.creditsUsed,
+      summary.creditsRemaining
+    );
+    return summary;
+  } catch (error) {
+    await recordPollLog(NFL_MARKETS_JOB, `error: ${sanitizeErrorMessage(error instanceof Error ? error.message : String(error))}`);
+    throw error;
+  }
+}
 
 const NFL_GAME_LOGS_JOB = "sync-gamelogs-nfl";
 

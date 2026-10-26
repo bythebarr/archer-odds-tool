@@ -51,8 +51,8 @@ describe("toaNflEventToPropRows + groupNflPropRows", () => {
 
   it("counts unmapped markets instead of guessing", () => {
     const g = groupNflPropRows([
-      { event_id: "e", sport_key: "", home_team: "", away_team: "", commence_time: "", bookmaker: "dk", bookmaker_title: "DK", player: "A Player", market_key: "player_longest_reception", market: "", line: 20.5, over_price: -110, under_price: -110 },
+      { event_id: "e", sport_key: "", home_team: "", away_team: "", commence_time: "", bookmaker: "dk", bookmaker_title: "DK", player: "A Player", market_key: "player_1st_td", market: "", line: 0.5, over_price: -110, under_price: -110 },
     ]);
-    expect(g.unmappedMarketKeys).toEqual({ player_longest_reception: 1 });
+    expect(g.unmappedMarketKeys).toEqual({ player_1st_td: 1 });
   });
 });

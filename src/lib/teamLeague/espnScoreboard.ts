@@ -30,6 +30,9 @@ export interface EspnTeamResult {
   awayScore: number;
   /** True only when ESPN says the game is over; anything in progress is ignored. */
   completed: boolean;
+  /** Points per period (quarters, then overtime); empty when ESPN sends none. */
+  homePeriods: number[];
+  awayPeriods: number[];
 }
 
 /** Minimal shape of the bits we read — ESPN sends far more than this. */
@@ -43,9 +46,16 @@ interface EspnScoreboardResponse {
         homeAway?: string;
         score?: string | number;
         team?: { displayName?: string };
+        linescores?: { value?: number | string }[];
       }[];
     }[];
   }[];
+}
+
+/** A competitor's per-period points, or [] if any period is unreadable (never a partial line). */
+function periods(lines: { value?: number | string }[] | undefined): number[] {
+  const values = (lines ?? []).map((l) => Number(l.value));
+  return values.every((v) => Number.isInteger(v) && v >= 0) ? values : [];
 }
 
 /** ESPN's `dates` param wants YYYYMMDD; our dates travel as ET YYYY-MM-DD. */
@@ -99,6 +109,8 @@ export function parseScoreboard(payload: unknown): EspnTeamResult[] {
       homeScore,
       awayScore,
       completed,
+      homePeriods: periods(home?.linescores),
+      awayPeriods: periods(away?.linescores),
     });
   }
 

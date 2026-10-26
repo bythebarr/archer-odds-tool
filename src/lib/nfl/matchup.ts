@@ -34,7 +34,9 @@ export const MIN_NFL_DEFENSE_GAMES = 3;
 
 /** What `opponent` allows to `position` in `stat`, ranked (1 = most allowed). Null without enough games. */
 export function nflStatMatchup(table: NflDefenseTable, opponent: string, stat: NflPropStatDef, position: NflPosition | null): NflStatMatchup | null {
-  if (!position) return null;
+  // Kicking and defense aren't read against what a defense allows, and the
+  // columns that can be missing aren't summed into the table.
+  if (!position || stat.group === "K" || stat.group === "DEF" || stat.available) return null;
   const mine = table.teams[opponent]?.byPosition[position];
   if (!mine || mine.games < MIN_NFL_DEFENSE_GAMES) return null;
   const all = Object.values(table.teams).flatMap((t) => {

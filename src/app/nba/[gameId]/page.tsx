@@ -7,6 +7,9 @@ import { etDateOf } from "@/lib/dateEt";
 import { TeamLeagueGame } from "@/components/TeamLeagueGame";
 import { GameModelPanel } from "@/components/GameModelPanel";
 import { getGameModelView } from "@/lib/queries/gameModel";
+import { getGameOffers } from "@/lib/queries/gameMarkets";
+import { GameMarketBoard } from "@/components/game/GameMarketBoard";
+import { espnTeamLogoUrl } from "@/lib/logos";
 import { NbaPropsFinder } from "@/components/nba/NbaPropsFinder";
 
 /** Shares getTeamGameWithLines's per-request cache() with the page below — same pattern as the MLB/tennis/soccer game pages. */
@@ -59,10 +62,17 @@ export default async function NbaGamePage({
   }
 
   const modelView = tab === "lines" ? await getGameModelView("nba", gameId, result.lines) : null;
+  const offers = tab === "lines" ? await getGameOffers("nba", gameId, result.lines, modelView) : [];
+  const team = (t: { name: string; abbreviation: string }) => ({ name: t.name, abbreviation: t.abbreviation, logoUrl: espnTeamLogoUrl("nba", t.abbreviation) });
 
   return (
     <TeamLeagueGame
       modelPanel={modelView ? <GameModelPanel view={modelView} /> : null}
+      marketBoard={
+        offers.length > 0 ? (
+          <GameMarketBoard offers={offers} teams={{ home: team(result.game.homeTeam), away: team(result.game.awayTeam) }} sport="nba" matchId={gameId} />
+        ) : undefined
+      }
       sport="nba"
       result={result}
       tab={tab}

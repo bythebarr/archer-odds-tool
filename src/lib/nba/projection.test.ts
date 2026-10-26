@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { countCdf, MIN_GAMES, probOver, projectProp } from "./projection";
+import { countCdf, MIN_GAMES, probOver, projectProp, rawOver } from "./projection";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 import type { GameLogPoint } from "./propsMath";
 import type { DefenseTable } from "./matchup";
 
 const PTS = NBA_PROP_STAT_BY_KEY.get("points")!;
-const line = (points: number) => ({ points, rebounds: 40, assists: 25, threesMade: 12, steals: 8, blocks: 5 });
+const line = (points: number) => ({ points, rebounds: 40, assists: 25, threesMade: 12, steals: 8, blocks: 5, turnovers: 3 });
 const defense: DefenseTable = {
   season: 2026,
   fromLastSeason: false,
@@ -27,6 +27,7 @@ const log = (points: number, minutes = 34, i = 0): GameLogPoint => ({
   threesMade: 2,
   steals: 1,
   blocks: 0,
+  turnovers: 0,
 });
 const steady = (n: number, pts = 25) => Array.from({ length: n }, (_, i) => log(pts + (i % 3) - 1, 34, i));
 
@@ -92,5 +93,34 @@ describe("teammate absences", () => {
     const adj = projectProp(logs, PTS, { defense, opponent: "MID", positionGroup: null, absences: [{ name: "Star", status: "Out", playedDates: starDates, usage: 34 }] })!;
     expect(adj.absence).toMatchObject({ names: ["Star"], games: 10 });
     expect(adj.mean).toBeGreaterThan(base.mean);
+  });
+});
+
+describe("projectMilestone", () => {
+  const big = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      date: `2026-10-${String(30 - i).padStart(2, "0")}`,
+      opponent: "MID",
+      isHome: true,
+      season: 2026,
+      minutes: 36,
+      points: 26,
+      rebounds: 12,
+      assists: 7,
+      threesMade: 1,
+      steals: 1,
+      blocks: 1,
+      turnovers: 3,
+    }));
+  it("makes a 26-and-12 big a heavy double-double favorite and a long triple-double shot", async () => {
+    const { projectMilestone } = await import("./projection");
+    const { NBA_PROP_STAT_BY_KEY } = await import("./propStats");
+    const comps = (["points", "rebounds", "assists", "steals", "blocks"] as const).map((k) => NBA_PROP_STAT_BY_KEY.get(k)!);
+    const ctx = { defense: { season: 0, fromLastSeason: false, teams: {} }, opponent: null, positionGroup: null };
+    const dd = projectMilestone(big(20), comps, 2, ctx)!;
+    const td = projectMilestone(big(20), comps, 3, ctx)!;
+    expect(dd.mean).toBeGreaterThan(0.6);
+    expect(td.mean).toBeLessThan(0.25);
+    expect(rawOver(dd, 0.5)).toBeCloseTo(dd.mean, 6);
   });
 });

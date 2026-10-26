@@ -65,7 +65,7 @@ function Factor({ label, value }: { label: string; value: string }) {
 }
 
 /** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
-function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; point: number; side: PropDirection; statShort: string }) {
+function ProjectionPanel({ model, point, side, statShort, milestone = false }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean }) {
   const p = model.projection;
   const ev = side === "over" ? model.evOver : model.evUnder;
   const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -80,10 +80,12 @@ function ProjectionPanel({ model, point, side, statShort }: { model: PropModel; 
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="font-mono text-3xl font-semibold leading-none tracking-tight text-foreground">
-              {p.mean.toFixed(1)}
-              <span className="ml-1 font-sans text-xs font-semibold text-muted-foreground">{statShort}</span>
+              {milestone ? `${Math.round(model.probOver * 100)}%` : p.mean.toFixed(1)}
+              <span className="ml-1 font-sans text-xs font-semibold text-muted-foreground">{milestone ? `${statShort} chance` : statShort}</span>
             </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">± {p.sd.toFixed(1)} typical swing</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {milestone ? "10+ in enough of PTS · REB · AST · STL · BLK" : `± ${p.sd.toFixed(1)} typical swing`}
+            </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-muted-foreground">
@@ -332,7 +334,7 @@ export function PlayerPropSheet({
             </p>
           )}
 
-          {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} />}
+          {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} />}
 
           {summary && (
             <section>

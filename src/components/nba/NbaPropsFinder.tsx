@@ -271,7 +271,7 @@ export function NbaPropsFinder({
       {/* Sticky controls: stat strip, then side / sort / search. */}
       <div className="sticky top-[45px] z-10 -mx-4 mt-4 border-b border-border bg-background/90 px-4 pb-2.5 pt-2.5 backdrop-blur-md">
         <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]" role="tablist" aria-label="Stat">
-          {NBA_PROP_STATS.map((s) => (
+          {NBA_PROP_STATS.filter((s) => statCounts.get(s.key) || s.key === prefs.stat).map((s) => (
             <button
               key={s.key}
               type="button"

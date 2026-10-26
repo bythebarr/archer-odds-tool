@@ -69,7 +69,9 @@ export interface NflProjectionContext {
   season?: number;
 }
 
-export function projectNflProp(logs: NflLogPoint[], stat: NflPropStatDef, ctx: NflProjectionContext): NflProjection | null {
+export function projectNflProp(allLogs: NflLogPoint[], stat: NflPropStatDef, ctx: NflProjectionContext): NflProjection | null {
+  // Only games whose box score carried this stat (a missing read is not a zero).
+  const logs = stat.available ? allLogs.filter(stat.available) : allLogs;
   if (logs.length < MIN_NFL_GAMES) return null;
   const values = logs.map((l) => stat.value(l));
   const decay = values.slice(0, WINDOW).map((_, i) => Math.pow(0.5, i / HALF_LIFE));

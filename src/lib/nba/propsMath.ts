@@ -9,7 +9,8 @@
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { bestBettableLine, consensusPoint, isBettableBook } from "@/lib/odds/bestPrice";
 import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
-import { CALIBRATION_SHRINK, projectProp, rawOver, type ProjectionContext, type PropProjection } from "./projection";
+import { CALIBRATION_SHRINK, projectMilestone, projectProp, rawOver, type ProjectionContext, type PropProjection } from "./projection";
+import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 import type { InjuryLevel } from "@/lib/injuries/status";
 import { modelWithheld, priceProp, type PricedProp } from "@/lib/propModel/price";
 import { tallyPropHits, type PropDirection, type PropHitRateResult } from "@/lib/props/tally";
@@ -36,17 +37,17 @@ export interface GameLogPoint extends NbaStatLine {
 /**
  * A game log as a tuple for the wire: a night's slate ships two seasons of logs
  * for every player, and positional arrays drop the repeated keys (about half the
- * payload). [date, opponent, isHome, season, minutes, pts, reb, ast, 3pm, stl, blk]
+ * payload). [date, opponent, isHome, season, minutes, pts, reb, ast, 3pm, stl, blk, to]
  */
-export type PackedLog = [string, string, 0 | 1, number, number, number, number, number, number, number, number];
+export type PackedLog = [string, string, 0 | 1, number, number, number, number, number, number, number, number, number?];
 
 export function packLog(l: GameLogPoint): PackedLog {
-  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, l.minutes, l.points, l.rebounds, l.assists, l.threesMade, l.steals, l.blocks];
+  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, l.minutes, l.points, l.rebounds, l.assists, l.threesMade, l.steals, l.blocks, l.turnovers];
 }
 
 export function unpackLog(t: PackedLog): GameLogPoint {
-  const [date, opponent, isHome, season, minutes, points, rebounds, assists, threesMade, steals, blocks] = t;
-  return { date, opponent, isHome: isHome === 1, season, minutes, points, rebounds, assists, threesMade, steals, blocks };
+  const [date, opponent, isHome, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers] = t;
+  return { date, opponent, isHome: isHome === 1, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers: turnovers ?? 0 };
 }
 
 export interface SlateProp {
@@ -182,8 +183,13 @@ export function summarizeProp(
   const over = bestBettableLine(prop.quotes.filter((q) => q.side === "over"), point);
   const under = bestBettableLine(prop.quotes.filter((q) => q.side === "under"), point);
   const pairs = twoSidedAt(prop.quotes, point);
+  const projCtx = context.projection ? { season: context.season, ...context.projection } : null;
   const projection =
-    context.projection && !modelWithheld(context.injury) ? projectProp(logs, stat, { season: context.season, ...context.projection }) : null;
+    projCtx && !modelWithheld(context.injury)
+      ? stat.milestone
+        ? projectMilestone(logs, stat.milestone.components.map((k) => NBA_PROP_STAT_BY_KEY.get(k)!), stat.milestone.needed, projCtx)
+        : projectProp(logs, stat, projCtx)
+      : null;
   const model: PropModel | null = projection
     ? {
         projection,

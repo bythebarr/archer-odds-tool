@@ -211,6 +211,10 @@ model Game {
 
   homeScore Int?
   awayScore Int?
+  /// Points per period (quarters for NBA/NFL, then overtime), from ESPN's linescores
+  /// on the results sync — what halves, quarters and team totals are graded on.
+  homePeriodScores Int[] @default([])
+  awayPeriodScores Int[] @default([])
 
   // Nullable: MLB usually doesn't confirm starters until 1-5 days out, so
   // these are legitimately empty for most of the forward-looking sync window.
@@ -239,6 +243,7 @@ model Game {
   nflGameLogs            NflPlayerGameLog[]
   nflPropSnapshots       NflPropSnapshot[]
   currentNflPropLines    CurrentNflPropLine[]
+  marketLines            GameMarketLine[]
 
   @@index([scheduledStartUtc])
   @@index([status])
@@ -482,6 +487,7 @@ model Sportsbook {
   currentNbaPropLines    CurrentNbaPropLine[]
   nflPropSnapshots       NflPropSnapshot[]
   currentNflPropLines    CurrentNflPropLine[]
+  marketLines            GameMarketLine[]
 }
 
 /// Append-only fact table: every polled price, forever. Source of truth for
@@ -1287,6 +1293,10 @@ enum NbaPropStat {
   pointsRebounds
   pointsAssists
   reboundsAssists
+  turnovers
+  blocksSteals
+  doubleDouble
+  tripleDouble
 }
 
 /// Append-only NBA prop prices — PlayerPropSnapshot's shape, keyed to NbaPlayer.
@@ -1345,6 +1355,14 @@ enum NflPropStat {
   recYards
   rushRecYards
   anytimeTd
+  longestRush
+  longestReception
+  kickingPoints
+  fieldGoals
+  extraPoints
+  sacks
+  soloTackles
+  tacklesAssists
 }
 
 model NflPlayer {
@@ -1387,6 +1405,17 @@ model NflPlayerGameLog {
   targets         Int       @default(0)
   recYards        Int       @default(0)
   recTds          Int       @default(0)
+  /// Longest rush / reception, kicking and defense — null where the box score
+  /// didn't carry the table (older logs, or a key ESPN renamed), so a missing
+  /// read is never mistaken for a zero.
+  rushLongest     Int?
+  recLongest      Int?
+  fieldGoalsMade  Int?
+  extraPointsMade Int?
+  kickingPoints   Int?
+  tackles         Int?
+  soloTackles     Int?
+  sacks           Float?
 
   @@unique([nflPlayerId, gameId])
   @@index([nflPlayerId, gameDate])
@@ -1467,4 +1496,34 @@ model PlayerInjury {
   updatedAt     DateTime @updatedAt
 
   @@unique([sport, espnAthleteId])
+}
+
+/// Every game-line market beyond the main three (CurrentOddsLine keeps those):
+/// alternate spreads and totals, team totals, and every half / quarter line —
+/// the latest price per (game, book, market, side, team, number), refreshed by
+/// the per-event poll (teamLeague/extraMarkets.ts). Rows a poll didn't return
+/// are deleted, so this holds only what books are hanging now.
+model GameMarketLine {
+  id            String     @id @default(cuid())
+  gameId        String
+  game          Game       @relation(fields: [gameId], references: [id])
+  bookKey       String
+  book          Sportsbook @relation(fields: [bookKey], references: [key])
+  /// The provider's key, e.g. "alternate_spreads", "team_totals", "spreads_h1".
+  marketKey     String
+  /// "game" | "h1" | "h2" | "q1" | "q2" | "q3" | "q4"
+  period        String
+  /// "ml" | "spread" | "total" | "teamTotal"
+  kind          String
+  /// "home" | "away" | "over" | "under" | "draw"
+  side          String
+  /// For team totals: whose total ("home" | "away"); "" otherwise.
+  team          String     @default("")
+  /// Spread / total number; 0 for moneylines.
+  point         Float      @default(0)
+  priceAmerican Int
+  polledAt      DateTime
+
+  @@unique([gameId, bookKey, marketKey, side, team, point])
+  @@index([gameId])
 }

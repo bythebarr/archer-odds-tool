@@ -9,7 +9,7 @@ function q(bookKey: string, side: "over" | "under", point: number, priceAmerican
 }
 
 function log(points: number, extra: Partial<GameLogPoint> = {}): GameLogPoint {
-  return { date: "2026-10-20", opponent: "BOS", isHome: true, season: 2026, minutes: 34, points, rebounds: 5, assists: 4, threesMade: 2, steals: 1, blocks: 0, ...extra };
+  return { date: "2026-10-20", opponent: "BOS", isHome: true, season: 2026, minutes: 34, points, rebounds: 5, assists: 4, threesMade: 2, steals: 1, blocks: 0, turnovers: 2, ...extra };
 }
 
 const prop: SlateProp = {

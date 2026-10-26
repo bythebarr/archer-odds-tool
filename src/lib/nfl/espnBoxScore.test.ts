@@ -41,8 +41,11 @@ describe("parseNflBoxScore", () => {
     expect(by("3")).toMatchObject({ receptions: 8, recYards: 94, recTds: 1, targets: 11 });
   });
 
-  it("skips non-prop categories", () => {
-    expect(lines.find((l) => l.espnAthleteId === "9")).toBeUndefined();
+  it("reads the defensive table, and leaves columns a table lacks empty", () => {
+    const def = lines.find((l) => l.espnAthleteId === "9")!;
+    expect(def.tackles).toBe(9);
+    expect(def.soloTackles).toBeNull();
+    expect(def.kickingPoints).toBeNull();
   });
 
   it("rejects a table missing its yards column", () => {
