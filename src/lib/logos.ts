@@ -15,27 +15,31 @@ const BOOK_DOMAINS: Record<string, string> = {
   fanduel: "sportsbook.fanduel.com",
   betmgm: "sports.betmgm.com",
   betrivers: "betrivers.com",
-  espnbet: "espnbet.com",
+  espnbet: "thescore.bet",
   caesars: "sportsbook.caesars.com",
   fanatics: "sportsbook.fanatics.com",
   bet365: "bet365.com",
   hardrock: "hardrock.bet",
   parx: "betparx.com",
   pinnacle: "pinnacle.com",
+  circa: "circasports.com",
 };
 
 /**
- * Book keys with a hand-placed file in public/logos/books (see its README) — a
- * file there beats the favicon. Listed explicitly so no request probes a path
- * that 404s.
+ * Book keys with their official app icon bundled in public/logos/books (pulled
+ * from each book's own site, 152–256px) — served from our own domain, so a
+ * book's site being slow or blocking hotlinks never blanks a badge. The
+ * favicon service stays as the fallback for a book added later.
  */
-const LOCAL_BOOK_LOGOS = new Set<string>();
+const LOCAL_BOOK_LOGOS = new Set<string>([
+  "draftkings", "fanduel", "betmgm", "betrivers", "espnbet", "caesars", "fanatics", "bet365", "hardrock", "parx", "pinnacle", "circa",
+]);
 
 export function bookLogoSources(bookKey: string): string[] {
   const sources: string[] = [];
-  if (LOCAL_BOOK_LOGOS.has(bookKey)) sources.push(`/logos/books/${bookKey}.svg`);
+  if (LOCAL_BOOK_LOGOS.has(bookKey)) sources.push(`/logos/books/${bookKey}.png`);
   const domain = BOOK_DOMAINS[bookKey];
-  if (domain) sources.push(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`);
+  if (domain) sources.push(`https://www.google.com/s2/favicons?domain=${domain}&sz=256`);
   return sources;
 }
 
@@ -109,4 +113,43 @@ export function espnNcaaLogoUrl(espnTeamId: string | number): string {
  */
 export function nbaHeadshotUrl(espnAthleteId: string): string {
   return `https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${espnAthleteId}.png&w=192&h=140&scale=crop`;
+}
+
+/** Bundled league marks (public/logos/leagues), from ESPN's league logo set. */
+export const LEAGUE_LOGOS: Record<string, string> = {
+  nba: "/logos/leagues/nba.png",
+  nfl: "/logos/leagues/nfl.png",
+  mlb: "/logos/leagues/mlb.png",
+  nhl: "/logos/leagues/nhl.png",
+  ufc: "/logos/leagues/ufc.png",
+  f1: "/logos/leagues/f1.png",
+  soccer: "/logos/leagues/fifa-world-cup.png",
+};
+
+/**
+ * Formula 1's official driver headshot (media.formula1.com), keyed the way F1
+ * keys it: the first three letters of the first given name and of the surname,
+ * then "01" (Max Verstappen → MAXVER01). A name that doesn't follow the pattern
+ * 404s and the avatar falls back to the flag.
+ */
+export function f1DriverHeadshotUrl(fullName: string): string | null {
+  const words = fullName
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z ]/g, "")
+    .trim()
+    .split(/\s+/);
+  if (words.length < 2) return null;
+  const given = words[0];
+  const family = words[words.length - 1];
+  const code = `${given.slice(0, 3)}${family.slice(0, 3)}`.toUpperCase() + "01";
+  const folder = `${code}_${given}_${family}`;
+  return `https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/${given[0].toUpperCase()}/${folder}/${code.toLowerCase()}.png.transform/1col/image.png`;
+}
+
+/** Bundled official team logos (formula1.com's 2025 set), by Jolpica constructor id. */
+const F1_TEAM_LOGOS = new Set(["red_bull", "mclaren", "ferrari", "mercedes", "aston_martin", "alpine", "williams", "rb", "sauber", "haas"]);
+
+export function f1TeamLogoUrl(ergastConstructorId: string): string | null {
+  return F1_TEAM_LOGOS.has(ergastConstructorId) ? `/logos/f1/${ergastConstructorId}.png` : null;
 }

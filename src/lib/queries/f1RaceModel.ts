@@ -7,12 +7,15 @@ import { prisma } from "@/lib/prisma";
 import { loadF1Races } from "@/lib/f1/raceData";
 import { DEFAULT_F1_OPTS, F1Ratings, simulateRace, type DriverOdds, type F1ModelOpts } from "@/lib/f1/raceModel";
 import { getNextRace, type F1NextRace } from "./f1";
+import { flagForNationality } from "@/lib/f1/flags";
 
 export interface F1DriverOddsRow extends DriverOdds {
   name: string;
   code: string | null;
   ergastDriverId: string;
   constructorName: string;
+  ergastConstructorId: string;
+  flag: string;
 }
 
 export interface F1RaceModelView {
@@ -43,8 +46,8 @@ export async function getF1RaceModel(): Promise<F1RaceModelView | null> {
   const odds = simulateRace(ratings, entries);
 
   const [drivers, constructors] = await Promise.all([
-    prisma.f1Driver.findMany({ where: { id: { in: entries.map((e) => e.driverId) } }, select: { id: true, givenName: true, familyName: true, code: true, ergastDriverId: true } }),
-    prisma.f1Constructor.findMany({ where: { id: { in: entries.map((e) => e.constructorId) } }, select: { id: true, name: true } }),
+    prisma.f1Driver.findMany({ where: { id: { in: entries.map((e) => e.driverId) } }, select: { id: true, givenName: true, familyName: true, code: true, ergastDriverId: true, nationality: true } }),
+    prisma.f1Constructor.findMany({ where: { id: { in: entries.map((e) => e.constructorId) } }, select: { id: true, name: true, ergastConstructorId: true } }),
   ]);
   const d = new Map(drivers.map((x) => [x.id, x]));
   const c = new Map(constructors.map((x) => [x.id, x]));
@@ -58,6 +61,8 @@ export async function getF1RaceModel(): Promise<F1RaceModelView | null> {
       code: d.get(o.driverId)?.code ?? null,
       ergastDriverId: d.get(o.driverId)?.ergastDriverId ?? "",
       constructorName: c.get(o.constructorId)?.name ?? "",
+      ergastConstructorId: c.get(o.constructorId)?.ergastConstructorId ?? "",
+      flag: flagForNationality(d.get(o.driverId)?.nationality ?? null),
     })),
   };
 }

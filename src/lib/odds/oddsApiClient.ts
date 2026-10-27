@@ -50,6 +50,8 @@ export const TOA_BOOK_KEY_ALIASES: Record<string, string> = {
   williamhill_us: "caesars",
   hardrockbet: "hardrock",
   betparx: "parx",
+  // ESPN BET became theScore Bet on 2025-12-01 (same book, accounts and app).
+  thescorebet: "espnbet",
 };
 
 /**
@@ -89,7 +91,8 @@ export type OddsApiMarketKey =
   | "spreads"
   | "totals"
   | "alternate_spreads"
-  | "alternate_totals";
+  | "alternate_totals"
+  | "outrights";
 
 /**
  * NOTE the nullable price: ParlayAPI returns `price: null` for a suspended or
@@ -238,6 +241,53 @@ export async function fetchSportsList(): Promise<OddsApiSport[]> {
   }
 
   return (await res.json()) as OddsApiSport[];
+}
+
+/** One upcoming event as the free events list gives it — no odds. */
+export interface OddsApiEventStub {
+  id: string;
+  sport_key: string;
+  commence_time: string;
+  home_team: string | null;
+  away_team: string | null;
+}
+
+/** Every upcoming event for a sport_key. Free: the events list costs no credits. */
+export async function fetchSportEvents(sportKey: string): Promise<OddsApiEventStub[]> {
+  const url = new URL(`${BASE_URL}/sports/${sportKey}/events`);
+  url.searchParams.set("apiKey", oddsApiKey());
+  url.searchParams.set("dateFormat", "iso");
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`The Odds API events request failed: ${res.status} ${res.statusText} — ${await res.text()}`);
+  return (await res.json()) as OddsApiEventStub[];
+}
+
+export interface OddsApiScore {
+  id: string;
+  sport_key: string;
+  commence_time: string;
+  completed: boolean;
+  home_team: string | null;
+  away_team: string | null;
+  scores: { name: string; score: string }[] | null;
+}
+
+/**
+ * Live and recently finished scores for a sport_key. Costs 2 credits with
+ * `daysFrom` (1–3 days back), 1 without (live and upcoming only).
+ */
+export async function fetchScores(sportKey: string, daysFrom?: number): Promise<{ scores: OddsApiScore[]; creditsUsed: number | null; creditsRemaining: number | null }> {
+  const url = new URL(`${BASE_URL}/sports/${sportKey}/scores`);
+  url.searchParams.set("apiKey", oddsApiKey());
+  url.searchParams.set("dateFormat", "iso");
+  if (daysFrom) url.searchParams.set("daysFrom", String(daysFrom));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`The Odds API scores request failed: ${res.status} ${res.statusText} — ${await res.text()}`);
+  return {
+    scores: (await res.json()) as OddsApiScore[],
+    creditsUsed: parseIntHeader(res.headers.get("x-requests-last")),
+    creditsRemaining: parseIntHeader(res.headers.get("x-requests-remaining")),
+  };
 }
 
 export interface FetchEventOddsResult {

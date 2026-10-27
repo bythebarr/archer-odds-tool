@@ -13,6 +13,7 @@ export interface F1DriverStanding {
   code: string | null;
   flag: string;
   constructorName: string;
+  ergastConstructorId: string;
   points: number;
   wins: number;
   podiums: number;
@@ -114,6 +115,7 @@ export async function getF1Season(): Promise<F1SeasonView | null> {
       podiums: number;
       latestRound: number;
       constructorName: string;
+      ergastConstructorId: string;
     }
   >();
 
@@ -131,6 +133,7 @@ export async function getF1Season(): Promise<F1SeasonView | null> {
         podiums: 0,
         latestRound: -1,
         constructorName: r.constructor.name,
+        ergastConstructorId: r.constructor.ergastConstructorId,
       };
     entry.points += r.points;
     if (r.position === 1) entry.wins += 1;
@@ -139,6 +142,7 @@ export async function getF1Season(): Promise<F1SeasonView | null> {
     if (r.race.round > entry.latestRound) {
       entry.latestRound = r.race.round;
       entry.constructorName = r.constructor.name;
+      entry.ergastConstructorId = r.constructor.ergastConstructorId;
     }
     driverAgg.set(key, entry);
   }
@@ -152,6 +156,7 @@ export async function getF1Season(): Promise<F1SeasonView | null> {
       code: d.code,
       flag: flagForNationality(d.nationality),
       constructorName: d.constructorName,
+      ergastConstructorId: d.ergastConstructorId,
       points: d.points,
       wins: d.wins,
       podiums: d.podiums,

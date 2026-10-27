@@ -40,6 +40,7 @@ export function FaceOff({
   a,
   b,
   probA,
+  draw = null,
   probLabel = "ARCHR win probability",
   chips,
   meta,
@@ -49,12 +50,15 @@ export function FaceOff({
   a: FaceOffSide;
   b: FaceOffSide;
   probA: number | null;
+  /** A three-way market's draw: the two sides then show their own chances, and the bar a gray draw share. */
+  draw?: number | null;
   probLabel?: string;
   chips?: ReactNode;
   meta?: ReactNode;
   center?: ReactNode;
   footer?: ReactNode;
 }) {
+  const probB = probA === null ? null : 1 - probA - (draw ?? 0);
   const side = (s: FaceOffSide, prob: number | null) => (
     <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
       <span className="rounded-full p-[3px]" style={{ background: s.color }}>
@@ -72,12 +76,13 @@ export function FaceOff({
       <div className="mt-4 flex items-start justify-between gap-2">
         {side(a, probA)}
         <span className="mt-9 shrink-0 text-center font-display text-xl font-extrabold italic text-[#c8f53a]">{center}</span>
-        {side(b, probA === null ? null : 1 - probA)}
+        {side(b, probB)}
       </div>
       {probA !== null && (
         <div className="mt-3">
           <div className="flex h-1.5 overflow-hidden rounded-full" aria-hidden>
             <span style={{ width: `${probA * 100}%`, background: a.color }} />
+            {draw ? <span style={{ width: `${draw * 100}%` }} className="bg-[#3a3f4b]" /> : null}
             <span className="flex-1" style={{ background: b.color }} />
           </div>
           <p className="mt-1.5 text-center text-[10px] uppercase tracking-wide text-[#8a90a0]">{probLabel}</p>

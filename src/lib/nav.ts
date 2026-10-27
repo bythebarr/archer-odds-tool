@@ -38,6 +38,8 @@ const SPORT_TABS: NavItem[] = SPORT_METAS.filter((m) => !m.parked).map((m) => ({
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", icon: "home", carriesDate: false, primary: true },
   ...SPORT_TABS,
+  // Every other sport and league, from the all-sports engine.
+  { href: "/sports", label: "All Sports", icon: "all", carriesDate: false, primary: true },
   // Props points at the NBA finder, the in-season props product. (The MLB props
   // board at /props is parked with MLB; it's still reachable by URL.)
   { href: "/nba/props", label: "Props", icon: "props", carriesDate: false, primary: true },
