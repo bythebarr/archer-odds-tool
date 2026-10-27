@@ -1,0 +1,27 @@
+name: Ops status (read-only)
+
+# Prints every job's last run and status, how fresh each sport's odds and game
+# logs are, and what the all-sports engine holds — straight from the production
+# database. Reads only.
+on:
+  workflow_dispatch:
+  # Also runs whenever the report itself changes, so a new check reads live data on its first push.
+  push:
+    paths:
+      - scripts/ops-status.ts
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsx scripts/ops-status.ts
