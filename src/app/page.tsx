@@ -7,6 +7,9 @@ import { todayEt, formatEtDateLabel } from "@/lib/dateEt";
 import { sportMetaByKey } from "@/lib/engine/sportsMeta";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { SportCarousel } from "@/components/book/SportCarousel";
+import { getHomeAllSports } from "@/lib/queries/allSports";
+import { LeagueLogo } from "@/components/allSports/LeagueLogo";
+import { AllSportEventRow, AllSportListHeader } from "@/components/allSports/AllSportEventRow";
 import { EventListHeader, EventRow } from "@/components/book/EventRow";
 import { TopPropsStrip } from "@/components/book/TopPropsStrip";
 import { UfcCardSections, formatFightDate } from "@/components/book/UfcFightCard";
@@ -70,6 +73,47 @@ async function LeagueSection({ sport, today }: { sport: TeamLeagueSport; today: 
         ))}
       </div>
     </section>
+  );
+}
+
+/** Every other sport: the next big games around the world, league by league. */
+async function AllSportsSection() {
+  const boards = await getHomeAllSports().catch(() => []);
+  if (boards.length === 0) return null;
+  return (
+    <>
+      {boards.map((b) => {
+        const noSpread = !b.threeWay && b.events.every((e) => !e.spread.home && !e.spread.away);
+        return (
+          <section key={b.league.id}>
+            <div className="mb-2.5 flex items-end justify-between gap-2">
+              <Link href={`/sports/${b.sport.key}/${b.league.slug}`} className="flex min-w-0 items-center gap-2.5">
+                <LeagueLogo name={b.league.name} region={b.league.region} logoUrl={b.league.logoUrl} size={26} />
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-xl font-extrabold uppercase italic leading-none tracking-tight text-foreground">{b.league.name}</span>
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    {b.sport.label}
+                    {b.league.region ? ` · ${b.league.region}` : ""}
+                  </span>
+                </span>
+              </Link>
+              <Link href={`/sports/${b.sport.key}/${b.league.slug}`} className="shrink-0 text-sm font-semibold text-primary hover:underline">
+                See all ›
+              </Link>
+            </div>
+            <AllSportListHeader threeWay={b.threeWay} noSpread={noSpread} />
+            <div className="flex flex-col gap-2.5">
+              {b.events.map((e) => (
+                <AllSportEventRow key={e.id} event={e} sport={b.sport.key} threeWay={b.threeWay} noSpread={noSpread} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
+      <Link href="/sports" className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-semibold text-foreground hover:border-foreground/30">
+        <Glyph name="all" className="size-5" /> Every sport and league ›
+      </Link>
+    </>
   );
 }
 
@@ -146,6 +190,7 @@ export default async function Home() {
         <NbaPropsSection today={today} />
         <LeagueSection sport="nfl" today={today} />
         <UfcSection />
+        <AllSportsSection />
       </div>
 
       <div className="mt-8">

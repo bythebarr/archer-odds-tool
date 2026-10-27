@@ -17,7 +17,7 @@ function verdictLine(side: OfferSide, edge: number | null): string {
   const head = edge >= 0.05 ? "Strong value" : edge >= 0.02 ? "Value" : edge >= -0.02 ? "Fair price" : "Overpriced";
   return `${head} — ARCHR ${pct(side.prob)} vs the price's ${pct(implied)}.`;
 }
-const MARKET_TYPE = { ml: "h2h", spread: "spreads", total: "totals", teamTotal: "totals" } as const;
+const MARKET_TYPE = { ml: "h2h", spread: "spreads", total: "totals", teamTotal: "totals", btts: "h2h", dnb: "h2h" } as const;
 
 /**
  * One bet, run against the model: the line and every book's price on it, and
@@ -153,7 +153,9 @@ export function BetSheet({
                 )}
                 {side.prob === null
                   ? "The game model needs both teams to have enough games before it prices this."
-                  : "The model's chance blended with the books' no-vig consensus; EV is what the best price returns per unit at that chance."}{" "}
+                  : "source" in offer && offer.source === "market"
+                    ? "ARCHR's read here is the books' no-vig consensus (sharp books weighted up): the model sits out until both sides have enough history. EV is the best price against it."
+                    : "The model's chance blended with the books' no-vig consensus; EV is what the best price returns per unit at that chance."}{" "}
                 <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
                   How accurate is it?
                 </Link>

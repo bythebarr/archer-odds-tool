@@ -104,6 +104,62 @@
     {
       "path": "/api/cron/crawl-history",
       "schedule": "15 16 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 0 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 3 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 9 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 12 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 15 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 18 * * *"
+    },
+    {
+      "path": "/api/cron/poll-all-sports",
+      "schedule": "20 21 * * *"
+    },
+    {
+      "path": "/api/cron/backfill-all-sports",
+      "schedule": "40 5 * * *"
+    },
+    {
+      "path": "/api/cron/backfill-all-sports",
+      "schedule": "40 17 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds",
+      "schedule": "10 16 * * *"
+    },
+    {
+      "path": "/api/cron/poll-odds",
+      "schedule": "10 22 * * *"
+    },
+    {
+      "path": "/api/cron/sync-results",
+      "schedule": "10 7 * * *"
+    },
+    {
+      "path": "/api/cron/backfill-f1",
+      "schedule": "25 7 * * *"
     }
   ]
 }

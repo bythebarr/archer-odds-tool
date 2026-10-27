@@ -41,9 +41,10 @@ export const BETTABLE_BOOK_KEYS = [
  *
  * Deliberately NOT in BETTABLE: Pinnacle isn't available to most US retail
  * bettors, so it belongs in the fair-value baseline rather than in "go get this
- * number at...".
+ * number at...". Circa (Nevada, Colorado, Illinois, Iowa, Kentucky) is the
+ * sharpest US book, the anchor on odds-api.io, which carries no Pinnacle.
  */
-export const SHARP_BOOK_KEYS = ["pinnacle"] as const;
+export const SHARP_BOOK_KEYS = ["pinnacle", "circa"] as const;
 
 /**
  * Everything we persist. Storage feeds the de-vig consensus, so the sharp book
@@ -67,13 +68,14 @@ export const BOOK_INITIALS: Record<string, string> = {
   fanduel: "FD",
   betmgm: "MGM",
   betrivers: "BR",
-  espnbet: "ESPN",
+  espnbet: "SCORE",
   caesars: "CZR",
   fanatics: "FAN",
   bet365: "365",
   hardrock: "HR",
   parx: "PARX",
   pinnacle: "PIN",
+  circa: "CIR",
 };
 
 /** Display name per book, for surfaces that only carry the key. */
@@ -82,13 +84,14 @@ export const BOOK_NAMES: Record<string, string> = {
   fanduel: "FanDuel",
   betmgm: "BetMGM",
   betrivers: "BetRivers",
-  espnbet: "ESPN BET",
+  espnbet: "theScore Bet",
   caesars: "Caesars",
   fanatics: "Fanatics",
   bet365: "bet365",
   hardrock: "Hard Rock Bet",
   parx: "betPARX",
   pinnacle: "Pinnacle",
+  circa: "Circa Sports",
 };
 
 /** Approximate brand color per book, used for the same fallback badge — not an official asset. */
@@ -97,11 +100,12 @@ export const BOOK_COLORS: Record<string, string> = {
   fanduel: "#1493FF",
   betmgm: "#B4975A",
   betrivers: "#00529B",
-  espnbet: "#D00000",
+  espnbet: "#1E40FF",
   caesars: "#C8A96E",
   fanatics: "#1B2A4A",
   bet365: "#027B5B",
   hardrock: "#7B1E26",
   parx: "#0B4DA2",
   pinnacle: "#E4472B",
+  circa: "#111111",
 };

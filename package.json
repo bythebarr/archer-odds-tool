@@ -25,6 +25,7 @@
     "backtest:nfl-props": "tsx scripts/backtest-nfl-props.ts",
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
     "backtest:games": "tsx scripts/backtest-games.ts",
+    "backtest:all-sports": "tsx scripts/backtest-all-sports.ts",
     "backtest:ufc-fights": "tsx scripts/backtest-ufc-fights.ts",
     "backtest:f1": "tsx scripts/backtest-f1.ts",
     "backtest:mlb-props": "tsx scripts/backtest-mlb-props.ts",

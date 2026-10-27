@@ -97,6 +97,29 @@ function LinesGrid({ offers, period, teams, onPick }: { offers: Offer[]; period:
   );
 }
 
+/** Both teams to score and draw no bet — the soccer staples, as one two-button row each. */
+function Specials({ offers, teams, onPick }: { offers: Offer[]; teams: BoardTeams; onPick: (o: Offer, s: string) => void }) {
+  const btts = offers.find((o) => o.period === "game" && o.kind === "btts") ?? null;
+  const dnb = offers.find((o) => o.period === "game" && o.kind === "dnb") ?? null;
+  if (!btts && !dnb) return null;
+  const rows = [
+    btts && { title: "Both teams to score", offer: btts, sides: [["yes", "Yes"], ["no", "No"]] as const },
+    dnb && { title: "Draw no bet", offer: dnb, sides: [["home", teams.home.abbreviation], ["away", teams.away.abbreviation]] as const },
+  ].filter((r): r is NonNullable<typeof r> => Boolean(r));
+  return (
+    <div className="space-y-2 rounded-xl border border-border bg-card p-3">
+      {rows.map((r) => (
+        <div key={r.title} className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] items-center gap-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-foreground">{r.title}</span>
+          {r.sides.map(([side, label]) => (
+            <Cell key={side} offer={r.offer} side={side} top={label} onPick={onPick} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Every number books hang on one market, as a ladder of two-sided rows. */
 function Ladder({ title, offers, kind, teams, onPick }: { title: string; offers: Offer[]; kind: "spread" | "total" | "teamTotal"; teams: BoardTeams; onPick: (o: Offer, s: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -163,7 +186,8 @@ export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Off
 
   const sections = useMemo(() => {
     const list: Section[] = ["popular", "game"];
-    if (has((o) => o.period === "game" && (o.kind === "spread" || o.kind === "total") && o.team === "") && offers.filter((o) => o.period === "game" && o.kind === "spread").length > 1) list.push("alt");
+    const count = (kind: string) => offers.filter((o) => o.period === "game" && o.kind === kind && o.team === "").length;
+    if (count("spread") > 1 || count("total") > 1) list.push("alt");
     if (has((o) => o.kind === "teamTotal")) list.push("teamTotals");
     if (has((o) => o.period === "h1")) list.push("h1");
     if (has((o) => o.period === "h2")) list.push("h2");
@@ -200,6 +224,7 @@ export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Off
 
       <div className="mt-3 space-y-3">
         {(section === "popular" || section === "game") && <LinesGrid offers={offers} period="game" teams={teams} onPick={onPick} />}
+        {(section === "popular" || section === "game") && <Specials offers={offers} teams={teams} onPick={onPick} />}
         {section === "popular" && <TeamTotals offers={offers} period="game" teams={teams} onPick={onPick} />}
         {section === "popular" && <LinesGrid offers={offers} period="h1" teams={teams} onPick={onPick} />}
         {section === "alt" && (

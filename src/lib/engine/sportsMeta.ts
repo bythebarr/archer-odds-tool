@@ -23,12 +23,13 @@ export const SPORT_METAS = [
   { sport: "nba", label: "NBA", icon: "🏀", href: "/nba", accent: "#c026d3", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
   { sport: "nfl", label: "NFL", icon: "🏈", href: "/nfl", accent: "#f59e0b", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
   { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
-  // Parked (2026-10-23): MLB for the offseason; tennis, soccer and F1 until there's
-  // time to bring them up to the same standard. Pages and history stay.
-  { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false, signalOnly: false, parked: true },
-  { sport: "tennis", label: "Tennis", icon: "🎾", href: "/tennis", accent: "#a3e635", carriesDate: false, resultsOnly: false, signalOnly: false, parked: true },
-  { sport: "soccer", label: "Soccer", icon: "⚽", href: "/soccer", accent: "#10b981", carriesDate: false, resultsOnly: false, signalOnly: false, parked: true },
-  { sport: "f1", label: "F1", icon: "🏁", href: "/f1", accent: "#e10600", carriesDate: false, resultsOnly: true, signalOnly: false, parked: true },
+  // Un-parked 2026-10-27: no sport sits out. MLB, F1 and tennis are mid-season;
+  // tennis and soccer now run on the all-sports engine (every tournament and
+  // league the feed carries), so their tabs open its boards.
+  { sport: "mlb", label: "MLB", icon: "⚾", href: "/mlb", accent: "#3b82f6", carriesDate: true, resultsOnly: false, signalOnly: false, parked: false },
+  { sport: "soccer", label: "Soccer", icon: "⚽", href: "/sports/soccer", accent: "#10b981", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
+  { sport: "tennis", label: "Tennis", icon: "🎾", href: "/sports/tennis", accent: "#a3e635", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
+  { sport: "f1", label: "F1", icon: "🏁", href: "/f1", accent: "#e10600", carriesDate: false, resultsOnly: true, signalOnly: false, parked: false },
 ] as const satisfies readonly SportMeta[];
 
 /** Every registered sport's key — `"mlb" | "nfl" | "nba" | "ufc" | …`, derived. */

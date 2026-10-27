@@ -15,13 +15,14 @@ const BOOK_DOMAINS: Record<string, string> = {
   fanduel: "sportsbook.fanduel.com",
   betmgm: "sports.betmgm.com",
   betrivers: "betrivers.com",
-  espnbet: "espnbet.com",
+  espnbet: "thescore.bet",
   caesars: "sportsbook.caesars.com",
   fanatics: "sportsbook.fanatics.com",
   bet365: "bet365.com",
   hardrock: "hardrock.bet",
   parx: "betparx.com",
   pinnacle: "pinnacle.com",
+  circa: "circasports.com",
 };
 
 /**
@@ -31,7 +32,7 @@ const BOOK_DOMAINS: Record<string, string> = {
  * favicon service stays as the fallback for a book added later.
  */
 const LOCAL_BOOK_LOGOS = new Set<string>([
-  "draftkings", "fanduel", "betmgm", "betrivers", "espnbet", "caesars", "fanatics", "bet365", "hardrock", "parx", "pinnacle",
+  "draftkings", "fanduel", "betmgm", "betrivers", "espnbet", "caesars", "fanatics", "bet365", "hardrock", "parx", "pinnacle", "circa",
 ]);
 
 export function bookLogoSources(bookKey: string): string[] {

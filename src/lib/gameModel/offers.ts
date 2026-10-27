@@ -11,7 +11,7 @@ import { fairPrice } from "@/lib/odds/marketValue";
 import { blendWithMarket, DEFAULT_MODEL_WEIGHT } from "@/lib/propModel/market";
 import type { GameModelLeague } from "./leagues";
 import type { ExpectedScore } from "./ratings";
-import { evWithPush, lineOutcome, noPushProb, type MarketKind, type ModelSpreads, type Period, type PeriodSpec } from "./markets";
+import { evWithPush, lineOutcome, noPushProb, type LineOutcome, type MarketKind, type ModelSpreads, type Period, type PeriodSpec } from "./markets";
 
 export interface LineQuote {
   period: Period;
@@ -62,7 +62,7 @@ export interface Offer {
   books: number;
 }
 
-const SIDE_ORDER: Record<string, number> = { away: 0, over: 0, home: 1, under: 1, draw: 2 };
+const SIDE_ORDER: Record<string, number> = { away: 0, over: 0, yes: 0, home: 1, under: 1, no: 1, draw: 2 };
 
 function lineOf(q: LineQuote): number | null {
   if (q.kind === "ml") return null;
@@ -88,17 +88,33 @@ function threeWayFair(sides: OfferSide[]): Map<string, number> | null {
   return out;
 }
 
-export function buildOffers(
-  quotes: LineQuote[],
-  model: {
-    league: GameModelLeague;
-    expected: ExpectedScore;
-    spreads: ModelSpreads;
-    weights: Partial<Record<"ml" | "spread" | "total", number>>;
-    /** Fitted period shares and spreads; the priors when omitted. */
-    specs?: Record<Exclude<Period, "game">, PeriodSpec>;
-  } | null
-): Offer[] {
+/** What prices a line: any model that gives win/push chances, and how much it counts against the market. */
+export interface OfferModel {
+  outcome(line: { period: Period; kind: MarketKind; side: string; team: string; point: number; threeWay: boolean }): LineOutcome | null;
+  weight(kind: MarketKind): number;
+  /** Optional: scale the weight by the market's own chance (fade the model on long shots). */
+  tailScale?(marketProb: number): number;
+}
+
+/** The NBA/NFL game model as an OfferModel. */
+export interface LeagueGameModel {
+  league: GameModelLeague;
+  expected: ExpectedScore;
+  spreads: ModelSpreads;
+  weights: Partial<Record<"ml" | "spread" | "total", number>>;
+  /** Fitted period shares and spreads; the priors when omitted. */
+  specs?: Record<Exclude<Period, "game">, PeriodSpec>;
+}
+
+function fromLeagueModel(m: LeagueGameModel): OfferModel {
+  return {
+    outcome: (line) => lineOutcome(m.league, m.expected, m.spreads, line, m.specs),
+    weight: (kind) => m.weights[kind === "teamTotal" ? "total" : (kind as "ml" | "spread" | "total")] ?? DEFAULT_MODEL_WEIGHT,
+  };
+}
+
+export function buildOffers(quotes: LineQuote[], modelIn: LeagueGameModel | OfferModel | null): Offer[] {
+  const model: OfferModel | null = modelIn === null ? null : "outcome" in modelIn ? modelIn : fromLeagueModel(modelIn);
   const groups = new Map<string, LineQuote[]>();
   for (const q of quotes) {
     const key = `${q.period}|${q.kind}|${q.team}|${lineOf(q) ?? ""}`;
@@ -142,15 +158,14 @@ export function buildOffers(
 
     // The model, blended with the market where there is one.
     if (model) {
-      const weightKey = first.kind === "teamTotal" ? "total" : first.kind;
-      const w = model.weights[weightKey] ?? DEFAULT_MODEL_WEIGHT;
-      const outcomes = sides.map((s) => lineOutcome(model.league, model.expected, model.spreads, { period: first.period, kind: first.kind, side: s.side, team: first.team, point: s.point }, model.specs));
+      const w = model.weight(first.kind);
+      const outcomes = sides.map((s) => model.outcome({ period: first.period, kind: first.kind, side: s.side, team: first.team, point: s.point, threeWay: !twoWay }));
       if (outcomes.every((o) => o !== null)) {
         sides.forEach((s, i) => {
           s.push = outcomes[i]!.push;
           s.modelProb = twoWay ? noPushProb(outcomes[i]!) : outcomes[i]!.win;
         });
-        const blended = sides.map((s) => (s.marketProb !== null ? blendWithMarket(s.modelProb!, s.marketProb, w) : s.modelProb!));
+        const blended = sides.map((s) => (s.marketProb !== null ? blendWithMarket(s.modelProb!, s.marketProb, w * (model.tailScale?.(s.marketProb) ?? 1)) : s.modelProb!));
         const z = twoWay ? blended[0] + blended[1] : blended.reduce((a, b) => a + b, 0);
         sides.forEach((s, i) => {
           s.prob = blended[i] / z;

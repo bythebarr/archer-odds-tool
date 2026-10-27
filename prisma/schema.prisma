@@ -1529,3 +1529,108 @@ model GameMarketLine {
   @@unique([gameId, bookKey, marketKey, side, team, point])
   @@index([gameId])
 }
+
+/// Every league the odds feed carries, across every sport — soccer's 60-odd
+/// competitions, every tennis tournament, cricket, rugby, hockey abroad, table
+/// tennis, darts, esports. Synced from the provider's catalog (free calls), so a
+/// league appears the moment books hang lines on it. The deep per-sport
+/// pipelines (NBA, NFL, MLB, UFC) keep their own tables; this is everything else.
+/// See docs/architecture/ALL-SPORTS.md.
+model League {
+  /// "<sport>/<slug>", e.g. "soccer/epl", "table-tennis/czech-liga-pro".
+  id           String       @id
+  /// Canonical sport: soccer, tennis, basketball, hockey, baseball, football, …
+  sport        String
+  name         String
+  /// Country or region, when the provider names one ("England", "International").
+  region       String?
+  /// "toa" (The Odds API / Parlay) | "oddsapiio" (odds-api.io).
+  provider     String
+  /// The provider's own key: a TOA sport_key, or an odds-api.io "<sport>|<league>" pair.
+  providerKey  String
+  /// Futures-only: championship winner, golf majors. Outcomes are competitors, not home/away.
+  outright     Boolean      @default(false)
+  active       Boolean      @default(true)
+  /// Soonest upcoming event, refreshed from the free events list — drives polling cadence.
+  nextEventAt  DateTime?
+  upcomingCount Int         @default(0)
+  lastPolledAt DateTime?
+  lastSyncedAt DateTime     @default(now())
+  /// The league's own logo (ESPN's, where ESPN covers it).
+  logoUrl      String?
+  /// ESPN's path for the league ("soccer/eng.1"), for crests and last season's results.
+  espnPath     String?
+  /// Sort weight on the sport page: the big leagues first.
+  rank         Int          @default(1000)
+  events       SportEvent[]
+
+  @@unique([provider, providerKey])
+  @@index([sport, active])
+}
+
+/// One match / fight / race in a League, keyed by the provider's event id.
+model SportEvent {
+  /// "<provider>:<event id>"
+  id          String      @id
+  leagueId    String
+  league      League      @relation(fields: [leagueId], references: [id])
+  startsAt    DateTime
+  /// For outright markets the event is the tournament: home is its title, away "".
+  home        String
+  away        String
+  /// Provider participant ids (odds-api.io serves logos by these).
+  homeRef     String?
+  awayRef     String?
+  /// "scheduled" | "live" | "final" | "cancelled"
+  status      String      @default("scheduled")
+  homeScore   Int?
+  awayScore   Int?
+  /// Period scores as the provider sends them ({ p1: { home, away }, … }).
+  periods     Json?
+  lastOddsAt  DateTime?
+  updatedAt   DateTime    @updatedAt
+  lines       SportEventLine[]
+
+  @@index([leagueId, startsAt])
+  @@index([status, startsAt])
+}
+
+/// The latest price per (event, book, market, period, side, number). A poll
+/// replaces an event's rows, so this holds only what books hang now.
+model SportEventLine {
+  id            String     @id @default(cuid())
+  eventId       String
+  event         SportEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  bookKey       String
+  /// "ml" | "spread" | "total" | "btts" | "dnb" | "outright"
+  market        String
+  /// "game" | "h1" | "h2" | "p1" … (set, quarter, period)
+  period        String     @default("game")
+  /// "home" | "away" | "draw" | "over" | "under" | "yes" | "no", or a competitor's name for outrights.
+  side          String
+  point         Float      @default(0)
+  priceAmerican Int
+  polledAt      DateTime
+
+  @@unique([eventId, bookKey, market, period, side, point])
+  @@index([eventId])
+}
+
+/// A team or player in the all-sports feed, with its logo once found. Logos come
+/// from ESPN's team lists, the provider's participant logos, then the team's
+/// Wikipedia crest — looked up once and cached here.
+model Competitor {
+  /// "<sport>/<normalized name>"
+  id            String    @id
+  sport         String
+  name          String
+  abbreviation  String?
+  /// Primary color, hex without '#', when the source gives one.
+  color         String?
+  logoUrl       String?
+  /// "espn" | "provider" | "wikipedia" | "none"
+  logoSource    String?
+  logoCheckedAt DateTime?
+
+  @@index([sport])
+}

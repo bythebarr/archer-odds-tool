@@ -15,7 +15,7 @@ export const PERIOD_LABEL: Record<string, string> = {
   q4: "4th Quarter",
 };
 
-const KIND_LABEL = { ml: "Moneyline", spread: "Spread", total: "Total", teamTotal: "Team Total" } as const;
+const KIND_LABEL = { ml: "Moneyline", spread: "Spread", total: "Total", teamTotal: "Team Total", btts: "Both Teams to Score", dnb: "Draw No Bet" } as const;
 
 /** "1st Half Spread", "Team Total", "Moneyline". */
 export function offerTitle(o: Offer): string {
@@ -33,7 +33,8 @@ export function sideLabel(o: Offer, s: OfferSide, teams: TeamNames, short = fals
   const team = (k: string) => (k === "home" ? teams.home : teams.away);
   const name = (k: string) => (short ? team(k).abbreviation : team(k).name.split(" ").at(-1)!);
   if (s.side === "draw") return "Draw";
-  if (o.kind === "ml") return name(s.side);
+  if (o.kind === "btts") return s.side === "yes" ? "Yes" : "No";
+  if (o.kind === "ml" || o.kind === "dnb") return name(s.side);
   if (o.kind === "spread") return `${name(s.side)} ${signedLine(s.point)}`;
   const ou = s.side === "over" ? "Over" : "Under";
   if (o.kind === "teamTotal") return `${team(o.team).abbreviation} ${short ? ou[0] : ou} ${s.point}`;

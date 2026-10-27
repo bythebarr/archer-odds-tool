@@ -19,7 +19,8 @@ import type { GameModelLeague } from "./leagues";
 import { keyWeights, scoreDist, type ScoreDist } from "./scoreDist";
 
 export type Period = "game" | "h1" | "h2" | "q1" | "q2" | "q3" | "q4";
-export type MarketKind = "ml" | "spread" | "total" | "teamTotal";
+/** btts (both teams to score) and dnb (draw no bet) come from the all-sports feed; NBA/NFL never carry them. */
+export type MarketKind = "ml" | "spread" | "total" | "teamTotal" | "btts" | "dnb";
 
 export interface PeriodSpec {
   /** Share of the game's points scored in the period. */
