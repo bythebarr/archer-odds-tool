@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { sportMetaByKey, type NavSport } from "@/lib/engine/sportsMeta";
-import { Glyph } from "@/components/brand/Glyph";
+import { LeagueMark } from "@/components/brand/LeagueMark";
 import { SportCarousel } from "./SportCarousel";
 
 /** When each parked sport comes back — the banner says it plainly instead of leaving a quiet, half-empty page. */
@@ -30,7 +30,7 @@ export function SportPage({
     <div className={`mx-auto min-h-screen w-full min-w-0 ${width === "3xl" ? "max-w-3xl" : "max-w-2xl"} px-4 pb-10 pt-5 font-sans`}>
       <SportCarousel active={sport} />
       <div className="mt-5 flex items-center gap-2.5 text-foreground">
-        <Glyph name={sport} className="size-7" />
+        <LeagueMark sport={sport} size={30} />
         <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight">{title ?? meta.label}</h1>
       </div>
       {description && <p className="mt-2 text-sm text-muted-foreground">{description}</p>}

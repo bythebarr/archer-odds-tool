@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getDriverSeason, type F1DriverRaceRow } from "@/lib/queries/f1";
 import { PageShell } from "@/components/PageShell";
 import { BackLink } from "@/components/BackLink";
-import { FlagBadge } from "@/components/FlagBadge";
+import { F1Avatar } from "@/components/f1/F1Avatar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -86,7 +86,7 @@ export default async function F1DriverPage({ params }: { params: Promise<{ drive
       </BackLink>
 
       <div className="mt-4 flex items-center gap-3">
-        <FlagBadge flag={d.flag} title={d.nationality ?? d.name} size={40} />
+        <F1Avatar kind="driver" name={d.name} flag={d.flag} size={56} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-xl font-semibold text-foreground">{d.name}</h1>

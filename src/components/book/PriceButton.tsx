@@ -3,7 +3,7 @@
 import type { MarketType } from "@/generated/prisma/client";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { buildSlipPickId, useSlip, type SlipSport } from "@/lib/slip/SlipContext";
-import { BOOK_COLORS, BOOK_INITIALS } from "@/lib/odds/bookAllowlist";
+import { BookBadge } from "@/components/BookBadge";
 import type { EventPrice } from "@/lib/queries/lobby";
 import { EV_FLAG } from "@/lib/odds/marketValue";
 
@@ -87,13 +87,13 @@ export function PriceButton({
           {label}
         </span>
       )}
-      <span className="font-mono text-[13px] font-semibold leading-tight">{formatAmerican(price.priceAmerican)}</span>
-      <span
-        className="absolute right-1 top-1 size-1.5 rounded-full"
-        style={{ background: BOOK_COLORS[price.bookKey] ?? "#94a3b8" }}
-        title={BOOK_INITIALS[price.bookKey] ?? price.bookName}
-        aria-hidden
-      />
+      <span className="flex items-center gap-1 font-mono text-[13px] font-semibold leading-tight">
+        {formatAmerican(price.priceAmerican)}
+        {/* The book that has this price, as its own app icon. */}
+        <span className="shrink-0 overflow-hidden rounded-full ring-1 ring-black/10" title={price.bookName} aria-hidden>
+          <BookBadge bookKey={price.bookKey} bookName={price.bookName} size={12} />
+        </span>
+      </span>
     </button>
   );
 }

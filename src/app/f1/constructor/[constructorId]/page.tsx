@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { getConstructorSeason, type F1ConstructorRaceRow } from "@/lib/queries/f1";
 import { PageShell } from "@/components/PageShell";
 import { BackLink } from "@/components/BackLink";
-import { FlagBadge } from "@/components/FlagBadge";
+import { F1Avatar } from "@/components/f1/F1Avatar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -112,7 +112,7 @@ export default async function F1ConstructorPage({
       </BackLink>
 
       <div className="mt-4 flex items-center gap-3">
-        <FlagBadge flag={c.flag} title={c.nationality ?? c.name} size={40} />
+        <F1Avatar kind="team" name={c.name} constructorId={c.ergastConstructorId} flag={c.flag} size={56} />
         <div className="min-w-0">
           <h1 className="truncate text-xl font-semibold text-foreground">{c.name}</h1>
           <p className="text-sm text-muted-foreground">{c.season} constructors&apos; championship</p>
@@ -140,7 +140,7 @@ export default async function F1ConstructorPage({
               href={`/f1/driver/${d.ergastDriverId}`}
               className="-mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
             >
-              <FlagBadge flag={d.flag} title={d.name} size={22} />
+              <F1Avatar kind="driver" name={d.name} flag={d.flag} size={30} />
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                 {d.name}
                 {d.code ? <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">{d.code}</span> : null}

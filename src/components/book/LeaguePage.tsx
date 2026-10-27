@@ -9,7 +9,7 @@ import { SportCarousel } from "./SportCarousel";
 import { SportTabs } from "./SportTabs";
 import { DateStrip } from "./DateStrip";
 import { EventListHeader, EventRow } from "./EventRow";
-import { Glyph } from "@/components/brand/Glyph";
+import { LeagueMark } from "@/components/brand/LeagueMark";
 
 /** The tabs every league page and its props page share. Props only where a league has a props product. */
 export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props") {
@@ -27,7 +27,7 @@ export function LeagueHeader({ sport }: { sport: TeamLeagueSport | "ufc" }) {
   const meta = sportMetaByKey[sport];
   return (
     <div className="mt-5 flex items-center gap-2.5 text-foreground">
-      <Glyph name={sport} className="size-7" />
+      <LeagueMark sport={sport} size={30} />
       <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight">{meta.label}</h1>
     </div>
   );
@@ -77,7 +77,7 @@ export async function LeaguePage({ sport, dateParam }: { sport: TeamLeagueSport;
             </div>
           </div>
           <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-            Best price across bettable books at the main line. The dot on each price is the book; tap a price to add it
+            Best price across bettable books at the main line. The icon on each price is the book that has it; tap a price to add it
             to your slip, or a team for every market and book.
           </p>
           <div className="mt-3">

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getF1Season, type F1DriverStanding, type F1ConstructorStanding, type F1ResultRow } from "@/lib/queries/f1";
 import { refreshF1OnView } from "@/lib/f1/refreshOnView";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { FlagBadge } from "@/components/FlagBadge";
+import { F1Avatar } from "@/components/f1/F1Avatar";
 import { SportPage } from "@/components/book/SportPage";
 import { RaceCountdown } from "@/components/f1/RaceCountdown";
 import { EmptyState } from "@/components/EmptyState";
@@ -59,7 +59,7 @@ function DriverRow({ d }: { d: F1DriverStanding }) {
       >
         {d.rank}
       </span>
-      <FlagBadge flag={d.flag} title={d.name} size={22} />
+      <F1Avatar kind="driver" name={d.name} flag={d.flag} size={30} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-medium text-foreground">{d.name}</span>
@@ -94,7 +94,7 @@ function ConstructorRow({ c }: { c: F1ConstructorStanding }) {
       >
         {c.rank}
       </span>
-      <FlagBadge flag={c.flag} title={c.name} size={22} />
+      <F1Avatar kind="team" name={c.name} constructorId={c.ergastConstructorId} flag={c.flag} size={30} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{c.name}</span>
       <div className="shrink-0 text-right">
         <div className="font-mono text-sm font-semibold tabular-nums text-foreground">{pts(c.points)}</div>
@@ -121,7 +121,7 @@ function ResultRow({ r }: { r: F1ResultRow }) {
       >
         {r.positionText}
       </span>
-      <FlagBadge flag={r.flag} title={r.driverName} size={20} />
+      <F1Avatar kind="driver" name={r.driverName} flag={r.flag} size={26} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm text-foreground">{r.driverName}</span>
