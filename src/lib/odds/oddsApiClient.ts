@@ -52,6 +52,31 @@ export const TOA_BOOK_KEY_ALIASES: Record<string, string> = {
   betparx: "parx",
 };
 
+/**
+ * The books we ask The Odds API for, by THEIR keys (Caesars is williamhill_us).
+ *
+ * Named books instead of regions, because of how it bills: each region is one
+ * credit per market, but up to ten named books also count as just one. Two US
+ * regions cost twice as much and still left out Pinnacle (an EU-region book),
+ * the sharp anchor of every fair price. These ten cover the bettable allowlist
+ * minus BetParx (the smallest footprint) plus Pinnacle — half the credits, and
+ * a better fair price. ODDS_BOOKMAKERS (comma-separated) overrides the list;
+ * past ten it bills as two regions again.
+ */
+export const TOA_BOOKMAKERS: string[] = (
+  process.env.ODDS_BOOKMAKERS ??
+  "draftkings,fanduel,betmgm,williamhill_us,espnbet,fanatics,betrivers,hardrockbet,bet365,pinnacle"
+)
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+/** Who to ask for: named books on The Odds API (see TOA_BOOKMAKERS), regions on ParlayAPI. */
+function setBookScope(url: URL, regions: string[]): void {
+  if (PROVIDER === "toa") url.searchParams.set("bookmakers", TOA_BOOKMAKERS.join(","));
+  else url.searchParams.set("regions", regions.join(","));
+}
+
 /** Rewrites bookmaker keys to ours, in place. A no-op for keys that already match. */
 export function canonicalizeBookmakers(event: OddsApiEvent): OddsApiEvent {
   for (const b of event.bookmakers ?? []) b.key = TOA_BOOK_KEY_ALIASES[b.key] ?? b.key;
@@ -120,8 +145,8 @@ export type FetchMlbOddsResult = FetchOddsResult;
 
 /**
  * Fetches current odds for any sport_key across the given markets/regions.
- * Costs `markets.length * regions.length` credits per The Odds API's quota
- * formula, regardless of event count — shared by every sport's odds poller.
+ * Costs `markets.length` credits on The Odds API (ten named books bill as one
+ * region; see TOA_BOOKMAKERS), regardless of event count — shared by every sport's odds poller.
  * See tennis/ingest.ts for the tennis caller; fetchMlbOdds below is a thin
  * MLB-specific wrapper over this, unchanged in behavior.
  */
@@ -134,7 +159,7 @@ export async function fetchOdds(
 
   const url = new URL(`${BASE_URL}/sports/${sportKey}/odds`);
   url.searchParams.set("apiKey", apiKey);
-  url.searchParams.set("regions", regions.join(","));
+  setBookScope(url, regions);
   url.searchParams.set("markets", markets.join(","));
   url.searchParams.set("oddsFormat", "american");
   url.searchParams.set("dateFormat", "iso");
@@ -236,7 +261,7 @@ export async function fetchEventAlternateOdds(
 
   const url = new URL(`${BASE_URL}/sports/${MLB_SPORT_KEY}/events/${eventId}/odds`);
   url.searchParams.set("apiKey", apiKey);
-  url.searchParams.set("regions", "us,us2");
+  setBookScope(url, ["us", "us2"]);
   url.searchParams.set("markets", markets.join(","));
   url.searchParams.set("oddsFormat", "american");
   url.searchParams.set("dateFormat", "iso");
@@ -275,7 +300,7 @@ export async function fetchEventPlayerProps(
 
   const url = new URL(`${BASE_URL}/sports/${sportKey}/events/${eventId}/odds`);
   url.searchParams.set("apiKey", apiKey);
-  url.searchParams.set("regions", regions.join(","));
+  setBookScope(url, regions);
   url.searchParams.set("markets", markets.join(","));
   url.searchParams.set("oddsFormat", "american");
   url.searchParams.set("dateFormat", "iso");

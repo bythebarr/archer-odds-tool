@@ -16,18 +16,19 @@
  *       control-time share
  *   - reach, UFC experience, layoff, and moving up or down a weight class
  *
+ *   - age (from Wikidata dates of birth; 0 when either is unknown)
+ *
  * P(A wins) = logistic(Σ coefficient × feature). The coefficients are fitted by
  * `npm run backtest:ufc-fights` (L2 logistic regression on every past bout,
  * validated on the newest quarter) and read back live. DEFAULT_COEFFICIENTS
- * are priors for before the first fit. Age is the strongest single factor in
- * public UFC models, but our fight-data source carries no dates of birth yet,
- * so it isn't in here.
+ * are priors for before the first fit.
  */
 import { predictLogistic } from "@/lib/stats/logistic";
 
 export interface FighterInfo {
   id: string;
   reachInches: number | null;
+  birthDate: Date | null;
   recordWins: number | null;
   recordLosses: number | null;
 }
@@ -70,6 +71,7 @@ export const FEATURES = [
   "experience",
   "layoff",
   "weightMove",
+  "age",
 ] as const;
 export type FeatureName = (typeof FEATURES)[number];
 
@@ -86,6 +88,7 @@ export const FEATURE_LABEL: Record<FeatureName, string> = {
   experience: "UFC experience",
   layoff: "Layoff",
   weightMove: "Weight-class move",
+  age: "Age",
 };
 
 /** Priors until the backtest fits them (logit per unit of each feature). */
@@ -102,6 +105,7 @@ export const DEFAULT_COEFFICIENTS: Record<FeatureName, number> = {
   experience: 0.05,
   layoff: -0.1,
   weightMove: -0.1,
+  age: -0.03, // per year older than the opponent: the younger fighter is favored, all else equal
 };
 
 // --- Elo -------------------------------------------------------------------
@@ -177,6 +181,8 @@ export interface FighterProfile {
   control: number;
   reach: number | null;
   lastLbs: number | null;
+  /** Years old on the fight date; null without a date of birth. */
+  age: number | null;
 }
 
 export class UfcReplay {
@@ -265,6 +271,10 @@ export class UfcReplay {
       control: (ctrl / 60 + LEAGUE.ctrl * PSEUDO_MINUTES) / (minutes + PSEUDO_MINUTES),
       reach: this.fighters.get(id)?.reachInches ?? null,
       lastLbs: last?.lbs ?? null,
+      age: (() => {
+        const dob = this.fighters.get(id)?.birthDate;
+        return dob ? (date.getTime() - dob.getTime()) / (365.25 * 86_400_000) : null;
+      })(),
     };
   }
 
@@ -288,6 +298,7 @@ export class UfcReplay {
       experience: Math.log1p(pa.fights) - Math.log1p(pb.fights),
       layoff: layoff(pa) - layoff(pb),
       weightMove: move(pa) - move(pb),
+      age: pa.age !== null && pb.age !== null ? pa.age - pb.age : 0,
     };
     return { x: FEATURES.map((f) => values[f]), a: pa, b: pb };
   }

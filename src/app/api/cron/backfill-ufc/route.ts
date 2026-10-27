@@ -2,6 +2,7 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { syncRecentUfcEvents, backfillUpcomingUfcEvents } from "@/lib/ufc/backfillUfc";
 import { settlePendingUfcPlays } from "@/lib/discord/postResults";
+import { syncUfcBirthDates } from "@/lib/ufc/birthDates";
 import { classifyUfcIngest, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
 
 const JOB_NAME = "backfill-ufc";
@@ -31,6 +32,10 @@ export async function POST(request: Request) {
     // re-upserts its bouts as completed with real results.
     const recent = await syncRecentUfcEvents();
     const upcoming = await backfillUpcomingUfcEvents();
+    // Dates of birth for fighters still missing one (the fight model's age read).
+    // Best-effort: Wikidata being slow must not fail the sync.
+    const birthDates = await syncUfcBirthDates().catch((error: unknown) => ({ error: String(error).slice(0, 200) }));
+    console.log("ufc birth dates", birthDates);
     // Now that results are freshly synced, settle any posted UFC plays whose
     // bout just went final — so #results reflects fight night without waiting
     // on the morning recap's single-date pass. Best-effort: a grading hiccup
