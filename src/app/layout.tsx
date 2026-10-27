@@ -61,12 +61,13 @@ export const metadata: Metadata = {
 };
 
 // Runs before first paint (see the Next.js "preventing flash before
-// hydration" guide) so a stored/system dark preference never flashes light.
+// hydration" guide). Dark is the default — the sportsbook look — and a member's
+// own toggle (stored) always wins.
 // Deliberately not using the `viewport.themeColor` metadata export: Next
 // renders that as its own React-managed <meta> tag, which would fight this
 // script (and ThemeToggle) for ownership of the same tag and duplicate it.
 // This plain, un-managed <meta id="theme-color-meta"> below is the only one.
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("theme");var resolved=(t==="light"||t==="dark")?t:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",resolved);var m=document.getElementById("theme-color-meta");if(m)m.setAttribute("content",resolved==="dark"?"${THEME_COLORS.dark}":"${THEME_COLORS.light}")}catch(e){}})()`;
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("theme");var resolved=(t==="light"||t==="dark")?t:"dark";document.documentElement.setAttribute("data-theme",resolved);var m=document.getElementById("theme-color-meta");if(m)m.setAttribute("content",resolved==="dark"?"${THEME_COLORS.dark}":"${THEME_COLORS.light}")}catch(e){}})()`;
 
 export default function RootLayout({
   children,
@@ -76,12 +77,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      data-theme="light"
+      data-theme="dark"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${saira.variable} h-full antialiased`}
     >
       <head>
-        <meta id="theme-color-meta" name="theme-color" content={THEME_COLORS.light} />
+        <meta id="theme-color-meta" name="theme-color" content={THEME_COLORS.dark} />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       {/* pb-16 clears the fixed mobile BottomNav; sm+ has no bottom bar. */}

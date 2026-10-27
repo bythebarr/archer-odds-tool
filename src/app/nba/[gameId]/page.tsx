@@ -5,7 +5,7 @@ import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { readPropsPrefs } from "@/lib/nba/propsPrefs";
 import { etDateOf } from "@/lib/dateEt";
 import { TeamLeagueGame } from "@/components/TeamLeagueGame";
-import { GameModelPanel } from "@/components/GameModelPanel";
+import { TeamBreakdown, TeamFaceOff } from "@/components/matchup/TeamGameBreakdown";
 import { getGameModelView } from "@/lib/queries/gameModel";
 import { getGameOffers } from "@/lib/queries/gameMarkets";
 import { GameMarketBoard } from "@/components/game/GameMarketBoard";
@@ -61,13 +61,14 @@ export default async function NbaGamePage({
     );
   }
 
-  const modelView = tab === "lines" ? await getGameModelView("nba", gameId, result.lines) : null;
+  const modelView = await getGameModelView("nba", gameId, result.lines);
   const offers = tab === "lines" ? await getGameOffers("nba", gameId, result.lines, modelView) : [];
   const team = (t: { name: string; abbreviation: string }) => ({ name: t.name, abbreviation: t.abbreviation, logoUrl: espnTeamLogoUrl("nba", t.abbreviation) });
 
   return (
     <TeamLeagueGame
-      modelPanel={modelView ? <GameModelPanel view={modelView} /> : null}
+      hero={modelView ? <TeamFaceOff sport="nba" view={modelView} when={whenLabel(result.game.scheduledStartUtc)} /> : undefined}
+      modelPanel={modelView ? <TeamBreakdown sport="nba" view={modelView} /> : null}
       marketBoard={
         offers.length > 0 ? (
           <GameMarketBoard offers={offers} teams={{ home: team(result.game.homeTeam), away: team(result.game.awayTeam) }} sport="nba" matchId={gameId} />
@@ -81,4 +82,11 @@ export default async function NbaGamePage({
       disclaimer="The best price per side among bettable books at the consensus number, with a +EV tag where a price beats the market's fair price. The ARCHR line above blends the game model with that market."
     />
   );
+}
+
+/** "Mon, Oct 27 · 7:00 PM ET" for the face-off. */
+function whenLabel(d: Date): string {
+  const day = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" }).format(d);
+  const time = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(d);
+  return `${day} · ${time} ET`;
 }

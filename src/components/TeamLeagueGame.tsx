@@ -33,6 +33,7 @@ export function TeamLeagueGame({
   propsPanel,
   modelPanel,
   marketBoard,
+  hero,
 }: {
   sport: TeamLeagueSport;
   result: TeamGameWithLines;
@@ -45,6 +46,8 @@ export function TeamLeagueGame({
   modelPanel?: ReactNode;
   /** Every line on the game, sportsbook-style (replaces the per-book ladder when given). */
   marketBoard?: ReactNode;
+  /** The matchup face-off (replaces the plain header when the model can price the game). */
+  hero?: ReactNode;
 }) {
   const { game, lines } = result;
   const when = new Intl.DateTimeFormat("en-US", {
@@ -64,6 +67,7 @@ export function TeamLeagueGame({
         ← {sport.toUpperCase()}
       </BackLink>
 
+      {hero ?? (
       <div className="mt-3 rounded-2xl border border-border bg-card px-4 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
           <TeamHero sport={sport} team={game.awayTeam} side="Away" />
@@ -81,6 +85,7 @@ export function TeamLeagueGame({
           <TeamHero sport={sport} team={game.homeTeam} side="Home" />
         </div>
       </div>
+      )}
 
       <div className="mt-4">
         <SportTabs
