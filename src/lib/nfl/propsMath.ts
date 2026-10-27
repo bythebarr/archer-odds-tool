@@ -56,6 +56,8 @@ export interface NflSlateProp {
   playerId: string;
   stat: NflPropStat;
   quotes: PropQuote[];
+  /** ARCHR's own line for a prop no book has posted yet (see nba/propsMath projectedLine). */
+  projectedPoint?: number;
 }
 
 export type NflPropSort = "hitRate" | "value" | "model" | "price";
@@ -68,6 +70,8 @@ export interface NflPropModel extends PricedProp {
 export interface NflPropSummary {
   playerId: string;
   stat: NflPropStat;
+  /** No book has posted it: `point` is ARCHR's projected line. */
+  projected: boolean;
   point: number;
   points: number[];
   over: PropQuote | null;
@@ -101,7 +105,7 @@ export function summarizeNflProp(
   },
   atPoint?: number
 ): NflPropSummary | null {
-  const point = atPoint ?? propConsensusPoint(prop.quotes);
+  const point = atPoint ?? propConsensusPoint(prop.quotes) ?? prop.projectedPoint ?? null;
   if (point === null) return null;
   const logs = stat.available ? allLogs.filter(stat.available) : allLogs;
   const of = (g: NflLogPoint[]) => g.map((l) => stat.value(l));
@@ -129,6 +133,7 @@ export function summarizeNflProp(
   return {
     playerId: prop.playerId,
     stat: prop.stat,
+    projected: prop.quotes.length === 0,
     point,
     points: [...new Set(prop.quotes.map((q) => q.point))].sort((a, b) => a - b),
     over,
@@ -159,7 +164,7 @@ export function summarizeNflProp(
   };
 }
 
-/** Best first. Unrated props sort below rated ones; a thin sample sorts below a full one at the same rate. */
+/** Best first, posted props ahead of ARCHR-only lines. Unrated props sort below rated ones; a thin sample sorts below a full one at the same rate. */
 export function sortNflSummaries(list: NflPropSummary[], sort: NflPropSort, side: PropDirection): NflPropSummary[] {
   const key: Record<NflPropSort, (s: NflPropSummary) => number> = {
     hitRate: (s) => (s.l5.hitRate ?? -1) + Math.min(s.l5.sampleSize, 5) / 1000,
@@ -170,5 +175,5 @@ export function sortNflSummaries(list: NflPropSummary[], sort: NflPropSort, side
       return b ? (b.priceAmerican > 0 ? b.priceAmerican / 100 + 1 : 100 / -b.priceAmerican + 1) : -Infinity;
     },
   };
-  return list.sort((a, b) => key[sort](b) - key[sort](a));
+  return list.sort((a, b) => Number(a.projected) - Number(b.projected) || key[sort](b) - key[sort](a));
 }

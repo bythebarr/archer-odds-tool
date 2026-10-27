@@ -83,7 +83,7 @@ async function AllSportsSection() {
   return (
     <>
       {boards.map((b) => {
-        const noSpread = !b.threeWay && b.events.every((e) => !e.spread.home && !e.spread.away);
+        const noSpread = !b.threeWay && b.events.every((e) => !e.spread.home && !e.spread.away && e.archr?.spread == null);
         return (
           <section key={b.league.id}>
             <div className="mb-2.5 flex items-end justify-between gap-2">

@@ -1,8 +1,6 @@
 import type { PropHitRateResult } from "@/lib/props/tally";
 
-/** Shared hit/miss colors (validated for color-vision deficiency; misses also differ in lightness). */
-export const HIT_FILL = "fill-emerald-600 dark:fill-emerald-400";
-export const MISS_FILL = "fill-slate-400 dark:fill-slate-500";
+/** Hit/miss colors (validated for color-vision deficiency; misses also differ in lightness). */
 const HIT_BG = "bg-emerald-600 dark:bg-emerald-400";
 const MISS_BG = "bg-slate-300 dark:bg-slate-600";
 

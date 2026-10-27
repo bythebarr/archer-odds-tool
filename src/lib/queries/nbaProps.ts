@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
 import { espnTeamLogoUrl, nbaHeadshotUrl } from "@/lib/logos";
 import { NBA_LEAGUE } from "@/lib/nba/league";
-import { packLog, summarizeProp, type GameLogPoint, type PackedLog, type SlateProp } from "@/lib/nba/propsMath";
+import { packLog, projectedLine, summarizeProp, type GameLogPoint, type PackedLog, type SlateProp } from "@/lib/nba/propsMath";
+import { projectProp } from "@/lib/nba/projection";
+import { nbaProjectionContext } from "@/lib/nba/slateContext";
 import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import type { DefenseTable, TeamDefenseRow } from "@/lib/nba/matchup";
 import { EV_FLAG } from "@/lib/odds/marketValue";
@@ -70,6 +72,12 @@ export type WireNbaPropsSlate = Omit<NbaPropsSlate, "logs"> & { logs: Record<str
 export function toWireSlate(slate: NbaPropsSlate): WireNbaPropsSlate {
   return { ...slate, logs: Object.fromEntries(Object.entries(slate.logs).map(([id, logs]) => [id, logs.map(packLog)])) };
 }
+
+/** Stats ARCHR posts its own line on before the books do: the ones books always hang. */
+const PROJECTED_STATS: NbaPropStat[] = ["points", "rebounds", "assists", "threes", "pointsReboundsAssists", "pointsRebounds", "pointsAssists", "reboundsAssists"];
+/** A player projected before the books post: recent minutes like a rotation player's. */
+const ROTATION_MINUTES_PROJECTED = 15;
+const ROSTER_LOOKBACK_DAYS = 40;
 
 /** Average minutes that make an absence matter to teammates' projections. */
 const ROTATION_MINUTES = 18;
@@ -231,8 +239,6 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     where: { gameId: { in: slateGames.map((g) => g.id) } },
     include: { book: { select: { displayName: true } }, nbaPlayer: true },
   });
-  if (lines.length === 0) return { ...empty, games: slateGames };
-
   const gameById = new Map(games.map((g) => [g.id, g]));
   const players: Record<string, SlatePlayer> = {};
   const propsByKey = new Map<string, SlateProp>();
@@ -268,6 +274,36 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     propsByKey.set(key, prop);
   }
 
+  // Every rotation player in tonight's games, posted or not: books post props the
+  // morning of a game, and until then each row reads against ARCHR's own line.
+  const roster = await prisma.nbaPlayer.findMany({
+    where: { teamId: { in: games.flatMap((g) => [g.homeTeamId, g.awayTeamId]).filter((id): id is string => id !== null) } },
+    include: { gameLogs: { where: { gameDate: { lt: gte, gte: new Date(gte.getTime() - ROSTER_LOOKBACK_DAYS * 86_400_000) } }, select: { minutes: true }, orderBy: { gameDate: "desc" }, take: 10 } },
+  });
+  const espnIdOf = new Map<string, string>();
+  for (const p of roster) {
+    espnIdOf.set(p.id, p.espnAthleteId);
+    if (players[p.id]) continue;
+    const played = p.gameLogs.filter((l) => l.minutes > 0);
+    const avgMinutes = played.length ? played.reduce((a, l) => a + l.minutes, 0) / played.length : 0;
+    // Over 48 a game is a team aggregate row, not a player.
+    if (played.length < 3 || avgMinutes < ROTATION_MINUTES_PROJECTED || avgMinutes > 48) continue;
+    const g = games.find((x) => x.homeTeamId === p.teamId || x.awayTeamId === p.teamId)!;
+    const venue = p.teamId === g.homeTeamId ? "home" : "away";
+    players[p.id] = {
+      id: p.id,
+      name: p.fullName,
+      headshotUrl: nbaHeadshotUrl(p.espnAthleteId),
+      gameId: g.id,
+      team: venue === "home" ? team(g.homeTeam) : team(g.awayTeam),
+      opponent: venue === "home" ? team(g.awayTeam) : team(g.homeTeam),
+      venue,
+      positionGroup: positionGroup(p.positionGroup),
+      injury: null,
+    };
+  }
+  if (Object.keys(players).length === 0) return { ...empty, games: slateGames };
+
   const [history, defense] = await Promise.all([
     prisma.nbaPlayerGameLog.findMany({
       // This season and all of last season: the windows, the season splits and head-to-head.
@@ -302,10 +338,23 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
   ]);
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
-  const espnIds = new Map(lines.map((l) => [l.nbaPlayer.id, l.nbaPlayer.espnAthleteId]));
+  for (const l of lines) espnIdOf.set(l.nbaPlayer.id, l.nbaPlayer.espnAthleteId);
   for (const player of Object.values(players)) {
-    const i = injuryById.get(espnIds.get(player.id) ?? "");
+    const i = injuryById.get(espnIdOf.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
+  }
+
+  // ARCHR's line for every core stat a book hasn't posted (out / doubtful players sit out).
+  const inputs = { defense, absences, lines: gameLines };
+  for (const player of Object.values(players)) {
+    const level = player.injury?.level;
+    if (level === "out" || level === "doubtful") continue;
+    for (const stat of PROJECTED_STATS) {
+      if (propsByKey.has(`${player.id}:${stat}`)) continue;
+      const proj = projectProp(logs[player.id] ?? [], NBA_PROP_STAT_BY_KEY.get(stat)!, { season, ...nbaProjectionContext(inputs, player) });
+      if (!proj || proj.mean < 0.8) continue;
+      propsByKey.set(`${player.id}:${stat}`, { playerId: player.id, stat, quotes: [], projectedPoint: projectedLine(proj.mean) });
+    }
   }
 
   return {

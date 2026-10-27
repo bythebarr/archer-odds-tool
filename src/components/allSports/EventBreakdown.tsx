@@ -151,9 +151,50 @@ export function EventBreakdown({ view }: { view: EventPage }) {
   const blend = view.probs;
   const pctSide = (o: Record<string, number | null | undefined> | null, side: string) => pct(o ? o[side] ?? null : null);
 
+  const own = view.archr;
+  const archrPanel =
+    view.offers.length === 0 && own ? (
+      <section className="mt-6">
+        <SectionTitle>ARCHR&apos;s prices</SectionTitle>
+        <div className="overflow-hidden rounded-xl border border-dashed border-brand/50 bg-card">
+          <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-1 border-b border-border px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span>Moneyline</span>
+            <span className="text-right">Chance</span>
+            <span className="text-right">Fair</span>
+          </div>
+          {(["home", ...(own.fair.draw !== null ? ["draw"] : []), "away"] as const).map((side) => (
+            <div key={side} className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-1 px-3 py-2 text-sm">
+              <span className="truncate font-semibold text-foreground">{side === "draw" ? "Draw" : view[side as "home" | "away"]}</span>
+              <span className="text-right font-mono text-muted-foreground">{pct(own.probs[side as "home" | "draw" | "away"])}</span>
+              <span className="text-right font-mono font-bold text-foreground">{formatAmerican((side === "draw" ? own.fair.draw : own.fair[side as "home" | "away"])!)}</span>
+            </div>
+          ))}
+          {(own.spread !== null || own.total !== null) && (
+            <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border px-3 py-2 text-sm">
+              {own.spread !== null && (
+                <span className="text-muted-foreground">
+                  {r.family === "goals" ? "Handicap" : "Spread"} <span className="font-mono font-semibold text-foreground">{short(view.home)} {signedLine(own.spread)}</span>
+                </span>
+              )}
+              {own.total !== null && (
+                <span className="text-muted-foreground">
+                  Total <span className="font-mono font-semibold text-foreground">{own.total}</span>
+                </span>
+              )}
+            </div>
+          )}
+          <p className="border-t border-border px-3 py-2 text-[10px] leading-relaxed text-muted-foreground">
+            No book has posted this game yet. These are the model&apos;s own prices; once books post, every price is read against them and the
+            no-vig market, and the edge lands next to each one.
+          </p>
+        </div>
+      </section>
+    ) : null;
+
   return (
     <>
-      <ValueStrip
+      {archrPanel}
+      {rows.length > 0 && <ValueStrip
         rows={rows}
         footnote={
           view.modelWeight > 0 ? (
@@ -167,7 +208,7 @@ export function EventBreakdown({ view }: { view: EventPage }) {
             <>Market read: one side has under three rated games, so the model sits out and ARCHR&apos;s fair price is the books&apos; no-vig consensus. Edge is the best price against it.</>
           )
         }
-      />
+      />}
 
       {ml && (
         <section className="mt-6">

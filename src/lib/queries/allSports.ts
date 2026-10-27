@@ -10,7 +10,8 @@ import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
 import { isBettableBook } from "@/lib/odds/bestPrice";
 import { ALL_SPORTS, allSportOrDefault, type AllSport } from "@/lib/allSports/sports";
 import { leagueRatings, headToHead } from "@/lib/allSports/model/history";
-import { priceEvent, type PricedOffer } from "@/lib/allSports/model/price";
+import { archrRead, priceEvent, type ArchrRead, type PricedOffer } from "@/lib/allSports/model/price";
+import { nameSimilarity } from "@/lib/allSports/names";
 import { lineOutcomeFor } from "@/lib/allSports/model/outcomes";
 import type { LeagueRatings, TeamForm } from "@/lib/allSports/model/ratings";
 import { cachedLogos, logoSrc } from "@/lib/allSports/logos";
@@ -82,6 +83,27 @@ export interface BoardEvent {
   /** The biggest edge on the main lines, for the "value" flag. */
   topEdge: number | null;
   markets: number;
+  /** ARCHR's own prices from the model — what shows before any book posts. */
+  archr: ArchrRead | null;
+}
+
+/**
+ * An ESPN fixture and the odds feed's copy of the same game (different ids):
+ * the feed's, with the prices, wins. Same league, within 3 hours, both names matching.
+ */
+export function dropEspnTwins<E extends { id: string; leagueId: string; startsAt: Date; home: string; away: string }>(events: E[]): E[] {
+  const feed = events.filter((e) => !e.id.startsWith("espn:"));
+  return events.filter(
+    (e) =>
+      !e.id.startsWith("espn:") ||
+      !feed.some(
+        (f) =>
+          f.leagueId === e.leagueId &&
+          Math.abs(f.startsAt.getTime() - e.startsAt.getTime()) <= 3 * 3_600_000 &&
+          nameSimilarity(f.home, e.home) >= 0.75 &&
+          nameSimilarity(f.away, e.away) >= 0.75
+      )
+  );
 }
 
 export interface LeagueBoard {
@@ -129,16 +151,18 @@ export async function getSportBoard(sport: string, leagueSlug: string | null, no
   const selected = leagueSlug ? chips.find((c) => c.slug === leagueSlug) ?? null : null;
   const target = selected ? [selected] : games.filter((c) => c.upcoming > 0).slice(0, 12);
 
-  const events = await prisma.sportEvent.findMany({
-    where: {
-      leagueId: { in: target.filter((t) => !t.outright).map((t) => t.id) },
-      status: { in: ["scheduled", "live"] },
-      startsAt: { gte: new Date(now.getTime() - 3 * 3_600_000), lte: new Date(now.getTime() + BOARD_DAYS * 86_400_000) },
-    },
-    orderBy: { startsAt: "asc" },
-    take: selected ? 200 : 400,
-    include: { lines: true },
-  });
+  const events = dropEspnTwins(
+    await prisma.sportEvent.findMany({
+      where: {
+        leagueId: { in: target.filter((t) => !t.outright).map((t) => t.id) },
+        status: { in: ["scheduled", "live"] },
+        startsAt: { gte: new Date(now.getTime() - 3 * 3_600_000), lte: new Date(now.getTime() + BOARD_DAYS * 86_400_000) },
+      },
+      orderBy: { startsAt: "asc" },
+      take: selected ? 300 : 600,
+      include: { lines: true },
+    })
+  );
   const logos = await cachedLogos(sport, events.flatMap((e) => [e.home, e.away]));
   const ratingsBy = new Map<string, LeagueRatings>();
   for (const id of new Set(events.map((e) => e.leagueId))) ratingsBy.set(id, await leagueRatings(id, sport, now));
@@ -150,7 +174,8 @@ export async function getSportBoard(sport: string, leagueSlug: string | null, no
         .filter((e) => e.leagueId === league.id)
         .slice(0, selected ? 200 : 15)
         .map((e): BoardEvent => {
-          const { offers } = priceEvent(e.lines, ratingsBy.get(e.leagueId) ?? null, e.home, e.away, sport);
+          const ratings = ratingsBy.get(e.leagueId) ?? null;
+          const { offers } = priceEvent(e.lines, ratings, e.home, e.away, sport);
           return {
             id: e.id,
             startsAt: e.startsAt,
@@ -163,6 +188,7 @@ export async function getSportBoard(sport: string, leagueSlug: string | null, no
             awayScore: e.awayScore,
             ...boardLines(offers),
             markets: offers.length,
+            archr: archrRead(ratings, e.home, e.away, sport),
           };
         }),
     }))
@@ -187,6 +213,8 @@ export interface EventPage {
   offers: PricedOffer[];
   /** How much the model counted against the market here (0 = market only). */
   modelWeight: number;
+  /** ARCHR's own prices from the model alone (the read before books post). */
+  archr: ArchrRead | null;
   /** Win chances for the face-off: the main moneyline's ARCHR read. */
   probs: { home: number; draw: number; away: number } | null;
   ratings: {
@@ -246,7 +274,11 @@ export async function getEventPage(id: string, now = new Date()): Promise<EventP
     lastOddsAt: e.lastOddsAt,
     offers,
     modelWeight: weight,
-    probs,
+    archr: archrRead(ratings, e.home, e.away, sport.key),
+    probs: probs ?? (() => {
+      const a = archrRead(ratings, e.home, e.away, sport.key);
+      return a ? a.probs : null;
+    })(),
     ratings: {
       family: ratings.family,
       results: ratings.results,

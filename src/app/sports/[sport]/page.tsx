@@ -75,7 +75,7 @@ export default async function SportBoardPage({ params }: { params: Promise<{ spo
         </EmptyState>
       ) : (
         board.boards.map((b) => {
-          const noSpread = !threeWay && b.events.every((e) => !e.spread.home && !e.spread.away);
+          const noSpread = !threeWay && b.events.every((e) => !e.spread.home && !e.spread.away && e.archr?.spread == null);
           return (
           <section key={b.league.id} className="mt-7">
             <div className="mb-2 flex items-center justify-between gap-2">

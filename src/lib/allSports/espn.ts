@@ -10,6 +10,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { teamKey } from "./names";
+import { espnLeagues } from "./leagueDirectory";
 
 const BASE = "https://site.api.espn.com/apis/site/v2/sports";
 
@@ -122,5 +123,67 @@ export async function backfillEspnLeague(leagueId: string, espnPath: string, mon
     }
   }
   if (logo) await prisma.league.update({ where: { id: leagueId }, data: { logoUrl: logo } });
+  return n;
+}
+
+/**
+ * Every league ESPN covers gets a League row even before an odds feed lists it,
+ * so its fixtures, history, crests and ARCHR's own prices show from day one. A
+ * feed that later lists the league takes the row over (same id).
+ */
+export async function seedEspnLeagues(): Promise<number> {
+  let n = 0;
+  for (const l of espnLeagues()) {
+    const sport = l.id.slice(0, l.id.indexOf("/"));
+    const exists = await prisma.league.findUnique({ where: { id: l.id }, select: { id: true } });
+    if (exists) continue;
+    await prisma.league.create({ data: { id: l.id, sport, name: l.name, region: l.region, provider: "espn", providerKey: l.espn!, espnPath: l.espn!, rank: l.rank, outright: false } });
+    n++;
+  }
+  return n;
+}
+
+interface ScheduledEvent {
+  id: string;
+  date: string;
+  competitions: { status: { type: { state: string; completed: boolean } }; competitors: { homeAway: "home" | "away"; team: EspnTeam }[] }[];
+}
+
+/**
+ * The next `days` days of a league's fixtures as scheduled SportEvents
+ * ("espn:<id>" — the same id the result lands on later). Returns how many.
+ */
+export async function syncEspnFixtures(leagueId: string, espnPath: string, days: number, now = new Date()): Promise<number> {
+  const groups = espnPath.endsWith("college-football") ? "&groups=80" : espnPath.includes("college-basketball") ? "&groups=50" : "";
+  let n = 0;
+  for (let d = 0; d < days; d++) {
+    const day = new Date(now.getTime() + d * 86_400_000).toISOString().slice(0, 10).replace(/-/g, "");
+    const data = await espnJson<{ events?: ScheduledEvent[] }>(`${BASE}/${espnPath}/scoreboard?dates=${day}&limit=500${groups}`);
+    for (const e of data?.events ?? []) {
+      const c = e.competitions[0];
+      if (!c || c.status.type.completed || c.status.type.state === "post") continue;
+      const home = c.competitors.find((x) => x.homeAway === "home")?.team.displayName;
+      const away = c.competitors.find((x) => x.homeAway === "away")?.team.displayName;
+      if (!home || !away) continue;
+      const id = `espn:${e.id}`;
+      const status = c.status.type.state === "in" ? "live" : "scheduled";
+      await prisma.sportEvent.upsert({
+        where: { id },
+        create: { id, leagueId, startsAt: new Date(e.date), home, away, status },
+        update: { startsAt: new Date(e.date), home, away, status },
+      });
+      n++;
+    }
+  }
+  const upcoming = await prisma.sportEvent.findMany({
+    where: { leagueId, status: { in: ["scheduled", "live"] }, startsAt: { gte: new Date(now.getTime() - 3 * 3_600_000) } },
+    orderBy: { startsAt: "asc" },
+    select: { startsAt: true },
+  });
+  // A feed-polled league keeps the feed's own count; an ESPN-only one takes these.
+  await prisma.league.updateMany({
+    where: { id: leagueId, provider: "espn" },
+    data: { nextEventAt: upcoming[0]?.startsAt ?? null, upcomingCount: upcoming.length, active: true },
+  });
   return n;
 }

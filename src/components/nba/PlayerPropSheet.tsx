@@ -16,7 +16,7 @@ import type { NbaPropStat } from "@/generated/prisma/client";
 import { Logo } from "@/components/Logo";
 import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
 import { BookBadge } from "@/components/BookBadge";
-import { GameLogChart } from "./GameLogChart";
+import { PropGameChart } from "@/components/props/PropGameChart";
 import { MatchupPanel, SplitGrid } from "./Matchup";
 import type { DefenseTable } from "@/lib/nba/matchup";
 
@@ -136,15 +136,6 @@ function ProjectionPanel({ model, point, side, statShort, milestone = false }: {
   );
 }
 
-type ChartWindow = "5" | "10" | "15" | "20" | "szn";
-const CHART_WINDOWS: { key: ChartWindow; label: string }[] = [
-  { key: "5", label: "L5" },
-  { key: "10", label: "L10" },
-  { key: "15", label: "L15" },
-  { key: "20", label: "L20" },
-  { key: "szn", label: "SZN" },
-];
-
 /**
  * Everything about one player's props in one panel: switch stat, pick any line
  * the books hang, see the hit rates and the last 20 games against it, and every
@@ -179,13 +170,12 @@ export function PlayerPropSheet({
   onClose: () => void;
 }) {
   const [stat, setStat] = useState<NbaPropStat>(initialStat);
-  const [chartWindow, setChartWindow] = useState<ChartWindow>("20");
   const [side, setSide] = useState<PropDirection>(initialSide);
   const prop = props.find((p) => p.stat === stat) ?? props[0];
   const statDef = NBA_PROP_STAT_BY_KEY.get(prop.stat)!;
   const consensus = propConsensusPoint(prop.quotes);
   const [pointByStat, setPointByStat] = useState<Partial<Record<NbaPropStat, number>>>({});
-  const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? 0;
+  const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
 
   const summary = useMemo(
     () => summarizeProp(prop, logs, statDef, side, {
@@ -219,6 +209,7 @@ export function PlayerPropSheet({
   }, [onClose]);
 
   const statsOffered = NBA_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
+  const chartLogs = useMemo(() => logs.map((l) => ({ ...l, volume: l.minutes })), [logs]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={`${player.name} props`}>
@@ -324,6 +315,33 @@ export function PlayerPropSheet({
             )}
           </section>
 
+          {summary?.projected && (
+            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs leading-relaxed text-foreground ring-1 ring-brand/30">
+              <span className="font-semibold">No book has posted this yet.</span> {point}{" "}is ARCHR&apos;s line — the projection to the nearest
+              half-point. Books usually post NBA props the morning of the game; their line and prices replace this the moment they do.
+            </p>
+          )}
+
+          <section>
+            <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
+              <span className="brand-slash" aria-hidden />
+              {statDef.label} by game
+            </h3>
+            <PropGameChart
+              logs={chartLogs}
+              value={(l) => statDef.value(l)}
+              statShort={statDef.shortLabel}
+              point={point}
+              side={side}
+              season={season}
+              projection={summary?.model?.projection.mean ?? null}
+              opponent={player.opponent?.abbreviation}
+              venue={player.venue}
+              volumeLabel="min"
+              lineLabel={summary?.projected ? "ARCHR line" : "Line"}
+            />
+          </section>
+
           {player.injury?.level && (
             <p className={`rounded-lg px-3 py-2 text-xs ${player.injury.level === "out" || player.injury.level === "doubtful" ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
               <span className="font-semibold">{player.injury.status}</span>
@@ -359,21 +377,6 @@ export function PlayerPropSheet({
           )}
 
           <section>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Game log</h3>
-              <Segmented options={CHART_WINDOWS} value={chartWindow} onChange={setChartWindow} />
-            </div>
-            <GameLogChart
-              key={chartWindow}
-              logs={chartWindow === "szn" ? logs.filter((l) => l.season === season) : logs}
-              stat={statDef}
-              point={point}
-              side={side}
-              count={chartWindow === "szn" ? 82 : Number(chartWindow)}
-            />
-          </section>
-
-          <section>
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Every book at {point}</h3>
               {fair && (
@@ -387,7 +390,7 @@ export function PlayerPropSheet({
               )}
             </div>
             {books.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No book prices this number.</p>
+              <p className="text-sm text-muted-foreground">{summary?.projected ? "Books haven't posted this prop yet — every book's price lands here when they do." : "No book prices this number."}</p>
             ) : (
               <ul className="divide-y divide-border rounded-xl border border-border">
                 <li className="grid grid-cols-[1fr_5.75rem_5.75rem] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">

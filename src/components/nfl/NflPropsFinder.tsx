@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { NFL_PROP_STATS, NFL_PROP_STAT_BY_KEY, type NflPropStatDef } from "@/lib/nfl/propStats";
 import { sortNflSummaries, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflPropSort, type NflPropSummary, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
@@ -22,7 +22,7 @@ import type { NflProjectionContext } from "@/lib/nfl/projection";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
-import { GameLogChart } from "@/components/nba/GameLogChart";
+import { PropGameChart } from "@/components/props/PropGameChart";
 
 const SORTS: { key: NflPropSort; label: string }[] = [
   { key: "hitRate", label: "Hit rate" },
@@ -120,8 +120,15 @@ function PropCard({ s, player, game, side, stat, defense, onOpen }: { s: NflProp
         <div className="mt-3 flex items-center justify-between gap-2">
           <HitMeter recent={s.recent.slice(0, 5)} rate={s.l5} window="L5" slots={5} />
           <div className="flex items-center gap-1.5">
-            <EvTag value={value} />
-            {best ? (
+            {s.projected ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2 py-1 ring-1 ring-brand/40" title="No book has posted this prop yet">
+                <span className="text-[10px] font-bold uppercase text-foreground">ARCHR line</span>
+                <span className="text-[10px] text-muted-foreground">· books soon</span>
+              </span>
+            ) : (
+              <EvTag value={value} />
+            )}
+            {s.projected ? null : best ? (
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1 ring-1 ring-emerald-500/30">
                 <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{sideLabel(stat, side)}</span>
                 <span className="font-mono text-sm font-semibold text-foreground">{formatAmerican(best.priceAmerican)}</span>
@@ -139,7 +146,7 @@ function PropCard({ s, player, game, side, stat, defense, onOpen }: { s: NflProp
             </span>
           ))}
           <span className="ml-auto flex items-center gap-2">
-            <ModelChip s={s} side={side} />
+            {!s.projected && <ModelChip s={s} side={side} />}
             <DefChip defense={defense} player={player} stat={stat} side={side} />
           </span>
         </div>
@@ -155,7 +162,7 @@ function Sheet({ player, props, logs, season, projection, modelWeights, initialS
   const stat = NFL_PROP_STAT_BY_KEY.get(prop.stat)!;
   const consensus = propConsensusPoint(prop.quotes);
   const [pointByStat, setPointByStat] = useState<Partial<Record<NflPropStat, number>>>({});
-  const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? 0;
+  const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
   const ctx = {
     season,
     venue: player.venue,
@@ -169,7 +176,7 @@ function Sheet({ player, props, logs, season, projection, modelWeights, initialS
   const pairs = twoSidedAt(prop.quotes, point);
   const fair = fairPrice(pairs);
   const bestBook = side === "over" ? s?.over?.bookKey : s?.under?.bookKey;
-  const [win, setWin] = useState<"5" | "8" | "szn">("8");
+  const chartLogs = stat.available ? logs.filter(stat.available) : logs;
 
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -235,6 +242,33 @@ function Sheet({ player, props, logs, season, projection, modelWeights, initialS
                 </button>
               ))}
             </div>
+          </section>
+
+          {s?.projected && (
+            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs leading-relaxed text-foreground ring-1 ring-brand/30">
+              <span className="font-semibold">No book has posted this yet.</span>{" "}
+              {stat.shape === "anytime" ? "This is ARCHR's own read on a touchdown." : <>{point}{" "}is ARCHR&apos;s line — the projection to the nearest half-point.</>} Books post most
+              of the week&apos;s props midweek; their line and prices replace this the moment they do.
+            </p>
+          )}
+
+          <section>
+            <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
+              <span className="brand-slash" aria-hidden />
+              {stat.label} by game
+            </h3>
+            <PropGameChart
+              logs={chartLogs}
+              value={(l) => stat.value(l)}
+              statShort={stat.shape === "anytime" ? "TD" : stat.shortLabel}
+              point={point}
+              side={side}
+              season={season}
+              projection={s?.model?.projection.mean ?? null}
+              opponent={player.opponent?.abbreviation}
+              venue={player.venue}
+              lineLabel={s?.projected ? "ARCHR line" : "Line"}
+            />
           </section>
           {s && s.points.length > 1 && stat.shape !== "anytime" && (
             <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
@@ -320,22 +354,6 @@ function Sheet({ player, props, logs, season, projection, modelWeights, initialS
             </section>
           )}
 
-          {stat.shape !== "anytime" && (
-            <section>
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Game log</h3>
-                <div className="inline-flex rounded-lg bg-muted p-0.5">
-                  {(["5", "8", "szn"] as const).map((w) => (
-                    <button key={w} type="button" onClick={() => setWin(w)} className={`rounded-md px-2.5 py-1 text-xs font-semibold ${w === win ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}>
-                      {w === "szn" ? "SZN" : `L${w}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <GameLogChart key={win} logs={win === "szn" ? logs.filter((l) => l.season === season) : logs} stat={stat} point={point} side={side} count={win === "szn" ? 20 : Number(win)} />
-            </section>
-          )}
-
           <section>
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Every book</h3>
@@ -346,7 +364,7 @@ function Sheet({ player, props, logs, season, projection, modelWeights, initialS
               )}
             </div>
             {books.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No book prices this number.</p>
+              <p className="text-sm text-muted-foreground">{s?.projected ? "Books haven't posted this prop yet — every book's price lands here when they do." : "No book prices this number."}</p>
             ) : (
               <ul className="divide-y divide-border rounded-xl border border-border">
                 {books.map((b) => (
@@ -413,6 +431,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
     }
     return sortNflSummaries(out, sort, side);
   }, [slate, logs, statKey, stat, side, sort, gameId, query]);
+  const posted = summaries.filter((s) => !s.projected).length;
 
   const openPlayer = open ? slate.players[open] : null;
 
@@ -464,12 +483,26 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
         </div>
       )}
 
+      {summaries.length > 0 && (
+        <p className="mt-4 text-xs text-muted-foreground">
+          {posted > 0
+            ? `${posted} ${stat.label} ${posted === 1 ? "prop" : "props"} posted · tap a player for every game, line and book`
+            : `Books haven't posted ${stat.label.toLowerCase()} props yet — below is ARCHR's line for every player with a role. Tap one for every game against it.`}
+        </p>
+      )}
       {summaries.length === 0 ? (
         <p className="mt-8 text-center text-sm text-muted-foreground">No {stat.label.toLowerCase()} props{query ? ` match “${query}”` : " priced"}.</p>
       ) : (
         <ul className="mt-3 flex flex-col gap-2.5">
-          {summaries.map((s) => (
-            <PropCard key={s.playerId} s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} onOpen={() => setOpen(s.playerId)} />
+          {summaries.map((s, i) => (
+            <Fragment key={s.playerId}>
+              {s.projected && posted > 0 && (i === 0 || !summaries[i - 1]!.projected) && (
+                <li className="mt-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span className="brand-slash" aria-hidden /> ARCHR lines · books haven&apos;t posted these yet
+                </li>
+              )}
+              <PropCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} onOpen={() => setOpen(s.playerId)} />
+            </Fragment>
           ))}
         </ul>
       )}
