@@ -44,8 +44,8 @@ export interface FairPrice {
   booksUsed: number;
 }
 
-/** The market's fair probability of side A, optionally leaving one book out. Null below MIN_BOOKS. */
-export function fairPrice(quotes: TwoSidedQuote[], excludeBook?: string): FairPrice | null {
+/** The market's fair probability of side A, optionally leaving one book out. Null below `minBooks` (default MIN_BOOKS). */
+export function fairPrice(quotes: TwoSidedQuote[], excludeBook?: string, minBooks = MIN_BOOKS): FairPrice | null {
   let sum = 0;
   let weight = 0;
   let books = 0;
@@ -56,7 +56,7 @@ export function fairPrice(quotes: TwoSidedQuote[], excludeBook?: string): FairPr
     weight += w;
     books++;
   }
-  if (books < MIN_BOOKS) return null;
+  if (books < minBooks) return null;
   return { probA: sum / weight, booksUsed: books };
 }
 

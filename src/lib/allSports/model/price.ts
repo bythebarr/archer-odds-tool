@@ -80,7 +80,7 @@ export function priceEvent(lines: StoredLine[], ratings: LeagueRatings | null, h
     ratings && weight > 0
       ? { outcome: (line) => lineOutcomeFor(ratings, home, away, line, sport), weight: () => weight, tailScale }
       : null;
-  const offers = buildOffers(toQuotes(lines), model).map((o): PricedOffer => {
+  const offers = buildOffers(toQuotes(lines), model, { minBooks: 1 }).map((o): PricedOffer => {
     if (o.sides.every((s) => s.prob !== null)) return { ...o, source: "blend" };
     // Market-only: the no-vig consensus is the read, EV the best price against it.
     for (const s of o.sides) {
