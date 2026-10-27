@@ -200,6 +200,38 @@
     {
       "path": "/api/cron/sync-schedule",
       "schedule": "35 18 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 0 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 3 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 9 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 12 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 15 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 18 * * *"
+    },
+    {
+      "path": "/api/cron/soccer-player-stats",
+      "schedule": "20 21 * * *"
     }
   ]
 }

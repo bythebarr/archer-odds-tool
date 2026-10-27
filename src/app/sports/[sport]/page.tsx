@@ -8,6 +8,7 @@ import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
 import { LeagueLogo } from "@/components/allSports/LeagueLogo";
 import { AllSportEventRow, AllSportListHeader } from "@/components/allSports/AllSportEventRow";
 import { EmptyState } from "@/components/EmptyState";
+import { SportTabs } from "@/components/book/SportTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,16 @@ export default async function SportBoardPage({ params }: { params: Promise<{ spo
         <Glyph name={board.sport.glyph as GlyphKey} className="size-8" />
         <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight">{board.sport.label}</h1>
       </div>
+      {sport === "soccer" && (
+        <div className="mt-3">
+          <SportTabs
+            tabs={[
+              { label: "Game Lines", href: "/sports/soccer", active: true },
+              { label: "Player Props", href: "/sports/soccer/props", active: false },
+            ]}
+          />
+        </div>
+      )}
       <p className="mt-2 text-sm text-muted-foreground">
         {board.chips.length} {board.chips.length === 1 ? "league" : "leagues"}{" "}in season · every book&apos;s best price · ARCHR&apos;s edge on each game
       </p>

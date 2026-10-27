@@ -6,6 +6,7 @@ import { getEventPage } from "@/lib/queries/allSports";
 import { EventBreakdown, EventFaceOff } from "@/components/allSports/EventBreakdown";
 import { GameMarketBoard } from "@/components/game/GameMarketBoard";
 import { SectionTitle } from "@/components/matchup/Matchup";
+import { soccerPropsLink } from "@/lib/queries/soccerProps";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function AllSportEventPage({ params }: { params: Params }) 
   const { sport, id } = await params;
   const view = await load(id);
   if (!view || view.sport.key !== sport) notFound();
+  const propsHref = sport === "soccer" ? await soccerPropsLink(view.id) : null;
   const teams = {
     home: { name: view.home, abbreviation: initials(view.home), logoUrl: view.homeLogo },
     away: { name: view.away, abbreviation: initials(view.away), logoUrl: view.awayLogo },
@@ -50,6 +52,12 @@ export default async function AllSportEventPage({ params }: { params: Params }) 
         ← {view.league.name}
       </Link>
       <EventFaceOff view={view} when={when(view.startsAt, view.status)} />
+      {propsHref && (
+        <Link href={propsHref} className="mt-4 flex items-center justify-between rounded-xl border border-brand/40 bg-brand/10 px-4 py-3 text-sm font-semibold text-foreground hover:bg-brand/15">
+          <span>Player props · goalscorers, shots, saves, cards</span>
+          <span aria-hidden>›</span>
+        </Link>
+      )}
       <EventBreakdown view={view} />
       <section className="mt-6">
         <SectionTitle aside={view.lastOddsAt ? <span className="text-[10px] text-muted-foreground">Prices {new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(view.lastOddsAt)} ET</span> : null}>

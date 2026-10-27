@@ -34,6 +34,7 @@ async function main() {
   const leagues = await prisma.league.groupBy({ by: ["provider", "active"], _count: { _all: true } });
   for (const g of leagues) console.log(`leagues provider=${g.provider} active=${g.active}: ${g._count._all}`);
   console.log(`events: ${await prisma.sportEvent.count()} (scheduled ${await prisma.sportEvent.count({ where: { status: "scheduled" } })}), lines: ${await prisma.sportEventLine.count()}, competitors: ${await prisma.competitor.count()}`);
+  console.log(`soccer player stats: ${await prisma.soccerPlayerMatch.count()} lines, ${await prisma.soccerPlayer.count()} players (${await prisma.soccerPlayer.count({ where: { photoUrl: { not: null } } })} Wikipedia photos), ${await prisma.sportEvent.count({ where: { id: { startsWith: "espn:" }, status: "final", boxScoreAt: null, league: { sport: "soccer", espnPath: { not: null } } } })} matches left to read`);
 }
 
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
