@@ -160,6 +160,46 @@
     {
       "path": "/api/cron/backfill-f1",
       "schedule": "25 7 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 1 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 4 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 7 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 10 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 13 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 16 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 19 * * *"
+    },
+    {
+      "path": "/api/cron/espn-odds",
+      "schedule": "50 22 * * *"
+    },
+    {
+      "path": "/api/cron/sync-schedule",
+      "schedule": "35 10 * * *"
+    },
+    {
+      "path": "/api/cron/sync-schedule",
+      "schedule": "35 18 * * *"
     }
   ]
 }

@@ -71,7 +71,7 @@ function lineOf(q: LineQuote): number | null {
 }
 
 /** Proportional de-vig of a 3-way market, averaged across books pricing all three. */
-function threeWayFair(sides: OfferSide[]): Map<string, number> | null {
+function threeWayFair(sides: OfferSide[], minBooks: number): Map<string, number> | null {
   const byBook = new Map<string, Map<string, number>>();
   for (const s of sides) for (const b of s.books) {
     const m = byBook.get(b.bookKey) ?? new Map<string, number>();
@@ -79,7 +79,7 @@ function threeWayFair(sides: OfferSide[]): Map<string, number> | null {
     byBook.set(b.bookKey, m);
   }
   const full = [...byBook.values()].filter((m) => m.size === sides.length);
-  if (full.length < 3) return null;
+  if (full.length < minBooks) return null;
   const out = new Map<string, number>();
   for (const m of full) {
     const z = [...m.values()].reduce((a, b) => a + b, 0);
@@ -113,7 +113,12 @@ function fromLeagueModel(m: LeagueGameModel): OfferModel {
   };
 }
 
-export function buildOffers(quotes: LineQuote[], modelIn: LeagueGameModel | OfferModel | null): Offer[] {
+/**
+ * `minBooks`: books needed for a market read (default 3). The all-sports engine
+ * passes 1, so a game only one book prices (ESPN's free DraftKings line) still
+ * gets a de-vigged market to blend with — read as that book, not a consensus.
+ */
+export function buildOffers(quotes: LineQuote[], modelIn: LeagueGameModel | OfferModel | null, { minBooks = 3 }: { minBooks?: number } = {}): Offer[] {
   const model: OfferModel | null = modelIn === null ? null : "outcome" in modelIn ? modelIn : fromLeagueModel(modelIn);
   const groups = new Map<string, LineQuote[]>();
   for (const q of quotes) {
@@ -146,13 +151,13 @@ export function buildOffers(quotes: LineQuote[], modelIn: LeagueGameModel | Offe
         const b = sides[1].books.find((x) => x.bookKey === a.bookKey);
         return b ? [{ bookKey: a.bookKey, priceA: a.priceAmerican, priceB: b.priceAmerican }] : [];
       });
-      const fair = fairPrice(pairs);
+      const fair = fairPrice(pairs, undefined, minBooks);
       if (fair) {
         sides[0].marketProb = fair.probA;
         sides[1].marketProb = 1 - fair.probA;
       }
     } else {
-      const fair = threeWayFair(sides);
+      const fair = threeWayFair(sides, minBooks);
       if (fair) for (const s of sides) s.marketProb = fair.get(s.side) ?? null;
     }
 

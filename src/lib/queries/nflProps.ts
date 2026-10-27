@@ -62,6 +62,22 @@ const NFL_PROJECTED_STATS: Partial<Record<NflPosition, NflPropStat[]>> = {
   TE: ["recYards", "receptions", "anytimeTd"],
 };
 
+/**
+ * A skill player's position from what he does, for players whose roster
+ * position isn't on file: throws → QB, mostly carries → RB, catches → WR (a
+ * tight end reads as WR, which only shifts which defense-by-position row he's
+ * matched to). Null for someone with no offensive touches.
+ */
+export function inferNflPosition(logs: { passAttempts: number; rushAttempts: number; receptions: number; targets: number }[]): string | null {
+  const sum = (f: (l: (typeof logs)[number]) => number) => logs.reduce((a, l) => a + f(l), 0);
+  const pass = sum((l) => l.passAttempts);
+  const rush = sum((l) => l.rushAttempts);
+  const rec = sum((l) => Math.max(l.targets, l.receptions));
+  if (pass >= 5 * Math.max(1, logs.length)) return "QB";
+  if (rush + rec === 0) return null;
+  return rush > rec ? "RB" : "WR";
+}
+
 /** A real role in the offense lately: a starting QB, a back with carries, a receiver with targets. */
 function nflUsageCounts(position: string | null, logs: { passAttempts: number; rushAttempts: number; receptions: number; targets: number }[]): boolean {
   if (logs.length < 2) return false;
@@ -260,7 +276,8 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   // Every skill player in the week's games, posted or not: books post most of the
   // week's props midweek, and until then each row reads against ARCHR's own line.
   const roster = await prisma.nflPlayer.findMany({
-    where: { teamId: { in: games.flatMap((g) => [g.homeTeamId, g.awayTeamId]).filter((id): id is string => id !== null) }, position: { in: ["QB", "RB", "WR", "TE"] } },
+    // Position too: most players' isn't on file until a roster sync, so it's read off their logs when missing.
+    where: { teamId: { in: games.flatMap((g) => [g.homeTeamId, g.awayTeamId]).filter((id): id is string => id !== null) }, OR: [{ position: null }, { position: { in: ["QB", "RB", "WR", "TE"] } }] },
     include: {
       gameLogs: {
         where: { gameDate: { lt: now, gte: new Date(now.getTime() - 70 * 86_400_000) } },
@@ -273,14 +290,15 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   const espnIdOf = new Map<string, string>();
   for (const p of roster) {
     espnIdOf.set(p.id, p.espnAthleteId);
-    if (players[p.id] || !nflUsageCounts(p.position, p.gameLogs)) continue;
+    const position = p.position ?? inferNflPosition(p.gameLogs);
+    if (players[p.id] || !position || !nflUsageCounts(position, p.gameLogs)) continue;
     const g = games.find((x) => x.homeTeamId === p.teamId || x.awayTeamId === p.teamId)!;
     const venue = p.teamId === g.homeTeamId ? "home" : "away";
     players[p.id] = {
       id: p.id,
       name: p.fullName,
       headshotUrl: nflHeadshotUrl(p.espnAthleteId),
-      position: nflPositionGroup(p.position),
+      position: nflPositionGroup(position),
       gameId: g.id,
       team: venue === "home" ? team(g.homeTeam) : team(g.awayTeam),
       opponent: venue === "home" ? team(g.awayTeam) : team(g.homeTeam),
