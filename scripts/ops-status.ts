@@ -8,8 +8,8 @@ import { prisma } from "@/lib/prisma";
 const ago = (d: Date | null | undefined) => (d ? `${Math.round((Date.now() - d.getTime()) / 3_600_000)}h ago` : "never");
 
 async function main() {
-  console.log("== Jobs (latest 60)");
-  const logs = await prisma.pollLog.findMany({ orderBy: { lastPolledAt: "desc" }, take: 60 });
+  console.log("== Jobs (every job but per-league ESPN backfills, latest first)");
+  const logs = await prisma.pollLog.findMany({ where: { NOT: [{ jobName: { startsWith: "espn-" } }, { jobName: { startsWith: "all-sports-spend" } }] }, orderBy: { lastPolledAt: "desc" }, take: 80 });
   for (const l of logs) console.log(`${l.jobName.padEnd(48)} ${ago(l.lastPolledAt).padStart(9)}  ${l.lastStatus.slice(0, 110)}${l.creditsRemaining !== null ? `  [credits left ${l.creditsRemaining}]` : ""}`);
 
   console.log("\n== Games by sport (scheduled within 7 days / latest odds)");
@@ -24,6 +24,10 @@ async function main() {
   const nfl = await prisma.nflPlayerGameLog.findFirst({ orderBy: { gameDate: "desc" }, select: { gameDate: true } });
   console.log(`NBA ${nba?.gameDate.toISOString().slice(0, 10) ?? "none"} (${await prisma.nbaPlayerGameLog.count()} rows), NFL ${nfl?.gameDate.toISOString().slice(0, 10) ?? "none"} (${await prisma.nflPlayerGameLog.count()} rows)`);
   console.log(`NFL players with a team: ${await prisma.nflPlayer.count({ where: { teamId: { not: null } } })}`);
+  const positions = await prisma.nflPlayer.groupBy({ by: ["position"], where: { teamId: { not: null } }, _count: { _all: true } });
+  console.log(`NFL positions: ${positions.map((p) => `${p.position ?? "null"}=${p._count._all}`).join(", ")}`);
+  const nflWeek = await prisma.game.findMany({ where: { sport: "nfl", scheduledStartUtc: { gte: new Date(), lte: new Date(Date.now() + 7 * 86_400_000) } }, select: { status: true, homeTeamId: true } });
+  console.log(`NFL games next 7d: ${nflWeek.length} (${nflWeek.filter((g) => g.homeTeamId).length} with teams; statuses ${[...new Set(nflWeek.map((g) => g.status))].join("/")})`);
   console.log(`Prop lines now: NBA ${await prisma.currentNbaPropLine.count()}, NFL ${await prisma.currentNflPropLine.count()}`);
 
   console.log("\n== All-sports engine");
