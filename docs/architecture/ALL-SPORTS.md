@@ -74,6 +74,16 @@ page. When the odds feed lists the same game, its copy (with every book's
 price) replaces ESPN's on the board (`dropEspnTwins`). The GitHub Action
 "All sports — fill" runs the same job on demand.
 
+### Free prices from ESPN
+
+ESPN lists one sportsbook's current line (DraftKings) on every US-sport game it
+carries — moneyline, spread and total with prices — and on each soccer match's
+summary. `/api/cron/espn-odds` (eight times a day, no key, no credits) stores it
+as that book's quotes: on NBA, NFL and MLB games through the same storage as any
+feed, and on every ESPN all-sports event (`odds/espnOddsPoll.ts`). It's one
+book, so all-sports offers price from a single book (`minBooks: 1`); a paid feed
+adds the rest of the books on top.
+
 Player props work the same way: every rotation player in the day's NBA games
 (and every QB/RB/WR/TE with a role in the week's NFL games) gets ARCHR's line
 on the core stats — the projection to the nearest half-point — listed after the
