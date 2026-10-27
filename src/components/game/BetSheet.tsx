@@ -9,6 +9,14 @@ import { BookBadge } from "@/components/BookBadge";
 import { offerTitle, sideLabel, type TeamNames } from "./labels";
 
 const pct = (x: number | null) => (x === null ? "—" : `${(x * 100).toFixed(1)}%`);
+
+/** The one-line read: ARCHR's chance against what the price implies. */
+function verdictLine(side: OfferSide, edge: number | null): string {
+  if (side.prob === null || !side.best || edge === null) return "No ARCHR read on this line yet.";
+  const implied = side.best.priceAmerican > 0 ? 100 / (side.best.priceAmerican + 100) : -side.best.priceAmerican / (-side.best.priceAmerican + 100);
+  const head = edge >= 0.05 ? "Strong value" : edge >= 0.02 ? "Value" : edge >= -0.02 ? "Fair price" : "Overpriced";
+  return `${head} — ARCHR ${pct(side.prob)} vs the price's ${pct(implied)}.`;
+}
 const MARKET_TYPE = { ml: "h2h", spread: "spreads", total: "totals", teamTotal: "totals" } as const;
 
 /**
@@ -112,34 +120,45 @@ export function BetSheet({
                 </div>
               )}
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
-              <div className="rounded-lg bg-muted/60 px-2 py-1.5">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Model</p>
-                <p className="font-mono text-sm font-semibold text-foreground">{pct(side.modelProb)}</p>
-              </div>
-              <div className="rounded-lg bg-muted/60 px-2 py-1.5">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Market · {offer.books} books</p>
-                <p className="font-mono text-sm font-semibold text-foreground">{pct(side.marketProb)}</p>
-              </div>
-              <div className="rounded-lg bg-brand/15 px-2 py-1.5 ring-1 ring-brand/40">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">ARCHR</p>
-                <p className="font-mono text-sm font-bold text-foreground">{pct(side.prob)}</p>
-              </div>
-            </div>
-            <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-              {side.fairAmerican !== null && (
-                <>
-                  Fair price <span className="font-mono font-semibold text-foreground">{formatAmerican(side.fairAmerican)}</span>
-                  {side.push >= 0.005 ? <> · push {pct(side.push)} (refunded)</> : null}.{" "}
-                </>
-              )}
-              {side.prob === null
-                ? "The game model needs both teams to have enough games before it prices this."
-                : "The model's chance blended with the books' no-vig consensus; EV is what the best price returns per unit at that chance."}{" "}
-              <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
-                How accurate is it?
-              </Link>
+            <p className={`mt-3 text-sm font-semibold ${edge === null ? "text-muted-foreground" : edge >= 0.02 ? "text-emerald-600 dark:text-brand" : edge >= -0.02 ? "text-foreground" : "text-muted-foreground"}`}>
+              {verdictLine(side, edge)}
             </p>
+            <details className="group mt-3 rounded-lg bg-muted/40 px-3 py-2">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Model breakdown
+                <span className="transition-transform group-open:rotate-180" aria-hidden>
+                  ▾
+                </span>
+              </summary>
+            <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
+                <div className="rounded-lg bg-muted/60 px-2 py-1.5">
+                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Model</p>
+                  <p className="font-mono text-sm font-semibold text-foreground">{pct(side.modelProb)}</p>
+                </div>
+                <div className="rounded-lg bg-muted/60 px-2 py-1.5">
+                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Market · {offer.books} books</p>
+                  <p className="font-mono text-sm font-semibold text-foreground">{pct(side.marketProb)}</p>
+                </div>
+                <div className="rounded-lg bg-brand/15 px-2 py-1.5 ring-1 ring-brand/40">
+                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">ARCHR</p>
+                  <p className="font-mono text-sm font-bold text-foreground">{pct(side.prob)}</p>
+                </div>
+              </div>
+              <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                {side.fairAmerican !== null && (
+                  <>
+                    Fair price <span className="font-mono font-semibold text-foreground">{formatAmerican(side.fairAmerican)}</span>
+                    {side.push >= 0.005 ? <> · push {pct(side.push)} (refunded)</> : null}.{" "}
+                  </>
+                )}
+                {side.prob === null
+                  ? "The game model needs both teams to have enough games before it prices this."
+                  : "The model's chance blended with the books' no-vig consensus; EV is what the best price returns per unit at that chance."}{" "}
+                <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
+                  How accurate is it?
+                </Link>
+              </p>
+            </details>
           </section>
 
           <section>

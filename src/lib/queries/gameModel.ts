@@ -45,6 +45,29 @@ export interface TeamRead {
   restDays: number | null;
   restEdge: number;
   missing: MissingPlayer[];
+  /** This season so far. */
+  record: { w: number; l: number };
+  last10: { w: number; l: number };
+  /** Points per game scored and allowed this season (null before any game). */
+  ppg: number | null;
+  oppg: number | null;
+}
+
+/** A team's season so far: record, last ten, and points for and against per game. */
+async function teamForm(sport: Sport, teamId: string, season: number, before: Date) {
+  const games = await prisma.game.findMany({
+    where: { sport, season, status: "final", scheduledStartUtc: { lt: before }, OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }] },
+    orderBy: { scheduledStartUtc: "desc" },
+    select: { homeTeamId: true, homeScore: true, awayScore: true },
+  });
+  const rows = games.flatMap((g) =>
+    g.homeScore === null || g.awayScore === null
+      ? []
+      : [g.homeTeamId === teamId ? { pf: g.homeScore, pa: g.awayScore } : { pf: g.awayScore, pa: g.homeScore }]
+  );
+  const wl = (list: typeof rows) => ({ w: list.filter((r) => r.pf > r.pa).length, l: list.filter((r) => r.pf < r.pa).length });
+  const avg = (f: (r: (typeof rows)[number]) => number) => (rows.length ? rows.reduce((a, r) => a + f(r), 0) / rows.length : null);
+  return { record: wl(rows), last10: wl(rows.slice(0, 10)), ppg: avg((r) => r.pf), oppg: avg((r) => r.pa) };
 }
 
 export interface GameModelView {
@@ -176,6 +199,7 @@ export async function getGameModelView(sport: Sport, gameId: string, lines: Game
   ratings.touch(h, game.season);
   ratings.touch(a, game.season);
 
+  const [homeForm, awayForm] = await Promise.all([teamForm(sport, h, game.season, game.scheduledStartUtc), teamForm(sport, a, game.season, game.scheduledStartUtc)]);
   const [homeDays, awayDays, homeMissing, awayMissing, weights, fitted] = await Promise.all([
     daysSincePrevious(sport, h, game.scheduledStartUtc),
     daysSincePrevious(sport, a, game.scheduledStartUtc),
@@ -196,7 +220,15 @@ export async function getGameModelView(sport: Sport, gameId: string, lines: Game
     const priced = q ? priceGameMarket(dist, m, q, weights[m]) : null;
     return priced ? [priced] : [];
   });
-  const team = (t: typeof game.homeTeam, id: string, days: number | null, edge: number, missing: MissingPlayer[]): TeamRead => ({
+  const team = (
+    t: typeof game.homeTeam,
+    id: string,
+    days: number | null,
+    edge: number,
+    missing: MissingPlayer[],
+    form: Awaited<ReturnType<typeof teamForm>>
+  ): TeamRead => ({
+    ...form,
     name: t!.name,
     abbreviation: t!.abbreviation,
     net: ratings.net(id),
@@ -212,8 +244,8 @@ export async function getGameModelView(sport: Sport, gameId: string, lines: Game
     base,
     expected,
     hfa: ratings.hfa,
-    home: team(game.homeTeam, h, homeDays, rest.home, homeMissing),
-    away: team(game.awayTeam, a, awayDays, rest.away, awayMissing),
+    home: team(game.homeTeam, h, homeDays, rest.home, homeMissing, homeForm),
+    away: team(game.awayTeam, a, awayDays, rest.away, awayMissing, awayForm),
     pHomeWin: pHomeWin(dist),
     fairSpread: fairSpread(dist),
     fairTotal: fairTotal(dist),
