@@ -62,7 +62,7 @@ export default async function LeaguePageAll({ params }: { params: Params }) {
   const events = board.boards[0]?.events ?? [];
   const threeWay = board.sport.family === "goals" && sport !== "hockey";
   const days = [...new Set(events.map((e) => dayKey(e.startsAt)))];
-  const noSpread = !threeWay && events.every((e) => !e.spread.home && !e.spread.away);
+  const noSpread = !threeWay && events.every((e) => !e.spread.home && !e.spread.away && e.archr?.spread == null);
   return (
     <div className="mx-auto min-h-screen w-full min-w-0 max-w-2xl px-4 pb-10 pt-5 font-sans">
       {header}

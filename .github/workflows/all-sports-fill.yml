@@ -1,0 +1,23 @@
+name: All sports — fill fixtures, history and logos (free)
+
+# Calls the ESPN backfill (fixtures for the week, last season's results,
+# crests, Wikipedia logos) until it reports nothing left to do. Free: ESPN and
+# Wikipedia only, no odds credits. Vercel Cron runs the same endpoint twice a
+# day; this is the on-demand version, e.g. right after a deploy.
+on:
+  workflow_dispatch:
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Fill, a minute at a time
+        run: |
+          for i in $(seq 1 25); do
+            out=$(curl -sfL -X POST "${{ secrets.APP_URL }}/api/cron/backfill-all-sports" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" --max-time 90 || echo '{}')
+            echo "$out" | head -c 400; echo
+            # Done when a call found no league to backfill and no fixtures to sync.
+            if echo "$out" | grep -q '"done":\[\]' && echo "$out" | grep -q '"fixtures":0'; then break; fi
+          done

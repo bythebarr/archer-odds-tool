@@ -44,3 +44,19 @@ describe("mergeResults", () => {
     expect(merged[0]!.home).toBe("Bournemouth");
   });
 });
+
+describe("archrRead", () => {
+  it("prices a game from the model alone, lines on the half-point", async () => {
+    const { archrRead } = await import("./price");
+    const results: Result[] = [];
+    for (let i = 0; i < 30; i++) results.push({ date: new Date(Date.UTC(2026, 0, 1 + i)), home: i % 2 ? "A" : "B", away: i % 2 ? "B" : "A", homeScore: i % 2 ? 3 : 0, awayScore: i % 2 ? 0 : 2 });
+    const r = rateLeague("goals", "soccer", results);
+    const a = archrRead(r, "A", "B", "soccer")!;
+    expect(a.probs.home + a.probs.draw + a.probs.away).toBeCloseTo(1, 6);
+    expect(a.probs.home).toBeGreaterThan(a.probs.away);
+    expect(a.fair.draw).not.toBeNull();
+    expect(Math.abs(a.total! % 1)).toBe(0.5);
+    expect(a.spread!).toBeLessThan(0);
+    expect(archrRead(r, "A", "Nobody", "soccer")).toBeNull();
+  });
+});

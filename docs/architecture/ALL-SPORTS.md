@@ -62,6 +62,23 @@ running every 5 minutes: ~4,200 credits/day for leagues with games, ~900 for
 the rest, ~600 for scores — **~175K credits a month**, on top of the deep
 pipelines. That fits the 5M plan with room to spare; it doesn't fit 100K.
 
+## Before any book posts
+
+Every league ESPN covers is seeded from the league directory (`seedEspnLeagues`),
+with no odds feed needed, and its next week of fixtures is synced every six hours
+(`syncEspnFixtures`, ids `espn:<id>` — the same id the result lands on later).
+Those games show ARCHR's own prices from the model (`archrRead`): fair moneyline
+(1X2 where the sport draws), and the handicap and total on the half-point, as
+dashed "ARCHR" cells on the board and an "ARCHR's prices" panel on the event
+page. When the odds feed lists the same game, its copy (with every book's
+price) replaces ESPN's on the board (`dropEspnTwins`). The GitHub Action
+"All sports — fill" runs the same job on demand.
+
+Player props work the same way: every rotation player in the day's NBA games
+(and every QB/RB/WR/TE with a role in the week's NFL games) gets ARCHR's line
+on the core stats — the projection to the nearest half-point — listed after the
+props books have posted, until the books' line replaces it.
+
 ## History and logos (`espn.ts`, `logos.ts`)
 
 `/api/cron/backfill-all-sports` (twice a day) takes every league ESPN covers

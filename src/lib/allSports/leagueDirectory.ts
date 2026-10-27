@@ -100,7 +100,8 @@ const other: Record<string, LeagueInfo> = {
   "basketball/nba-championship-winner": { name: "NBA Championship Winner", region: "USA", rank: 0 },
   "basketball/ncaab-championship-winner": { name: "National Championship Winner", region: "USA", rank: 6 },
   "football/ncaaf": { name: "College Football", region: "USA", espn: "football/college-football", rank: 1 },
-  "football/ncaaf-fcs": { name: "College Football — FCS", region: "USA", espn: "football/college-football", rank: 4 },
+  // No espn path: ESPN files FCS under the same college-football scoreboard as FBS (ncaaf).
+  "football/ncaaf-fcs": { name: "College Football — FCS", region: "USA", rank: 4 },
   "football/cfl": { name: "CFL", region: "Canada", espn: "football/cfl", rank: 2 },
   "football/ufl": { name: "UFL", region: "USA", espn: "football/ufl", rank: 3 },
   "football/nfl-super-bowl-winner": { name: "Super Bowl Winner", region: "USA", rank: 0 },
@@ -146,4 +147,12 @@ export function titleFromSlug(slug: string): string {
     .split("-")
     .map((w) => (/^(atp|wta|itf|nba|nfl|nhl|ahl|afl|nrl|ipl|odi|psl|ufl|cfl|usa|uefa|fifa|efl|mls|t20)$/.test(w) ? w.toUpperCase() : w[0]!.toUpperCase() + w.slice(1)))
     .join(" ");
+}
+
+/** Every league ESPN covers, as league ids — seeded so its fixtures and history show before any odds feed lists it. */
+export function espnLeagues(): ({ id: string } & LeagueInfo)[] {
+  return [
+    ...Object.entries(soccer).map(([slug, info]) => ({ id: `soccer/${slug}`, ...info })),
+    ...Object.entries(other).map(([id, info]) => ({ id, ...info })),
+  ].filter((l) => l.espn);
 }

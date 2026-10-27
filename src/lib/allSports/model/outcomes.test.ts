@@ -72,3 +72,10 @@ describe("points and winner families", () => {
     expect(lineOutcomeFor(w, "X", "Z", { kind: "total", period: "game", side: "over", team: "", point: 10.5 }, "darts")).toBeNull();
   });
 });
+
+describe("projectedLine", () => {
+  it("rounds a projection to the nearest half-point", async () => {
+    const { projectedLine } = await import("@/lib/nba/propsMath");
+    expect([24.3, 24.7, 24.5, 0.2, 7.49].map(projectedLine)).toEqual([24.5, 24.5, 24.5, 0.5, 7.5]);
+  });
+});

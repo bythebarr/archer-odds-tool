@@ -93,3 +93,42 @@ export function priceEvent(lines: StoredLine[], ratings: LeagueRatings | null, h
   });
   return { offers, weight };
 }
+
+export interface ArchrRead {
+  /** Win chances: 3-way where the sport draws (draw > 0), else 2-way with overtime. */
+  probs: { home: number; draw: number; away: number };
+  /** ARCHR's fair American price on each side. */
+  fair: { home: number; draw: number | null; away: number };
+  /** ARCHR's own lines: the home side's handicap and the total, to the half-point. */
+  spread: number | null;
+  total: number | null;
+}
+
+const toAmerican = (p: number) => Math.round(decimalToAmerican(1 / Math.min(0.995, Math.max(0.005, p))));
+
+/**
+ * ARCHR's own prices on a game, from the model alone — what the board shows
+ * before any book posts. Null until both sides have enough history to rate.
+ */
+export function archrRead(r: LeagueRatings | null, home: string, away: string, sport: string): ArchrRead | null {
+  if (!r || Math.min(r.games(home), r.games(away)) < 3) return null;
+  const threeWay = r.family === "goals" && sport !== "hockey";
+  const win = (side: string) => lineOutcomeFor(r, home, away, { kind: "ml", period: "game", side, team: "", point: 0, threeWay }, sport)?.win ?? null;
+  const h = win("home");
+  const a = win("away");
+  if (h === null || a === null) return null;
+  const d = threeWay ? (win("draw") ?? 0) : 0;
+  const e = r.expected(home, away);
+  // Both lines on the nearest half-point, the way books hang them (no push): the total,
+  // and the home side's handicap (negative when it's favored).
+  const nearestHalf = (x: number) => Math.round(x - 0.5) + 0.5;
+  const total = e ? nearestHalf(e.home + e.away) : null;
+  const margin = e ? e.home - e.away : null;
+  const spread = margin === null ? null : margin >= 0 ? -nearestHalf(margin) : nearestHalf(-margin);
+  return {
+    probs: { home: h, draw: d, away: a },
+    fair: { home: toAmerican(h), draw: threeWay ? toAmerican(d) : null, away: toAmerican(a) },
+    spread: r.family === "winner" ? null : spread,
+    total: r.family === "winner" ? null : total,
+  };
+}

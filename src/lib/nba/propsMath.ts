@@ -54,6 +54,11 @@ export interface SlateProp {
   playerId: string;
   stat: NbaPropStat;
   quotes: PropQuote[];
+  /**
+   * ARCHR's own line (the projection to the nearest half-point) for a prop no
+   * book has posted yet. The row reads against it until the books' line lands.
+   */
+  projectedPoint?: number;
 }
 
 export type PropSort = "hitRate" | "margin" | "price" | "value" | "model";
@@ -91,6 +96,8 @@ export interface PropModel extends PricedProp {
 export interface PropSummary {
   playerId: string;
   stat: NbaPropStat;
+  /** No book has posted it: `point` is ARCHR's projected line. */
+  projected: boolean;
   /** The line every number below is measured at. */
   point: number;
   /** Every number any book hangs, ascending — the sheet's line selector. */
@@ -147,7 +154,7 @@ export function summarizeProp(
   context: PropContext,
   atPoint?: number
 ): PropSummary | null {
-  const point = atPoint ?? propConsensusPoint(prop.quotes);
+  const point = atPoint ?? propConsensusPoint(prop.quotes) ?? prop.projectedPoint ?? null;
   if (point === null) return null;
 
   const cashes = (v: number) => (side === "over" ? v > point : v < point);
@@ -208,6 +215,7 @@ export function summarizeProp(
   return {
     playerId: prop.playerId,
     stat: prop.stat,
+    projected: prop.quotes.length === 0,
     point,
     points: [...new Set(prop.quotes.map((q) => q.point))].sort((a, b) => a - b),
     over,
@@ -234,7 +242,18 @@ function marginOf(s: PropSummary, side: PropDirection): number {
   return side === "over" ? s.avgL10 - s.point : s.point - s.avgL10;
 }
 
-/** Sorts in place, best first. A thin sample sorts below a full one at the same rate: 2/2 is not 9/10. */
+/**
+ * ARCHR's line for a stat no book has posted: the projection to the nearest
+ * half-point, the way books hang one, so Over and Under split it with no push.
+ */
+export function projectedLine(mean: number): number {
+  return Math.max(0.5, Math.round(mean - 0.5) + 0.5);
+}
+
+/**
+ * Sorts in place, best first, with props the books have posted ahead of
+ * ARCHR-only lines. A thin sample sorts below a full one at the same rate: 2/2 is not 9/10.
+ */
 export function sortSummaries(summaries: PropSummary[], sort: PropSort, side: PropDirection): PropSummary[] {
   const price = (s: PropSummary) => {
     const best = side === "over" ? s.over : s.under;
@@ -248,7 +267,7 @@ export function sortSummaries(summaries: PropSummary[], sort: PropSort, side: Pr
     value: (s) => (side === "over" ? s.value.over : s.value.under)?.ev ?? -Infinity,
     model: (s) => (side === "over" ? s.model?.evOver : s.model?.evUnder) ?? -Infinity,
   };
-  return summaries.sort((a, b) => key[sort](b) - key[sort](a));
+  return summaries.sort((a, b) => Number(a.projected) - Number(b.projected) || key[sort](b) - key[sort](a));
 }
 
 export interface BookRow {

@@ -18,6 +18,9 @@ import type { Absence } from "@/lib/injuries/absence";
 import type { SlateGame, SlateTeam } from "./nbaProps";
 import type { GameLines } from "@/lib/propModel/environment";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
+import { projectNflProp } from "@/lib/nfl/projection";
+import { projectedLine } from "@/lib/nba/propsMath";
+import type { NflPropStat } from "@/generated/prisma/client";
 import { getConsensusGameLines } from "./gameLines";
 import { getModelWeights } from "./modelWeights";
 
@@ -49,6 +52,24 @@ export interface NflPropsSlate {
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
   modelWeights: Record<string, number>;
   lastPolledAt: string | null;
+}
+
+/** The props ARCHR posts its own line on, by position, before the books do. */
+const NFL_PROJECTED_STATS: Partial<Record<NflPosition, NflPropStat[]>> = {
+  QB: ["passYards", "passTds", "passCompletions", "passAttempts", "rushYards"],
+  RB: ["rushYards", "rushAttempts", "receptions", "recYards", "rushRecYards", "anytimeTd"],
+  WR: ["recYards", "receptions", "anytimeTd"],
+  TE: ["recYards", "receptions", "anytimeTd"],
+};
+
+/** A real role in the offense lately: a starting QB, a back with carries, a receiver with targets. */
+function nflUsageCounts(position: string | null, logs: { passAttempts: number; rushAttempts: number; receptions: number; targets: number }[]): boolean {
+  if (logs.length < 2) return false;
+  const avg = (f: (l: (typeof logs)[number]) => number) => logs.reduce((a, l) => a + f(l), 0) / logs.length;
+  if (position === "QB") return avg((l) => l.passAttempts) >= 15;
+  if (position === "RB") return avg((l) => l.rushAttempts + l.receptions) >= 6;
+  // Older box scores logged no targets (0): receptions stand in.
+  return avg((l) => Math.max(l.targets, l.receptions)) >= 2.5;
 }
 
 /** Recent games a team's scoring baseline averages over. */
@@ -190,7 +211,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     where: {
       sport: "nfl",
       scheduledStartUtc: { gte: new Date(now.getTime() - 3 * 3_600_000), lte: new Date(now.getTime() + 7 * 86_400_000) },
-      currentNflPropLines: { some: {} },
+      status: { not: "final" },
     },
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
@@ -236,6 +257,38 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     props.set(key, prop);
   }
 
+  // Every skill player in the week's games, posted or not: books post most of the
+  // week's props midweek, and until then each row reads against ARCHR's own line.
+  const roster = await prisma.nflPlayer.findMany({
+    where: { teamId: { in: games.flatMap((g) => [g.homeTeamId, g.awayTeamId]).filter((id): id is string => id !== null) }, position: { in: ["QB", "RB", "WR", "TE"] } },
+    include: {
+      gameLogs: {
+        where: { gameDate: { lt: now, gte: new Date(now.getTime() - 70 * 86_400_000) } },
+        select: { passAttempts: true, rushAttempts: true, receptions: true, targets: true },
+        orderBy: { gameDate: "desc" },
+        take: 6,
+      },
+    },
+  });
+  const espnIdOf = new Map<string, string>();
+  for (const p of roster) {
+    espnIdOf.set(p.id, p.espnAthleteId);
+    if (players[p.id] || !nflUsageCounts(p.position, p.gameLogs)) continue;
+    const g = games.find((x) => x.homeTeamId === p.teamId || x.awayTeamId === p.teamId)!;
+    const venue = p.teamId === g.homeTeamId ? "home" : "away";
+    players[p.id] = {
+      id: p.id,
+      name: p.fullName,
+      headshotUrl: nflHeadshotUrl(p.espnAthleteId),
+      position: nflPositionGroup(p.position),
+      gameId: g.id,
+      team: venue === "home" ? team(g.homeTeam) : team(g.awayTeam),
+      opponent: venue === "home" ? team(g.awayTeam) : team(g.homeTeam),
+      venue,
+      injury: null,
+    };
+  }
+
   const [history, defense] = await Promise.all([
     prisma.nflPlayerGameLog.findMany({
       where: { nflPlayerId: { in: Object.keys(players) }, gameDate: { lt: now }, season: { in: [season - 1, season] } },
@@ -258,9 +311,9 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
 
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nfl" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
-  const espnIds = new Map(lines.map((l) => [l.nflPlayer.id, l.nflPlayer.espnAthleteId]));
+  for (const l of lines) espnIdOf.set(l.nflPlayer.id, l.nflPlayer.espnAthleteId);
   for (const player of Object.values(players)) {
-    const i = injuryById.get(espnIds.get(player.id) ?? "");
+    const i = injuryById.get(espnIdOf.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
   }
   const [absences, gameLines, teamPoints, modelWeights] = await Promise.all([
@@ -269,6 +322,22 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     nflTeamPoints(games.flatMap((g) => [g.homeTeam, g.awayTeam].filter((t) => t !== null)), now),
     getModelWeights("nfl"),
   ]);
+
+  // ARCHR's line for each position's core stats a book hasn't posted (out / doubtful players sit out).
+  const inputs = { defense, absences, lines: gameLines, teamPoints };
+  for (const player of Object.values(players)) {
+    const level = player.injury?.level;
+    if (level === "out" || level === "doubtful" || !player.position) continue;
+    const unpacked = (logs[player.id] ?? []).map(unpackNflLog);
+    for (const key of NFL_PROJECTED_STATS[player.position] ?? []) {
+      if (props.has(`${player.id}:${key}`)) continue;
+      const stat = NFL_PROP_STAT_BY_KEY.get(key)!;
+      const proj = projectNflProp(unpacked, stat, { season, ...nflProjectionContext(inputs, player) });
+      if (!proj) continue;
+      if (stat.shape === "anytime" ? proj.mean < 0.15 : proj.mean < 1) continue;
+      props.set(`${player.id}:${key}`, { playerId: player.id, stat: key, quotes: [], projectedPoint: stat.shape === "anytime" ? 0.5 : projectedLine(proj.mean) });
+    }
+  }
 
   return {
     season,

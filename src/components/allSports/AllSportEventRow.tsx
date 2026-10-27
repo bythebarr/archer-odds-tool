@@ -42,6 +42,25 @@ function Team({ name, logo, href, score }: { name: string; logo: string; href: s
   );
 }
 
+const signedLine = (x: number) => (x === 0 ? "PK" : x > 0 ? `+${x}` : `−${Math.abs(x)}`);
+const american = (x: number) => (x > 0 ? `+${x}` : `${x}`);
+
+/**
+ * A price cell before any book posts: ARCHR's own number from the model,
+ * dashed and labeled so it never reads as a bettable price. Taps open the breakdown.
+ */
+function ArchrCell({ href, top, value }: { href: string; top?: string; value: string | null }) {
+  if (value === null) {
+    return <div className="flex h-12 items-center justify-center rounded-lg bg-muted/50 text-xs text-muted-foreground/60">—</div>;
+  }
+  return (
+    <Link href={href} className="flex h-12 flex-col items-center justify-center rounded-lg border border-dashed border-brand/50 bg-brand/5 px-1 text-center hover:bg-brand/10">
+      <span className="text-[9px] font-bold uppercase leading-none tracking-wide text-muted-foreground">{top ?? "ARCHR"}</span>
+      <span className="mt-0.5 font-mono text-[13px] font-semibold leading-tight text-foreground">{value}</span>
+    </Link>
+  );
+}
+
 export const TWO_WAY_GRID = "grid grid-cols-[minmax(0,1fr)_4.25rem_4.25rem_4.25rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem]";
 /** Sports with no handicap posted (most one-on-one matches): total and money only, more room for names. */
 export const NO_SPREAD_GRID = "grid grid-cols-[minmax(0,1fr)_4.6rem_4.6rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem]";
@@ -69,11 +88,14 @@ export function AllSportEventRow({ event, sport, threeWay, noSpread = false }: {
   const matchLabel = threeWay ? `${event.home} v ${event.away}` : `${event.away} @ ${event.home}`;
   const common = { sport: "all" as const, matchId: event.id, matchLabel };
   const live = event.status === "live";
+  // No book has posted: ARCHR's own prices hold the cells until one does.
+  const priced = event.ml.home !== null || event.ml.away !== null || event.spread.home !== null || event.total.over !== null;
+  const a = event.archr;
   const head = (
     <div className="flex items-center justify-between px-3 pb-1.5 pt-2.5 text-[11px]">
       <span className={live ? "font-bold text-red-600 dark:text-red-400" : "font-medium text-muted-foreground"}>{startLabel(event.startsAt, event.status)}</span>
       <Link href={href} className="font-semibold text-primary hover:underline">
-        {event.markets > 3 ? `${event.markets} markets` : "Breakdown"} ›
+        {!priced ? "ARCHR prices · books soon" : event.markets > 3 ? `${event.markets} markets` : "Breakdown"} ›
       </Link>
     </div>
   );
@@ -87,9 +109,19 @@ export function AllSportEventRow({ event, sport, threeWay, noSpread = false }: {
             <Team name={event.home} logo={event.homeLogo} href={href} score={event.homeScore} />
             <Team name={event.away} logo={event.awayLogo} href={href} score={event.awayScore} />
           </div>
-          <PriceButton {...common} price={asPrice(event.ml.home)} marketType="h2h" side="home" selectionLabel={`${event.home} to win`} />
-          <PriceButton {...common} price={asPrice(event.ml.draw)} marketType="h2h" side="draw" selectionLabel="Draw" />
-          <PriceButton {...common} price={asPrice(event.ml.away)} marketType="h2h" side="away" selectionLabel={`${event.away} to win`} />
+          {priced ? (
+            <>
+              <PriceButton {...common} price={asPrice(event.ml.home)} marketType="h2h" side="home" selectionLabel={`${event.home} to win`} />
+              <PriceButton {...common} price={asPrice(event.ml.draw)} marketType="h2h" side="draw" selectionLabel="Draw" />
+              <PriceButton {...common} price={asPrice(event.ml.away)} marketType="h2h" side="away" selectionLabel={`${event.away} to win`} />
+            </>
+          ) : (
+            <>
+              <ArchrCell href={href} value={a ? american(a.fair.home) : null} />
+              <ArchrCell href={href} value={a?.fair.draw != null ? american(a.fair.draw) : null} />
+              <ArchrCell href={href} value={a ? american(a.fair.away) : null} />
+            </>
+          )}
         </div>
       </div>
     );
@@ -106,9 +138,19 @@ export function AllSportEventRow({ event, sport, threeWay, noSpread = false }: {
           return (
             <div key={side} className={`${noSpread ? NO_SPREAD_GRID : TWO_WAY_GRID} items-center`}>
               <Team name={name} logo={side === "home" ? event.homeLogo : event.awayLogo} href={href} score={side === "home" ? event.homeScore : event.awayScore} />
-              {!noSpread && <PriceButton {...common} price={asPrice(spread)} label={spread?.label} marketType="spreads" side={side} selectionLabel={`${name} ${spread?.label ?? ""}`.trim()} />}
-              <PriceButton {...common} price={asPrice(total)} label={total?.label} marketType="totals" side={side === "away" ? "over" : "under"} selectionLabel={total ? `${total.label.startsWith("O") ? "Over" : "Under"} ${total.point}` : "Total"} />
-              <PriceButton {...common} price={asPrice(event.ml[side])} marketType="h2h" side={side} selectionLabel={`${name} ML`} />
+              {priced ? (
+                <>
+                  {!noSpread && <PriceButton {...common} price={asPrice(spread)} label={spread?.label} marketType="spreads" side={side} selectionLabel={`${name} ${spread?.label ?? ""}`.trim()} />}
+                  <PriceButton {...common} price={asPrice(total)} label={total?.label} marketType="totals" side={side === "away" ? "over" : "under"} selectionLabel={total ? `${total.label.startsWith("O") ? "Over" : "Under"} ${total.point}` : "Total"} />
+                  <PriceButton {...common} price={asPrice(event.ml[side])} marketType="h2h" side={side} selectionLabel={`${name} ML`} />
+                </>
+              ) : (
+                <>
+                  {!noSpread && <ArchrCell href={href} value={a?.spread != null ? signedLine(side === "home" ? a.spread : -a.spread) : null} />}
+                  <ArchrCell href={href} top={side === "away" ? "ARCHR O" : "ARCHR U"} value={a?.total != null ? `${a.total}` : null} />
+                  <ArchrCell href={href} value={a ? american(side === "home" ? a.fair.home : a.fair.away) : null} />
+                </>
+              )}
             </div>
           );
         })}

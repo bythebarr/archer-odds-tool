@@ -66,6 +66,20 @@ function ModelChip({ summary, side }: { summary: PropSummary; side: PropDirectio
   );
 }
 
+/** A row, with a heading where the posted props end and ARCHR-only lines begin. */
+function PropRow({ first, projected, hasPosted, children }: { first: boolean; projected: boolean; hasPosted: boolean; children: React.ReactNode }) {
+  return (
+    <>
+      {first && projected && hasPosted && (
+        <li className="mt-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="brand-slash" aria-hidden /> ARCHR lines · books haven&apos;t posted these yet
+        </li>
+      )}
+      {children}
+    </>
+  );
+}
+
 /** The model must clear a wider bar than the market read: it's one opinion against the whole market. */
 const MODEL_EV_FLAG = 0.03;
 
@@ -149,8 +163,15 @@ function PropCard({
         <div className="mt-3 flex items-center justify-between gap-2">
           <HitMeter recent={summary.recent} rate={rates.l10} />
           <div className="flex items-center gap-1.5">
-            <EvTag value={value} />
-            {best ? (
+            {summary.projected ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2 py-1 ring-1 ring-brand/40" title="No book has posted this prop yet">
+                <span className="text-[10px] font-bold uppercase text-foreground">ARCHR line</span>
+                <span className="text-[10px] text-muted-foreground">· books soon</span>
+              </span>
+            ) : (
+              <EvTag value={value} />
+            )}
+            {summary.projected ? null : best ? (
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1 ring-1 ring-emerald-500/30">
                 <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{side === "over" ? "O" : "U"}</span>
                 <span className="font-mono text-sm font-semibold text-foreground">{formatAmerican(best.priceAmerican)}</span>
@@ -174,9 +195,9 @@ function PropCard({
             </span>
           ))}
           <span className="ml-auto flex items-center gap-2">
-            <ModelChip summary={summary} side={side} />
+            {!summary.projected && <ModelChip summary={summary} side={side} />}
             <MatchupChip defense={defense} opponent={player.opponent?.abbreviation} stat={stat} side={side} group={player.positionGroup} />
-            <span className="hidden sm:inline">
+            <span className={summary.projected ? "hidden" : "hidden sm:inline"}>
               {summary.booksAtLine} book{summary.booksAtLine === 1 ? "" : "s"}
               {summary.points.length > 1 && ` · ${summary.points.length - 1} alt`}
             </span>
@@ -261,6 +282,7 @@ export function NbaPropsFinder({
     }
     return sortSummaries(out, prefs.sort, prefs.side);
   }, [slate, logs, prefs, gameId, query, statDef]);
+  const posted = summaries.filter((s) => !s.projected);
 
   const openPlayer = open ? slate.players[open] : null;
   // Stable, so the sheet's open/close effect (focus, scroll lock) runs once per opening.
@@ -359,9 +381,9 @@ export function NbaPropsFinder({
       )}
 
       <p className="mt-4 text-xs text-muted-foreground">
-        {`${summaries.length} ${statDef.label} ${summaries.length === 1 ? "prop" : "props"} · ${
-          prefs.side === "over" ? "Over" : "Under"
-        } hit rates at each player's main line · tap a player for every line and book`}
+        {posted.length > 0
+          ? `${posted.length} ${statDef.label} ${posted.length === 1 ? "prop" : "props"} posted · ${prefs.side === "over" ? "Over" : "Under"} hit rates at each player's main line · tap a player for every game, line and book`
+          : `Books haven't posted ${statDef.label.toLowerCase()} props yet — below is ARCHR's line for every rotation player. Tap one for every game against it.`}
       </p>
 
       {summaries.length === 0 ? (
@@ -373,7 +395,8 @@ export function NbaPropsFinder({
         </div>
       ) : (
         <ul className="mt-3 flex flex-col gap-2.5">
-          {summaries.map((s) => (
+          {summaries.map((s, i) => (
+            <PropRow key={s.playerId} first={i === 0 || summaries[i - 1]!.projected !== s.projected} projected={s.projected} hasPosted={posted.length > 0}>
             <PropCard
               key={s.playerId}
               summary={s}
@@ -384,6 +407,7 @@ export function NbaPropsFinder({
               defense={slate.defense}
               onOpen={() => setOpen(s.playerId)}
             />
+            </PropRow>
           ))}
         </ul>
       )}
