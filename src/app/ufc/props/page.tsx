@@ -5,6 +5,7 @@ import { LeagueHeader } from "@/components/book/LeaguePage";
 import { SportTabs } from "@/components/book/SportTabs";
 import { EmptyState } from "@/components/EmptyState";
 import { UfcPropsFinder } from "@/components/ufc/UfcPropsFinder";
+import { refreshOnView } from "@/lib/ops/refreshOnView";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 /** Every fighter on the upcoming cards, the same props layout as every sport. */
 export default async function UfcPropsPage({ searchParams }: { searchParams: Promise<{ bout?: string }> }) {
   const { bout } = await searchParams;
+  await refreshOnView([["ufc-history", 360]]);
   const slate = await getUfcPropsSlate();
   return (
     <div className="mx-auto min-h-screen w-full min-w-0 max-w-2xl px-4 pb-10 pt-5 font-sans">

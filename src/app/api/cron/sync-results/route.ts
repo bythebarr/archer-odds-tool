@@ -19,14 +19,15 @@ const PURGE_JOB_NAME = "purge-preseason-games";
 const UFC_UPCOMING_JOB_NAME = "sync-ufc-upcoming";
 
 /**
- * Self-heal cadence for the upcoming-UFC ingest routed through this cron. The
- * daily backfill-ufc cron (09:45 UTC) is the primary path, but crons here have
- * silently not fired (see the poll-odds self-heal above), and the *only* thing
- * that puts scheduled cards in the DB is backfillUpcomingUfcEvents — miss it
- * and the Slate/`/ufc` show no upcoming fights at all. So if upcoming data
- * hasn't refreshed in >20h, this reliable every-2h cron pulls it (one cheap
- * Cito call). Threshold sits just below 24h so it fires ~once/day when the
- * daily cron is failing, and stays a no-op when that cron is healthy.
+ * Self-heal cadence for the upcoming-UFC ingest routed through this job. The
+ * daily backfill-ufc job (10:00 UTC tick) is the primary path, but scheduled
+ * jobs have silently not fired before (see the poll-odds self-heal below), and
+ * the *only* thing that puts scheduled cards in the DB is
+ * backfillUpcomingUfcEvents — miss it and the Slate/`/ufc` show no upcoming
+ * fights at all. So if upcoming data hasn't refreshed in >20h, this job (run by
+ * the tick about every 6 hours, lib/ops/schedule.ts) pulls it (one cheap Cito
+ * call). Threshold sits just below 24h so it fires ~once/day when the daily job
+ * is failing, and stays a no-op when that job is healthy.
  */
 const UFC_UPCOMING_STALE_MINUTES = 20 * 60;
 
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
   return POST(request);
 }
 
-/** Free (MLB Stats API), run frequently to keep recent games' status/scores fresh. */
+/** Free (MLB Stats API). The tick runs it about every 6 hours (lib/ops/schedule.ts) to keep recent games' status/scores fresh. */
 export async function POST(request: Request) {
   const authError = checkCronAuth(request);
   if (authError) return authError;
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     const summary = await syncMlbSchedule(startDate, endDate);
     await recordPollLog(JOB_NAME, "ok");
 
-    // Runs more frequently than sync-schedule, so this is where late-breaking
+    // Runs more often than sync-schedule (about every 6 hours vs twice a day), so this is where late-breaking
     // starter announcements/changes and post-start ERA updates get picked up.
     let pitchersSummary = null;
     try {
@@ -83,10 +84,11 @@ export async function POST(request: Request) {
       await recordPollLog(LINEUPS_JOB_NAME, `error: ${message}`);
     }
 
-    // Self-heal: poll-odds.yml's own schedule can silently fail to fire at
+    // Self-heal: poll-odds' own scheduled runs can silently fail to fire at
     // all (confirmed happening — see pollingPolicy.ts's isPollOddsStale doc).
-    // This 15-min free cron is the reliable one, so it doubles as the
-    // catch-up path if a whole poll-odds cycle gets missed.
+    // This free job runs on its own cadence (about every 6 hours from the
+    // tick), so it doubles as the catch-up path if a whole poll-odds cycle
+    // gets missed.
     let selfHealSummary = null;
     try {
       if (await isPollOddsStale(POLL_ODDS_JOB_NAME)) {
@@ -143,9 +145,9 @@ export async function POST(request: Request) {
       await recordPollLog(HEAL_JOB_NAME, `error: ${message}`);
     }
 
-    // Idempotent pre-season purge — also lives in sync-schedule (daily), but
-    // this frequent cron cleans prod within hours instead of waiting for the
-    // 09:00 UTC run. No-ops once clean.
+    // Idempotent pre-season purge — also lives in sync-schedule (10:00 and
+    // 18:00 UTC), but this job runs more often (about every 6 hours), so prod
+    // gets cleaned within hours. No-ops once clean.
     let purgeSummary = null;
     try {
       purgeSummary = await purgePreseasonGames();

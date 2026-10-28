@@ -9,11 +9,13 @@ import { LeagueLogo } from "@/components/allSports/LeagueLogo";
 import { AllSportEventRow, AllSportListHeader } from "@/components/allSports/AllSportEventRow";
 import { EmptyState } from "@/components/EmptyState";
 import { SportTabs } from "@/components/book/SportTabs";
+import { refreshOnView, type ViewJob } from "@/lib/ops/refreshOnView";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ sport: string }> }): Promise<Metadata> {
   const { sport } = await params;
+  await refreshOnView([["espn-odds", 30], ...(sport === "tennis" ? [["tennis-fixtures", 30] as ViewJob] : sport === "soccer" ? [["soccer-player-stats", 60] as ViewJob] : [])]);
   const s = allSport(sport);
   if (!s) return {};
   return { title: `${s.label} odds`, description: `${s.label}: every league in season, the best price at every book, and ARCHR's read on each game.` };

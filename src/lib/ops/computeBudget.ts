@@ -3,8 +3,8 @@
  * compute-unit hours this billing period has used against a monthly budget.
  *
  * The site went down on 2026-10-14 because cron traffic quietly used up the
- * database plan's compute quota. The schedule now clusters jobs into shared wake
- * windows (vercel.json), and this guard is the backstop: past WARN_RATIO of the
+ * database plan's compute quota. One cron now runs every job in a single wake-up
+ * per window (lib/ops/schedule.ts), and this guard is the backstop: past WARN_RATIO of the
  * budget, optional jobs (see OPTIONAL_JOBS) skip themselves, so the lineup
  * (NBA, NFL, UFC: odds, props, results, grading, Discord) keeps the remaining hours.
  *

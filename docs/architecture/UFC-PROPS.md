@@ -35,7 +35,19 @@ The finish chance (10 prior fights) scores 0.672 vs 0.693 for a coin flip. The b
 - **A debut is his division's average, tilted by what the opponent allows.** Backtested on debuts alone, that still beats the division average (sig strikes 0.532 vs 0.538, takedowns 0.475 vs 0.477).
 - **His tape takes over gradually.** Five rounds of tape is 25 minutes, so his own numbers are only half of the sig-strike rate. The sheet shows the split ("his tape is 50% of it").
 - **The flags:** "UFC debut" for no UFC fights, "N UFC fights" for fewer than 3 fights or under 30 minutes.
-- **Win model.** Debutants beat UFC veterans 41.9% of the time overall, but the rate drifts by era: 33% before 2010, 48.6% since 2022, with Contender Series signings. A fixed debut penalty fitted on all history overcharges today's debutants (it hurt on the newest bouts), and pulling thin records toward 50% made the test worse. So the fight model keeps seeding a debut from his pre-UFC record (Cito), and the page blends the model with the market. A strength term (Elo) added nothing to the props.
+- **Win model** (`fightModel.ts`, `scripts/experiment-ufc-debuts.ts`). Debutants beat UFC veterans 41.9% of the time overall, but the rate drifts by era: 33% before 2010, 48.6% since 2022 (Contender Series signings). Neither a fixed starting rating nor a fixed debut penalty can be right in both eras; a debut feature scores better overall but worse on today's debuts, because it learns the old era's penalty. So:
+  - **A debut starts 15 Elo under the active roster's average**: everyone who fought in the last 18 months, so the start follows the era. His pre-UFC record (Cito) moves it from there.
+  - **New fighters' ratings move fast**: K 60 (was 40) for their first 8 fights (was 5).
+
+  | Test bouts (newest 20%) | Before | After |
+  |---|---|---|
+  | All | 0.6438 | 0.6405 |
+  | With a debutant | 0.6531 | 0.6494 |
+  | A fighter on 1–2 UFC fights | 0.6561 | 0.6522 |
+  | Both fighters on 5+ | 0.6336 | 0.6307 |
+
+  In the full `backtest:ufc-fights` run, v2 goes 0.6439 → 0.6412 and Elo alone 0.6764 → 0.6652. Pulling thin records toward 50% made things worse. A strength term (Elo) added nothing to the props.
+- **The bout page** names a debut or a fighter with 1–2 UFC fights in the fight-model card, and says how his number was built.
 
 ## Sheet
 

@@ -142,16 +142,16 @@ export async function decideFixedCadencePoll(
 }
 
 /**
- * Self-heal fallback for when the external GH Actions schedule misses BOTH
- * daily poll-odds runs — confirmed happening live (see poll-odds.yml's
- * comment): scheduled triggers can silently not fire at all, with no error
- * to alert on. sync-results runs every 15 min on its own free cron, so
- * routing a check through there catches a fully-missed cycle within ~15 min
- * instead of leaving odds stale for up to a full day.
+ * Self-heal fallback for when BOTH daily poll-odds runs are missed —
+ * confirmed happening live: scheduled triggers can silently not fire at all,
+ * with no error to alert on. sync-results runs on its own free cadence (about every 6
+ * hours from the tick, lib/ops/schedule.ts), so routing a check through there
+ * catches a fully-missed cycle within hours instead of leaving odds stale for
+ * up to a full day.
  *
- * Threshold sits above the schedule's own worst-case healthy gap (22:30 UTC
- * -> next day's 14:05 UTC = ~15h35m) so a merely-delayed run doesn't trigger
- * a redundant extra poll.
+ * Threshold sits above the schedule's own worst-case healthy gap (poll-odds
+ * runs at 16:00 and 22:00 UTC, so 22:00 -> next day's 16:00 = 18h) so a
+ * merely-delayed run doesn't trigger a redundant extra poll.
  */
 export const POLL_ODDS_STALE_MINUTES = 20 * 60;
 

@@ -8,6 +8,7 @@ import { SportTabs } from "@/components/book/SportTabs";
 import { Glyph } from "@/components/brand/Glyph";
 import { EmptyState } from "@/components/EmptyState";
 import { SoccerPropsFinder } from "@/components/soccer/SoccerPropsFinder";
+import { refreshOnView } from "@/lib/ops/refreshOnView";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
 /** Soccer player props, a league at a time (sports/[sport]/props — soccer only for now). */
 export default async function SportPropsPage({ params, searchParams }: { params: Promise<{ sport: string }>; searchParams: Promise<{ league?: string; match?: string }> }) {
   const { sport } = await params;
+  await refreshOnView(sport === "tennis" ? [["tennis-fixtures", 30]] : sport === "soccer" ? [["soccer-player-stats", 60], ["espn-odds", 30]] : []);
   const { league, match } = await searchParams;
   if (sport === "tennis") return <TennisPropsPage match={match ?? null} />;
   if (sport !== "soccer") notFound();

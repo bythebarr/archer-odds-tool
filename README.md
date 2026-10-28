@@ -1,49 +1,79 @@
-# archer-odds-tool
+# ARCHR Edge (archer-odds-tool)
 
-An MLB odds line-shopping tool: pick a price range with a slider and see every US-legal sportsbook currently quoting a line in that range, alongside each team/side's rolling historical hit rate and two side-by-side EV estimates (de-vigged market consensus vs. historical hit rate).
+A multi-sport odds and props app: every price at every book next to ARCHR's own model, for **NBA, NFL, UFC, MLB, soccer, tennis and F1**.
 
-Research/discovery tool only in v1 — no bet placement or tracking.
+- **Game lines.** Moneylines, spreads, totals, team totals, halves and quarters, alternates. For each one: the best price across books, ARCHR's fair price, and the edge (EV) between them. Tap a price to add it to the slip.
+- **Player props.** One layout for every sport: a line ladder, a game-by-game chart, the projection and what drives it, hit rates (L5/L10/season/vs opponent/home-away) and every book's price. ARCHR posts its own line before the books do, and the books' prices slot in when they post. Each sport adds its own panels: NBA usage, NFL snaps/air yards/red-zone looks, MLB pitcher matchups, UFC fighter metrics, tennis serve and return.
+- **Matchup breakdowns.** A face-off, tale of the tape, and "why ARCHR prices it this way" for every game, bout and match.
+- **Models.** Fitted and backtested, each blended with the market. Every model's accuracy and calibration are on `/models`.
+- **Discord.** A daily +EV card, a free lean, a graded results recap, plus slash commands.
 
-See `/home/codespace/.claude/plans/sequential-moseying-treehouse.md` (or ask Claude) for the full design rationale and milestone plan.
+It's a research tool: it doesn't place bets.
+
+## Where things are
+
+| Path | What |
+|---|---|
+| `/` | Home: today across every sport |
+| `/slate` | The odds Slate: every game, every market, best price vs ARCHR |
+| `/nba`, `/nfl`, `/mlb`, `/ufc`, `/f1` | Sport pages (boards, game/bout pages) |
+| `/nba/props`, `/nfl/props`, `/mlb/props`, `/ufc/props` | Player and fighter props |
+| `/sports`, `/sports/<sport>`, `/sports/<sport>/props` | The all-sports engine: soccer, tennis and every other league the feeds carry, with soccer and tennis props |
+| `/models` | Model report cards |
+| `/api/cron/*` | Background jobs (bearer `CRON_SECRET`) |
+| `/api/health`, `/api/status` | DB connectivity; job freshness and compute budget |
+
+Design notes live in `docs/architecture/`. Start with `operations.md` (schedule, compute budget), `MODEL-FRAMEWORK.md`, and the per-sport props docs (`nba-props.md`, `NFL-ADVANCED.md`, `MLB-PROPS.md`, `SOCCER-PROPS.md`, `TENNIS-PROPS.md`, `UFC-PROPS.md`).
 
 ## Stack
 
-Next.js (TypeScript, App Router) + Prisma + Postgres, deployed as a single app on Vercel. Odds data from [The Odds API](https://the-odds-api.com); schedule/results from the free [MLB Stats API](https://statsapi.mlb.com).
+- **App:** Next.js 16 (App Router, TypeScript), deployed on Vercel.
+- **Database:** Prisma 7 on Postgres, Neon in production. The client is generated to `src/generated/prisma`; import it from `@/generated/prisma/client`.
+
+**Data sources:**
+- **Odds:** The Odds API or ParlayAPI (optionally OddsBlaze per sport), odds-api.io for the long tail, and ESPN's free DraftKings lines.
+- **Schedules, scores and box scores:** ESPN and the MLB Stats API.
+- **UFC:** Cito, plus UFCStats via a public mirror.
+- **Tennis:** the Sackmann ATP/WTA archive plus ESPN.
+- **NFL advanced stats:** nflverse.
 
 ## Local development
 
-Requires Docker (for local Postgres) and an [The Odds API](https://the-odds-api.com) key for anything that touches live odds.
+Requires Docker (for local Postgres). Odds keys are optional: without one, the app still runs on ESPN's free lines, and ARCHR's own prices still show.
 
 ```bash
-cp .env.example .env      # fill in ODDS_API_KEY once you have one
-docker compose up -d      # starts local Postgres on :5432
-npx prisma migrate dev    # applies the schema
+cp .env.example .env      # every variable, with what it does; fill in what you need
+docker compose up -d      # local Postgres on :5432
+npx prisma migrate dev    # apply the schema
 npm run dev               # http://localhost:3000
 ```
 
-Useful scripts:
-
 ```bash
-npm run lint        # eslint
+npm run lint         # eslint
 npm run typecheck    # tsc --noEmit
+npm test             # vitest
 npm run build        # production build
-npm test              # vitest
-npx prisma studio     # browse local DB
+npx prisma studio    # browse the local DB
 ```
 
-`GET /api/health` checks DB connectivity.
+Run any job locally with `curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/<job>`.
 
-## Automated ingestion
+## Background jobs
 
-Three GitHub Actions workflows call bearer-secret-protected `/api/cron/*` routes instead of paying for Vercel Pro cron. They're split by cost, so nothing spends Odds API credits without you asking it to:
+**Vercel Cron runs one route, `/api/cron/tick`, about 20 times a day.** Each tick wakes the database once and runs every job that's due, by its own cadence or at fixed hours: odds, fixtures, results, box scores, history imports, grading and the Discord posts. The schedule lives in `src/lib/ops/schedule.ts`.
 
-- `sync-schedule.yml` — **scheduled, once daily.** Extends the known MLB schedule window forward. Free (MLB Stats API).
-- `sync-free.yml` — **manual.** Prints the site's health (`/api/health`, `/api/status`) and runs one sync on demand. It used to run every 15 minutes, which kept the database awake and used up its compute quota; Vercel Cron runs the regular syncs now. See `docs/architecture/operations.md` for the schedule, the cleanup job, and the compute budget guard.
-- `poll-odds.yml` — **manual only** (`workflow_dispatch`). Polls The Odds API for current lines. This is the one that costs credits, so it's not on a schedule: trigger it from the repo's Actions tab ("Run workflow") or `gh workflow run poll-odds.yml` whenever you want fresh prices. The free tier (500 credits/month) comfortably covers on-demand use; it would exhaust in a day or two if run on the same tiered cadence continuously, which is exactly why this one isn't automatic. Bump the cadence back to scheduled once running unattended is worth the ~$25-30/mo 20K-credit tier.
+**Pages also refresh the data behind them when it's stale.** Viewing a page wakes the database anyway, so this costs nothing extra.
 
-Once deployed, set these as GitHub repo secrets (Settings → Secrets and variables → Actions) so the workflows can reach the deployed app:
+Why it's built this way: the production database is billed by the hours it's awake. See `docs/architecture/operations.md`.
 
-- `APP_URL` — the deployed base URL (e.g. `https://archer-odds-tool.vercel.app`)
-- `CRON_SECRET` — must match the `CRON_SECRET` env var set on the deployment
+**GitHub Actions** call the same `/api/cron/*` routes. They're manual, except the weekly Model Lab:
+- `model-lab.yml`: weekly (Monday), plus manual. Runs the backtests and fits against production, and saves the report cards behind `/models`.
+- `sync-free.yml`: health check plus a one-off refresh.
+- `backfill-history.yml`, `all-sports-fill.yml`: one-time history fills.
+- `poll-odds*.yml`, `poll-player-props.yml`: on-demand odds polls. These spend credits.
+- `fire-card.yml`, `results-tick.yml`: post the Discord card or recap now.
+- `reset-ledger.yml`: wipes the results ledger. Destructive.
+- `ops-status.yml`: read-only status.
+- `ci.yml`: lint, typecheck, tests, build.
 
-Locally, hit any `/api/cron/*` route with `Authorization: Bearer $CRON_SECRET` to trigger it manually, or just run `npm run poll:odds` / `npm run sync:schedule` directly.
+The workflows need two repo secrets (Settings → Secrets and variables → Actions): `APP_URL` (the deployed base URL) and `CRON_SECRET` (the same value as the deployment's). Model Lab also needs `DATABASE_URL`.

@@ -18,80 +18,52 @@ Neon suspends a database after about 5 idle minutes, so each wake-up costs
 roughly 5 minutes or more of compute. Spread around the clock like that, the
 wake-ups left the database almost no time asleep.
 
-## The lineup and parked sports
+## The lineup and parking a sport
 
-The nav, Home, the Slate and the Discord card show only **NBA, NFL and UFC**.
-MLB (offseason), tennis, soccer and F1 are **parked** (`parked: true` in
-`src/lib/engine/sportsMeta.ts`). For a parked sport:
-- it's hidden from the nav, Home, the Slate and the Discord card;
-- its data jobs are off;
-- its pages still work by URL and appear on the `/sports` hub's "Offseason"
-  shelf;
-- its adapter stays registered, so past plays still grade.
+**Every sport is in the lineup** (un-parked 2026-10-27): NBA, NFL, UFC, MLB,
+soccer, tennis and F1 all show in the nav, Home and the Slate, and their data
+jobs run. F1 is results-only (`resultsOnly: true`): its pages show races and
+ARCHR's probabilities, but it has no odds Slate. Soccer and tennis run on the
+all-sports engine (every league and tournament the feeds carry).
 
-**To bring a sport back:**
-1. Set `parked: false` for it.
-2. Restore its cron entries: `git log -p vercel.json` shows the schedule from
-   before it was parked.
+The switch is still there for a sport's offseason: `parked` in
+`src/lib/engine/sportsMeta.ts`. A parked sport:
+- is hidden from the nav, Home, the Slate and the Discord card;
+- keeps its pages working by URL, on the `/sports` hub's "Offseason" shelf;
+- keeps its adapter registered, so past plays still grade.
 
-Restored entries go into the existing windows; don't give them times of their
-own.
+Parking doesn't stop a sport's jobs by itself. To pause them, take them out of
+`JOBS` in `src/lib/ops/schedule.ts` (and put them back when it returns).
+Every job runs from the tick (below), so it never needs times of its own.
 
-## The schedule: clustered wake windows
+## The schedule: one tick, one wake-up per window
 
-`vercel.json` runs **9 windows a day** (UTC: 00, 06, 09, 13, 14, 18, 20, 21,
-23). Inside a window:
-- primary jobs run at `:00`;
-- dependent jobs run at `:02`–`:04` (the Discord card after the odds polls,
-  the results recap after the results syncs).
+**Why the old windows stopped working.** By late October the schedule had drifted back up to **~50 wake-ups a day**: 76 Vercel cron entries at scattered minutes. Clustering by minute can't fix that on the Hobby plan, because Vercel fires each cron anywhere inside its scheduled hour. Separate entries can't be made to share a wake-up.
 
-Because everything in a window lands within a few minutes, a window costs one
-database wake-up.
+**Now `vercel.json` has a single cron: `/api/cron/tick`.** It runs 20 times a day (UTC): hourly from 12:00 to 04:00, which is 8am to midnight ET plus late games, and at 06, 08 and 10. Each tick:
 
-| Window (UTC) | Jobs |
-| --- | --- |
-| 00 | NBA odds + props · results recap |
-| 06 | NBA results + player game logs · results recap |
-| 09 | NFL odds · NFL results · UFC sync · cleanup |
-| 13 | NBA results · Discord card · results recap |
-| 14 | NBA odds + props · NFL results · Discord card |
-| 18, 23 | NBA odds + props · Discord card |
-| 20 | Discord card |
-| 21 | NBA odds + props · NFL odds · Discord card |
+1. Reads when every job last ran (PollLog `tick:<path>`).
+2. Picks the ones that are due (`src/lib/ops/schedule.ts`, `JOBS`). A job is due by its own cadence (e.g. ESPN odds and fixtures every hour, results every 3 hours, nflverse every 6) or at fixed UTC hours. Fixed hours cover the credit-spending odds polls, the Discord card, the recap, crawls and backfills.
+3. Calls each due job's own route, all at once (each its own function call, so a window still costs one wake-up).
+4. Starts phase 2 (Discord card, recap, cleanup) once phase 1 finishes, or after 25s at the latest.
 
-**Rough cost:** 9 windows × ~10 minutes awake ≈ 1.5 hours a day ≈ 45 hours a
-month. At Neon's smallest compute size (0.25 CU) that's about 11 CU-hours, or
-roughly $2.50 a month at $0.22 per CU-hour. Page views wake the database too,
-on top of that.
+`?force=<path>` runs one job now.
 
-**Rules for adding a job:**
-- Put it in an existing window, not a new time.
-- Use minute `:00`, or `:02`–`:04` if it depends on another job in the same
-  window.
-- A new hour adds one wake-up a day; a new minute inside a window adds nothing.
+**Compute.** About 20 wake-ups a day, down from ~50, for about 2 hours awake. Jobs that used to run every 3 hours now run every 1–2. Past **60%** of the compute budget, the tick runs only on even hours. Past 80%, optional jobs skip themselves, as before.
 
-`sync-free.yml` is manual now. It prints `/api/health` and `/api/status`, then
-runs one sync, which makes it the quickest way to see what production is doing
-from GitHub.
+**Refresh on view** (`src/lib/ops/refreshOnView.ts`). Opening a page means the database is already awake. So any stale job behind that page runs right after the response, as its own call, sharing the tick's record. That makes it free freshness: the tick then sees the job as fresh, and a burst of viewers starts it only once. Pages and what they refresh:
 
-## Cleanup (`/api/cron/cleanup`, daily in the 09:00 window)
+| Page | Refreshes (stale after) |
+|---|---|
+| NBA board | ESPN odds (30 min), NBA results (60 min) |
+| NBA props | NBA results (60 min), ESPN odds (30 min) |
+| NFL board | ESPN odds (30 min), NFL results (60 min) |
+| NFL props | NFL results (60 min), nflverse (3 h), ESPN odds (30 min) |
+| Sport boards | ESPN odds (30 min); tennis fixtures (30 min) on tennis; soccer box scores (60 min) on soccer |
+| Tennis / soccer props | Tennis fixtures (30 min) / soccer box scores (60 min) and ESPN odds (30 min) |
+| UFC pages | Fight history (6 h) |
 
-`src/lib/ops/cleanup.ts`. Prunes rows nothing reads any more:
-
-| Removed | When |
-| --- | --- |
-| Price snapshots (`OddsSnapshot`, `PlayerPropSnapshot`, `NbaPropSnapshot`) | game started over 90 days ago |
-| `CurrentNbaPropLine` | game started over 2 days ago |
-| `PollCreditLog` | over 90 days old |
-
-**Never removed:** games, closing lines, graded outcomes, player game logs,
-posted plays, and model predictions.
-
-**How a run works:**
-- It deletes 50 games' worth of rows at a time, through each table's `gameId`
-  index, so it never scans a whole table.
-- It stops after 25 seconds; any backlog carries over to the next day's run.
-- It records its result in PollLog (`cleanup`), which shows on `/api/status`.
+**To add a job:** give it a route under `/api/cron/`, add it to `JOBS` with a cadence or hours (fixed hours must be tick hours; a test checks this), and, if a page shows its data, add it to that page's `refreshOnView`.
 
 ## Compute budget guard
 
@@ -109,8 +81,9 @@ set these in Vercel:
   the number is there even while the database is refusing queries.
 - Past **80%** of the budget, these optional jobs return `skipped` instead of
   running: weather, soccer odds, tennis odds and results, and the F1/MLB
-  backfills. They're all parked right now, so the guard matters once they come
-  back. The lineup (NBA, NFL, UFC, results, Discord) always runs.
+  backfills. The core jobs (NBA, NFL, UFC odds and props, results, grading,
+  Discord) always run. Separately, the tick itself thins to even hours past 60%
+  (see the schedule above).
 
 ## Player history backfill (NBA, NFL)
 

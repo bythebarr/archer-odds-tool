@@ -73,6 +73,21 @@ export function UfcFightModelCard({ view, redName, blueName }: { view: UfcFightM
           </div>
         )}
 
+        {[
+          { name: redName, p: view.red },
+          { name: blueName, p: view.blue },
+        ]
+          .filter((x) => x.p.fights < 3)
+          .map((x) => (
+            <p key={x.name} className="mt-3 rounded-lg bg-amber-400/10 px-2.5 py-2 text-[11px] leading-snug text-foreground ring-1 ring-amber-400/30">
+              <span className="font-semibold">{x.p.fights === 0 ? `${x.name}: UFC debut.` : `${x.name}: ${x.p.fights} UFC fight${x.p.fights === 1 ? "" : "s"}.`}</span>{" "}
+              {x.p.fights === 0
+                ? "His rating starts just under the active roster's average, moved by his pre-UFC record; his fighting stats start at the league average. "
+                : "His rating still moves fast (his first 8 fights count more), and his stats lean on the league average until he has more minutes. "}
+              Debutants won 33% of their UFC fights before 2010 and 49% since 2022, so ARCHR reads the current roster rather than a fixed penalty.
+            </p>
+          ))}
+
         <div className="mt-3 divide-y divide-border rounded-lg border border-border">
           {STAT_ROWS.map((row) => {
             const r = row.get(view.red);

@@ -31,6 +31,26 @@ razor-thin line:
 "unproven" ≠ "miscalibrated per se" — a model can be perfectly calibrated yet
 edgeless; both fail the "trust it to find EV" bar, which is what the gate asks.
 
+## What the verdict gates
+
+Only a `trusted` model's plays may post as **staked** plays (#todays-card or
+#free-play, with units, on the record). A model-priced play from any other
+verdict (`marginal`, `unproven`, `thin`, or no backtest at all) still reaches
+the unstaked #ev-slate, but a deck pick of it is held there: no units, not
+recorded. The deck shows those plays as "slate only" and offers no Card/Free
+buttons. A play no model priced (`modelEv` null) isn't gated.
+
+- **Verdict source:** the latest `/models` report card for the sport (the
+  `ModelReport` row `npm run backtest:all` saves under the sport key). The baked
+  `SportModel.calibration` snapshot is the fallback for a sport with no saved
+  report. Code: `stakeable` in `src/lib/engine/trust.ts`, applied by
+  `splitBySelection` (`src/lib/card/selection.ts`) for the poster, the preview
+  and the deck.
+- **Today:** MLB (marginal) is held to the slate. UFC and tennis (trusted) can
+  stake. NBA, NFL, soccer and F1 list no board plays.
+- **To change it:** re-run the backtest. When a newer report card flips a
+  verdict, the gate follows on the next post. There's no separate switch.
+
 ## No lookahead leakage
 
 The one rule that makes a backtest honest: rebuild each prediction using **only

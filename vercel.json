@@ -2,308 +2,84 @@
   "buildCommand": "prisma migrate deploy && next build",
   "crons": [
     {
-      "path": "/api/cron/poll-odds-nba",
+      "path": "/api/cron/tick",
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/cron/post-results",
-      "schedule": "4 0 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/cron/sync-results-nba",
+      "path": "/api/cron/tick",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/tick",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/tick",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/tick",
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/cron/post-results",
-      "schedule": "4 6 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 8 * * *"
     },
     {
-      "path": "/api/cron/poll-odds-nfl",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 10 * * *"
     },
     {
-      "path": "/api/cron/sync-results-nfl",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 12 * * *"
     },
     {
-      "path": "/api/cron/backfill-ufc",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/cleanup",
-      "schedule": "4 9 * * *"
-    },
-    {
-      "path": "/api/cron/sync-results-nba",
+      "path": "/api/cron/tick",
       "schedule": "0 13 * * *"
     },
     {
-      "path": "/api/cron/post-discord",
-      "schedule": "4 13 * * *"
-    },
-    {
-      "path": "/api/cron/post-results",
-      "schedule": "4 13 * * *"
-    },
-    {
-      "path": "/api/cron/poll-odds-nba",
+      "path": "/api/cron/tick",
       "schedule": "0 14 * * *"
     },
     {
-      "path": "/api/cron/sync-results-nfl",
-      "schedule": "0 14 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 15 * * *"
     },
     {
-      "path": "/api/cron/post-discord",
-      "schedule": "4 14 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 16 * * *"
     },
     {
-      "path": "/api/cron/poll-odds-nba",
+      "path": "/api/cron/tick",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/tick",
       "schedule": "0 18 * * *"
     },
     {
-      "path": "/api/cron/post-discord",
-      "schedule": "4 18 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 19 * * *"
     },
     {
-      "path": "/api/cron/post-discord",
-      "schedule": "4 20 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 20 * * *"
     },
     {
-      "path": "/api/cron/poll-odds-nba",
+      "path": "/api/cron/tick",
       "schedule": "0 21 * * *"
     },
     {
-      "path": "/api/cron/poll-odds-nfl",
-      "schedule": "0 21 * * *"
+      "path": "/api/cron/tick",
+      "schedule": "0 22 * * *"
     },
     {
-      "path": "/api/cron/post-discord",
-      "schedule": "4 21 * * *"
-    },
-    {
-      "path": "/api/cron/poll-odds-nba",
+      "path": "/api/cron/tick",
       "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/cron/post-discord",
-      "schedule": "4 23 * * *"
-    },
-    {
-      "path": "/api/cron/crawl-history",
-      "schedule": "15 2 * * *"
-    },
-    {
-      "path": "/api/cron/crawl-history",
-      "schedule": "15 8 * * *"
-    },
-    {
-      "path": "/api/cron/crawl-history",
-      "schedule": "15 11 * * *"
-    },
-    {
-      "path": "/api/cron/crawl-history",
-      "schedule": "15 16 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 0 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 3 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 6 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 9 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 12 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 15 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 18 * * *"
-    },
-    {
-      "path": "/api/cron/poll-all-sports",
-      "schedule": "20 21 * * *"
-    },
-    {
-      "path": "/api/cron/backfill-all-sports",
-      "schedule": "40 5 * * *"
-    },
-    {
-      "path": "/api/cron/backfill-all-sports",
-      "schedule": "40 17 * * *"
-    },
-    {
-      "path": "/api/cron/poll-odds",
-      "schedule": "10 16 * * *"
-    },
-    {
-      "path": "/api/cron/poll-odds",
-      "schedule": "10 22 * * *"
-    },
-    {
-      "path": "/api/cron/sync-results",
-      "schedule": "10 7 * * *"
-    },
-    {
-      "path": "/api/cron/backfill-f1",
-      "schedule": "25 7 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 1 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 4 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 7 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 10 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 13 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 16 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 19 * * *"
-    },
-    {
-      "path": "/api/cron/espn-odds",
-      "schedule": "50 22 * * *"
-    },
-    {
-      "path": "/api/cron/sync-schedule",
-      "schedule": "35 10 * * *"
-    },
-    {
-      "path": "/api/cron/sync-schedule",
-      "schedule": "35 18 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 0 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 3 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 6 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 9 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 12 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 15 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 18 * * *"
-    },
-    {
-      "path": "/api/cron/soccer-player-stats",
-      "schedule": "20 21 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-history",
-      "schedule": "15 7 * * *"
-    },
-    {
-      "path": "/api/cron/nfl-advanced",
-      "schedule": "40 13 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 2 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 5 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 8 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 11 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 14 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 17 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 20 * * *"
-    },
-    {
-      "path": "/api/cron/ufc-history",
-      "schedule": "45 23 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 1 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 4 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 7 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 10 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 13 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 16 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 19 * * *"
-    },
-    {
-      "path": "/api/cron/tennis-fixtures",
-      "schedule": "25 22 * * *"
     }
   ]
 }
