@@ -45,6 +45,11 @@ export default async function LeaguePageAll({ params }: { params: Params }) {
           <h1 className="truncate font-display text-2xl font-extrabold uppercase italic leading-tight tracking-tight text-foreground">{selected.name}</h1>
           {selected.region && <p className="text-xs text-muted-foreground">{selected.region}</p>}
         </div>
+        {sport === "soccer" && !selected.outright && (
+          <Link href={`/sports/soccer/props?league=${encodeURIComponent(selected.slug)}`} className="ml-auto shrink-0 rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground hover:opacity-90">
+            Player props
+          </Link>
+        )}
       </div>
     </>
   );

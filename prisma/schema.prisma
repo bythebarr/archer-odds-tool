@@ -76,8 +76,8 @@ model Team {
   league       String
   division     String
 
-  homeGames      Game[]          @relation("HomeTeam")
-  awayGames      Game[]          @relation("AwayTeam")
+  homeGames      Game[]             @relation("HomeTeam")
+  awayGames      Game[]             @relation("AwayTeam")
   outcomes       GameOutcome[]
   playerGameLogs PlayerGameLog[]
   nbaPlayers     NbaPlayer[]
@@ -113,8 +113,8 @@ model Player {
 /// Independent of Game/Player on purpose (mirrors how UFC added its own table family
 /// rather than overloading Game). Costs zero Odds API credits — pure free data.
 model TennisArchiveMatch {
-  id     String @id @default(cuid())
-  tour   String // "atp" | "wta"
+  id   String @id @default(cuid())
+  tour String // "atp" | "wta"
 
   tourneyId    String
   tourneyName  String
@@ -209,8 +209,8 @@ model Game {
   awayPlayerId String?
   awayPlayer   Player? @relation("AwayPlayer", fields: [awayPlayerId], references: [id])
 
-  homeScore Int?
-  awayScore Int?
+  homeScore        Int?
+  awayScore        Int?
   /// Points per period (quarters for NBA/NFL, then overtime), from ESPN's linescores
   /// on the results sync — what halves, quarters and team totals are graded on.
   homePeriodScores Int[] @default([])
@@ -256,8 +256,8 @@ model Game {
 /// compass bearing (azimuthAngle), and roof type. Upserted by syncMlbSchedule, the
 /// same as-encountered pattern Pitcher already uses — no separate venue sync needed.
 model Venue {
-  id          String  @id @default(cuid())
-  mlbVenueId  Int     @unique
+  id          String @id @default(cuid())
+  mlbVenueId  Int    @unique
   name        String
   latitude    Float
   longitude   Float
@@ -279,16 +279,16 @@ model Venue {
 /// choice as PitcherSeasonStats/PitcherHandednessSplit, for the same reason:
 /// this feeds live pricing, it isn't graded/tracked over time).
 model GameWeather {
-  id            String   @id @default(cuid())
-  gameId        String   @unique
-  game          Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  temperatureF  Float
-  windMph       Float
+  id           String   @id @default(cuid())
+  gameId       String   @unique
+  game         Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  temperatureF Float
+  windMph      Float
   /// Meteorological convention: the direction the wind is coming FROM, in
   /// compass degrees — see weatherEffect.ts for how this combines with the
   /// venue's own azimuthDeg to resolve "blowing out" vs. "blowing in."
-  windFromDeg   Float
-  capturedAt    DateTime @updatedAt
+  windFromDeg  Float
+  capturedAt   DateTime @updatedAt
 }
 
 /**
@@ -304,7 +304,9 @@ model LineupSlot {
   game         Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
   teamId       String
   mlbPersonId  Int
-  /** 1-9, the batting-order position. */
+  /**
+   * 1-9, the batting-order position.
+   */
   battingOrder Int
 
   @@unique([gameId, mlbPersonId])
@@ -629,7 +631,7 @@ model GameOutcome {
 /// possible (soccer/tennis game lines, or a prop with a missing stat line — a
 /// DNP is never a loss); gradedAt set + result = settled (hit/miss/push).
 model PostedPlay {
-  id             String        @id @default(cuid())
+  id             String         @id @default(cuid())
   /// ET card date (YYYY-MM-DD) this play was posted for.
   postedForDate  String
   /// OddsPlay.key — dedupes a play within a date across re-posts.
@@ -640,9 +642,9 @@ model PostedPlay {
   /// getAdapter(sport). The enum survives only on `Game.sport`, a typed relation.
   sport          String
   matchId        String
-  market         MarketType?   // null for props
-  kind           String        // ml | spread | total | prop
-  side           String        // home | away | over | under | draw
+  market         MarketType? // null for props
+  kind           String // ml | spread | total | prop
+  side           String // home | away | over | under | draw
   point          Float?
   selectionLabel String
   bestPrice      Int
@@ -653,7 +655,7 @@ model PostedPlay {
   /// SEPARATELY (owner's call: the free play must not flatter or drag the
   /// premium record). Defaults to `card` so pre-split paper-log rows, which were
   /// all premium-card posts, keep counting where they always did.
-  stream         PlayStream    @default(card)
+  stream         PlayStream     @default(card)
   // Prop grading inputs (null for game lines).
   mlbPlayerId    String?
   statCategory   StatCategory?
@@ -960,8 +962,8 @@ model F1Driver {
 }
 
 model F1Constructor {
-  id                  String @id @default(cuid())
-  ergastConstructorId String @unique // Jolpica constructorId slug, e.g. "red_bull"
+  id                  String  @id @default(cuid())
+  ergastConstructorId String  @unique // Jolpica constructorId slug, e.g. "red_bull"
   name                String
   nationality         String?
 
@@ -971,19 +973,19 @@ model F1Constructor {
 }
 
 model F1Circuit {
-  id             String  @id @default(cuid())
-  ergastCircuitId String @unique // Jolpica circuitId slug, e.g. "bahrain"
-  name           String
-  locality       String?
-  country        String?
-  lat            Float?
-  long           Float?
+  id              String  @id @default(cuid())
+  ergastCircuitId String  @unique // Jolpica circuitId slug, e.g. "bahrain"
+  name            String
+  locality        String?
+  country         String?
+  lat             Float?
+  long            Float?
 
   races F1Race[]
 }
 
 model F1Race {
-  id       String    @id @default(cuid())
+  id       String   @id @default(cuid())
   season   Int
   round    Int
   raceName String
@@ -1094,37 +1096,37 @@ model PredictionRun {
   /// precedent (schema.prisma's PostedPlay docstring) so a new sport, or one
   /// with no Game/Team rows at all (e.g. CFB v0, see docs/architecture/
   /// CFB-V0.md), can write here with no enum migration.
-  sportKey String
+  sportKey             String
   /// Stable identifier for the model itself (e.g. "cfb-srs", "mlb-archer"),
   /// independent of modelVersion — lets every version of the same model be
   /// queried together.
-  modelKey String
+  modelKey             String
   /// Explicit version of the model that produced this run (e.g. a git SHA or
   /// a bumped literal in source). Required — a run can never be silently
   /// attributed to "whatever the model currently is."
-  modelVersion String
+  modelVersion         String
   /// The model's lifecycle stage AT THE TIME this run was generated — see
   /// the enum's docstring for why this is frozen rather than a live join.
-  lifecycle ModelLifecycle
+  lifecycle            ModelLifecycle
   /// When this run was executed. The storage boundary (src/lib/predictions)
   /// requires this to be strictly before every one of this run's
   /// predictions' scheduledStartUtc — enforced in application code, not a DB
   /// constraint (a cross-row check spanning two tables isn't expressible as
   /// a Postgres CHECK here, the same reason Game's single-pair invariant is
   /// a hand-added migration CHECK rather than a Prisma-DSL one).
-  generatedAt DateTime
+  generatedAt          DateTime
   /// Strict "as of" cutoff the model's inputs were restricted to. Subject to
   /// the same before-kickoff requirement as generatedAt, PLUS its own rule:
   /// the storage boundary requires dataAsOfUtc <= generatedAt (a run cannot
   /// claim to have used data "as of" a moment later than when it ran;
   /// equality is fine — the cutoff can be the moment of generation).
-  dataAsOfUtc DateTime
+  dataAsOfUtc          DateTime
   /// Frozen copy of the calibration/trust snapshot active when this run was
   /// generated (see CalibrationSnapshot in src/lib/engine/types.ts) — NOT a
   /// live join, so a later re-baked calibration can never retroactively
   /// change what an old run claims its trust state was. Optional: a
   /// brand-new model may have no calibration snapshot yet.
-  calibrationSnapshot Json?
+  calibrationSnapshot  Json?
   /// Version tag for the shape of the feature/input snapshot each of this
   /// run's predictions carries — lets a future reader know which schema to
   /// expect in ModelPrediction.featureSnapshot without inferring it from the
@@ -1133,7 +1135,7 @@ model PredictionRun {
   /// Freeform, run-level metadata (e.g. a backtest window, a free-text note
   /// on what changed since the last run). Never read by validation/storage
   /// logic — display/debugging only.
-  runMetadata Json?
+  runMetadata          Json?
 
   createdAt DateTime @default(now())
 
@@ -1164,12 +1166,12 @@ model ModelPrediction {
   /// deletion to fail loudly instead — deleting prediction history, if it's
   /// ever genuinely needed, should be a deliberate, explicit, reviewed
   /// operation, not a side effect of deleting the row one level up.
-  run PredictionRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  run   PredictionRun @relation(fields: [runId], references: [id], onDelete: Restrict)
 
   /// Open string identifying the event this prediction is about — an ESPN
   /// event id, a Game.id, a UfcBout.id, etc. Opaque to this table on
   /// purpose, same posture as Play.eventRef (src/lib/engine/types.ts).
-  eventRef String
+  eventRef          String
   /// The event's scheduled kickoff/start, as known at generation time — the
   /// anchor the storage boundary checks generatedAt/dataAsOfUtc against.
   scheduledStartUtc DateTime
@@ -1177,19 +1179,19 @@ model ModelPrediction {
   /// not the `MarketType` enum, so a market that doesn't map to
   /// h2h/spreads/totals (see EDGE-BASELINE-AUDIT.md §9) can be recorded here
   /// with no enum migration.
-  marketKey String
+  marketKey         String
   /// Open string selection/side identifier (e.g. "home", "over", a player
   /// id) — mirrors SelectionSpec.side's open-string posture.
-  selectionKey String
+  selectionKey      String
 
   /// The model's probability for this selection, when the model produces
   /// one. Null for a purely descriptive projection with no probability
   /// attached (e.g. a raw projected score with no derived win-prob).
-  probability Float?
+  probability     Float?
   /// Projected value(s) or a distribution — e.g. { margin, total } or a full
   /// distribution payload. Shape is model-specific; this table doesn't
   /// interpret it.
-  projection Json?
+  projection      Json?
   /// The exact feature/input values the model actually used to produce this
   /// prediction, frozen at generation time — the field that closes the
   /// live/backtest divergence docs/architecture/MLB-MODEL-INVENTORY.md §5
@@ -1200,11 +1202,11 @@ model ModelPrediction {
   /// generated (e.g. { probablePitcherConfirmed: false }), so a downstream
   /// consumer can discount a prediction made on an incomplete picture
   /// without needing a separate side-channel.
-  missingInputs Json?
+  missingInputs   Json?
   /// The market line(s) available at generation time, if any were known
   /// (e.g. a manually entered CFB line, or a polled odds snapshot) — frozen
   /// here rather than joined live, for the same reason as featureSnapshot.
-  marketSnapshot Json?
+  marketSnapshot  Json?
 
   createdAt DateTime @default(now())
 
@@ -1538,31 +1540,31 @@ model GameMarketLine {
 /// See docs/architecture/ALL-SPORTS.md.
 model League {
   /// "<sport>/<slug>", e.g. "soccer/epl", "table-tennis/czech-liga-pro".
-  id           String       @id
+  id            String       @id
   /// Canonical sport: soccer, tennis, basketball, hockey, baseball, football, …
-  sport        String
-  name         String
+  sport         String
+  name          String
   /// Country or region, when the provider names one ("England", "International").
-  region       String?
+  region        String?
   /// "toa" (The Odds API / Parlay) | "oddsapiio" (odds-api.io).
-  provider     String
+  provider      String
   /// The provider's own key: a TOA sport_key, or an odds-api.io "<sport>|<league>" pair.
-  providerKey  String
+  providerKey   String
   /// Futures-only: championship winner, golf majors. Outcomes are competitors, not home/away.
-  outright     Boolean      @default(false)
-  active       Boolean      @default(true)
+  outright      Boolean      @default(false)
+  active        Boolean      @default(true)
   /// Soonest upcoming event, refreshed from the free events list — drives polling cadence.
-  nextEventAt  DateTime?
-  upcomingCount Int         @default(0)
-  lastPolledAt DateTime?
-  lastSyncedAt DateTime     @default(now())
+  nextEventAt   DateTime?
+  upcomingCount Int          @default(0)
+  lastPolledAt  DateTime?
+  lastSyncedAt  DateTime     @default(now())
   /// The league's own logo (ESPN's, where ESPN covers it).
-  logoUrl      String?
+  logoUrl       String?
   /// ESPN's path for the league ("soccer/eng.1"), for crests and last season's results.
-  espnPath     String?
+  espnPath      String?
   /// Sort weight on the sport page: the big leagues first.
-  rank         Int          @default(1000)
-  events       SportEvent[]
+  rank          Int          @default(1000)
+  events        SportEvent[]
 
   @@unique([provider, providerKey])
   @@index([sport, active])
@@ -1571,25 +1573,27 @@ model League {
 /// One match / fight / race in a League, keyed by the provider's event id.
 model SportEvent {
   /// "<provider>:<event id>"
-  id          String      @id
-  leagueId    String
-  league      League      @relation(fields: [leagueId], references: [id])
-  startsAt    DateTime
+  id         String           @id
+  leagueId   String
+  league     League           @relation(fields: [leagueId], references: [id])
+  startsAt   DateTime
   /// For outright markets the event is the tournament: home is its title, away "".
-  home        String
-  away        String
+  home       String
+  away       String
   /// Provider participant ids (odds-api.io serves logos by these).
-  homeRef     String?
-  awayRef     String?
+  homeRef    String?
+  awayRef    String?
   /// "scheduled" | "live" | "final" | "cancelled"
-  status      String      @default("scheduled")
-  homeScore   Int?
-  awayScore   Int?
+  status     String           @default("scheduled")
+  homeScore  Int?
+  awayScore  Int?
   /// Period scores as the provider sends them ({ p1: { home, away }, … }).
-  periods     Json?
-  lastOddsAt  DateTime?
-  updatedAt   DateTime    @updatedAt
-  lines       SportEventLine[]
+  periods    Json?
+  lastOddsAt DateTime?
+  /// Soccer: when the match's player box score was read (null = not yet).
+  boxScoreAt DateTime?
+  updatedAt  DateTime         @updatedAt
+  lines      SportEventLine[]
 
   @@index([leagueId, startsAt])
   @@index([status, startsAt])
@@ -1633,4 +1637,51 @@ model Competitor {
   logoCheckedAt DateTime?
 
   @@index([sport])
+}
+
+/// A soccer player as ESPN lists him (id = ESPN athlete id).
+model SoccerPlayer {
+  id             String              @id
+  name           String
+  /// "G" | "D" | "M" | "F"
+  position       String?
+  /// The team of his latest match (an ESPN display name, as on SportEvent).
+  team           String?
+  headshotUrl    String?
+  /// A photo from his Wikipedia page when ESPN has none (null = none found).
+  photoUrl       String?
+  photoCheckedAt DateTime?
+  /// Date of the latest match read for him: team and position follow it.
+  lastMatchAt    DateTime?
+  updatedAt      DateTime            @updatedAt
+  matches        SoccerPlayerMatch[]
+
+  @@index([team])
+}
+
+/// One player's line in one match, from the match's ESPN box score.
+model SoccerPlayerMatch {
+  playerId      String
+  player        SoccerPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  /// SportEvent id ("espn:<id>").
+  eventId       String
+  leagueId      String
+  date          DateTime
+  team          String
+  opponent      String
+  isHome        Boolean
+  starter       Boolean
+  minutes       Int
+  goals         Int
+  assists       Int
+  shots         Int
+  shotsOnTarget Int
+  saves         Int
+  yellowCards   Int
+  redCards      Int
+  fouls         Int
+
+  @@id([playerId, eventId])
+  @@index([team, date])
+  @@index([eventId])
 }

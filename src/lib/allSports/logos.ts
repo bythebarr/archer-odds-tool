@@ -90,7 +90,26 @@ export function pickWikiImage(pages: WikiPage[], sport: string, name: string): s
 
 /** The image URL, null when Wikipedia has nothing for this name, undefined when it couldn't answer (rate limit, outage) — try again later. */
 export async function wikipediaLogo(name: string, sport: string): Promise<string | null | undefined> {
-  const q = `${name} ${SEARCH_SUFFIX[sport] ?? allSportOrDefault(sport).label}`;
+  const pages = await wikiSearch(`${name} ${SEARCH_SUFFIX[sport] ?? allSportOrDefault(sport).label}`);
+  return pages === undefined ? undefined : pickWikiImage(pages, sport, name);
+}
+
+/**
+ * A team-sport player's photo: the page must be described as a footballer (or
+ * whatever `describedAs` says) and carry his surname. Same answers as wikipediaLogo.
+ */
+export async function wikipediaPlayerPhoto(name: string, describedAs: RegExp, searchSuffix: string): Promise<string | null | undefined> {
+  const pages = await wikiSearch(`${name} ${searchSuffix}`);
+  if (pages === undefined) return undefined;
+  const surname = canonicalName(name).split(" ").at(-1) ?? "";
+  for (const p of [...pages].sort((a, b) => (a.index ?? 99) - (b.index ?? 99)).slice(0, 3)) {
+    const img = p.thumbnail?.source ?? p.original?.source;
+    if (img && describedAs.test(p.description ?? "") && canonicalName(p.title).split(" ").includes(surname)) return img;
+  }
+  return null;
+}
+
+async function wikiSearch(q: string): Promise<WikiPage[] | undefined> {
   const url = new URL("https://en.wikipedia.org/w/api.php");
   for (const [k, v] of Object.entries({
     action: "query", format: "json", formatversion: "2", generator: "search", gsrsearch: q, gsrlimit: "3",
@@ -99,7 +118,7 @@ export async function wikipediaLogo(name: string, sport: string): Promise<string
   const res = await fetch(url, { headers: { "User-Agent": UA }, next: { revalidate: 60 * 60 * 24 * 7 } });
   if (!res.ok) return undefined;
   const body = (await res.json()) as { query?: { pages?: WikiPage[] } };
-  return pickWikiImage(body.query?.pages ?? [], sport, name);
+  return body.query?.pages ?? [];
 }
 
 /**
