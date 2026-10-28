@@ -10,7 +10,7 @@ import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketV
  * price per corner across allowlisted books plus the devigged market-consensus
  * fair probability — the market's own view, to sit alongside the fighter-math
  * projection. EV itself is computed at the UI layer, where the model
- * probability lives (see UfcOddsEvCard). Pure best-price/devig math is reused
+ * probability lives (the bout page's ARCHR vs the book). Pure best-price/devig math is reused
  * from lib/odds — nothing here is UFC-specific except the red/blue corner keys.
  */
 

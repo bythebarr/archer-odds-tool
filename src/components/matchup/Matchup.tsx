@@ -111,8 +111,8 @@ export interface ValueRow {
 /** Edge worth calling out: clear of line-timing noise after the market blend. */
 const EDGE = 0.02;
 
-function verdict(edge: number | null): { text: string; tone: string } {
-  if (edge === null) return { text: "No read", tone: "text-muted-foreground" };
+function verdict(edge: number | null, priced: boolean): { text: string; tone: string } {
+  if (edge === null) return { text: priced ? "No read" : "No book yet", tone: "text-muted-foreground" };
   if (edge >= 0.05) return { text: "Strong value", tone: "text-emerald-500 dark:text-brand" };
   if (edge >= EDGE) return { text: "Value", tone: "text-emerald-600 dark:text-brand" };
   if (edge >= -0.02) return { text: "Fair", tone: "text-foreground" };
@@ -137,7 +137,7 @@ export function ValueStrip({ rows, footnote }: { rows: ValueRow[]; footnote?: Re
         </div>
         <ul className="divide-y divide-border">
           {rows.map((r) => {
-            const v = verdict(r.edge);
+            const v = verdict(r.edge, r.best !== null);
             return (
               <li key={r.market} className="grid grid-cols-[minmax(0,1fr)_4.25rem_5.5rem_3.75rem] items-center gap-2 px-3 py-2.5">
                 <div className="min-w-0">

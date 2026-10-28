@@ -9,9 +9,8 @@ import { computeArcherWinProbability } from "@/lib/archer/winProbability";
 import { computeExpectedRuns } from "@/lib/archer/expectedRuns";
 import { GameLinesView } from "@/components/GameLinesView";
 import { MatchupPanel } from "@/components/MatchupPanel";
-import { WinProbBar } from "@/components/WinProbBar";
 import { PlayerPropsSection } from "@/components/PlayerPropsSection";
-import { TeamBadge } from "@/components/TeamBadge";
+import { MlbBreakdown, MlbFaceOff } from "@/components/matchup/MlbGameBreakdown";
 import { BackLink } from "@/components/BackLink";
 
 /** Shares getGameWithLines's per-request cache with the page component below, so this costs no extra DB round-trip. */
@@ -56,71 +55,40 @@ export default async function GamePage({
   const archerProb = matchup ? computeArcherWinProbability(matchup) : null;
   const archerRuns = matchup ? computeExpectedRuns(matchup) : null;
 
+  const when = `${new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  }).format(game.scheduledStartUtc)} ET`;
+
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <BackLink fallbackHref="/mlb" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
-        ← Back
+    <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
+      <BackLink fallbackHref="/mlb" className="text-sm text-muted-foreground hover:text-foreground">
+        ← MLB
       </BackLink>
 
       <h1 className="sr-only">
         {game.awayTeam.name} at {game.homeTeam.name}
       </h1>
 
-      <div className="mt-3 flex items-center justify-center gap-4 rounded-xl bg-card px-4 py-5 ring-1 ring-foreground/10 sm:gap-8">
-        <div className="flex flex-1 flex-col items-center gap-2 text-center">
-          <TeamBadge abbreviation={game.awayTeam.abbreviation} name={game.awayTeam.name} mlbTeamId={game.awayTeam.mlbTeamId} size={48} />
-          <span className="text-sm font-semibold text-foreground">{game.awayTeam.name}</span>
-          {game.awayScore !== null && (
-            <span className="font-mono text-2xl font-bold text-foreground">{game.awayScore}</span>
-          )}
-        </div>
-        <span className="text-sm font-medium text-muted-foreground">@</span>
-        <div className="flex flex-1 flex-col items-center gap-2 text-center">
-          <TeamBadge abbreviation={game.homeTeam.abbreviation} name={game.homeTeam.name} mlbTeamId={game.homeTeam.mlbTeamId} size={48} />
-          <span className="text-sm font-semibold text-foreground">{game.homeTeam.name}</span>
-          {game.homeScore !== null && (
-            <span className="font-mono text-2xl font-bold text-foreground">{game.homeScore}</span>
-          )}
-        </div>
-      </div>
-      <p className="mt-2 text-center text-sm text-muted-foreground">
-        {new Intl.DateTimeFormat("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          timeZone: "America/New_York",
-        }).format(game.scheduledStartUtc)}{" "}
-        ET · {game.status}
-      </p>
-
-      {archerProb?.homeProb != null && archerProb.awayProb != null && (
-        <div className="mt-4">
-          <WinProbBar
-            awayAbbr={game.awayTeam.abbreviation}
-            homeAbbr={game.homeTeam.abbreviation}
-            awayProb={archerProb.awayProb}
-            homeProb={archerProb.homeProb}
-            note={
-              !archerProb.usedPitcher.home && !archerProb.usedPitcher.away
-                ? "Form only — no probable pitcher set yet"
-                : null
-            }
-          />
-        </div>
-      )}
+      <MlbFaceOff game={game} matchup={matchup} prob={archerProb} runs={archerRuns} when={when} />
+      {matchup && <MlbBreakdown game={game} lines={lines} matchup={matchup} prob={archerProb} runs={archerRuns} />}
 
       {matchup && archerProb && archerRuns && (
-        <div className="mt-6">
-          <MatchupPanel
-            game={game}
-            matchup={matchup}
-            archerProb={archerProb}
-            archerRuns={archerRuns}
-            marketProb={marketH2h}
-          />
-        </div>
+        <details className="group mt-6 rounded-xl border border-border bg-card">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Every model input
+            <span className="transition-transform group-open:rotate-90" aria-hidden>
+              ›
+            </span>
+          </summary>
+          <div className="border-t border-border p-3">
+            <MatchupPanel game={game} matchup={matchup} archerProb={archerProb} archerRuns={archerRuns} marketProb={marketH2h} />
+          </div>
+        </details>
       )}
 
       <div className="mt-8">

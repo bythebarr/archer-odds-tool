@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { getMatchWithLines } from "@/lib/queries/tennisMatches";
 import { getPlayerHitRate } from "@/lib/queries/hitRate";
 import { MatchLinesView } from "@/components/MatchLinesView";
-import { TennisPlayerBadge } from "@/components/TennisPlayerBadge";
+import { TennisMatchBreakdown } from "@/components/matchup/TennisMatchBreakdown";
+import { prisma } from "@/lib/prisma";
+import { normalizeName } from "@/lib/tennis/archive";
 import { BackLink } from "@/components/BackLink";
 
 /** Shares getMatchWithLines's per-request cache() with the page component below — same pattern as the MLB game page. */
@@ -42,34 +44,30 @@ export default async function TennisMatchPage({
     getPlayerHitRate(match.awayPlayer.id),
   ]);
 
-  return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-10 font-sans">
-      <BackLink fallbackHref="/tennis" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
-        ← Back
-      </BackLink>
+  const ratings = await prisma.tennisRating.findMany({
+    where: { norm: { in: [normalizeName(match.awayPlayer.name), normalizeName(match.homePlayer.name)] } },
+    select: { norm: true, overall: true, hard: true, clay: true, grass: true, nOverall: true },
+    orderBy: { nOverall: "desc" },
+  });
+  const ratingOf = (name: string) => ratings.find((r) => r.norm === normalizeName(name)) ?? null;
+  const when = `${new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  }).format(match.scheduledStartUtc)} ET`;
 
-      <h1 className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-semibold text-foreground">
-        <span className="inline-flex items-center gap-2">
-          <TennisPlayerBadge name={match.awayPlayer.name} size={24} />
-          {match.awayPlayer.name}
-        </span>
-        <span>vs</span>
-        <span className="inline-flex items-center gap-2">
-          <TennisPlayerBadge name={match.homePlayer.name} size={24} />
-          {match.homePlayer.name}
-        </span>
+  return (
+    <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
+      <BackLink fallbackHref="/sports/tennis" className="text-sm text-muted-foreground hover:text-foreground">
+        ← Tennis
+      </BackLink>
+      <h1 className="sr-only">
+        {match.awayPlayer.name} vs {match.homePlayer.name}
       </h1>
-      <p className="text-sm text-muted-foreground">
-        {new Intl.DateTimeFormat("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          timeZone: "America/New_York",
-        }).format(match.scheduledStartUtc)}{" "}
-        ET · {match.status}
-      </p>
+      <TennisMatchBreakdown match={match} lines={lines} away={ratingOf(match.awayPlayer.name)} home={ratingOf(match.homePlayer.name)} when={when} />
 
       <div className="mt-8">
         <MatchLinesView
