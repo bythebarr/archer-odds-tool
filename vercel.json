@@ -238,6 +238,38 @@
       "schedule": "15 7 * * *"
     },
     {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 2 * * *"
+    },
+    {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 5 * * *"
+    },
+    {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 8 * * *"
+    },
+    {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 11 * * *"
+    },
+    {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 14 * * *"
+    },
+    {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 17 * * *"
+    },
+    {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 20 * * *"
+    },
+    {
+      "path": "/api/cron/ufc-history",
+      "schedule": "45 23 * * *"
+    },
+    {
       "path": "/api/cron/tennis-fixtures",
       "schedule": "25 1 * * *"
     },

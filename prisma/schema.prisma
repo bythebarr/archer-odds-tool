@@ -765,6 +765,8 @@ model PollCreditLog {
 model UfcFighter {
   id       String  @id @default(cuid())
   citoSlug String  @unique
+  /// UFCStats' fighter hash (lib/ufc/ufcStatsArchive.ts), when the archive has him.
+  ufcStatsId String? @unique
   fullName String
   nickname String?
   division String? // current weight class, not bout-specific (a fighter's UfcBout.weightClass can differ, e.g. a catchweight bout)
@@ -794,6 +796,7 @@ model UfcEvent {
   id          String   @id @default(cuid())
   citoEventId String   @unique
   citoSlug    String   @unique
+  ufcStatsId  String?  @unique
   title       String
   eventDate   DateTime // see the caveat above — not trustworthy on hasStats=false events
   venue       String?
@@ -809,6 +812,7 @@ model UfcEvent {
 model UfcBout {
   id         String   @id @default(cuid())
   citoBoutId String   @unique
+  ufcStatsId String?  @unique
   eventId    String
   event      UfcEvent @relation(fields: [eventId], references: [id])
 
