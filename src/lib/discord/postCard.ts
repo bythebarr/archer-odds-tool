@@ -3,7 +3,8 @@ import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
 import { unitsFor } from "@/lib/betting/kelly";
 import { mosesAuthor } from "./brand";
-import { SPORTS, type Play } from "@/lib/engine";
+import { SPORTS, stakeable, type Play } from "@/lib/engine";
+import { getReportedVerdicts } from "@/lib/queries/modelTrust";
 import { getSelection, splitBySelection, type PlayStream } from "@/lib/card/selection";
 
 /**
@@ -122,6 +123,8 @@ export interface DiscordPostResult {
   slateCount?: number;
   /** Selected plays whose line vanished before post time — skipped, not posted stale. */
   missingCount?: number;
+  /** Selected plays from an untrusted model — posted on the slate, unstaked, not recorded. */
+  heldCount?: number;
 }
 
 const EMPTY_CARD =
@@ -408,6 +411,24 @@ export interface DailyCardPreview {
   cardCount: number;
   slateCount: number;
   missingCount: number;
+  heldCount: number;
+}
+
+/**
+ * Split the board for posting, behind the model-trust gate: a pick whose model
+ * isn't trusted on /models (lib/engine/trust.ts) goes to the unstaked slate,
+ * never the card or the free play, and is logged.
+ */
+export async function splitForPosting(plays: Play[], dateEt: string) {
+  const [selection, verdicts] = await Promise.all([getSelection(dateEt), getReportedVerdicts()]);
+  const split = splitBySelection(plays, selection, (p) => stakeable(p, verdicts));
+  if (split.held.length) {
+    console.log(
+      `postCard: ${split.held.length} pick(s) from untrusted models posting unstaked on the slate:`,
+      split.held.map((p) => `${p.sportKey} ${p.selection.label}`)
+    );
+  }
+  return split;
 }
 
 /**
@@ -419,8 +440,7 @@ export interface DailyCardPreview {
 export async function previewDailyCard(dateEt: string = todayEt()): Promise<DailyCardPreview> {
   const label = prettyDate(dateEt);
   const plays = await collectPlays(dateEt);
-  const selection = await getSelection(dateEt);
-  const { card, free, slate, missing } = splitBySelection(plays, selection);
+  const { card, free, slate, missing, held } = await splitForPosting(plays, dateEt);
 
   const toPreview = (s: BoardSection): PreviewSection => ({
     title: s.title,
@@ -437,6 +457,7 @@ export async function previewDailyCard(dateEt: string = todayEt()): Promise<Dail
     cardCount: card.length,
     slateCount: slate.length,
     missingCount: missing.length,
+    heldCount: held.length,
   };
 }
 
@@ -478,8 +499,7 @@ export async function postDailyCardToDiscord(
 
   const label = prettyDate(dateEt);
   const plays = prefetched ?? (await collectPlays(dateEt));
-  const selection = await getSelection(dateEt);
-  const { card, free, slate, missing } = splitBySelection(plays, selection);
+  const { card, free, slate, missing, held } = await splitForPosting(plays, dateEt);
 
   if (missing.length) {
     console.warn(`postCard: ${missing.length} selected play(s) no longer live, skipping:`, missing);
@@ -556,5 +576,6 @@ export async function postDailyCardToDiscord(
     freePosted,
     slateCount: slate.length,
     missingCount: missing.length,
+    heldCount: held.length,
   };
 }

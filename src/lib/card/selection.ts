@@ -113,18 +113,35 @@ export interface SplitPlays {
   slate: Play[];
   /** Selected playKeys with no live play left. */
   missing: string[];
+  /** Picks that can't be staked (their model isn't trusted): posted on the slate instead. */
+  held: Play[];
 }
 
-export function splitBySelection(plays: Play[], selection: DaySelection): SplitPlays {
+/**
+ * `canStake` is the trust gate (lib/engine/trust.ts → `stakeable`): a pick that
+ * fails it doesn't post with units or touch a record. It stays on the slate,
+ * where every unpicked play goes, and is listed in `held` so nothing is dropped
+ * silently.
+ */
+export function splitBySelection(
+  plays: Play[],
+  selection: DaySelection,
+  canStake: (p: Play) => boolean
+): SplitPlays {
   const byKey = new Map(plays.map((p) => [p.playKey, p]));
   const card: Play[] = [];
   let free: Play | null = null;
   const missing: string[] = [];
+  const held: Play[] = [];
 
   for (const [key, pick] of selection.byKey) {
     const live = byKey.get(key);
     if (!live) {
       missing.push(key);
+      continue;
+    }
+    if (!canStake(live)) {
+      held.push(live);
       continue;
     }
     // Resolve the stake once, here, so everything downstream — the posted line,
@@ -139,6 +156,6 @@ export function splitBySelection(plays: Play[], selection: DaySelection): SplitP
   const order = new Map(plays.map((p, i) => [p.playKey, i]));
   card.sort((a, b) => (order.get(a.playKey) ?? 0) - (order.get(b.playKey) ?? 0));
 
-  const picked = new Set(selection.byKey.keys());
-  return { card, free, slate: plays.filter((p) => !picked.has(p.playKey)), missing };
+  const staked = new Set([...card, ...(free ? [free] : [])].map((p) => p.playKey));
+  return { card, free, slate: plays.filter((p) => !staked.has(p.playKey)), missing, held };
 }

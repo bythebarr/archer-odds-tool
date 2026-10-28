@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { collectPlays } from "@/lib/discord/postCard";
 import { getSelection, splitBySelection } from "@/lib/card/selection";
-import { SPORTS } from "@/lib/engine";
+import { SPORTS, stakeable, trustVerdict } from "@/lib/engine";
+import { getReportedVerdicts } from "@/lib/queries/modelTrust";
 import { todayEt } from "@/lib/dateEt";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { pickAction, clearAction, unitsAction, fireAction } from "./actions";
@@ -66,12 +67,14 @@ export default async function DeckPage({
   if (!expected || !token || token !== expected) notFound();
 
   const dateEt = date ?? todayEt();
-  const [plays, selection, firedAt] = await Promise.all([
+  const [plays, selection, firedAt, verdicts] = await Promise.all([
     collectPlays(dateEt),
     getSelection(dateEt),
     postedAt("post-card", dateEt),
+    getReportedVerdicts(),
   ]);
-  const split = splitBySelection(plays, selection);
+  const canStake = (p: (typeof plays)[number]) => stakeable(p, verdicts);
+  const split = splitBySelection(plays, selection, canStake);
   const dueAt = cardDropTime(plays);
 
   // Engine order groups by sport already; keep it, so the deck reads like the card.
@@ -108,6 +111,12 @@ export default async function DeckPage({
           📊 <strong className="text-foreground">{split.slate.length}</strong> → #ev-slate, no
           units, never recorded.
         </div>
+        {split.held.length > 0 && (
+          <div className="mt-2 text-amber-600 dark:text-amber-500">
+            ⚠️ {split.held.length} pick{split.held.length === 1 ? "" : "s"} from a model /models doesn&apos;t
+            trust yet will post on #ev-slate with no units, not on the card.
+          </div>
+        )}
         {split.missing.length > 0 && (
           <div className="mt-2 text-amber-600 dark:text-amber-500">
             ⚠️ {split.missing.length} earlier pick{split.missing.length === 1 ? " is" : "s are"} no
@@ -178,6 +187,7 @@ export default async function DeckPage({
             const current = pick?.stream ?? null;
             const staked = pick?.units ?? p.suggestedUnits;
             const accent = SPORT_ACCENT.get(p.sportKey) ?? "#06996b";
+            const lockedOut = !canStake(p);
             return (
               <li
                 key={p.playKey}
@@ -207,24 +217,36 @@ export default async function DeckPage({
                   <span className="text-muted-foreground">{startLabel(p.startUtc)} ET</span>
                 </div>
 
+                {lockedOut && (
+                  <p className="mt-1.5 text-[0.7rem] text-amber-600 dark:text-amber-500">
+                    Slate only: the {SPORT_LABEL.get(p.sportKey) ?? p.sportKey} model is{" "}
+                    {trustVerdict(p.sportKey, verdicts) ?? "not backtested"} on /models, not trusted, so it
+                    can&apos;t be staked.
+                  </p>
+                )}
+
                 {/* Three plain forms — no client JS, so this works anywhere. */}
                 <div className="mt-2.5 flex gap-2">
-                  <PickButton
-                    token={token}
-                    dateEt={dateEt}
-                    playKey={p.playKey}
-                    stream="card"
-                    label="👑 Card"
-                    active={current === "card"}
-                  />
-                  <PickButton
-                    token={token}
-                    dateEt={dateEt}
-                    playKey={p.playKey}
-                    stream="free"
-                    label="🎯 Free"
-                    active={current === "free"}
-                  />
+                  {!lockedOut && (
+                    <>
+                      <PickButton
+                        token={token}
+                        dateEt={dateEt}
+                        playKey={p.playKey}
+                        stream="card"
+                        label="👑 Card"
+                        active={current === "card"}
+                      />
+                      <PickButton
+                        token={token}
+                        dateEt={dateEt}
+                        playKey={p.playKey}
+                        stream="free"
+                        label="🎯 Free"
+                        active={current === "free"}
+                      />
+                    </>
+                  )}
                   {current && (
                     <PickButton
                       token={token}
@@ -239,7 +261,7 @@ export default async function DeckPage({
 
                 {/* Stake sizing appears only once a play is picked — units on an
                     unpicked play would be a stake on nothing. */}
-                {current && (
+                {current && !lockedOut && (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
                     <span className="mr-1 text-[0.7rem] uppercase tracking-wide text-muted-foreground">
                       Units
