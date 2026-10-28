@@ -351,3 +351,21 @@ export function projectMlbProp(logs: MlbLogPoint[], stat: MlbPropStat, ctx: MlbP
 
 /** Pulls MLB prop probabilities toward 50% until `npm run backtest:mlb-props` refits it. */
 export const MLB_CALIBRATION_SHRINK = 0.85;
+
+/**
+ * Per-stat calibration: the baked 0.85 × each stat's held-out refit from
+ * `npm run backtest:mlb-props` (2026 season, ~44K batter games / ~2.6K starts).
+ * Above 1 the model was too timid (pitcher strikeouts, total bases), below 1
+ * too sure of itself (earned runs). Stats the backtest doesn't cover keep 0.85.
+ */
+export const MLB_CALIBRATION_BY_STAT: Partial<Record<MlbPropStat, number>> = {
+  hits: 0.81,
+  totalBases: 1.15,
+  homeRuns: 1.02,
+  battingStrikeouts: 0.94,
+  hitsRunsRbis: 1.1,
+  pitcherStrikeouts: 1.28,
+  outsRecorded: 0.81,
+  hitsAllowed: 0.81,
+  earnedRuns: 0.55,
+};
