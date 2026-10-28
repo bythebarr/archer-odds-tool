@@ -18,24 +18,23 @@ Neon suspends a database after about 5 idle minutes, so each wake-up costs
 roughly 5 minutes or more of compute. Spread around the clock like that, the
 wake-ups left the database almost no time asleep.
 
-## The lineup and parked sports
+## The lineup and parking a sport
 
-The nav, Home, the Slate and the Discord card show only **NBA, NFL and UFC**.
-MLB (offseason), tennis, soccer and F1 are **parked** (`parked: true` in
-`src/lib/engine/sportsMeta.ts`). For a parked sport:
-- it's hidden from the nav, Home, the Slate and the Discord card;
-- its data jobs are off;
-- its pages still work by URL and appear on the `/sports` hub's "Offseason"
-  shelf;
-- its adapter stays registered, so past plays still grade.
+**Every sport is in the lineup** (un-parked 2026-10-27): NBA, NFL, UFC, MLB,
+soccer, tennis and F1 all show in the nav, Home and the Slate, and their data
+jobs run. F1 is results-only (`resultsOnly: true`): its pages show races and
+ARCHR's probabilities, but it has no odds Slate. Soccer and tennis run on the
+all-sports engine (every league and tournament the feeds carry).
 
-**To bring a sport back:**
-1. Set `parked: false` for it.
-2. Restore its cron entries: `git log -p vercel.json` shows the schedule from
-   before it was parked.
+The switch is still there for a sport's offseason: `parked` in
+`src/lib/engine/sportsMeta.ts`. A parked sport:
+- is hidden from the nav, Home, the Slate and the Discord card;
+- keeps its pages working by URL, on the `/sports` hub's "Offseason" shelf;
+- keeps its adapter registered, so past plays still grade.
 
-Restored entries go into the existing windows; don't give them times of their
-own.
+Parking doesn't stop a sport's jobs by itself. To pause them, take them out of
+`JOBS` in `src/lib/ops/schedule.ts` (and put them back when it returns).
+Every job runs from the tick (below), so it never needs times of its own.
 
 ## The schedule: one tick, one wake-up per window
 
@@ -82,8 +81,9 @@ set these in Vercel:
   the number is there even while the database is refusing queries.
 - Past **80%** of the budget, these optional jobs return `skipped` instead of
   running: weather, soccer odds, tennis odds and results, and the F1/MLB
-  backfills. They're all parked right now, so the guard matters once they come
-  back. The lineup (NBA, NFL, UFC, results, Discord) always runs.
+  backfills. The core jobs (NBA, NFL, UFC odds and props, results, grading,
+  Discord) always run. Separately, the tick itself thins to even hours past 60%
+  (see the schedule above).
 
 ## Player history backfill (NBA, NFL)
 
