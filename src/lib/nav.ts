@@ -40,9 +40,9 @@ export const NAV_ITEMS: NavItem[] = [
   ...SPORT_TABS,
   // Every other sport and league, from the all-sports engine.
   { href: "/sports", label: "All Sports", icon: "all", carriesDate: false, primary: true },
-  // Props points at the NBA finder, the in-season props product. (The MLB props
-  // board at /props is parked with MLB; it's still reachable by URL.)
-  { href: "/nba/props", label: "Props", icon: "props", carriesDate: false, primary: true },
+  // Props opens the all-sports props hub, one door per sport. (The old MLB props
+  // board at /props is still reachable by URL.)
+  { href: "/player-props", label: "Props", icon: "props", carriesDate: false, primary: true },
 ];
 
 /**
@@ -64,8 +64,7 @@ function matches(item: NavItem, pathname: string): boolean {
 
 /**
  * Home is active only on exact "/"; every other tab matches its subtree — and
- * when two tabs match (NBA's /nba and Props' /nba/props), only the more
- * specific one lights up.
+ * when two tabs match, only the more specific one lights up.
  */
 export function isNavActive(item: NavItem, pathname: string, items: NavItem[] = NAV_ITEMS): boolean {
   if (!matches(item, pathname)) return false;
