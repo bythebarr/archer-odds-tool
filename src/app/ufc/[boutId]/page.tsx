@@ -20,6 +20,8 @@ import { UfcFinishProjectionCard } from "@/components/ufc/UfcFinishProjectionCar
 import { UfcFightHistory } from "@/components/ufc/UfcFightHistory";
 import { UfcFightModelCard } from "@/components/ufc/UfcFightModelCard";
 import { getUfcFightModel } from "@/lib/queries/ufcFightModel";
+import { getUfcPropsSlate } from "@/lib/queries/ufcProps";
+import { OpenFighterButton, UfcBoutProps } from "@/components/ufc/UfcPropsFinder";
 
 // Odds refresh after the response (see refreshUfcOddsOnView) needs a live
 // request, and the moneyline should reflect current lines — render per request.
@@ -63,11 +65,12 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
   // Read-side self-heal for the odds feed (Hobby crons fire unreliably) —
   // refreshes all UFC moneylines after the response when stale. See refreshUfcOddsOnView.
   refreshUfcOddsOnView();
-  const [header, matchup, odds, fightModel] = await Promise.all([
+  const [header, matchup, odds, fightModel, props] = await Promise.all([
     getUfcBoutHeader(boutId),
     getUfcMatchup(boutId),
     getUfcBoutOdds(boutId),
     getUfcFightModel(boutId),
+    getUfcPropsSlate({ boutId }),
   ]);
   if (!header) notFound();
 
@@ -134,8 +137,16 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
       </BackLink>
 
       <FaceOff
-        a={{ name: header.red.name, sub: [header.red.nickname ? `“${header.red.nickname}”` : null, header.red.record].filter(Boolean).join(" · ") || null, badge: <FighterBadge name={header.red.name} imageUrl={header.red.imageUrl} size={88} />, color: RED_CORNER }}
-        b={{ name: header.blue.name, sub: [header.blue.nickname ? `“${header.blue.nickname}”` : null, header.blue.record].filter(Boolean).join(" · ") || null, badge: <FighterBadge name={header.blue.name} imageUrl={header.blue.imageUrl} size={88} />, color: BLUE_CORNER }}
+        a={{ name: header.red.name, sub: [header.red.nickname ? `“${header.red.nickname}”` : null, header.red.record].filter(Boolean).join(" · ") || null, badge: (
+            <OpenFighterButton fighterId={header.red.id} label={header.red.name}>
+              <FighterBadge name={header.red.name} imageUrl={header.red.imageUrl} size={88} />
+            </OpenFighterButton>
+          ), color: RED_CORNER }}
+        b={{ name: header.blue.name, sub: [header.blue.nickname ? `“${header.blue.nickname}”` : null, header.blue.record].filter(Boolean).join(" · ") || null, badge: (
+            <OpenFighterButton fighterId={header.blue.id} label={header.blue.name}>
+              <FighterBadge name={header.blue.name} imageUrl={header.blue.imageUrl} size={88} />
+            </OpenFighterButton>
+          ), color: BLUE_CORNER }}
         probA={projection?.fighterAProb ?? null}
         probLabel={fightModel?.beatsV1 ? "ARCHR fight model win probability" : "ARCHR fighter-math win probability"}
         chips={
@@ -198,6 +209,8 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
         b={{ label: header.blue.name.split(" ").at(-1)!, color: BLUE_CORNER }}
         footnote={fightModel?.beatsV1 ? "Each fighting stat's push on the fight model, in points of win chance (near even)." : "Form, shared opponents and style, each as its push in points of win chance (near even), after calibration."}
       />
+
+      <UfcBoutProps slate={props} />
 
       {fightModel ? (
         <div className="mt-6">

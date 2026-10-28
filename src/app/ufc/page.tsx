@@ -33,6 +33,7 @@ export default async function UfcPage({ searchParams }: { searchParams: Promise<
 
   const tabs = [
     { label: "Fight Cards", href: "/ufc", active: !results },
+    { label: "Fighter Props", href: "/ufc/props", active: false },
     { label: "Results", href: "/ufc?tab=results", active: results },
   ];
 

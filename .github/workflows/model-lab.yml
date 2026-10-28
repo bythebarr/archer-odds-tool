@@ -21,6 +21,7 @@ on:
         options:
           - report:all
           - fit:ufc-prior
+          - fit:ufc-props
           - backtest:nba-props
           - backtest:nfl-props
           - backtest:props-market

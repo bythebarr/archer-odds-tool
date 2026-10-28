@@ -21,6 +21,7 @@
     "poll:odds:soccer": "tsx scripts/poll-odds-soccer.ts",
     "backtest:ufc": "tsx scripts/backtest-ufc-calibration.ts",
     "fit:ufc-prior": "tsx scripts/fit-ufc-prior.ts",
+    "fit:ufc-props": "tsx scripts/fit-ufc-props.ts",
     "backtest:nba-props": "tsx scripts/backtest-nba-props.ts",
     "backtest:nfl-props": "tsx scripts/backtest-nfl-props.ts",
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
