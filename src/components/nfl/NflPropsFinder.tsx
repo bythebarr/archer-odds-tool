@@ -1,20 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { NFL_PROP_STATS, NFL_PROP_STAT_BY_KEY, type NflPropStatDef } from "@/lib/nfl/propStats";
 import { sortNflSummaries, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflPropSort, type NflPropSummary, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
 import { nflStatMatchup, type NflDefenseTable } from "@/lib/nfl/matchup";
 import { matchupGrade, ordinal } from "@/lib/nba/matchup";
 import { booksAtPoint, propConsensusPoint, twoSidedAt } from "@/lib/nba/propsMath";
-import { fairPrice, valueOf } from "@/lib/odds/marketValue";
-import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
+import { fairPrice } from "@/lib/odds/marketValue";
 import type { NflPropsSlate, NflSlatePlayer } from "@/lib/queries/nflProps";
 import type { SlateGame } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
+import { usageGames, usageWindow, type TeamVolume, type UsageWindow } from "@/lib/nfl/usage";
 import { Logo } from "@/components/Logo";
-import { BookBadge } from "@/components/BookBadge";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
@@ -23,6 +22,26 @@ import { nflProjectionContext } from "@/lib/nfl/slateContext";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { PropGameChart } from "@/components/props/PropGameChart";
+import {
+  ArchrLineChip,
+  BestPriceChip,
+  BooksTable,
+  EmptyList,
+  GameChips,
+  LinePicker,
+  ListNote,
+  MatchupFacts,
+  ModelChip,
+  PlayerSheet,
+  ProjectedDivider,
+  ProjectedNote,
+  ProjectionCard,
+  PropCard,
+  PropsControls,
+  RecentGames,
+  SheetFooter,
+  SheetSection,
+} from "@/components/props/kit";
 
 const SORTS: { key: NflPropSort; label: string }[] = [
   { key: "hitRate", label: "Hit rate" },
@@ -35,10 +54,9 @@ const MODEL_EV_FLAG = 0.03;
 function kickoff(iso: string): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(iso));
 }
-const initials = (n: string) => n.split(" ").map((p) => p[0]).join("").slice(0, 2);
-const chip = (active: boolean) =>
-  `shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${active ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"}`;
-const toAmerican = (p: number) => formatAmerican(Math.round(decimalToAmerican(1 / p)));
+const sideLabelsOf = (stat: NflPropStatDef): [string, string] => (stat.shape === "anytime" ? ["Yes", "No"] : ["Over", "Under"]);
+const short = (stat: NflPropStatDef, side: PropDirection) => (stat.shape === "anytime" ? (side === "over" ? "Yes" : "No") : side === "over" ? "O" : "U");
+const digits = (stat: NflPropStatDef) => (stat.shape === "yards" ? 0 : 1);
 
 function DefChip({ defense, player, stat, side }: { defense: NflDefenseTable; player: NflSlatePlayer; stat: NflPropStatDef; side: PropDirection }) {
   const m = player.opponent ? nflStatMatchup(defense, player.opponent.abbreviation, stat, player.position) : null;
@@ -53,109 +71,160 @@ function DefChip({ defense, player, stat, side }: { defense: NflDefenseTable; pl
   );
 }
 
-function ModelChip({ s, side }: { s: NflPropSummary; side: PropDirection }) {
-  if (!s.model) return null;
-  const p = side === "over" ? s.model.probOver : s.model.probUnder;
-  const ev = side === "over" ? s.model.evOver : s.model.evUnder;
-  const edge = ev !== null && ev >= MODEL_EV_FLAG;
-  return (
-    <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${edge ? "bg-brand text-brand-foreground" : "bg-muted"}`}>
-      <span className={`text-[10px] font-semibold uppercase ${edge ? "" : "text-muted-foreground"}`}>Model</span>
-      <span className={`font-mono font-semibold ${edge ? "" : "text-foreground"}`}>{Math.round(p * 100)}%</span>
-    </span>
-  );
-}
-
-function sideLabel(stat: NflPropStatDef, side: PropDirection): string {
-  if (stat.shape === "anytime") return side === "over" ? "Yes" : "No";
-  return side === "over" ? "O" : "U";
-}
-
-function PropCard({ s, player, game, side, stat, defense, onOpen }: { s: NflPropSummary; player: NflSlatePlayer; game?: SlateGame; side: PropDirection; stat: NflPropStatDef; defense: NflDefenseTable; onOpen: () => void }) {
+function NflCard({ s, player, game, side, stat, defense, onOpen }: { s: NflPropSummary; player: NflSlatePlayer; game?: SlateGame; side: PropDirection; stat: NflPropStatDef; defense: NflDefenseTable; onOpen: () => void }) {
   const best = side === "over" ? s.over : s.under;
+  const other = side === "over" ? s.under : s.over;
   const value = side === "over" ? s.value.over : s.value.under;
-  const strip = s.splits.filter((x) => x.key === "l3" || (x.key === "h2h" && x.rate.sampleSize > 0));
+  const m = s.model;
+  const ev = m ? (side === "over" ? m.evOver : m.evUnder) : null;
+  const strip = s.splits.filter((x) => ["l3", "l5", "season"].includes(x.key) || (x.key === "h2h" && x.rate.sampleSize > 0));
   return (
-    <li>
-      <button type="button" onClick={onOpen} className="w-full rounded-2xl border border-border bg-card p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <div className="flex items-start gap-3">
-          <div className="relative shrink-0">
-            <Logo sources={[player.headshotUrl]} alt={player.name} fallbackText={initials(player.name)} size={48} fit="cover" />
-            {player.team && (
-              <span className="absolute -bottom-1 -right-1">
-                <Logo sources={[player.team.logoUrl]} alt={player.team.name} fallbackText={player.team.abbreviation} size={20} />
-              </span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-semibold leading-tight text-foreground">
-              {player.name}
-              {player.position && <span className="ml-1.5 text-[11px] font-medium text-muted-foreground">{player.position}</span>}
-              <InjuryBadge injury={player.injury} />
-            </p>
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-              {player.opponent && (
-                <>
-                  {player.venue === "home" ? "vs" : "@"}
-                  <Logo sources={[player.opponent.logoUrl]} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
-                  {player.opponent.abbreviation}
-                </>
-              )}
-              {game && <span>· {kickoff(game.startUtc)}</span>}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="font-mono text-xl font-semibold leading-none tracking-tight text-foreground">
-              {stat.shape === "anytime" ? "TD" : s.point}
-              {stat.shape !== "anytime" && <span className="ml-1 font-sans text-[10px] font-semibold text-muted-foreground">{stat.shortLabel}</span>}
-            </p>
-            {s.model && (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                proj <span className="font-mono font-semibold text-foreground">{s.model.projection.mean.toFixed(stat.shape === "yards" ? 0 : 1)}</span>
-                {s.avg !== null && <> · avg {s.avg.toFixed(stat.shape === "yards" ? 0 : 1)}</>}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <HitMeter recent={s.recent.slice(0, 5)} rate={s.l5} window="L5" slots={5} />
-          <div className="flex items-center gap-1.5">
-            {s.projected ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2 py-1 ring-1 ring-brand/40" title="No book has posted this prop yet">
-                <span className="text-[10px] font-bold uppercase text-foreground">ARCHR line</span>
-                <span className="text-[10px] text-muted-foreground">· books soon</span>
-              </span>
-            ) : (
-              <EvTag value={value} />
-            )}
-            {s.projected ? null : best ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1 ring-1 ring-emerald-500/30">
-                <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">{sideLabel(stat, side)}</span>
-                <span className="font-mono text-sm font-semibold text-foreground">{formatAmerican(best.priceAmerican)}</span>
-                <BookBadge bookKey={best.bookKey} bookName={best.bookName} size={18} />
-              </span>
-            ) : (
-              <span className="text-xs text-muted-foreground">no {side}</span>
-            )}
-          </div>
-        </div>
-        <div className="mt-2.5 flex items-center gap-3 overflow-x-auto whitespace-nowrap border-t border-border pt-2 text-[11px] text-muted-foreground [scrollbar-width:none]">
-          {strip.map((x) => (
-            <span key={x.key}>
-              {x.label} <span className={`font-mono font-semibold ${rateTone(x.rate)}`}>{formatRate(x.rate)}</span>
+    <PropCard
+      onOpen={onOpen}
+      headshot={[player.headshotUrl]}
+      name={player.name}
+      tag={player.position}
+      badges={<InjuryBadge injury={player.injury} />}
+      teamLogo={player.team?.logoUrl}
+      teamAbbr={player.team?.abbreviation}
+      sub={
+        <>
+          {player.opponent && (
+            <>
+              {player.venue === "home" ? "vs" : "@"}
+              <Logo sources={[player.opponent.logoUrl]} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
+              {player.opponent.abbreviation}
+            </>
+          )}
+          {game && <span>· {kickoff(game.startUtc)}</span>}
+        </>
+      }
+      value={stat.shape === "anytime" ? (m ? `${Math.round(m.probOver * 100)}%` : "TD") : s.point}
+      unit={stat.shape === "anytime" ? "TD" : stat.shortLabel}
+      under={
+        m ? (
+          <>
+            proj <span className="font-mono font-semibold text-foreground">{m.projection.mean.toFixed(stat.shape === "anytime" ? 2 : digits(stat))}</span>
+            {s.avg !== null && <> · avg {s.avg.toFixed(digits(stat))}</>}
+          </>
+        ) : s.avg !== null ? (
+          <>avg {s.avg.toFixed(digits(stat))} L5</>
+        ) : null
+      }
+      meter={<HitMeter recent={s.recent.slice(0, 5)} rate={s.l5} window="L5" slots={5} />}
+      price={
+        <>
+          {s.projected ? <ArchrLineChip /> : <EvTag value={value} />}
+          {s.projected ? null : best ? (
+            <BestPriceChip sideLabel={short(stat, side)} price={best.priceAmerican} bookKey={best.bookKey} bookName={best.bookName} />
+          ) : (
+            <span className="text-xs text-muted-foreground">no {side}</span>
+          )}
+          {other && !s.projected && (
+            <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
+              {short(stat, side === "over" ? "under" : "over")} <span className="font-mono">{other.priceAmerican > 0 ? `+${other.priceAmerican}` : other.priceAmerican}</span>
             </span>
-          ))}
-          <span className="ml-auto flex items-center gap-2">
-            {!s.projected && <ModelChip s={s} side={side} />}
-            <DefChip defense={defense} player={player} stat={stat} side={side} />
+          )}
+        </>
+      }
+      strip={strip.map((x) => (
+        <span key={x.key}>
+          {x.label} <span className={`font-mono font-semibold ${rateTone(x.rate)}`}>{formatRate(x.rate)}</span>
+        </span>
+      ))}
+      stripRight={
+        <>
+          {!s.projected && m && <ModelChip prob={side === "over" ? m.probOver : m.probUnder} edge={ev !== null && ev >= MODEL_EV_FLAG} />}
+          <DefChip defense={defense} player={player} stat={stat} side={side} />
+          <span className={s.projected ? "hidden" : "hidden sm:inline"}>
+            {s.booksAtLine} book{s.booksAtLine === 1 ? "" : "s"}
+            {s.points.length > 1 && ` · ${s.points.length - 1} alt`}
           </span>
-        </div>
-      </button>
-    </li>
+        </>
+      }
+    />
   );
 }
 
-function Sheet({ player, props, logs, season, projection, modelWeights, initialStat, side: initialSide, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; initialStat: NflPropStat; side: PropDirection; onClose: () => void }) {
+const pct = (x: number | null, d = 0) => (x === null ? "—" : `${(x * 100).toFixed(d)}%`);
+const num = (x: number | null, d = 1) => (x === null ? "—" : x.toFixed(d));
+
+/** His role and what he does with it: L5 against the season, then his share game by game. */
+function UsagePanel({ player, logs, volume, season }: { player: NflSlatePlayer; logs: NflLogPoint[]; volume: TeamVolume[]; season: number }) {
+  const seasonIdx = logs.map((l, i) => (l.season === season ? i : -1)).filter((i) => i >= 0);
+  const l5 = usageWindow(logs.slice(0, 5), volume.slice(0, 5));
+  const szn = usageWindow(seasonIdx.map((i) => logs[i]!), seasonIdx.map((i) => volume[i]!));
+  const games = usageGames(logs.slice(0, 10), volume.slice(0, 10)).reverse();
+  const pos = player.position;
+  type Row = { label: string; get: (w: UsageWindow) => string };
+  const rows: Row[] =
+    pos === "QB"
+      ? [
+          { label: "Completion %", get: (w) => pct(w.completionPct, 1) },
+          { label: "Yards / attempt", get: (w) => num(w.yardsPerAttempt) },
+          { label: "TD rate", get: (w) => pct(w.passTdRate, 1) },
+          { label: "INT rate", get: (w) => pct(w.intRate, 1) },
+          { label: "Team pass att / g", get: (w) => num(w.teamPassAttempts) },
+          { label: "Carries / g", get: (w) => num(w.carriesPerGame) },
+        ]
+      : pos === "RB"
+        ? [
+            { label: "Carry share", get: (w) => pct(w.carryShare) },
+            { label: "Carries / g", get: (w) => num(w.carriesPerGame) },
+            { label: "Yards / carry", get: (w) => num(w.yardsPerCarry) },
+            { label: "Target share", get: (w) => pct(w.targetShare) },
+            { label: "Catch rate", get: (w) => pct(w.catchRate) },
+            { label: "TDs / g", get: (w) => num(w.touchdownsPerGame, 2) },
+          ]
+        : [
+            { label: "Target share", get: (w) => pct(w.targetShare) },
+            { label: "Targets / g", get: (w) => num(w.targetsPerGame) },
+            { label: "Catch rate", get: (w) => pct(w.catchRate) },
+            { label: "Yards / target", get: (w) => num(w.yardsPerTarget) },
+            { label: "Yards / catch", get: (w) => num(w.yardsPerReception) },
+            { label: "TDs / g", get: (w) => num(w.touchdownsPerGame, 2) },
+          ];
+  const share = (g: (typeof games)[number]) => (pos === "RB" ? g.carryShare : pos === "QB" ? g.teamPassAttempts / 50 : g.targetShare);
+  const shareLabel = pos === "RB" ? "Carry share" : pos === "QB" ? "Team pass attempts" : "Target share";
+  const max = Math.max(0.01, ...games.map((g) => share(g) ?? 0));
+  if (!logs.length) return null;
+  return (
+    <SheetSection title="Usage & efficiency" brand>
+      <div className="rounded-xl border border-border bg-card p-3.5">
+        <div className="grid grid-cols-[1fr_4.5rem_4.5rem] gap-y-1.5 text-sm">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" />
+          <span className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">L5</span>
+          <span className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Season</span>
+          {rows.map((r) => (
+            <Fragment key={r.label}>
+              <span className="text-muted-foreground">{r.label}</span>
+              <span className="text-right font-mono font-semibold text-foreground">{r.get(l5)}</span>
+              <span className="text-right font-mono text-foreground/70">{r.get(szn)}</span>
+            </Fragment>
+          ))}
+        </div>
+        <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{shareLabel} by game</p>
+        <div className="mt-1.5 flex h-20 items-end gap-1">
+          {games.map((g, i) => {
+            const v = share(g);
+            return (
+              <div key={`${g.date}-${i}`} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+                <span className="font-mono text-[9px] text-muted-foreground">{v === null ? "" : pos === "QB" ? g.teamPassAttempts : Math.round(v * 100)}</span>
+                <span className={`w-full rounded-t ${i === games.length - 1 ? "bg-brand" : "bg-brand/50"}`} style={{ height: `${((v ?? 0) / max) * 52}px` }} />
+                <span className="truncate text-[8px] text-muted-foreground">{g.opponent}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+          Share of his team&apos;s {pos === "RB" ? "carries and targets" : pos === "QB" ? "offense through the air" : "targets"} in each game — volume drives props more than anything, and it moves before the box score does.
+        </p>
+      </div>
+    </SheetSection>
+  );
+}
+
+function Sheet({ player, props, logs, volume, season, projection, modelWeights, defense, initialStat, side: initialSide, startLabel, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; defense: NflDefenseTable; initialStat: NflPropStat; side: PropDirection; startLabel: string; onClose: () => void }) {
   const [statKey, setStatKey] = useState(initialStat);
   const [side, setSide] = useState(initialSide);
   const prop = props.find((p) => p.stat === statKey) ?? props[0];
@@ -163,230 +232,174 @@ function Sheet({ player, props, logs, season, projection, modelWeights, initialS
   const consensus = propConsensusPoint(prop.quotes);
   const [pointByStat, setPointByStat] = useState<Partial<Record<NflPropStat, number>>>({});
   const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
-  const ctx = {
-    season,
-    venue: player.venue,
-    opponent: player.opponent?.abbreviation ?? null,
-    projection,
-    injury: player.injury?.level ?? null,
-    modelWeight: modelWeights[prop.stat],
-  };
-  const s = summarizeNflProp(prop, logs, stat, side, ctx, point);
+  const s = summarizeNflProp(prop, logs, stat, side, { season, venue: player.venue, opponent: player.opponent?.abbreviation ?? null, projection, injury: player.injury?.level ?? null, modelWeight: modelWeights[prop.stat] }, point);
   const books = booksAtPoint(prop.quotes, point, side);
   const pairs = twoSidedAt(prop.quotes, point);
   const fair = fairPrice(pairs);
   const bestBook = side === "over" ? s?.over?.bookKey : s?.under?.bookKey;
   const chartLogs = stat.available ? logs.filter(stat.available) : logs;
-
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-    };
-  }, [onClose]);
-
   const offered = NFL_PROP_STATS.filter((x) => props.some((p) => p.stat === x.key));
   const m = s?.model;
   const ev = m ? (side === "over" ? m.evOver : m.evUnder) : null;
+  const def = player.opponent ? nflStatMatchup(defense, player.opponent.abbreviation, stat, player.position) : null;
+  const h2h = s?.splits.find((x) => x.key === "h2h");
+  const volLabel = player.position === "QB" ? "Att" : player.position === "RB" ? "Car" : "Tgt";
+  const volOf = (l: NflLogPoint) => (player.position === "QB" ? l.passAttempts : player.position === "RB" ? l.rushAttempts : l.targets);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={`${player.name} props`}>
-      <button type="button" aria-label="Close" tabIndex={-1} className="absolute inset-0 bg-black/50 backdrop-blur-[2px] animate-in fade-in-0" onClick={onClose} />
-      <div className="relative max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-8 duration-200 sm:max-w-lg sm:rounded-2xl">
-        <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 pb-3 pt-2 backdrop-blur">
-          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-muted-foreground/30 sm:hidden" aria-hidden />
-          <div className="flex items-center gap-3">
-            <Logo sources={[player.headshotUrl]} alt={player.name} fallbackText={initials(player.name)} size={56} fit="cover" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-semibold text-foreground">
-                {player.name} {player.position && <span className="text-xs font-medium text-muted-foreground">{player.position}</span>}
-                <InjuryBadge injury={player.injury} />
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {player.venue === "home" ? "vs" : "@"} {player.opponent?.abbreviation} · {player.team?.name}
-              </p>
-            </div>
-            <button ref={closeRef} type="button" onClick={onClose} className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Close">
-              <svg viewBox="0 0 16 16" fill="none" className="size-4" aria-hidden>
-                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-          {offered.length > 1 && (
-            <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
-              {offered.map((x) => (
-                <button key={x.key} type="button" onClick={() => setStatKey(x.key)} className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${x.key === prop.stat ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-                  {x.shortLabel}
-                </button>
-              ))}
-            </div>
+    <PlayerSheet
+      name={player.name}
+      headshot={[player.headshotUrl]}
+      teamLogo={player.team?.logoUrl}
+      teamAbbr={player.team?.abbreviation}
+      tag={player.position}
+      badges={<InjuryBadge injury={player.injury} />}
+      sub={
+        <>
+          {player.opponent && (
+            <>
+              {player.venue === "home" ? "vs" : "@"}
+              <Logo sources={[player.opponent.logoUrl]} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
+              {player.opponent.abbreviation} ·{" "}
+            </>
           )}
-        </div>
+          {startLabel}
+        </>
+      }
+      stats={offered.map((x) => ({ key: x.key, label: x.shortLabel }))}
+      stat={prop.stat}
+      onStat={(k) => setStatKey(k as NflPropStat)}
+      onClose={onClose}
+    >
+      <LinePicker
+        label={stat.label}
+        value={stat.shape === "anytime" ? "Score a TD" : point}
+        side={side}
+        onSide={setSide}
+        sideLabels={sideLabelsOf(stat)}
+        ladder={stat.shape === "anytime" ? [] : (s?.points ?? []).map((p) => ({ point: p, main: p === consensus }))}
+        point={point}
+        onPoint={(p) => setPointByStat((v) => ({ ...v, [prop.stat]: p }))}
+      />
 
-        <div className="space-y-5 px-4 pb-8 pt-4">
-          <section className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
-              <p className="font-mono text-3xl font-semibold tracking-tight text-foreground">{stat.shape === "anytime" ? "Score a TD" : point}</p>
-            </div>
-            <div className="inline-flex rounded-lg bg-muted p-0.5">
-              {(["over", "under"] as const).map((x) => (
-                <button key={x} type="button" onClick={() => setSide(x)} className={`rounded-md px-3 py-1 text-xs font-semibold ${x === side ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}>
-                  {stat.shape === "anytime" ? (x === "over" ? "Yes" : "No") : x === "over" ? "Over" : "Under"}
-                </button>
-              ))}
-            </div>
-          </section>
+      {s?.projected && (
+        <ProjectedNote>
+          <span className="font-semibold">No book has posted this yet.</span>{" "}
+          {stat.shape === "anytime" ? "This is ARCHR's own read on a touchdown." : <>{point}{" "}is ARCHR&apos;s line — the projection to the nearest half-point.</>} Books post most of
+          the week&apos;s props midweek; their line and prices replace this the moment they do.
+        </ProjectedNote>
+      )}
 
-          {s?.projected && (
-            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs leading-relaxed text-foreground ring-1 ring-brand/30">
-              <span className="font-semibold">No book has posted this yet.</span>{" "}
-              {stat.shape === "anytime" ? "This is ARCHR's own read on a touchdown." : <>{point}{" "}is ARCHR&apos;s line — the projection to the nearest half-point.</>} Books post most
-              of the week&apos;s props midweek; their line and prices replace this the moment they do.
+      <SheetSection title={`${stat.label} by game`} brand>
+        <PropGameChart
+          logs={chartLogs.map((l) => ({ ...l, volume: volOf(l) }))}
+          value={(l) => stat.value(l)}
+          statShort={stat.shape === "anytime" ? "TD" : stat.shortLabel}
+          point={point}
+          side={side}
+          season={season}
+          projection={m?.projection.mean ?? null}
+          opponent={player.opponent?.abbreviation}
+          venue={player.venue}
+          volumeLabel={volLabel.toLowerCase()}
+          lineLabel={s?.projected ? "ARCHR line" : "Line"}
+        />
+      </SheetSection>
+
+      {player.injury?.level && (
+        <p className={`rounded-lg px-3 py-2 text-xs ${player.injury.level === "out" || player.injury.level === "doubtful" ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
+          <span className="font-semibold">{player.injury.status}</span>
+          {player.injury.detail ? ` — ${player.injury.detail}` : ""}.{" "}
+          {player.injury.level === "out" || player.injury.level === "doubtful" ? "No projection while he's listed this way; books usually pull his props." : "The projection's confidence is widened until he's cleared."}
+        </p>
+      )}
+
+      {m && (
+        <ProjectionCard
+          headline={stat.shape === "anytime" ? `${Math.round(m.probOver * 100)}%` : m.projection.mean.toFixed(digits(stat))}
+          unit={stat.shape === "anytime" ? "to score" : stat.shortLabel}
+          point={point}
+          probOver={m.probOver}
+          ev={ev}
+          sideLabels={stat.shape === "anytime" ? ["Yes", "No"] : ["O", "U"]}
+          factors={[
+            { label: "Games", value: String(m.projection.games) },
+            { label: "Matchup", value: `×${m.projection.matchupFactor.toFixed(2)}` },
+            { label: "Volume", value: `×${m.projection.env.volumeFactor.toFixed(2)}` },
+            { label: "Script", value: `×${m.projection.env.scriptFactor.toFixed(2)}` },
+          ]}
+          footnote={
+            <>
+              Recent per-game production steadied by two seasons, × matchup × game environment, then blended with the market.{" "}
+              <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
+                How accurate is it?
+              </Link>
+            </>
+          }
+        >
+          <BlendLine model={m} side={side} />
+          <SeasonMixLine seasons={m.projection.seasons} digits={stat.shape === "yards" ? 0 : stat.shape === "anytime" ? 2 : 1} />
+          <EnvLine
+            parts={[
+              ...(m.projection.env.impliedPoints !== null ? [`implied ${m.projection.env.impliedPoints.toFixed(1)} pts`] : []),
+              ...(m.projection.env.spread !== null ? [`spread ${signed(m.projection.env.spread)}`] : []),
+            ]}
+            effects={[
+              { label: "volume", factor: m.projection.env.volumeFactor },
+              { label: "script", factor: m.projection.env.scriptFactor },
+            ]}
+          />
+          {m.projection.absence && (
+            <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
+              <span className="font-semibold text-foreground">Without {m.projection.absence.names.join(" & ")}</span> (out this week): {m.projection.absence.games} games averaging{" "}
+              {m.projection.absence.perGame.toFixed(digits(stat))} — blended in.
             </p>
           )}
+        </ProjectionCard>
+      )}
 
-          <section>
-            <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
-              <span className="brand-slash" aria-hidden />
-              {stat.label} by game
-            </h3>
-            <PropGameChart
-              logs={chartLogs}
-              value={(l) => stat.value(l)}
-              statShort={stat.shape === "anytime" ? "TD" : stat.shortLabel}
-              point={point}
-              side={side}
-              season={season}
-              projection={s?.model?.projection.mean ?? null}
-              opponent={player.opponent?.abbreviation}
-              venue={player.venue}
-              lineLabel={s?.projected ? "ARCHR line" : "Line"}
-            />
-          </section>
-          {s && s.points.length > 1 && stat.shape !== "anytime" && (
-            <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
-              {s.points.map((p) => (
-                <button key={p} type="button" onClick={() => setPointByStat((v) => ({ ...v, [prop.stat]: p }))} className={`shrink-0 rounded-md border px-2.5 py-1 font-mono text-xs font-semibold ${p === point ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground"}`}>
-                  {p}
-                  {p === consensus && <span className="ml-1 font-sans text-[9px] font-medium text-muted-foreground">MAIN</span>}
-                </button>
-              ))}
-            </div>
-          )}
+      {s && (
+        <SheetSection title="Hit rates">
+          <SplitGrid splits={s.splits} />
+        </SheetSection>
+      )}
 
-          {player.injury?.level && (
-            <p className={`rounded-lg px-3 py-2 text-xs ${player.injury.level === "out" || player.injury.level === "doubtful" ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
-              <span className="font-semibold">{player.injury.status}</span>
-              {player.injury.detail ? ` — ${player.injury.detail}` : ""}.{" "}
-              {player.injury.level === "out" || player.injury.level === "doubtful"
-                ? "No projection while he's listed this way; books usually pull his props."
-                : "The projection's confidence is widened until he's cleared."}
-            </p>
-          )}
+      {player.position && ["QB", "RB", "WR", "TE"].includes(player.position) && <UsagePanel player={player} logs={logs} volume={volume} season={season} />}
 
-          {m && (
-            <section>
-              <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
-                <span className="brand-slash" aria-hidden />
-                ARCHR projection
-              </h3>
-              <div className="rounded-xl border border-border bg-card p-3.5">
-                <div className="flex items-end justify-between gap-3">
-                  <p className="font-mono text-3xl font-semibold leading-none text-foreground">
-                    {stat.shape === "anytime" ? `${Math.round(m.probOver * 100)}%` : m.projection.mean.toFixed(stat.shape === "yards" ? 0 : 1)}
-                    <span className="ml-1 font-sans text-xs font-semibold text-muted-foreground">{stat.shape === "anytime" ? "to score" : stat.shortLabel}</span>
-                  </p>
-                  <div className="text-right text-xs text-muted-foreground">
-                    {stat.shape !== "anytime" && (
-                      <p>
-                        at {point}: <span className="font-mono font-semibold text-foreground">O {Math.round(m.probOver * 100)}%</span> ·{" "}
-                        <span className="font-mono font-semibold text-foreground">U {Math.round(m.probUnder * 100)}%</span>
-                      </p>
-                    )}
-                    {ev !== null && (
-                      <p className={`mt-1 font-mono text-sm font-bold ${ev >= MODEL_EV_FLAG ? "text-emerald-600 dark:text-brand" : "text-muted-foreground"}`}>
-                        {ev >= 0 ? "+" : ""}
-                        {(ev * 100).toFixed(1)}% model EV
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <BlendLine model={m} side={side} />
-                <SeasonMixLine seasons={m.projection.seasons} digits={stat.shape === "yards" ? 0 : stat.shape === "anytime" ? 2 : 1} />
-                <EnvLine
-                  parts={[
-                    ...(m.projection.env.impliedPoints !== null ? [`implied ${m.projection.env.impliedPoints.toFixed(1)} pts`] : []),
-                    ...(m.projection.env.spread !== null ? [`spread ${signed(m.projection.env.spread)}`] : []),
-                  ]}
-                  effects={[
-                    { label: "volume", factor: m.projection.env.volumeFactor },
-                    { label: "script", factor: m.projection.env.scriptFactor },
-                  ]}
-                />
-                {m.projection.absence && (
-                  <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
-                    <span className="font-semibold text-foreground">Without {m.projection.absence.names.join(" & ")}</span> (out this week):{" "}
-                    {m.projection.absence.games} games averaging {m.projection.absence.perGame.toFixed(stat.shape === "yards" ? 0 : 1)} — blended in.
-                  </p>
-                )}
-                <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
-                  Recent per-game production steadied by two seasons, × matchup {m.projection.matchupFactor.toFixed(2)} × game environment, from {m.projection.games}{" "}games, then
-                  blended with the market.{" "}
-          <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
-            How accurate is it?
-          </Link>
-                </p>
-              </div>
-            </section>
-          )}
+      <SheetSection title="Matchup">
+        <MatchupFacts
+          rows={[
+            ...(def
+              ? [
+                  {
+                    label: `${player.opponent?.abbreviation} vs ${def.position}s`,
+                    value: `${ordinal(def.rank)} of ${def.of}`,
+                    note: `${def.perGame.toFixed(1)} ${stat.shortLabel.toLowerCase()} allowed per game`,
+                    tone: (() => {
+                      const g = matchupGrade(def.rank, def.of, side);
+                      return g === "great" || g === "good" ? ("good" as const) : g === "neutral" ? ("neutral" as const) : ("bad" as const);
+                    })(),
+                  },
+                ]
+              : []),
+            ...(h2h && h2h.rate.sampleSize > 0 ? [{ label: `Career vs ${player.opponent?.abbreviation}`, value: formatRate(h2h.rate), note: `${h2h.rate.hits}/${h2h.rate.sampleSize} · avg ${h2h.avg?.toFixed(digits(stat)) ?? "—"}` }] : []),
+            ...(m?.projection.env.impliedPoints != null ? [{ label: "Implied team points", value: m.projection.env.impliedPoints.toFixed(1) }] : []),
+          ]}
+        />
+      </SheetSection>
 
-          {s && (
-            <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hit rates</h3>
-              <SplitGrid splits={s.splits} />
-            </section>
-          )}
+      <BooksTable point={point} books={books} pairs={pairs} side={side} bestBook={bestBook} fairProbOver={fair?.probA ?? null} projected={!!s?.projected} sideLabels={sideLabelsOf(stat)} />
 
-          <section>
-            <div className="mb-2 flex items-baseline justify-between gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Every book</h3>
-              {fair && (
-                <span className="text-[11px] text-muted-foreground">
-                  Fair <span className="font-mono font-semibold text-foreground">{sideLabel(stat, "over")} {toAmerican(fair.probA)} · {sideLabel(stat, "under")} {toAmerican(1 - fair.probA)}</span>
-                </span>
-              )}
-            </div>
-            {books.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{s?.projected ? "Books haven't posted this prop yet — every book's price lands here when they do." : "No book prices this number."}</p>
-            ) : (
-              <ul className="divide-y divide-border rounded-xl border border-border">
-                {books.map((b) => (
-                  <li key={b.bookKey} className={`grid grid-cols-[1fr_5.75rem_5.75rem] items-center px-3 py-2 ${b.bookKey === bestBook ? "bg-emerald-500/10" : ""} ${b.bettable ? "" : "opacity-60"}`}>
-                    <span className="flex min-w-0 items-center gap-2 text-sm">
-                      <BookBadge bookKey={b.bookKey} bookName={b.bookName} size={20} />
-                      <span className="truncate">{b.bookName}</span>
-                    </span>
-                    {(["over", "under"] as const).map((x) => (
-                      <span key={x} className={`flex items-center justify-end gap-1 font-mono text-sm ${x === side ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-                        {x === side && b[x] !== null && b.bettable && <EvTag value={valueOf(pairs, x === "over" ? "A" : "B", b[x]!, b.bookKey)} className="text-[9px]" />}
-                        {b[x] === null ? "—" : formatAmerican(b[x]!)}
-                      </span>
-                    ))}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
+      <RecentGames
+        rows={chartLogs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, volume: volOf(l), value: stat.value(l) }))}
+        statShort={stat.shape === "anytime" ? "TD" : stat.shortLabel}
+        volumeLabel={volLabel}
+        point={point}
+        side={side}
+      />
+
+      <SheetFooter />
+    </PlayerSheet>
   );
 }
 
@@ -432,76 +445,43 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
     return sortNflSummaries(out, sort, side);
   }, [slate, logs, statKey, stat, side, sort, gameId, query]);
   const posted = summaries.filter((s) => !s.projected).length;
-
   const openPlayer = open ? slate.players[open] : null;
 
   return (
     <>
-      <div className="sticky top-[45px] z-10 -mx-4 mt-4 border-b border-border bg-background/90 px-4 pb-2.5 pt-2.5 backdrop-blur-md">
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]" role="tablist" aria-label="Stat">
-          {NFL_PROP_STATS.filter((x) => counts.get(x.key)).map((x) => (
-            <button key={x.key} type="button" role="tab" aria-selected={x.key === statKey} onClick={() => setStatKey(x.key)} className={chip(x.key === statKey)}>
-              {x.shortLabel}
-              <span className="ml-1 font-normal opacity-60">{counts.get(x.key)}</span>
-            </button>
-          ))}
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <div className="inline-flex shrink-0 rounded-lg bg-muted p-0.5">
-            {(["over", "under"] as const).map((x) => (
-              <button key={x} type="button" onClick={() => setSide(x)} className={`rounded-md px-3 py-1 text-xs font-semibold ${x === side ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}>
-                {stat.shape === "anytime" ? (x === "over" ? "Yes" : "No") : x === "over" ? "Over" : "Under"}
-              </button>
-            ))}
-          </div>
-          <select value={sort} onChange={(e) => setSort(e.target.value as NflPropSort)} className="h-7 rounded-lg bg-muted px-2 text-xs font-semibold text-foreground" aria-label="Sort">
-            {SORTS.map((x) => (
-              <option key={x.key} value={x.key}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Player" className="h-7 min-w-0 flex-1 rounded-lg bg-muted px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none" />
-        </div>
-      </div>
+      <PropsControls
+        stats={NFL_PROP_STATS.filter((x) => counts.get(x.key) || x.key === statKey).map((x) => ({ key: x.key, label: x.shortLabel, count: counts.get(x.key) }))}
+        stat={statKey}
+        onStat={setStatKey}
+        side={side}
+        onSide={setSide}
+        sideLabels={sideLabelsOf(stat)}
+        sorts={SORTS}
+        sort={sort}
+        onSort={setSort}
+        query={query}
+        onQuery={setQuery}
+      />
 
-      {!lockGame && slate.games.length > 1 && (
-        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-          <button type="button" onClick={() => setGameId(null)} className={chip(gameId === null)}>
-            All games
-          </button>
-          {slate.games.map((g) => (
-            <button key={g.id} type="button" onClick={() => setGameId(g.id === gameId ? null : g.id)} className={`${chip(g.id === gameId)} inline-flex items-center gap-1.5`}>
-              <Logo sources={[g.away.logoUrl]} alt={g.away.name} fallbackText={g.away.abbreviation} size={16} />
-              {g.away.abbreviation}
-              <span className="opacity-50">@</span>
-              <Logo sources={[g.home.logoUrl]} alt={g.home.name} fallbackText={g.home.abbreviation} size={16} />
-              {g.home.abbreviation}
-              <span className="font-normal opacity-60">{kickoff(g.startUtc)}</span>
-            </button>
-          ))}
-        </div>
+      {!lockGame && (
+        <GameChips games={slate.games.map((g) => ({ id: g.id, away: g.away, home: g.home, start: kickoff(g.startUtc) }))} active={gameId} onSelect={setGameId} />
       )}
 
       {summaries.length > 0 && (
-        <p className="mt-4 text-xs text-muted-foreground">
+        <ListNote>
           {posted > 0
-            ? `${posted} ${stat.label} ${posted === 1 ? "prop" : "props"} posted · tap a player for every game, line and book`
+            ? `${posted} ${stat.label} ${posted === 1 ? "prop" : "props"} posted · ${side === "over" ? "Over" : "Under"} hit rates at each player's main line · tap a player for every game, line and book`
             : `Books haven't posted ${stat.label.toLowerCase()} props yet — below is ARCHR's line for every player with a role. Tap one for every game against it.`}
-        </p>
+        </ListNote>
       )}
       {summaries.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-muted-foreground">No {stat.label.toLowerCase()} props{query ? ` match “${query}”` : " priced"}.</p>
+        <EmptyList title={query ? `No ${stat.label.toLowerCase()} props match “${query}”` : `No ${stat.label.toLowerCase()} props priced`} hint={`Try another stat${slate.games.length > 1 ? " or game" : ""}.`} />
       ) : (
         <ul className="mt-3 flex flex-col gap-2.5">
           {summaries.map((s, i) => (
             <Fragment key={s.playerId}>
-              {s.projected && posted > 0 && (i === 0 || !summaries[i - 1]!.projected) && (
-                <li className="mt-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <span className="brand-slash" aria-hidden /> ARCHR lines · books haven&apos;t posted these yet
-                </li>
-              )}
-              <PropCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} onOpen={() => setOpen(s.playerId)} />
+              {s.projected && posted > 0 && (i === 0 || !summaries[i - 1]!.projected) && <ProjectedDivider />}
+              <NflCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} onOpen={() => setOpen(s.playerId)} />
             </Fragment>
           ))}
         </ul>
@@ -513,11 +493,17 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           player={openPlayer}
           props={slate.props.filter((p) => p.playerId === openPlayer.id)}
           logs={logs[openPlayer.id] ?? []}
+          volume={slate.usage?.[openPlayer.id] ?? []}
           season={slate.season}
           projection={nflProjectionContext(slate, openPlayer)}
           modelWeights={slate.modelWeights}
+          defense={slate.defense}
           initialStat={statKey}
           side={side}
+          startLabel={(() => {
+            const g = gameById.get(openPlayer.gameId);
+            return g ? `${kickoff(g.startUtc)} ET` : "";
+          })()}
           onClose={close}
         />
       )}

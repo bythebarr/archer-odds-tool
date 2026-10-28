@@ -1,13 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { formatAmerican } from "@/lib/odds/americanOdds";
+import { useMemo, useState } from "react";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
-import { fairPrice, valueOf } from "@/lib/odds/marketValue";
-import { decimalToAmerican } from "@/lib/odds/americanOdds";
-import { EvTag } from "@/components/EvTag";
+import { fairPrice } from "@/lib/odds/marketValue";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import type { ProjectionContext } from "@/lib/nba/projection";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
@@ -15,124 +12,55 @@ import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import { Logo } from "@/components/Logo";
 import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
-import { BookBadge } from "@/components/BookBadge";
+import { BooksTable, LinePicker, PlayerSheet, ProjectedNote, ProjectionCard, RecentGames, SheetFooter, SheetSection } from "@/components/props/kit";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import { MatchupPanel, SplitGrid } from "./Matchup";
 import type { DefenseTable } from "@/lib/nba/matchup";
-
-function initials(name: string): string {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2);
-}
-
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { key: T; label: string }[];
-  value: T;
-  onChange: (key: T) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-lg bg-muted p-0.5">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          onClick={() => onChange(o.key)}
-          className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-            o.key === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Factor({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
-      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="font-mono text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  );
-}
 
 /** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
 function ProjectionPanel({ model, point, side, statShort, milestone = false }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean }) {
   const p = model.projection;
   const ev = side === "over" ? model.evOver : model.evUnder;
-  const pct = (x: number) => `${Math.round(x * 100)}%`;
   const mult = (x: number) => `×${x.toFixed(2)}`;
   return (
-    <section>
-      <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
-        <span className="brand-slash" aria-hidden />
-        ARCHR projection
-      </h3>
-      <div className="rounded-xl border border-border bg-card p-3.5">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="font-mono text-3xl font-semibold leading-none tracking-tight text-foreground">
-              {milestone ? `${Math.round(model.probOver * 100)}%` : p.mean.toFixed(1)}
-              <span className="ml-1 font-sans text-xs font-semibold text-muted-foreground">{milestone ? `${statShort} chance` : statShort}</span>
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {milestone ? "10+ in enough of PTS · REB · AST · STL · BLK" : `± ${p.sd.toFixed(1)} typical swing`}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-muted-foreground">
-              at {point}: <span className="font-mono font-semibold text-foreground">O {pct(model.probOver)}</span> ·{" "}
-              <span className="font-mono font-semibold text-foreground">U {pct(model.probUnder)}</span>
-            </p>
-            {ev !== null && (
-              <p className={`mt-1 font-mono text-sm font-bold ${ev >= 0.03 ? "text-emerald-600 dark:text-brand" : ev < 0 ? "text-muted-foreground" : "text-foreground"}`}>
-                {ev >= 0 ? "+" : ""}
-                {(ev * 100).toFixed(1)}% model EV
-              </p>
-            )}
-          </div>
-        </div>
-        <BlendLine model={model} side={side} />
-        <SeasonMixLine seasons={p.seasons} />
-        <EnvLine
-          parts={[
-            ...(p.env.total !== null ? [`total ${p.env.total}`] : []),
-            ...(p.env.spread !== null ? [`spread ${signed(p.env.spread)}`] : []),
-          ]}
-          effects={[
-            { label: "production", factor: p.env.totalFactor },
-            { label: "minutes", factor: p.env.minutesFactor },
-          ]}
-        />
-        {p.absence && (
-          <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
-            <span className="font-semibold text-foreground">Without {p.absence.names.join(" & ")}</span> (out tonight): {p.absence.games}{" "}
-            games, {p.absence.minutes.toFixed(1)} min, {p.absence.perMinute.toFixed(2)} {statShort}/min — blended into the numbers below.
-          </p>
-        )}
-        <div className="mt-3 grid grid-cols-4 gap-1.5">
-          <Factor label="Minutes" value={p.minutes.toFixed(1)} />
-          <Factor label={`${statShort}/min`} value={p.perMinute.toFixed(2)} />
-          <Factor label="Matchup" value={mult(p.matchupFactor)} />
-          {p.env.total !== null ? <Factor label="Game total" value={mult(p.env.totalFactor)} /> : <Factor label="Pace" value={mult(p.paceFactor)} />}
-        </div>
-        <p className="mt-2.5 text-[10px] leading-relaxed text-muted-foreground">
-          Expected minutes × per-minute production × matchup × game environment, from {p.games}{" "}logged games, then blended with the
-          market.{" "}
+    <ProjectionCard
+      headline={milestone ? `${Math.round(model.probOver * 100)}%` : p.mean.toFixed(1)}
+      unit={milestone ? `${statShort} chance` : statShort}
+      swing={milestone ? "10+ in enough of PTS · REB · AST · STL · BLK" : `± ${p.sd.toFixed(1)} typical swing`}
+      point={point}
+      probOver={model.probOver}
+      ev={ev}
+      factors={[
+        { label: "Minutes", value: p.minutes.toFixed(1) },
+        { label: `${statShort}/min`, value: p.perMinute.toFixed(2) },
+        { label: "Matchup", value: mult(p.matchupFactor) },
+        p.env.total !== null ? { label: "Game total", value: mult(p.env.totalFactor) } : { label: "Pace", value: mult(p.paceFactor) },
+      ]}
+      footnote={
+        <>
+          Expected minutes × per-minute production × matchup × game environment, from {p.games}{" "}logged games, then blended with the market.{" "}
           <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
             How accurate is it?
           </Link>
+        </>
+      }
+    >
+      <BlendLine model={model} side={side} />
+      <SeasonMixLine seasons={p.seasons} />
+      <EnvLine
+        parts={[...(p.env.total !== null ? [`total ${p.env.total}`] : []), ...(p.env.spread !== null ? [`spread ${signed(p.env.spread)}`] : [])]}
+        effects={[
+          { label: "production", factor: p.env.totalFactor },
+          { label: "minutes", factor: p.env.minutesFactor },
+        ]}
+      />
+      {p.absence && (
+        <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
+          <span className="font-semibold text-foreground">Without {p.absence.names.join(" & ")}</span> (out tonight): {p.absence.games}{" "}
+          games, {p.absence.minutes.toFixed(1)} min, {p.absence.perMinute.toFixed(2)} {statShort}/min — blended into the numbers below.
         </p>
-      </div>
-    </section>
+      )}
+    </ProjectionCard>
   );
 }
 
@@ -195,287 +123,109 @@ export function PlayerPropSheet({
   const fair = fairPrice(pairs);
   const bestBook = side === "over" ? summary?.over?.bookKey : summary?.under?.bookKey;
 
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-    };
-  }, [onClose]);
-
   const statsOffered = NBA_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
   const chartLogs = useMemo(() => logs.map((l) => ({ ...l, volume: l.minutes })), [logs]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={`${player.name} props`}>
-      <button
-        type="button"
-        aria-label="Close"
-        tabIndex={-1}
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px] animate-in fade-in-0"
-        onClick={onClose}
+    <PlayerSheet
+      name={player.name}
+      headshot={[player.headshotUrl]}
+      teamLogo={player.team?.logoUrl}
+      teamAbbr={player.team?.abbreviation}
+      badges={<InjuryBadge injury={player.injury} />}
+      sub={
+        <>
+          {player.opponent && (
+            <>
+              {player.venue === "home" ? "vs" : "@"}
+              <Logo sources={[player.opponent.logoUrl]} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
+              {player.opponent.abbreviation} ·{" "}
+            </>
+          )}
+          {startLabel}
+        </>
+      }
+      stats={statsOffered.map((s) => ({ key: s.key, label: s.shortLabel }))}
+      stat={prop.stat}
+      onStat={(k) => setStat(k as NbaPropStat)}
+      onClose={onClose}
+    >
+      <LinePicker
+        label={statDef.label}
+        value={point}
+        side={side}
+        onSide={setSide}
+        ladder={(summary?.points ?? []).map((p) => ({ point: p, main: p === consensus }))}
+        point={point}
+        onPoint={(p) => setPointByStat((m) => ({ ...m, [prop.stat]: p }))}
       />
-      <div className="relative max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-8 duration-200 sm:max-w-lg sm:rounded-2xl sm:slide-in-from-bottom-0 sm:zoom-in-95">
-        <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 pb-3 pt-2 backdrop-blur">
-          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-muted-foreground/30 sm:hidden" aria-hidden />
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Logo sources={[player.headshotUrl]} alt={player.name} fallbackText={initials(player.name)} size={56} fit="cover" />
-              {player.team && (
-                <span className="absolute -bottom-1 -right-1">
-                  <Logo sources={[player.team.logoUrl]} alt={player.team.name} fallbackText={player.team.abbreviation} size={22} />
-                </span>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-semibold text-foreground">
-                {player.name}
-                <InjuryBadge injury={player.injury} />
-              </p>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {player.opponent && (
-                  <>
-                    {player.venue === "home" ? "vs" : "@"}
-                    <Logo sources={[player.opponent.logoUrl]} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
-                    {player.opponent.abbreviation} ·{" "}
-                  </>
-                )}
-                {startLabel}
-              </p>
-            </div>
-            <button
-              ref={closeRef}
-              type="button"
-              onClick={onClose}
-              className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Close"
-            >
-              <svg viewBox="0 0 16 16" fill="none" className="size-4" aria-hidden>
-                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-          {statsOffered.length > 1 && (
-            <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
-              {statsOffered.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setStat(s.key)}
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    s.key === prop.stat ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {s.shortLabel}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
 
-        <div className="space-y-5 px-4 pb-8 pt-4">
-          <section>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs text-muted-foreground">{statDef.label}</p>
-                <p className="font-mono text-3xl font-semibold tracking-tight text-foreground">{point}</p>
-              </div>
-              <Segmented
-                options={[
-                  { key: "over", label: "Over" },
-                  { key: "under", label: "Under" },
-                ]}
-                value={side}
-                onChange={setSide}
-              />
-            </div>
-            {summary && summary.points.length > 1 && (
-              <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]" aria-label="Lines">
-                {summary.points.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setPointByStat((m) => ({ ...m, [prop.stat]: p }))}
-                    className={`shrink-0 rounded-md border px-2.5 py-1 font-mono text-xs font-semibold transition-colors ${
-                      p === point
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {p}
-                    {p === consensus && <span className="ml-1 font-sans text-[9px] font-medium text-muted-foreground">MAIN</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
+      {summary?.projected && (
+        <ProjectedNote>
+          <span className="font-semibold">No book has posted this yet.</span> {point}{" "}is ARCHR&apos;s line — the projection to the nearest half-point. Books
+          usually post NBA props the morning of the game; their line and prices replace this the moment they do.
+        </ProjectedNote>
+      )}
 
-          {summary?.projected && (
-            <p className="rounded-lg bg-brand/10 px-3 py-2 text-xs leading-relaxed text-foreground ring-1 ring-brand/30">
-              <span className="font-semibold">No book has posted this yet.</span> {point}{" "}is ARCHR&apos;s line — the projection to the nearest
-              half-point. Books usually post NBA props the morning of the game; their line and prices replace this the moment they do.
-            </p>
-          )}
+      <SheetSection title={`${statDef.label} by game`} brand>
+        <PropGameChart
+          logs={chartLogs}
+          value={(l) => statDef.value(l)}
+          statShort={statDef.shortLabel}
+          point={point}
+          side={side}
+          season={season}
+          projection={summary?.model?.projection.mean ?? null}
+          opponent={player.opponent?.abbreviation}
+          venue={player.venue}
+          volumeLabel="min"
+          lineLabel={summary?.projected ? "ARCHR line" : "Line"}
+        />
+      </SheetSection>
 
-          <section>
-            <h3 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
-              <span className="brand-slash" aria-hidden />
-              {statDef.label} by game
-            </h3>
-            <PropGameChart
-              logs={chartLogs}
-              value={(l) => statDef.value(l)}
-              statShort={statDef.shortLabel}
-              point={point}
-              side={side}
-              season={season}
-              projection={summary?.model?.projection.mean ?? null}
-              opponent={player.opponent?.abbreviation}
-              venue={player.venue}
-              volumeLabel="min"
-              lineLabel={summary?.projected ? "ARCHR line" : "Line"}
-            />
-          </section>
+      {player.injury?.level && (
+        <p className={`rounded-lg px-3 py-2 text-xs ${player.injury.level === "out" || player.injury.level === "doubtful" ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
+          <span className="font-semibold">{player.injury.status}</span>
+          {player.injury.detail ? ` — ${player.injury.detail}` : ""}.{" "}
+          {player.injury.level === "out" || player.injury.level === "doubtful"
+            ? "No projection while he's listed this way; books usually pull his props."
+            : "The projection's confidence is widened until he's cleared."}
+        </p>
+      )}
 
-          {player.injury?.level && (
-            <p className={`rounded-lg px-3 py-2 text-xs ${player.injury.level === "out" || player.injury.level === "doubtful" ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
-              <span className="font-semibold">{player.injury.status}</span>
-              {player.injury.detail ? ` — ${player.injury.detail}` : ""}.{" "}
-              {player.injury.level === "out" || player.injury.level === "doubtful"
-                ? "No projection while he's listed this way; books usually pull his props."
-                : "The projection's confidence is widened until he's cleared."}
-            </p>
-          )}
+      {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} />}
 
-          {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} />}
+      {summary && (
+        <SheetSection title="Hit rates">
+          <SplitGrid splits={summary.splits} />
+        </SheetSection>
+      )}
 
-          {summary && (
-            <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hit rates</h3>
-              <SplitGrid splits={summary.splits} />
-            </section>
-          )}
+      {summary && (
+        <SheetSection title="Matchup">
+          <MatchupPanel
+            defense={defense}
+            player={player}
+            stat={statDef}
+            side={side}
+            h2h={summary.splits.find((sp) => sp.key === "h2h")}
+            minutesL5={summary.avgMinutesL5}
+            minutesSeason={summary.avgMinutesSeason}
+          />
+        </SheetSection>
+      )}
 
-          {summary && (
-            <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Matchup</h3>
-              <MatchupPanel
-                defense={defense}
-                player={player}
-                stat={statDef}
-                side={side}
-                h2h={summary.splits.find((sp) => sp.key === "h2h")}
-                minutesL5={summary.avgMinutesL5}
-                minutesSeason={summary.avgMinutesSeason}
-              />
-            </section>
-          )}
+      <BooksTable point={point} books={books} pairs={pairs} side={side} bestBook={bestBook} fairProbOver={fair?.probA ?? null} projected={!!summary?.projected} />
 
-          <section>
-            <div className="mb-2 flex items-baseline justify-between gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Every book at {point}</h3>
-              {fair && (
-                <span className="text-[11px] text-muted-foreground" title="The market's no-vig price: every book's two sides with the margin removed, averaged">
-                  Fair{" "}
-                  <span className="font-mono font-semibold text-foreground">
-                    O {formatAmerican(Math.round(decimalToAmerican(1 / fair.probA)))} · U{" "}
-                    {formatAmerican(Math.round(decimalToAmerican(1 / (1 - fair.probA))))}
-                  </span>
-                </span>
-              )}
-            </div>
-            {books.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{summary?.projected ? "Books haven't posted this prop yet — every book's price lands here when they do." : "No book prices this number."}</p>
-            ) : (
-              <ul className="divide-y divide-border rounded-xl border border-border">
-                <li className="grid grid-cols-[1fr_5.75rem_5.75rem] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <span>Book</span>
-                  <span className="text-right">Over</span>
-                  <span className="text-right">Under</span>
-                </li>
-                {books.map((b) => {
-                  const best = b.bookKey === bestBook;
-                  return (
-                    <li
-                      key={b.bookKey}
-                      className={`grid grid-cols-[1fr_5.75rem_5.75rem] items-center px-3 py-2 ${best ? "bg-emerald-500/10" : ""} ${b.bettable ? "" : "opacity-60"}`}
-                    >
-                      <span className="flex min-w-0 items-center gap-2 text-sm">
-                        <BookBadge bookKey={b.bookKey} bookName={b.bookName} size={20} />
-                        <span className="truncate">{b.bookName}</span>
-                        {best && (
-                          <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white dark:bg-emerald-500">
-                            Best
-                          </span>
-                        )}
-                        {!b.bettable && <span className="text-[10px] text-muted-foreground">sharp ref</span>}
-                      </span>
-                      {(["over", "under"] as const).map((s) => (
-                        <span
-                          key={s}
-                          className={`flex items-center justify-end gap-1 text-right font-mono text-sm ${s === side ? "font-semibold text-foreground" : "text-muted-foreground"}`}
-                        >
-                          {s === side && b[s] !== null && b.bettable && (
-                            <EvTag value={valueOf(pairs, s === "over" ? "A" : "B", b[s]!, b.bookKey)} className="text-[9px]" />
-                          )}
-                          {b[s] === null ? "—" : formatAmerican(b[s]!)}
-                        </span>
-                      ))}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+      <RecentGames
+        rows={logs.map((g) => ({ date: g.date, opponent: g.opponent, isHome: g.isHome, volume: g.minutes, value: statDef.value(g) }))}
+        statShort={statDef.shortLabel}
+        volumeLabel="Min"
+        point={point}
+        side={side}
+      />
 
-          <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last 10 games</h3>
-            {logs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No games logged yet.</p>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    <th className="pb-1 text-left font-medium">Date</th>
-                    <th className="pb-1 text-left font-medium">Opp</th>
-                    <th className="pb-1 text-right font-medium">Min</th>
-                    <th className="pb-1 text-right font-medium">{statDef.shortLabel}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {logs.slice(0, 10).map((g, i) => {
-                    const value = statDef.value(g);
-                    const cashed = side === "over" ? value > point : value < point;
-                    return (
-                      <tr key={`${g.date}-${i}`}>
-                        <td className="py-1.5 text-muted-foreground">{g.date.slice(5).replace("-", "/")}</td>
-                        <td className="py-1.5">
-                          {g.isHome ? "vs" : "@"} {g.opponent}
-                        </td>
-                        <td className="py-1.5 text-right font-mono text-muted-foreground">{g.minutes}</td>
-                        <td className="py-1.5 text-right font-mono font-semibold">
-                          <span className={cashed ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}>{value}</span>
-                          <span className="ml-1 text-[10px] text-muted-foreground">{cashed ? "✓" : "✕"}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Hit rates are history, not a projection. Best price is among books you can bet; sharp reference books are shown
-            for comparison only.
-          </p>
-        </div>
-      </div>
-    </div>
+      <SheetFooter />
+    </PlayerSheet>
   );
 }
