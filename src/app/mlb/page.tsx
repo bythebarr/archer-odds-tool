@@ -8,6 +8,7 @@ import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { MlbBoard } from "@/components/MlbBoard";
 import { SportPage } from "@/components/book/SportPage";
 import { DateNav } from "@/components/DateNav";
+import { SportTabs } from "@/components/book/SportTabs";
 import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { getFeedFreshness } from "@/lib/freshness";
@@ -58,6 +59,14 @@ export default async function MlbPage({
   return (
     <SportPage sport="mlb" width="3xl" description="The day's games at their best price — tap in to shop every book. Or flip to All lines to scan the whole slate.">
 
+      <div className="mt-3">
+        <SportTabs
+          tabs={[
+            { label: "Game Lines", href: "/mlb", active: true },
+            { label: "Player Props", href: "/mlb/props", active: false },
+          ]}
+        />
+      </div>
       <DateNav basePath="/mlb" date={date} />
 
       {gamesWithLines.length === 0 ? (

@@ -4,11 +4,13 @@
  * one implementation of the throttling, logging, and failure reporting.
  */
 import { checkCronAuth } from "@/lib/cronAuth";
-import { decideFixedCadencePoll, recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
+import { prisma } from "@/lib/prisma";
+import { decideFixedCadencePoll, recordPollLog, shouldPollNow, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { classifyFetchStore, ingestHttpStatus, sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 import { pollAndStoreTeamLeagueOdds } from "./ingest";
 import { syncAndGradeTeamLeagueResults } from "./results";
 import { syncTeamLeagueSchedule } from "./schedule";
+import { purgePreseason } from "./preseason";
 import type { TeamLeague } from "./league";
 
 /**
@@ -33,9 +35,21 @@ async function runRideAlong(job: RideAlongJob | undefined): Promise<{ also?: unk
  * tick, before the throttle and before any keyed provider, so the schedule
  * shows up even when odds can't be fetched. Never throws.
  */
-async function refreshSchedule(league: TeamLeague): Promise<{ schedule: unknown }> {
+async function refreshSchedule(league: TeamLeague): Promise<{ schedule: unknown; preseason?: unknown }> {
   try {
-    return { schedule: await syncTeamLeagueSchedule(league) };
+    const schedule = await syncTeamLeagueSchedule(league);
+    // Preseason games stored before the scoreboard filter (or by a book that hung
+    // them) are swept out every six hours; outside preseason months it costs nothing.
+    const purgeJob = `preseason-purge-${league.sport}`;
+    const last = await prisma.pollLog.findUnique({ where: { jobName: purgeJob } });
+    // Not decideFixedCadencePoll: this is free (ESPN), so the odds-credit guard doesn't apply.
+    if (shouldPollNow(last?.lastPolledAt ?? null, 360)) {
+      // The first sweep reaches back four seasons; after that, the last 45 days.
+      const preseason = await purgePreseason(league, last ? 45 : 1500);
+      await recordPollLog(purgeJob, `ok: ${JSON.stringify(preseason)}`);
+      return { schedule, preseason };
+    }
+    return { schedule };
   } catch (error) {
     return { schedule: { status: "error", error: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)) } };
   }

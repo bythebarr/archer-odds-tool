@@ -12,6 +12,7 @@ import { fetchOdds, type OddsApiEvent, type OddsApiMarketKey } from "@/lib/odds/
 import { storeBookmakerOdds } from "@/lib/odds/storeOdds";
 import type { LeagueTeamInfo, TeamLeague } from "./league";
 import { findGameByTeamsOnDay } from "./schedule";
+import { isPreseasonMatchup } from "./preseason";
 
 /**
  * Spreads and totals are the spine of both leagues — the opposite weighting to
@@ -74,6 +75,9 @@ async function upsertGameForEvent(
   if (scheduled && !scheduled.oddsApiEventId) {
     return prisma.game.update({ where: { id: scheduled.id }, data: { oddsApiEventId: event.id, scheduledStartUtc: startUtc } });
   }
+
+  // Books hang preseason lines; we don't carry exhibitions (see preseason.ts).
+  if (await isPreseasonMatchup(league, home, away, startUtc)) return null;
 
   const [homeTeam, awayTeam] = await Promise.all([
     upsertTeam(home, event.home_team),
@@ -142,6 +146,7 @@ export async function pollAndStoreTeamLeagueOdds(league: TeamLeague): Promise<Po
     }
 
     const game = await upsertGameForEvent(league, event, home, away);
+    if (!game) continue; // a preseason exhibition
     gamesStored++;
     snapshotsWritten += await storeBookmakerOdds(game.id, event.home_team, event.away_team, event.bookmakers);
   }

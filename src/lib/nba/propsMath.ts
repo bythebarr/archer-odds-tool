@@ -64,7 +64,7 @@ export interface SlateProp {
 export type PropSort = "hitRate" | "margin" | "price" | "value" | "model";
 
 /** Every window a prop's history is cut by, in display order. */
-export type SplitKey = "l3" | "l5" | "l10" | "l15" | "l20" | "season" | "lastSeason" | "venue" | "h2h";
+export type SplitKey = "l3" | "l5" | "l10" | "l15" | "l20" | "season" | "lastSeason" | "venue" | "hand" | "h2h";
 
 export interface PropSplit {
   key: SplitKey;

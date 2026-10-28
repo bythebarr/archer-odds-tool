@@ -33,6 +33,13 @@ export interface EspnTeamResult {
   /** Points per period (quarters, then overtime); empty when ESPN sends none. */
   homePeriods: number[];
   awayPeriods: number[];
+  /** ESPN's season type: 1 preseason, 2 regular season, 3 postseason (null when not sent). */
+  seasonType: number | null;
+}
+
+/** Exhibitions: preseason (and anything ESPN files under the off-season). Never a game we count. */
+export function isExhibition(r: Pick<EspnTeamResult, "seasonType">): boolean {
+  return r.seasonType === 1 || r.seasonType === 4;
 }
 
 /** Minimal shape of the bits we read — ESPN sends far more than this. */
@@ -40,6 +47,7 @@ interface EspnScoreboardResponse {
   events?: {
     id?: string;
     date?: string;
+    season?: { type?: number };
     competitions?: {
       status?: { type?: { completed?: boolean } };
       competitors?: {
@@ -111,6 +119,7 @@ export function parseScoreboard(payload: unknown): EspnTeamResult[] {
       completed,
       homePeriods: periods(home?.linescores),
       awayPeriods: periods(away?.linescores),
+      seasonType: typeof event.season?.type === "number" ? event.season.type : null,
     });
   }
 
@@ -120,12 +129,16 @@ export function parseScoreboard(payload: unknown): EspnTeamResult[] {
 /**
  * Fetches one ET date's scoreboard for a league path such as "football/nfl" or
  * "basketball/nba". Throws on a non-OK response so the caller can log and retry.
+ *
+ * Preseason games are dropped unless asked for: they never enter the schedule,
+ * results, records, models or player logs (only the preseason purge reads them).
  */
-export async function fetchEspnScoreboard(path: string, dateEt: string): Promise<EspnTeamResult[]> {
+export async function fetchEspnScoreboard(path: string, dateEt: string, { includeExhibitions = false } = {}): Promise<EspnTeamResult[]> {
   const url = `${SCOREBOARD_BASE}/${path}/scoreboard?dates=${toEspnDateParam(dateEt)}`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`ESPN scoreboard request failed: ${res.status} ${res.statusText}`);
   }
-  return parseScoreboard(await res.json());
+  const results = parseScoreboard(await res.json());
+  return includeExhibitions ? results : results.filter((r) => !isExhibition(r));
 }
