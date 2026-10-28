@@ -145,6 +145,25 @@ model TennisArchiveMatch {
 
   score String?
 
+  /// The serve line for each side (Sackmann's w_/l_ svpt, 1stIn, 1stWon, 2ndWon,
+  /// SvGms, bpSaved, bpFaced) and the match length — the athlete sheet and the
+  /// serve/return props read these. Null where the archive has no stats.
+  minutes          Int?
+  winnerSvpt       Int?
+  winnerFirstIn    Int?
+  winnerFirstWon   Int?
+  winnerSecondWon  Int?
+  winnerSvGms      Int?
+  winnerBpSaved    Int?
+  winnerBpFaced    Int?
+  loserSvpt        Int?
+  loserFirstIn     Int?
+  loserFirstWon    Int?
+  loserSecondWon   Int?
+  loserSvGms       Int?
+  loserBpSaved     Int?
+  loserBpFaced     Int?
+
   // Natural key for idempotent re-import (re-running the cron never dupes a match).
   @@unique([tour, tourneyId, matchNum])
   @@index([tourneyDate])

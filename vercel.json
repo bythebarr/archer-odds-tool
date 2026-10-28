@@ -232,6 +232,42 @@
     {
       "path": "/api/cron/soccer-player-stats",
       "schedule": "20 21 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-history",
+      "schedule": "15 7 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 1 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 4 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 7 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 10 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 13 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 16 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 19 * * *"
+    },
+    {
+      "path": "/api/cron/tennis-fixtures",
+      "schedule": "25 22 * * *"
     }
   ]
 }

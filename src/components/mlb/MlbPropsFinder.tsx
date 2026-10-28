@@ -235,7 +235,7 @@ function Sheet({ player, props, logs, season, initialStat, side: initialSide, st
 
       {row.projected && (
         <ProjectedNote>
-          <span className="font-semibold">No book has posted this yet.</span> {main} is ARCHR&apos;s line, where Over and Under are closest to even. Books&apos; lines and
+          <span className="font-semibold">No book has posted this yet.</span> {`${main} is ARCHR's line`}, where Over and Under are closest to even. Books&apos; lines and
           prices replace it the moment they post.
         </ProjectedNote>
       )}

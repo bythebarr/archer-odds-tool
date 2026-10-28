@@ -135,6 +135,8 @@ export interface ChipTeam {
   name: string;
   abbreviation: string;
   logoUrl: string | null;
+  /** What the badge shows when there's no logo (defaults to the abbreviation). */
+  mark?: string;
 }
 
 /** The game (or match) strip: "All games", then each matchup with its start. */
@@ -159,10 +161,10 @@ export function GameChips({
       </button>
       {games.map((g) => (
         <button key={g.id} type="button" onClick={() => onSelect(g.id === active ? null : g.id)} className={`${chip(g.id === active)} inline-flex items-center gap-1.5`}>
-          <Logo sources={g.away.logoUrl ? [g.away.logoUrl] : []} alt={g.away.name} fallbackText={g.away.abbreviation} size={16} />
+          <Logo sources={g.away.logoUrl ? [g.away.logoUrl] : []} alt={g.away.name} fallbackText={g.away.mark ?? g.away.abbreviation} size={16} />
           {g.away.abbreviation}
           <span className="opacity-50">{separator}</span>
-          <Logo sources={g.home.logoUrl ? [g.home.logoUrl] : []} alt={g.home.name} fallbackText={g.home.abbreviation} size={16} />
+          <Logo sources={g.home.logoUrl ? [g.home.logoUrl] : []} alt={g.home.name} fallbackText={g.home.mark ?? g.home.abbreviation} size={16} />
           {g.home.abbreviation}
           <span className="font-normal opacity-60">{g.start}</span>
           {g.tag}
