@@ -84,6 +84,7 @@ model Team {
   nbaGameLogs    NbaPlayerGameLog[]
   nflPlayers     NflPlayer[]
   nflGameLogs    NflPlayerGameLog[]
+  nflTeamGames   NflTeamGame[]
 
   @@index([mlbTeamId])
 }
@@ -260,6 +261,7 @@ model Game {
   nbaPropSnapshots       NbaPropSnapshot[]
   currentNbaPropLines    CurrentNbaPropLine[]
   nflGameLogs            NflPlayerGameLog[]
+  nflTeamGames           NflTeamGame[]
   nflPropSnapshots       NflPropSnapshot[]
   currentNflPropLines    CurrentNflPropLine[]
   marketLines            GameMarketLine[]
@@ -1444,9 +1446,64 @@ model NflPlayerGameLog {
   soloTackles     Int?
   sacks           Float?
 
+  /// nflverse (lib/nfl/nflverse.ts): snaps and the advanced line — null until
+  /// that game is imported (usually the morning after).
+  offenseSnaps    Int?
+  snapPct         Float?
+  targetShare     Float?
+  airYardsShare   Float?
+  airYards        Int?
+  yac             Int?
+  recFirstDowns   Int?
+  recEpa          Float?
+  rushFirstDowns  Int?
+  rushEpa         Float?
+  dropbacks       Int?
+  passAirYards    Int?
+  passEpa         Float?
+  cpoe            Float?
+  sacksTaken      Int?
+  scrambles       Int?
+  deepAttempts    Int?
+  /// From the play-by-play: inside the 20, inside the 5, into the end zone, 20+ air yards.
+  rzTargets       Int?
+  rzCarries       Int?
+  glCarries       Int?
+  ezTargets       Int?
+  deepTargets     Int?
+  rzPassAttempts  Int?
+
   @@unique([nflPlayerId, gameId])
   @@index([nflPlayerId, gameDate])
   @@index([gameId])
+}
+
+/// One team's offense in one game, from the nflverse play-by-play: volume,
+/// how pass-heavy it was in neutral situations (vs what's expected there), red
+/// zone trips and EPA. The defense's view is the opponent's row.
+model NflTeamGame {
+  id            String @id @default(cuid())
+  gameId        String
+  game          Game   @relation(fields: [gameId], references: [id])
+  teamId        String
+  team          Team   @relation(fields: [teamId], references: [id])
+  season        Int
+  plays         Int
+  dropbacks     Int
+  passAttempts  Int
+  rushAttempts  Int
+  /// 1st/2nd down, win prob 20–80%, outside the last 2 minutes of a half.
+  neutralPlays  Int
+  neutralPasses Int
+  /// Sum of nflverse's expected pass probability over the neutral plays.
+  neutralXpass  Float
+  rzPlays       Int
+  epa           Float
+  passEpa       Float
+  rushEpa       Float
+
+  @@unique([gameId, teamId])
+  @@index([teamId, season])
 }
 
 model NflPropSnapshot {

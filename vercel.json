@@ -238,6 +238,10 @@
       "schedule": "15 7 * * *"
     },
     {
+      "path": "/api/cron/nfl-advanced",
+      "schedule": "40 13 * * *"
+    },
+    {
       "path": "/api/cron/ufc-history",
       "schedule": "45 2 * * *"
     },

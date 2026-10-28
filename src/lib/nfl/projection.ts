@@ -38,6 +38,24 @@ const YARDS_SD_MIN_SHARE = 0.35;
 const YARDS_SD_FLOOR = 8;
 export const NFL_CALIBRATION_SHRINK = 0.8;
 
+/**
+ * Touchdowns are mostly opportunity: what a target or carry inside the 20, at
+ * the goal line or into the end zone turns into, league-wide (least squares on
+ * 2025–26 player-games, additive — a goal-line carry is also a red-zone carry).
+ * The anytime-TD projection counts each past game as this expected-TD figure
+ * blended with the TDs he actually scored (NFL_XTD_WEIGHT), which reads a
+ * player's red-zone role far better than his few, lumpy scores.
+ */
+export const XTD_RATES = { ezTarget: 0.2574, rzTarget: 0.136, target: 0.0114, glCarry: 0.2501, rzCarry: 0.07, carry: 0.0086 } as const;
+export const NFL_XTD_WEIGHT = 0.9;
+
+/** Expected TDs from a game's opportunities; null when the game predates the play-by-play import. */
+export function expectedTds(l: NflLogPoint): number | null {
+  if (l.rzTargets == null || l.rzCarries == null) return null;
+  const r = XTD_RATES;
+  return r.ezTarget * (l.ezTargets ?? 0) + r.rzTarget * l.rzTargets + r.target * l.targets + r.glCarry * (l.glCarries ?? 0) + r.rzCarry * l.rzCarries + r.carry * l.rushAttempts;
+}
+
 export interface NflProjection {
   mean: number;
   sd: number;
@@ -67,13 +85,21 @@ export interface NflProjectionContext {
   /** What his team usually scores — the environment his logs were played in. */
   baselinePoints?: number | null;
   season?: number;
+  /** Overrides NFL_XTD_WEIGHT (the backtest varies it). */
+  xtdWeight?: number;
 }
 
 export function projectNflProp(allLogs: NflLogPoint[], stat: NflPropStatDef, ctx: NflProjectionContext): NflProjection | null {
   // Only games whose box score carried this stat (a missing read is not a zero).
   const logs = stat.available ? allLogs.filter(stat.available) : allLogs;
   if (logs.length < MIN_NFL_GAMES) return null;
-  const values = logs.map((l) => stat.value(l));
+  const xw = ctx.xtdWeight ?? NFL_XTD_WEIGHT;
+  const values = logs.map((l) => {
+    const v = stat.value(l);
+    if (stat.key !== "anytimeTd" || xw === 0) return v;
+    const x = expectedTds(l);
+    return x === null ? v : (1 - xw) * v + xw * x;
+  });
   const decay = values.slice(0, WINDOW).map((_, i) => Math.pow(0.5, i / HALF_LIFE));
   const decaySum = decay.reduce((a, b) => a + b, 0);
   const recent = decay.reduce((a, wi, i) => a + values[i] * wi, 0) / decaySum;
