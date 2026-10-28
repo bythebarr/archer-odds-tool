@@ -5,9 +5,10 @@
  * fighters are described by the same features, all as A-minus-B differences:
  *
  *   - elo: an opponent-adjusted rating. Beating a strong fighter moves it more
- *     than beating a weak one, finishes move it more than split decisions, and a
- *     debut starts from the pro record (inflated regional records read against a
- *     typical signee's).
+ *     than beating a weak one, finishes move it more than split decisions; a
+ *     debut starts just under the active roster's average, moved by his pro
+ *     record (inflated regional records read against a typical signee's), and
+ *     moves fast over his first 8 fights.
  *   - per-minute fighting stats, decayed by recency (half-life 18 months) and
  *     shrunk toward the league average for short careers:
  *       striking differential (significant strikes landed − absorbed per minute;
@@ -111,9 +112,9 @@ export const DEFAULT_COEFFICIENTS: Record<FeatureName, number> = {
 // --- Elo -------------------------------------------------------------------
 
 const ELO_START = 1500;
-const K_NEW = 40;
+const K_NEW = 60;
 const K_SETTLED = 28;
-const SETTLED_AFTER = 5;
+const SETTLED_AFTER = 8;
 /** A typical UFC signee's pre-UFC win rate — regional records are read against this, not 50%. */
 const SIGNEE_BASELINE = 0.8;
 const PRIOR_PSEUDO = 5;
@@ -185,11 +186,47 @@ export interface FighterProfile {
   age: number | null;
 }
 
+/** How the replay treats new fighters (the backtest varies these; defaults are the live model). */
+export interface ReplayOptions {
+  /**
+   * Where a debut starts: "fixed" at ELO_START, or "roster" — the average
+   * rating of everyone who fought in the last 18 months, plus `debutOffset`, so
+   * the start follows how strong the active roster (and so a signee) is in
+   * that era rather than a constant.
+   */
+  debutStart?: "fixed" | "roster";
+  debutOffset?: number;
+  /** K for a fighter's first `settledAfter` UFC fights. */
+  kNew?: number;
+  settledAfter?: number;
+  /** Minutes of league-average tape every fighter's stats start with. */
+  pseudoMinutes?: number;
+}
+
+const ROSTER_WINDOW_MS = 18 * MS_PER_MONTH;
+/**
+ * A debut starts 15 points under the active roster's average (then his pre-UFC
+ * record moves it), and a new fighter's rating moves fast (K 60) for his first
+ * 8 fights. Debutants beat UFC veterans 33% of the time before 2010 and 49%
+ * since 2022, so a fixed start or a fixed debut penalty is wrong in one era or
+ * the other; the roster average follows the era. Out of sample (newest 20%):
+ * log loss 0.6438 → 0.6405 overall, 0.6531 → 0.6494 on bouts with a debutant,
+ * 0.6561 → 0.6522 with a fighter on 1–2 fights (scripts/experiment-ufc-debuts.ts).
+ */
+const DEBUT_OFFSET = -15;
+
 export class UfcReplay {
   private state = new Map<string, FighterState>();
   private ufcRecord = new Map<string, { w: number; l: number }>();
+  private lastFight = new Map<string, number>();
+  private readonly opts: Required<ReplayOptions>;
 
-  constructor(private readonly fighters: Map<string, FighterInfo>, allBouts: BoutRecord[]) {
+  constructor(
+    private readonly fighters: Map<string, FighterInfo>,
+    allBouts: BoutRecord[],
+    opts: ReplayOptions = {},
+  ) {
+    this.opts = { debutStart: "roster", debutOffset: DEBUT_OFFSET, kNew: K_NEW, settledAfter: SETTLED_AFTER, pseudoMinutes: PSEUDO_MINUTES, ...opts };
     // Each fighter's full UFC W/L in our data — what's subtracted from the listed
     // pro record to recover the pre-UFC record (fixed for all dates, so no lookahead).
     for (const b of allBouts) {
@@ -203,22 +240,36 @@ export class UfcReplay {
     }
   }
 
-  /** The Elo a debut starts from: the pre-UFC record read against a typical signee's. */
-  private startingElo(id: string): number {
-    const f = this.fighters.get(id);
-    const ufc = this.ufcRecord.get(id) ?? { w: 0, l: 0 };
-    if (f?.recordWins == null || f.recordLosses == null) return ELO_START;
-    const w = f.recordWins - ufc.w;
-    const l = f.recordLosses - ufc.l;
-    if (w < 0 || l < 0) return ELO_START;
-    const rate = (w + SIGNEE_BASELINE * PRIOR_PSEUDO) / (w + l + PRIOR_PSEUDO);
-    return ELO_START + Math.max(-PRIOR_ELO_CAP, Math.min(PRIOR_ELO_CAP, (rate - SIGNEE_BASELINE) * PRIOR_ELO_SCALE));
+  /** The active roster's average rating on `date` (everyone who fought in the last 18 months). */
+  private rosterElo(date: Date | undefined): number {
+    if (!date) return ELO_START;
+    let sum = 0;
+    let n = 0;
+    for (const [id, t] of this.lastFight) {
+      if (date.getTime() - t > ROSTER_WINDOW_MS) continue;
+      sum += this.state.get(id)!.elo;
+      n++;
+    }
+    return n >= 50 ? sum / n : ELO_START;
   }
 
-  private get(id: string): FighterState {
+  /** The Elo a debut starts from: the pre-UFC record read against a typical signee's. */
+  private startingElo(id: string, date?: Date): number {
+    const base = this.opts.debutStart === "roster" ? this.rosterElo(date) + this.opts.debutOffset : ELO_START + this.opts.debutOffset;
+    const f = this.fighters.get(id);
+    const ufc = this.ufcRecord.get(id) ?? { w: 0, l: 0 };
+    if (f?.recordWins == null || f.recordLosses == null) return base;
+    const w = f.recordWins - ufc.w;
+    const l = f.recordLosses - ufc.l;
+    if (w < 0 || l < 0) return base;
+    const rate = (w + SIGNEE_BASELINE * PRIOR_PSEUDO) / (w + l + PRIOR_PSEUDO);
+    return base + Math.max(-PRIOR_ELO_CAP, Math.min(PRIOR_ELO_CAP, (rate - SIGNEE_BASELINE) * PRIOR_ELO_SCALE));
+  }
+
+  private get(id: string, date?: Date): FighterState {
     let s = this.state.get(id);
     if (!s) {
-      s = { elo: this.startingElo(id), fights: 0, past: [] };
+      s = { elo: this.startingElo(id, date), fights: 0, past: [] };
       this.state.set(id, s);
     }
     return s;
@@ -226,7 +277,7 @@ export class UfcReplay {
 
   /** Everything known about a fighter going into a bout on `date`. */
   profile(id: string, date: Date): FighterProfile {
-    const s = this.get(id);
+    const s = this.get(id, date);
     let minutes = 0;
     let sigL = 0;
     let sigA = 0;
@@ -254,8 +305,9 @@ export class UfcReplay {
       sub += w * f.mine.subAttempts;
       ctrl += w * f.mine.controlSeconds;
     }
-    const perMin = (x: number, avg: number) => (x + avg * PSEUDO_MINUTES) / (minutes + PSEUDO_MINUTES);
-    const per15 = (x: number, avg: number) => ((x + (avg / 15) * PSEUDO_MINUTES) / (minutes + PSEUDO_MINUTES)) * 15;
+    const k = this.opts.pseudoMinutes;
+    const perMin = (x: number, avg: number) => (x + avg * k) / (minutes + k);
+    const per15 = (x: number, avg: number) => ((x + (avg / 15) * k) / (minutes + k)) * 15;
     const last = s.past[0];
     return {
       elo: s.elo,
@@ -268,7 +320,7 @@ export class UfcReplay {
       takedownDefense: 1 - (oppTdL + (1 - LEAGUE.tdDef) * PSEUDO_TD_ATTEMPTS) / (oppTdA + PSEUDO_TD_ATTEMPTS),
       kd15: per15(kd, LEAGUE.kd15),
       sub15: per15(sub, LEAGUE.sub15),
-      control: (ctrl / 60 + LEAGUE.ctrl * PSEUDO_MINUTES) / (minutes + PSEUDO_MINUTES),
+      control: (ctrl / 60 + LEAGUE.ctrl * k) / (minutes + k),
       reach: this.fighters.get(id)?.reachInches ?? null,
       lastLbs: last?.lbs ?? null,
       age: (() => {
@@ -305,15 +357,16 @@ export class UfcReplay {
 
   /** Applies a finished bout: Elo by result and method, and both fighters' fight logs. */
   update(b: BoutRecord): void {
-    const red = this.get(b.red);
-    const blue = this.get(b.blue);
+    const red = this.get(b.red, b.date);
+    const blue = this.get(b.blue, b.date);
     const nc = b.winner === null && /no contest|\bnc\b/i.test(b.method ?? "");
     if (!nc) {
       const exp = 1 / (1 + Math.pow(10, (blue.elo - red.elo) / 400));
       const score = b.winner === b.red ? 1 : b.winner === b.blue ? 0 : 0.5;
       const w = methodWeight(b.method);
-      red.elo += (red.fights < SETTLED_AFTER ? K_NEW : K_SETTLED) * w * (score - exp);
-      blue.elo -= (blue.fights < SETTLED_AFTER ? K_NEW : K_SETTLED) * w * (score - exp);
+      const { kNew, settledAfter } = this.opts;
+      red.elo += (red.fights < settledAfter ? kNew : K_SETTLED) * w * (score - exp);
+      blue.elo -= (blue.fights < settledAfter ? kNew : K_SETTLED) * w * (score - exp);
     }
     const lbs = weightClassLbs(b.weightClass);
     const seconds = b.seconds ?? 0;
@@ -321,6 +374,8 @@ export class UfcReplay {
     blue.past.unshift({ date: b.date, seconds, mine: b.blueStats, theirs: b.redStats, lbs });
     red.fights++;
     blue.fights++;
+    this.lastFight.set(b.red, b.date.getTime());
+    this.lastFight.set(b.blue, b.date.getTime());
   }
 }
 
