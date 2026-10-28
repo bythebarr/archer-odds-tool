@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LeaguePage } from "@/components/book/LeaguePage";
+import { refreshOnView } from "@/lib/ops/refreshOnView";
 
 export const metadata: Metadata = {
   title: "NFL odds — best spread, total and moneyline",
@@ -10,5 +11,6 @@ export const dynamic = "force-dynamic";
 
 export default async function NflPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const { date } = await searchParams;
+  await refreshOnView([["espn-odds", 30], ["sync-results-nfl", 60]]);
   return <LeaguePage sport="nfl" dateParam={date} />;
 }

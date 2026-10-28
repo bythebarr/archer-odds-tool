@@ -7,6 +7,7 @@ import { LeagueHeader, leagueTabs } from "@/components/book/LeaguePage";
 import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { NflPropsFinder } from "@/components/nfl/NflPropsFinder";
+import { refreshOnView } from "@/lib/ops/refreshOnView";
 
 export const metadata: Metadata = {
   title: "NFL Props — best price, hit rate and projection at every line",
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function NflPropsPage() {
+  await refreshOnView([["sync-results-nfl", 60], ["nfl-advanced", 180], ["espn-odds", 30]]);
   const [slate, freshness] = await Promise.all([getNflPropsSlate(), getFeedFreshness("nflProps")]);
   return (
     <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">

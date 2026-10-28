@@ -22,6 +22,7 @@ import { UfcFightModelCard } from "@/components/ufc/UfcFightModelCard";
 import { getUfcFightModel } from "@/lib/queries/ufcFightModel";
 import { getUfcPropsSlate } from "@/lib/queries/ufcProps";
 import { OpenFighterButton, UfcBoutProps } from "@/components/ufc/UfcPropsFinder";
+import { refreshOnView } from "@/lib/ops/refreshOnView";
 
 // Odds refresh after the response (see refreshUfcOddsOnView) needs a live
 // request, and the moneyline should reflect current lines — render per request.
@@ -29,6 +30,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ boutId: string }> }): Promise<Metadata> {
   const { boutId } = await params;
+  await refreshOnView([["ufc-history", 360]]);
   const header = await getUfcBoutHeader(boutId);
   if (!header) return {};
 

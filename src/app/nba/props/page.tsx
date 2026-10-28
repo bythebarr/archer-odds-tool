@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { NbaPropsFinder } from "@/components/nba/NbaPropsFinder";
 import { readPropsPrefs } from "@/lib/nba/propsPrefs";
+import { refreshOnView } from "@/lib/ops/refreshOnView";
 
 export const metadata: Metadata = {
   title: "NBA Props — best price and hit rate at every line",
@@ -26,6 +27,7 @@ export default async function NbaPropsPage({
   searchParams: Promise<{ date?: string; stat?: string; side?: string; sort?: string; game?: string }>;
 }) {
   const params = await searchParams;
+  await refreshOnView([["sync-results-nba", 60], ["espn-odds", 30]]);
   const days = await getLeagueDays("nba", todayEt());
   const date = params.date && isValidEtDate(params.date) ? params.date : (days[0] ?? todayEt());
   const prefs = await readPropsPrefs(params);

@@ -8,6 +8,7 @@ import { LeagueHeader } from "@/components/book/LeaguePage";
 import { SportTabs } from "@/components/book/SportTabs";
 import { UfcCardSections, UfcEventHero, formatFightDate } from "@/components/book/UfcFightCard";
 import { EmptyState } from "@/components/EmptyState";
+import { refreshOnView } from "@/lib/ops/refreshOnView";
 
 // UFC events are ingested by a daily backfill cron, so both the upcoming and
 // recent lists change day to day — render per request rather than statically.
@@ -24,6 +25,7 @@ export const metadata: Metadata = {
  * Main Card / Prelims — each corner with its best moneyline, tappable into the slip.
  */
 export default async function UfcPage({ searchParams }: { searchParams: Promise<{ tab?: string; event?: string }> }) {
+  await refreshOnView([["ufc-history", 360]]);
   // Read-side self-heal for the upcoming feed and the moneylines (Hobby crons
   // fire unreliably) — each refreshes after the response when stale.
   refreshUpcomingUfcOnView();
