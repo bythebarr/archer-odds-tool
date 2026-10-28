@@ -89,8 +89,8 @@ nothing**. That's why a quiet baseball day no longer posts an empty MLB card and
 UFC is simply absent the six days a week it isn't on. Event-timed surfacing falls
 out of the data, not a per-sport rule.
 
-Preview all three streams (no posting) at **`/preview/discord`**; make the picks
-at **`/deck`**. Both behind the site password.
+Preview all three streams (no posting) at **`/preview/discord?token=<CRON_SECRET>`**;
+make the picks at **`/deck?token=<CRON_SECRET>`**. Both 404 without the token.
 
 ## Env vars
 

@@ -117,7 +117,7 @@ The migration (`PlayStream` + `CardSelection`) runs automatically on deploy via
 
 - [ ] Open `https://<your-domain>/deck?token=<CRON_SECRET>` on your phone
 - [ ] Tick a couple of plays as 👑 Card, one as 🎯 Free
-- [ ] Open `https://<your-domain>/preview/discord` — this renders **exactly** what
+- [ ] Open `https://<your-domain>/preview/discord?token=<CRON_SECRET>` — this renders **exactly** what
       would post: the welcome line, your card, the free play, the slate
 
 Iterate here until the card looks right. Nothing leaves the app.

@@ -11,8 +11,10 @@
  *   • the results recap posts **as soon as the day's last tracked play settles**,
  *     not on a morning timer.
  *
- * Vercel crons only fire on a fixed schedule, so both are driven by a frequent
- * tick that asks "is it time yet?" — these predicates are that question, kept
+ * Both are driven by the cron tick asking "is it time yet?" at the hours their
+ * jobs run (post-discord, post-results in lib/ops/schedule.ts), so a drop lands
+ * at the first of those hours past its moment, not on the minute. These
+ * predicates are that question, kept
  * pure and dependency-free so the timing logic is testable without a clock, a
  * database, or a live board.
  */

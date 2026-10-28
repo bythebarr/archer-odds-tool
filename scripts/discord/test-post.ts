@@ -5,11 +5,12 @@ import {
   cardIntro,
   slateLine,
   onlyTodaysEvents,
-  postWebhook,
+  freePlayEmbed,
+  slateEmbeds,
 } from "@/lib/discord/postCard";
+import { postEmbeds, type Embed } from "@/lib/discord/webhook";
 import { buildStreamRecap, buildRecapEmbeds } from "@/lib/discord/postResults";
 import { renderTip, tipForDate } from "@/lib/discord/postTips";
-import { mosesAuthor } from "@/lib/discord/brand";
 import type { Play } from "@/lib/engine";
 import type { PostedPlay } from "@/generated/prisma/client";
 
@@ -26,9 +27,6 @@ import type { PostedPlay } from "@/generated/prisma/client";
  * Clean up afterwards with: npm run discord:purge -- --apply
  */
 
-const ARCHR_GREEN = 0x06996b;
-const RESEARCH_FOOTER =
-  "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
 const LABEL = "Sample";
 /** The ET day these samples are "for" — everything is filtered against it. */
 const SAMPLE_DATE = "2026-07-20";
@@ -151,13 +149,13 @@ function posted(over: Partial<PostedPlay> = {}): PostedPlay {
   } as PostedPlay;
 }
 
-async function send(env: string, label: string, body: unknown) {
+async function send(env: string, label: string, embeds: Embed[], content?: string) {
   const url = process.env[env];
   if (!url) {
     console.log(`  ✗ ${label} — ${env} not set, skipped`);
     return;
   }
-  await postWebhook(url, body);
+  await postEmbeds(url, embeds, content);
   console.log(`  ✓ ${label}`);
 }
 
@@ -172,37 +170,18 @@ async function main() {
   console.log(`  (event-timed filter held back ${dropped} play(s) not happening today)\n`);
 
   // 👑 the card, with its welcome line
-  await send("DISCORD_WEBHOOK_URL", "#👑-todays-card", {
-    username: "Moses, Leader of Many",
-    content: cardIntro(card, slate, LABEL),
-    embeds: sectionsToEmbeds(assembleSections(card, LABEL, "card")),
-  });
+  await send(
+    "DISCORD_WEBHOOK_URL",
+    "#👑-todays-card",
+    sectionsToEmbeds(assembleSections(card, LABEL, "card")),
+    cardIntro(card, slate, LABEL)
+  );
 
   // 🎁 the free play
-  await send("DISCORD_FREE_WEBHOOK_URL", "#🎁-free-play", {
-    username: "Moses, Leader of Many",
-    embeds: [
-      {
-        author: mosesAuthor(),
-        title: `🎯 Free Play · ${LABEL}`,
-        description: `${card[0].display?.line}\n\nTracked in #📊-the-ledger on its own record — wins and losses.`,
-        color: ARCHR_GREEN,
-        footer: { text: RESEARCH_FOOTER },
-      },
-    ],
-  });
+  await send("DISCORD_FREE_WEBHOOK_URL", "#🎁-free-play", [freePlayEmbed(card[0], LABEL)]);
 
   // 📈 the slate — no units anywhere in here
-  const slateEmbeds = sectionsToEmbeds(assembleSections(slate, LABEL, "slate"));
-  slateEmbeds[0] = { ...slateEmbeds[0], title: `📊 Full +EV Slate · ${LABEL}` };
-  slateEmbeds[slateEmbeds.length - 1] = {
-    ...slateEmbeds[slateEmbeds.length - 1],
-    footer: { text: `No units — information only. Today's staked card is in #👑-todays-card. ${RESEARCH_FOOTER}` },
-  };
-  await send("DISCORD_SLATE_WEBHOOK_URL", "#📈-the-firehose", {
-    username: "Moses, Leader of Many",
-    embeds: slateEmbeds,
-  });
+  await send("DISCORD_SLATE_WEBHOOK_URL", "#📈-the-firehose", slateEmbeds(slate, LABEL));
 
   // 📊 results — both ledgers, one winning day and a losing free play
   const cardRows = [
@@ -211,22 +190,16 @@ async function main() {
     posted({ selectionLabel: "Carlos Alcaraz", sport: "tennis", units: 1, bestPrice: -145, result: "hit" }),
   ];
   const freeRows = [posted({ stream: "free", selectionLabel: "Dodgers ML", units: 1, bestPrice: -130, result: "miss" })];
-  await send("DISCORD_RESULTS_WEBHOOK_URL", "#📊-the-ledger", {
-    username: "Moses, Leader of Many",
-    embeds: buildRecapEmbeds(
-      buildStreamRecap(cardRows, cardRows, LABEL),
-      buildStreamRecap(freeRows, freeRows, LABEL),
-      LABEL
-    ),
-  });
+  await send(
+    "DISCORD_RESULTS_WEBHOOK_URL",
+    "#📊-the-ledger",
+    buildRecapEmbeds(buildStreamRecap(cardRows, cardRows, LABEL), buildStreamRecap(freeRows, freeRows, LABEL), LABEL)
+  );
 
   // 📚 the tip
   const tip = tipForDate("2026-07-20");
   if (tip) {
-    await send("DISCORD_TIPS_WEBHOOK_URL", "#📚-sharp-school", {
-      username: "Moses, Leader of Many",
-      embeds: [renderTip(tip)],
-    });
+    await send("DISCORD_TIPS_WEBHOOK_URL", "#📚-sharp-school", [renderTip(tip)]);
   }
 
   console.log("\n✓ Sent. Go look at the room.");

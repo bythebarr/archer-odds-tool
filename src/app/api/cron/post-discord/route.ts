@@ -6,7 +6,7 @@ import { alreadyPosted, markPosted } from "@/lib/discord/postMarker";
 import { todayEt } from "@/lib/dateEt";
 
 /**
- * The card tick. Runs frequently and usually does nothing: it posts the day's
+ * The card tick. Runs at its scheduled hours (lib/ops/schedule.ts) and usually does nothing: it posts the day's
  * card/free-play/slate exactly once, LEAD_HOURS before the first event of the
  * day — whatever sport that is — rather than on a fixed clock (see ./schedule).
  *
@@ -68,11 +68,11 @@ export async function POST(request: Request) {
       });
     }
 
+    // The poster marks the day itself, the moment the card goes out (a dormant
+    // webhook doesn't burn the day's slot). 207 when the card posted but the free
+    // play, the slate or the record failed, so the tick logs it as partial.
     const result = await postDailyCardToDiscord(dateEt, plays);
-    // Mark only on a real post — a dormant webhook must not burn the day's slot,
-    // or wiring the webhook up later that day would silently post nothing.
-    if (result.posted) await markPosted("post-card", dateEt);
-    return Response.json({ ...result, tip });
+    return Response.json({ ...result, tip }, { status: result.errors?.length ? 207 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return Response.json({ posted: false, error: message }, { status: 502 });

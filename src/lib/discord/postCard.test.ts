@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { unitsFor, selectionDisplay, playLine } from "./postCard";
+import { unitsFor, selectionDisplay, playLine, runDrop } from "./postCard";
 import type { OddsPlay } from "@/lib/queries/oddsPool";
 
 describe("unitsFor (Kelly sizing)", () => {
@@ -85,5 +85,75 @@ describe("playLine", () => {
     expect(line).toContain("NYY @ BOS Over 8.5");
     expect(line).toContain("+102");
     expect(line).not.toMatch(/\d+(\.\d+)?u/);
+  });
+});
+
+/**
+ * The drop's ordering. Before runDrop, a failed free or slate post threw before
+ * the card was recorded or the day marked, so the next tick posted the card
+ * again and the record never saw it.
+ */
+describe("runDrop", () => {
+  function steps(fail: Partial<Record<"postCard" | "markPosted" | "recordCard" | "postFree" | "recordFree" | "postSlate", boolean>> = {}) {
+    const ran: string[] = [];
+    const step = (name: keyof typeof fail) => async () => {
+      ran.push(name);
+      if (fail[name]) throw new Error(`${name} broke`);
+    };
+    return {
+      ran,
+      steps: {
+        postCard: step("postCard"),
+        markPosted: step("markPosted"),
+        recordCard: step("recordCard"),
+        postFree: step("postFree"),
+        recordFree: step("recordFree"),
+        postSlate: step("postSlate"),
+      },
+    };
+  }
+
+  it("runs card, mark, record, free, free record, slate, in that order", async () => {
+    const { ran, steps: s } = steps();
+    const out = await runDrop(s);
+    expect(ran).toEqual(["postCard", "markPosted", "recordCard", "postFree", "recordFree", "postSlate"]);
+    expect(out).toEqual({ freePosted: true, slatePosted: true, errors: [] });
+  });
+
+  it("a failed card throws before anything is marked or recorded", async () => {
+    const { ran, steps: s } = steps({ postCard: true });
+    await expect(runDrop(s)).rejects.toThrow("postCard broke");
+    expect(ran).toEqual(["postCard"]);
+  });
+
+  it("a failed slate still leaves the card marked and recorded, and is reported", async () => {
+    const { ran, steps: s } = steps({ postSlate: true });
+    const out = await runDrop(s);
+    expect(ran).toContain("markPosted");
+    expect(ran).toContain("recordCard");
+    expect(out.slatePosted).toBe(false);
+    expect(out.errors).toEqual(["the slate post: postSlate broke"]);
+  });
+
+  it("a failed free play isn't recorded, and the slate still posts", async () => {
+    const { ran, steps: s } = steps({ postFree: true });
+    const out = await runDrop(s);
+    expect(ran).not.toContain("recordFree");
+    expect(ran).toContain("postSlate");
+    expect(out.freePosted).toBe(false);
+  });
+
+  it("a dormant free channel records no free play", async () => {
+    const { ran, steps: s } = steps();
+    const out = await runDrop({ ...s, postFree: null });
+    expect(ran).not.toContain("recordFree");
+    expect(out.freePosted).toBe(false);
+  });
+
+  it("a failed record is reported, and the posts after it still go", async () => {
+    const { ran, steps: s } = steps({ recordCard: true });
+    const out = await runDrop(s);
+    expect(ran.slice(-3)).toEqual(["postFree", "recordFree", "postSlate"]);
+    expect(out.errors).toEqual(["recording the card: recordCard broke"]);
   });
 });

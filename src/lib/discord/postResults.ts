@@ -2,8 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { todayEt } from "@/lib/dateEt";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { getAdapter, postedPlayToPlay } from "@/lib/engine";
-import { gradeUfcMoneyline, tallyLedger, currentStreak, type PlayResult } from "./gradePlay";
-import { mosesAuthor } from "./brand";
+import { tallyLedger, currentStreak, type PlayResult } from "./gradePlay";
+import { mosesAuthor, ARCHR_GREEN, RESEARCH_FOOTER, KIND_TAG, prettyDate } from "./brand";
+import { postEmbeds } from "./webhook";
 import type { PostedPlay, PlayStream } from "@/generated/prisma/client";
 
 /**
@@ -12,12 +13,12 @@ import type { PostedPlay, PlayStream } from "@/generated/prisma/client";
  * + unit P/L, every result shown (wins AND losses), plus the running all-time
  * ledger. This is the trust spine of a paid room; it never hides a loss.
  *
- * Correctness posture (matches the grader): MLB (game lines vs final score,
- * props vs the actual stat line) and UFC (moneyline vs the bout winner) are
- * graded; other sports and true no-action are voided out of the record. A play
- * whose event isn't final yet — an MLB game mid-play, a UFC bout not yet fought,
- * a prop whose game log hasn't synced — is left PENDING (not voided) so a later
- * pass settles it; we never turn a sync lag into a fake loss or a premature void.
+ * Correctness posture (matches the grader): each play grades through its own
+ * sport's adapter (`grade`), and a sport that can't settle (`signalOnly`) or a
+ * true no-action is voided out of the record. A play whose event isn't final
+ * yet — an MLB game mid-play, a UFC bout not yet fought, a prop whose game log
+ * hasn't synced — is left PENDING (not voided) so a later pass settles it; we
+ * never turn a sync lag into a fake loss or a premature void.
  * UFC plays also settle out-of-band via settlePendingUfcPlays (called from the
  * UFC sync cron), since fight cards finish late and may miss the morning recap.
  *
@@ -31,12 +32,6 @@ import type { PostedPlay, PlayStream } from "@/generated/prisma/client";
  * Dormant until DISCORD_RESULTS_WEBHOOK_URL is set.
  */
 
-const ARCHR_GREEN = 0x06996b;
-const RESEARCH_FOOTER =
-  "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
-
-const SPORT_LABEL: Record<string, string> = { mlb: "MLB", tennis: "TEN", soccer: "SOC", ufc: "UFC" };
-const KIND_LABEL: Record<string, string> = { ml: "ML", spread: "SPR", total: "TOT", prop: "PROP" };
 const RESULT_ICON: Record<Exclude<PlayResult, "void">, string> = { hit: "✅", miss: "❌", push: "➖" };
 
 export interface ResultsPostResult {
@@ -58,12 +53,6 @@ export function yesterdayEt(): string {
   return d.toISOString().slice(0, 10);
 }
 
-function prettyDate(dateEt: string): string {
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const [, m, d] = dateEt.split("-").map(Number);
-  return `${months[m - 1]} ${d}`;
-}
-
 function fmtUnits(u: number): string {
   const s = u.toFixed(2).replace(/\.?0+$/, "");
   return u >= 0 ? `+${s}u` : `${s}u`;
@@ -80,17 +69,6 @@ async function settlePlay(id: string, result: PlayResult): Promise<void> {
   });
 }
 
-/** Settle one UFC moneyline play against its bout, or null if the fight isn't final yet (leave pending). */
-async function gradeUfcPlay(play: PostedPlay): Promise<PlayResult | null> {
-  const bout = await prisma.ufcBout.findUnique({
-    where: { id: play.matchId },
-    select: { status: true, winnerFighterId: true, redCornerFighterId: true, blueCornerFighterId: true },
-  });
-  if (!bout) return "void";
-  if (bout.status !== "completed") return null; // not fought yet — leave pending for a later pass
-  return gradeUfcMoneyline(play.side, bout.redCornerFighterId, bout.blueCornerFighterId, bout.winnerFighterId);
-}
-
 /**
  * Settle every still-pending UFC play whose bout is now final — called from the
  * UFC sync cron (backfill-ufc) so late fight-night results grade promptly,
@@ -98,11 +76,14 @@ async function gradeUfcPlay(play: PostedPlay): Promise<PlayResult | null> {
  * settled. The all-time ledger stays correct regardless of which pass grades a play.
  */
 export async function settlePendingUfcPlays(): Promise<number> {
+  const ufc = getAdapter("ufc");
+  if (!ufc) return 0;
   const pending = await prisma.postedPlay.findMany({ where: { sport: "ufc", gradedAt: null } });
   let settled = 0;
   for (const play of pending) {
-    const result = await gradeUfcPlay(play);
-    if (result === null) continue;
+    // The same grade the recap's pass uses (the UFC adapter's), so the two can't drift.
+    const result = await ufc.grade(postedPlayToPlay(play));
+    if (result === "pending") continue;
     await settlePlay(play.id, result);
     settled++;
   }
@@ -168,7 +149,7 @@ function ledgerInput(p: PostedPlay): { result: PlayResult; units: number; bestPr
 
 function resultLine(p: PostedPlay): string {
   const result: Exclude<PlayResult, "void"> = (p.result as Exclude<PlayResult, "void">) ?? "push";
-  const tag = `${SPORT_LABEL[p.sport] ?? p.sport.toUpperCase()} ${KIND_LABEL[p.kind] ?? ""}`.trim();
+  const tag = `${getAdapter(p.sport)?.meta.label.toUpperCase() ?? p.sport.toUpperCase()} ${KIND_TAG[p.kind] ?? ""}`.trim();
   const pl = p.result ? ` → ${fmtUnits(settledProfit(p))}` : "";
   return `${RESULT_ICON[result]} \`${tag}\` ${p.selectionLabel} ${formatAmerican(p.bestPrice)} · ${p.units}u${pl}`;
 }
@@ -292,10 +273,7 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
   const card = await recapForStream("card", dateEt, label);
   const free = await recapForStream("free", dateEt, label);
 
-  await postWebhook(url, {
-    username: "Moses, Leader of Many",
-    embeds: buildRecapEmbeds(card, free, label),
-  });
+  await postEmbeds(url, buildRecapEmbeds(card, free, label));
 
   return {
     posted: true,
@@ -305,16 +283,4 @@ export async function postResultsRecap(dateEt: string = yesterdayEt()): Promise<
     freeUnits: free.dayUnits,
     graded,
   };
-}
-
-async function postWebhook(url: string, body: unknown): Promise<void> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Discord webhook failed: ${res.status} ${res.statusText} — ${text}`);
-  }
 }

@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { verifyKey, InteractionType, InteractionResponseType } from "discord-interactions";
 import { collectPlays } from "@/lib/discord/postCard";
 import {
@@ -69,7 +70,8 @@ export async function POST(request: Request) {
     // Answer within Discord's 3s window, then edit in the real reply once the
     // board is pulled. Without this a slow sport adapter shows the member a
     // "the application did not respond" error even though the lookup succeeds.
-    void respondLater(interaction, query, price);
+    // after() keeps the function alive until the follow-up is sent.
+    after(() => respondLater(interaction, query, price));
     return Response.json({ type: DEFER, data: { flags: EPHEMERAL } });
   }
 
@@ -106,7 +108,7 @@ async function respondLater(
   }
 
   try {
-    await fetch(
+    const res = await fetch(
       `https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`,
       {
         method: "PATCH",
@@ -114,6 +116,7 @@ async function respondLater(
         body: JSON.stringify({ content }),
       }
     );
+    if (!res.ok) console.error(`/value follow-up failed: ${res.status} ${res.statusText} — ${await res.text()}`);
   } catch (err) {
     console.error("/value follow-up failed:", err);
   }
