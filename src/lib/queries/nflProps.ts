@@ -11,6 +11,7 @@ import { espnTeamLogoUrl } from "@/lib/logos";
 import { NFL_LEAGUE } from "@/lib/nfl/league";
 import { NFL_PROP_STAT_BY_KEY, nflPositionGroup, type NflStatLine } from "@/lib/nfl/propStats";
 import type { NflDefenseTable, NflPosition } from "@/lib/nfl/matchup";
+import { getNflTeamContext, type NflTeamContext } from "@/lib/nfl/teamContext";
 import { NFL_EXTRA_COLUMNS, NFL_LOG_COLUMNS as COLUMNS, emptyNflExtras, packNflLog, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
 import { EV_FLAG } from "@/lib/odds/marketValue";
 import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
@@ -53,6 +54,8 @@ export interface NflPropsSlate {
   teamPoints: Record<string, number>;
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
   modelWeights: Record<string, number>;
+  /** Team abbreviation → its offense and defense this season from the play-by-play, with league ranks. */
+  teams: Record<string, NflTeamContext>;
   lastPolledAt: string | null;
 }
 
@@ -234,7 +237,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
   });
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -317,6 +320,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     }),
     getNflDefenseTable(season),
   ]);
+  const teams = await getNflTeamContext(season);
   // Each game's team volume, so the sheet can read a player's share of it.
   const teamVolume = await prisma.nflPlayerGameLog.groupBy({
     by: ["gameId", "teamId"],
@@ -380,6 +384,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     lines: gameLines,
     teamPoints,
     modelWeights,
+    teams,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
 });

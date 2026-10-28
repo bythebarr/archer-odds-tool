@@ -34,10 +34,21 @@ export const NFL_LOG_COLUMNS = [
 /** Columns a box score may not carry (null when missing), after the core ones on the wire. */
 export const NFL_EXTRA_COLUMNS = [
   "rushLongest", "recLongest", "fieldGoalsMade", "extraPointsMade", "kickingPoints", "tackles", "soloTackles", "sacks",
+  // nflverse's advanced line.
+  "offenseSnaps", "snapPct", "targetShare", "airYardsShare", "airYards", "yac", "recFirstDowns", "recEpa", "rushFirstDowns", "rushEpa",
+  "dropbacks", "passAirYards", "passEpa", "cpoe", "sacksTaken", "scrambles", "deepAttempts",
+  "rzTargets", "rzCarries", "glCarries", "ezTargets", "deepTargets", "rzPassAttempts",
 ] as const satisfies readonly (keyof NflStatLine)[];
 
+/** Three decimals is all the wire needs (shares, EPA). */
+const wire = (v: number | null | undefined) => (v === null || v === undefined ? null : Number.isInteger(v) ? v : Math.round(v * 1000) / 1000);
+
 export function packNflLog(l: NflLogPoint): PackedNflLog {
-  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, ...NFL_LOG_COLUMNS.map((c) => l[c]), ...NFL_EXTRA_COLUMNS.map((c) => l[c])];
+  const extra = NFL_EXTRA_COLUMNS.map((c) => wire(l[c]));
+  // Trailing nulls (a defender's, or a game before the advanced import) aren't sent: unpacking reads them back as null.
+  let end = extra.length;
+  while (end > 0 && extra[end - 1] === null) end--;
+  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, ...NFL_LOG_COLUMNS.map((c) => l[c]), ...extra.slice(0, end)];
 }
 
 export function unpackNflLog(t: PackedNflLog): NflLogPoint {

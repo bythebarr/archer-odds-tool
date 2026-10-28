@@ -27,6 +27,30 @@ export interface NflStatLine {
   tackles: number | null;
   soloTackles: number | null;
   sacks: number | null;
+  /** nflverse's advanced line (lib/nfl/nflverse.ts) — null until imported, or for older games. */
+  offenseSnaps?: number | null;
+  snapPct?: number | null;
+  targetShare?: number | null;
+  airYardsShare?: number | null;
+  airYards?: number | null;
+  yac?: number | null;
+  recFirstDowns?: number | null;
+  recEpa?: number | null;
+  rushFirstDowns?: number | null;
+  rushEpa?: number | null;
+  dropbacks?: number | null;
+  passAirYards?: number | null;
+  passEpa?: number | null;
+  cpoe?: number | null;
+  sacksTaken?: number | null;
+  scrambles?: number | null;
+  deepAttempts?: number | null;
+  rzTargets?: number | null;
+  rzCarries?: number | null;
+  glCarries?: number | null;
+  ezTargets?: number | null;
+  deepTargets?: number | null;
+  rzPassAttempts?: number | null;
 }
 
 /**

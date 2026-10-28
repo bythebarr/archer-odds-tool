@@ -13,6 +13,8 @@ import type { NflPropsSlate, NflSlatePlayer } from "@/lib/queries/nflProps";
 import type { SlateGame } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import { usageGames, usageWindow, type TeamVolume, type UsageWindow } from "@/lib/nfl/usage";
+import { advancedWindow, type AdvancedWindow } from "@/lib/nfl/advanced";
+import type { NflTeamContext } from "@/lib/nfl/teamContext";
 import { Logo } from "@/components/Logo";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
@@ -224,9 +226,135 @@ function UsagePanel({ player, logs, volume, season }: { player: NflSlatePlayer; 
   );
 }
 
-function Sheet({ player, props, logs, volume, season, projection, modelWeights, defense, initialStat, side: initialSide, startLabel, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; defense: NflDefenseTable; initialStat: NflPropStat; side: PropDirection; startLabel: string; onClose: () => void }) {
+
+/** The nflverse line: snaps, how his looks come (depth, red zone, end zone), what they're worth (EPA), and expected TDs vs real ones. */
+function AdvancedPanel({ player, logs, season }: { player: NflSlatePlayer; logs: NflLogPoint[]; season: number }) {
+  const l5 = advancedWindow(logs.slice(0, 5));
+  const szn = advancedWindow(logs.filter((l) => l.season === season));
+  if (!szn.games && !l5.games) return null;
+  const pos = player.position;
+  const sgn = (x: number | null, d = 2) => (x === null ? "—" : `${x >= 0 ? "+" : ""}${x.toFixed(d)}`);
+  type Row = { label: string; get: (w: AdvancedWindow) => string; hint?: string };
+  const rows: Row[] =
+    pos === "QB"
+      ? [
+          { label: "Dropbacks / g", get: (w) => num(w.dropbacksPerGame) },
+          { label: "EPA / dropback", get: (w) => sgn(w.epaPerDropback) },
+          { label: "CPOE", get: (w) => (w.cpoe === null ? "—" : `${w.cpoe >= 0 ? "+" : ""}${w.cpoe.toFixed(1)}`), hint: "completion % over expected" },
+          { label: "aDOT", get: (w) => num(w.adot) },
+          { label: "Deep throws (20+)", get: (w) => pct(w.deepAttemptRate) },
+          { label: "Sack rate", get: (w) => pct(w.sackRate, 1) },
+          { label: "Scramble rate", get: (w) => pct(w.scrambleRate, 1) },
+          { label: "Red-zone att / g", get: (w) => num(w.rzAttemptsPerGame) },
+        ]
+      : pos === "RB"
+        ? [
+            { label: "Snap share", get: (w) => pct(w.snapPct) },
+            { label: "Red-zone carries / g", get: (w) => num(w.rzCarriesPerGame) },
+            { label: "Goal-line carries / g", get: (w) => num(w.glCarriesPerGame) },
+            { label: "EPA / carry", get: (w) => sgn(w.epaPerCarry) },
+            { label: "1st downs / carry", get: (w) => pct(w.firstDownsPerCarry) },
+            { label: "Target share", get: (w) => pct(w.targetShare) },
+            { label: "YAC / catch", get: (w) => num(w.yacPerCatch) },
+            { label: "Expected TDs / g", get: (w) => num(w.xTdPerGame, 2), hint: "what his red-zone, goal-line and end-zone looks usually score" },
+            { label: "Actual TDs / g", get: (w) => num(w.tdPerGame, 2) },
+          ]
+        : [
+            { label: "Snap share", get: (w) => pct(w.snapPct) },
+            { label: "Air-yards share", get: (w) => pct(w.airYardsShare) },
+            { label: "aDOT", get: (w) => num(w.adot) },
+            { label: "WOPR", get: (w) => num(w.wopr, 2), hint: "1.5 × target share + 0.7 × air-yards share" },
+            { label: "Red-zone targets / g", get: (w) => num(w.rzTargetsPerGame) },
+            { label: "End-zone targets / g", get: (w) => num(w.ezTargetsPerGame) },
+            { label: "Deep targets (20+) / g", get: (w) => num(w.deepTargetsPerGame) },
+            { label: "YAC / catch", get: (w) => num(w.yacPerCatch) },
+            { label: "EPA / target", get: (w) => sgn(w.epaPerTarget) },
+            { label: "1st downs / target", get: (w) => pct(w.firstDownsPerTarget) },
+            { label: "Expected TDs / g", get: (w) => num(w.xTdPerGame, 2), hint: "what his red-zone, goal-line and end-zone looks usually score" },
+            { label: "Actual TDs / g", get: (w) => num(w.tdPerGame, 2) },
+          ];
+  const recent = logs.filter((l) => l.snapPct != null).slice(0, 10).reverse();
+  return (
+    <SheetSection title="Advanced" brand>
+      <div className="rounded-xl border border-border bg-card p-3.5">
+        <div className="grid grid-cols-[1fr_4.5rem_4.5rem] gap-y-1.5 text-sm">
+          <span />
+          <span className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">L5</span>
+          <span className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Season · {szn.games}</span>
+          {rows.map((r) => (
+            <Fragment key={r.label}>
+              <span className="text-muted-foreground" title={r.hint}>
+                {r.label}
+              </span>
+              <span className="text-right font-mono font-semibold text-foreground">{r.get(l5)}</span>
+              <span className="text-right font-mono text-foreground/70">{r.get(szn)}</span>
+            </Fragment>
+          ))}
+        </div>
+        {pos !== "QB" && recent.length > 1 && (
+          <>
+            <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Snap share by game</p>
+            <div className="mt-1.5 flex h-20 items-end gap-1">
+              {recent.map((l, i) => (
+                <div key={`${l.date}-${i}`} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+                  <span className="font-mono text-[9px] text-muted-foreground">{Math.round((l.snapPct ?? 0) * 100)}</span>
+                  <span className={`w-full rounded-t ${i === recent.length - 1 ? "bg-sky-500" : "bg-sky-500/50"}`} style={{ height: `${(l.snapPct ?? 0) * 52}px` }} />
+                  <span className="truncate text-[8px] text-muted-foreground">{l.opponent}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+          From the nflverse play-by-play and snap counts. Touchdowns follow opportunity: xTD is what his targets and carries inside the 20, at the goal line and into the end zone usually score — the anytime-TD projection leans on it.
+        </p>
+      </div>
+    </SheetSection>
+  );
+}
+
+const rk = (r: number) => `${ordinal(r)}`;
+/** His offense's tendencies and the defense he faces, ranked across the league. */
+function TeamPanel({ team, opponent, teams, position }: { team: string | undefined; opponent: string | undefined; teams: Record<string, NflTeamContext>; position: string | null }) {
+  const mine = team ? teams[team] : undefined;
+  const theirs = opponent ? teams[opponent] : undefined;
+  if (!mine && !theirs) return null;
+  const sgn = (x: number | null | undefined, d = 2) => (x == null ? "—" : `${x >= 0 ? "+" : ""}${x.toFixed(d)}`);
+  const rows: { label: string; value: string; note?: string; tone?: "good" | "bad" | "neutral" }[] = [];
+  if (mine) {
+    const o = mine.offense;
+    rows.push(
+      { label: `${team} neutral pass rate`, value: pct(o.neutralPassRate), note: `${rk(mine.ranks.neutralPassRate)} · PROE ${sgn(o.proe, 1)} pts (${rk(mine.ranks.proe)})`, tone: position === "RB" ? "neutral" : mine.ranks.proe <= 10 ? "good" : mine.ranks.proe >= 23 ? "bad" : "neutral" },
+      { label: `${team} plays / game`, value: num(o.playsPerGame), note: `${rk(mine.ranks.plays)} · ${num(o.rzPlaysPerGame)} red-zone plays / g` },
+      { label: `${team} EPA / play`, value: sgn(o.epaPerPlay, 3), note: `pass ${sgn(o.passEpaPerDropback)} (${rk(mine.ranks.passEpa)}) · rush ${sgn(o.rushEpaPerRush)} (${rk(mine.ranks.rushEpa)})` },
+    );
+  }
+  if (theirs) {
+    const d = theirs.defense;
+    const passSide = position !== "RB";
+    const rank = passSide ? theirs.ranks.passEpaAllowed : theirs.ranks.rushEpaAllowed;
+    rows.push(
+      {
+        label: `${opponent} defense vs the ${passSide ? "pass" : "run"}`,
+        value: sgn(passSide ? d.passEpaPerDropback : d.rushEpaPerRush),
+        note: `EPA allowed per ${passSide ? "dropback" : "rush"} · ${rk(rank)} most`,
+        tone: rank <= 10 ? "good" : rank >= 23 ? "bad" : "neutral",
+      },
+      { label: `${opponent} defense overall`, value: sgn(d.epaPerPlay, 3), note: `EPA allowed per play · ${rk(theirs.ranks.epaAllowed)} most · faces ${num(d.playsPerGame)} plays / g` },
+    );
+  }
+  return (
+    <SheetSection title="Offense & defense">
+      <MatchupFacts rows={rows} />
+      <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">Neutral = 1st and 2nd down, win chance 20–80%, outside the last two minutes of a half. PROE = how much more often they throw there than an average team would. Ranks out of 32, 1st = most.</p>
+    </SheetSection>
+  );
+}
+
+function Sheet({ player, props, logs, volume, season, projection, modelWeights, defense, teams, initialStat, side: initialSide, startLabel, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; defense: NflDefenseTable; teams: Record<string, NflTeamContext>; initialStat: NflPropStat; side: PropDirection; startLabel: string; onClose: () => void }) {
   const [statKey, setStatKey] = useState(initialStat);
   const [side, setSide] = useState(initialSide);
+  const xtd = useMemo(() => advancedWindow(logs.slice(0, 8)), [logs]);
   const prop = props.find((p) => p.stat === statKey) ?? props[0];
   const stat = NFL_PROP_STAT_BY_KEY.get(prop.stat)!;
   const consensus = propConsensusPoint(prop.quotes);
@@ -323,14 +451,18 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
           ev={ev}
           sideLabels={stat.shape === "anytime" ? ["Yes", "No"] : ["O", "U"]}
           factors={[
-            { label: "Games", value: String(m.projection.games) },
+            stat.key === "anytimeTd" && xtd.xTdPerGame !== null
+              ? { label: "xTD / g", value: xtd.xTdPerGame.toFixed(2) }
+              : { label: "Games", value: String(m.projection.games) },
             { label: "Matchup", value: `×${m.projection.matchupFactor.toFixed(2)}` },
             { label: "Volume", value: `×${m.projection.env.volumeFactor.toFixed(2)}` },
             { label: "Script", value: `×${m.projection.env.scriptFactor.toFixed(2)}` },
           ]}
           footnote={
             <>
-              Recent per-game production steadied by two seasons, × matchup × game environment, then blended with the market.{" "}
+              {stat.key === "anytimeTd"
+                ? "Each past game counted mostly as the TDs his red-zone, goal-line and end-zone looks usually produce (xTD), steadied by two seasons, × matchup × game environment, then blended with the market. "
+                : "Recent per-game production steadied by two seasons, × matchup × game environment, then blended with the market. "}
               <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
                 How accurate is it?
               </Link>
@@ -365,6 +497,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
       )}
 
       {player.position && ["QB", "RB", "WR", "TE"].includes(player.position) && <UsagePanel player={player} logs={logs} volume={volume} season={season} />}
+      {player.position && ["QB", "RB", "WR", "TE"].includes(player.position) && <AdvancedPanel player={player} logs={logs} season={season} />}
 
       <SheetSection title="Matchup">
         <MatchupFacts
@@ -387,6 +520,8 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
           ]}
         />
       </SheetSection>
+
+      <TeamPanel team={player.team?.abbreviation} opponent={player.opponent?.abbreviation} teams={teams} position={player.position} />
 
       <BooksTable point={point} books={books} pairs={pairs} side={side} bestBook={bestBook} fairProbOver={fair?.probA ?? null} projected={!!s?.projected} sideLabels={sideLabelsOf(stat)} />
 
@@ -498,6 +633,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           projection={nflProjectionContext(slate, openPlayer)}
           modelWeights={slate.modelWeights}
           defense={slate.defense}
+          teams={slate.teams ?? {}}
           initialStat={statKey}
           side={side}
           startLabel={(() => {
