@@ -19,6 +19,20 @@ async function main() {
     console.log(`${sport}: ${upcoming} scheduled next 7d, last odds ${ago(lastLine?.polledAt)}`);
   }
 
+  console.log("\n== MLB games, last 3 days and next 3");
+  const mlb = await prisma.game.findMany({
+    where: { sport: "mlb", scheduledStartUtc: { gte: new Date(Date.now() - 3 * 86_400_000), lte: new Date(Date.now() + 3 * 86_400_000) } },
+    orderBy: { scheduledStartUtc: "asc" },
+    select: { scheduledStartUtc: true, status: true, homeTeam: { select: { name: true } }, awayTeam: { select: { name: true } }, _count: { select: { currentLines: true } } },
+  });
+  for (const g of mlb) console.log(`${g.scheduledStartUtc.toISOString().slice(0, 16)} ${g.status} ${g.awayTeam?.name} @ ${g.homeTeam?.name} (${g._count.currentLines} lines)`);
+  const lastMlb = await prisma.game.findFirst({ where: { sport: "mlb" }, orderBy: { scheduledStartUtc: "desc" }, select: { scheduledStartUtc: true } });
+  console.log(`latest MLB game stored: ${lastMlb?.scheduledStartUtc.toISOString() ?? "none"}`);
+
+  console.log("\n== NBA games before the 2026-27 regular season (Oct 20) — preseason if any");
+  const pre = await prisma.game.findMany({ where: { sport: "nba", scheduledStartUtc: { gte: new Date("2026-09-25"), lt: new Date("2026-10-20T08:00Z") } }, select: { status: true } });
+  console.log(`${pre.length} games (${pre.filter((g) => g.status === "final").length} final), ${await prisma.nbaPlayerGameLog.count({ where: { gameDate: { gte: new Date("2026-09-25"), lt: new Date("2026-10-20") } } })} player logs`);
+
   console.log("\n== Player game logs (latest game date)");
   const nba = await prisma.nbaPlayerGameLog.findFirst({ orderBy: { gameDate: "desc" }, select: { gameDate: true } });
   const nfl = await prisma.nflPlayerGameLog.findFirst({ orderBy: { gameDate: "desc" }, select: { gameDate: true } });

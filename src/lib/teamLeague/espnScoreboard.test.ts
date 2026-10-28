@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseScoreboard, toEspnDateParam } from "./espnScoreboard";
+import { isExhibition, parseScoreboard, toEspnDateParam } from "./espnScoreboard";
 
 /** Shape captured from a real ESPN response on 2026-07-21 (2025-season slate). */
 function event(overrides: Record<string, unknown> = {}) {
@@ -158,5 +158,25 @@ describe("parseScoreboard", () => {
     const [r] = parseScoreboard({ events: [withLines] });
     expect(r!.homePeriods).toEqual([7, 14, 3, 13]);
     expect(r!.awayPeriods).toEqual([]);
+  });
+});
+
+describe("season type", () => {
+  it("reads ESPN's season type and flags preseason as an exhibition", () => {
+    const ev = (type?: number) => ({
+      id: "1",
+      date: "2026-10-10T23:30Z",
+      ...(type ? { season: { type } } : {}),
+      competitions: [{ status: { type: { completed: true } }, competitors: [
+        { homeAway: "home", score: "110", team: { displayName: "New York Knicks" } },
+        { homeAway: "away", score: "100", team: { displayName: "Toronto Raptors" } },
+      ] }],
+    });
+    const [pre, reg, none] = [1, 2, undefined].map((t) => parseScoreboard({ events: [ev(t)] })[0]!);
+    expect(pre.seasonType).toBe(1);
+    expect(isExhibition(pre)).toBe(true);
+    expect(isExhibition(reg)).toBe(false);
+    expect(none.seasonType).toBeNull();
+    expect(isExhibition(none)).toBe(false);
   });
 });
