@@ -41,6 +41,8 @@ export interface NflPropsSlate {
   games: SlateGame[];
   players: Record<string, NflSlatePlayer>;
   logs: Record<string, PackedNflLog[]>;
+  /** Aligned with `logs`: the team's targets, rush attempts and pass attempts in each of those games. */
+  usage: Record<string, [number, number, number][]>;
   props: NflSlateProp[];
   defense: NflDefenseTable;
   /** Per team abbreviation: key players ruled out or doubtful this week. */
@@ -232,7 +234,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
   });
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -315,8 +317,17 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     }),
     getNflDefenseTable(season),
   ]);
+  // Each game's team volume, so the sheet can read a player's share of it.
+  const teamVolume = await prisma.nflPlayerGameLog.groupBy({
+    by: ["gameId", "teamId"],
+    where: { gameId: { in: [...new Set(history.map((h) => h.gameId))] } },
+    _sum: { targets: true, rushAttempts: true, passAttempts: true },
+  });
+  const volumeOf = new Map(teamVolume.map((t) => [`${t.gameId}|${t.teamId}`, [t._sum.targets ?? 0, t._sum.rushAttempts ?? 0, t._sum.passAttempts ?? 0] as [number, number, number]]));
   const logs: Record<string, PackedNflLog[]> = {};
+  const usage: Record<string, [number, number, number][]> = {};
   for (const h of history) {
+    (usage[h.nflPlayerId] ??= []).push(volumeOf.get(`${h.gameId}|${h.teamId}`) ?? [0, 0, 0]);
     const point: NflLogPoint = {
       date: etDateOf(h.gameDate),
       opponent: (h.isHome ? h.game.awayTeam?.abbreviation : h.game.homeTeam?.abbreviation) ?? "",
@@ -362,6 +373,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     games: slateGames,
     players,
     logs,
+    usage,
     props: [...props.values()],
     defense,
     absences,

@@ -217,7 +217,7 @@ export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Off
       </div>
       {edges > 0 && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          <span className="rounded bg-brand px-1 font-mono text-[10px] font-bold text-brand-foreground">+x.x</span> {edges} price{edges === 1 ? "" : "s"}{" "}where ARCHR&apos;s
+          <span className="rounded bg-brand px-1 font-mono text-[10px] font-bold text-brand-foreground">+x.x</span> {`${edges} price${edges === 1 ? "" : "s"} `}where ARCHR&apos;s
           blended chance beats the price. Tap any price to see it run against the model.
         </p>
       )}

@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "TennisArchiveMatch" ADD COLUMN     "loserBpFaced" INTEGER,
+ADD COLUMN     "loserBpSaved" INTEGER,
+ADD COLUMN     "loserFirstIn" INTEGER,
+ADD COLUMN     "loserFirstWon" INTEGER,
+ADD COLUMN     "loserSecondWon" INTEGER,
+ADD COLUMN     "loserSvGms" INTEGER,
+ADD COLUMN     "loserSvpt" INTEGER,
+ADD COLUMN     "minutes" INTEGER,
+ADD COLUMN     "winnerBpFaced" INTEGER,
+ADD COLUMN     "winnerBpSaved" INTEGER,
+ADD COLUMN     "winnerFirstIn" INTEGER,
+ADD COLUMN     "winnerFirstWon" INTEGER,
+ADD COLUMN     "winnerSecondWon" INTEGER,
+ADD COLUMN     "winnerSvGms" INTEGER,
+ADD COLUMN     "winnerSvpt" INTEGER;

@@ -36,12 +36,12 @@ export default async function SportBoardPage({ params }: { params: Promise<{ spo
         <Glyph name={board.sport.glyph as GlyphKey} className="size-8" />
         <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight">{board.sport.label}</h1>
       </div>
-      {sport === "soccer" && (
+      {(sport === "soccer" || sport === "tennis") && (
         <div className="mt-3">
           <SportTabs
             tabs={[
-              { label: "Game Lines", href: "/sports/soccer", active: true },
-              { label: "Player Props", href: "/sports/soccer/props", active: false },
+              { label: sport === "tennis" ? "Match Lines" : "Game Lines", href: `/sports/${sport}`, active: true },
+              { label: "Player Props", href: `/sports/${sport}/props`, active: false },
             ]}
           />
         </div>

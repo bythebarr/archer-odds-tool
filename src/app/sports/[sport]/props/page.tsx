@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSoccerPropsSlate } from "@/lib/queries/soccerProps";
+import { getTennisPropsSlate } from "@/lib/queries/tennisProps";
+import { TennisPropsFinder } from "@/components/tennis/TennisPropsFinder";
 import { SportCarousel } from "@/components/book/SportCarousel";
 import { SportTabs } from "@/components/book/SportTabs";
 import { Glyph } from "@/components/brand/Glyph";
@@ -17,8 +19,9 @@ export const metadata: Metadata = {
 /** Soccer player props, a league at a time (sports/[sport]/props — soccer only for now). */
 export default async function SportPropsPage({ params, searchParams }: { params: Promise<{ sport: string }>; searchParams: Promise<{ league?: string; match?: string }> }) {
   const { sport } = await params;
-  if (sport !== "soccer") notFound();
   const { league, match } = await searchParams;
+  if (sport === "tennis") return <TennisPropsPage match={match ?? null} />;
+  if (sport !== "soccer") notFound();
   const slate = await getSoccerPropsSlate(league ?? null);
 
   return (
@@ -50,6 +53,34 @@ export default async function SportPropsPage({ params, searchParams }: { params:
         </div>
       ) : (
         <SoccerPropsFinder key={slate.league?.id} slate={slate} initialMatch={match ?? null} />
+      )}
+    </div>
+  );
+}
+
+async function TennisPropsPage({ match }: { match: string | null }) {
+  const slate = await getTennisPropsSlate();
+  return (
+    <div className="mx-auto min-h-screen w-full min-w-0 max-w-2xl px-4 pb-10 pt-5 font-sans">
+      <SportCarousel active="tennis" />
+      <div className="mt-5 flex items-center gap-2.5 text-foreground">
+        <Glyph name="tennis" className="size-8" />
+        <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight">Tennis</h1>
+      </div>
+      <div className="mt-3">
+        <SportTabs
+          tabs={[
+            { label: "Match Lines", href: "/sports/tennis", active: false },
+            { label: "Player Props", href: "/sports/tennis/props", active: true },
+          ]}
+        />
+      </div>
+      {slate.matches.length === 0 ? (
+        <div className="mt-8">
+          <EmptyState title="No singles matches in the next day and a half">Props show for every ATP and WTA match as soon as the draw is set.</EmptyState>
+        </div>
+      ) : (
+        <TennisPropsFinder slate={slate} initialMatch={match} />
       )}
     </div>
   );

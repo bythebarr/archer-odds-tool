@@ -108,7 +108,33 @@ export interface ArchiveRow {
   loserAces: number | null;
   loserDfs: number | null;
   score: string | null;
+  minutes: number | null;
+  winnerSvpt: number | null;
+  winnerFirstIn: number | null;
+  winnerFirstWon: number | null;
+  winnerSecondWon: number | null;
+  winnerSvGms: number | null;
+  winnerBpSaved: number | null;
+  winnerBpFaced: number | null;
+  loserSvpt: number | null;
+  loserFirstIn: number | null;
+  loserFirstWon: number | null;
+  loserSecondWon: number | null;
+  loserSvGms: number | null;
+  loserBpSaved: number | null;
+  loserBpFaced: number | null;
 }
+
+/** The serve-line columns, archive name → our field. */
+const SERVE_COLS = [
+  ["svpt", "Svpt"],
+  ["1stIn", "FirstIn"],
+  ["1stWon", "FirstWon"],
+  ["2ndWon", "SecondWon"],
+  ["SvGms", "SvGms"],
+  ["bpSaved", "BpSaved"],
+  ["bpFaced", "BpFaced"],
+] as const;
 
 /** Fetch + parse one tour-year CSV into typed rows (skips rows missing the key fields). */
 export async function fetchSackmannYear(tour: Tour, year: number): Promise<ArchiveRow[]> {
@@ -143,7 +169,9 @@ export async function fetchSackmannYear(tour: Tour, year: number): Promise<Archi
     lAce: col("l_ace"),
     lDf: col("l_df"),
     score: col("score"),
+    minutes: col("minutes"),
   };
+  const serveIdx = SERVE_COLS.map(([src]) => [col(`w_${src}`), col(`l_${src}`)] as const);
 
   const out: ArchiveRow[] = [];
   for (let r = 1; r < rows.length; r++) {
@@ -181,6 +209,13 @@ export async function fetchSackmannYear(tour: Tour, year: number): Promise<Archi
       loserAces: toInt(f[idx.lAce]),
       loserDfs: toInt(f[idx.lDf]),
       score: f[idx.score]?.trim() || null,
+      minutes: toInt(f[idx.minutes]),
+      ...(Object.fromEntries(
+        SERVE_COLS.flatMap(([, field], k) => [
+          [`winner${field}`, toInt(f[serveIdx[k]![0]])],
+          [`loser${field}`, toInt(f[serveIdx[k]![1]])],
+        ])
+      ) as Pick<ArchiveRow, `winner${(typeof SERVE_COLS)[number][1]}` | `loser${(typeof SERVE_COLS)[number][1]}`>),
     });
   }
   return out;
@@ -214,9 +249,29 @@ export async function importTennisArchive(
         });
         inserted += res.count;
       }
+      // Rows imported before the serve columns existed: fill them in place (never overwrite).
+      for (let i = 0; i < rows.length; i += 1000) await fillServeStats(rows.slice(i, i + 1000));
       summary.inserted += inserted;
       summary.perYear[`${tour}_${year}`] = inserted;
     }
   }
   return summary;
+}
+
+/** Writes the serve line and match length onto existing rows that don't have them yet. */
+async function fillServeStats(rows: ArchiveRow[]): Promise<void> {
+  const withStats = rows.filter((r) => r.winnerSvpt !== null || r.minutes !== null);
+  if (!withStats.length) return;
+  const arr = (f: (r: ArchiveRow) => number | null) => withStats.map(f);
+  await prisma.$executeRaw`
+    UPDATE "TennisArchiveMatch" m SET
+      "minutes" = v.minutes,
+      "winnerSvpt" = v.wsvpt, "winnerFirstIn" = v.wfi, "winnerFirstWon" = v.wfw, "winnerSecondWon" = v.wsw, "winnerSvGms" = v.wsg, "winnerBpSaved" = v.wbs, "winnerBpFaced" = v.wbf,
+      "loserSvpt" = v.lsvpt, "loserFirstIn" = v.lfi, "loserFirstWon" = v.lfw, "loserSecondWon" = v.lsw, "loserSvGms" = v.lsg, "loserBpSaved" = v.lbs, "loserBpFaced" = v.lbf
+    FROM unnest(
+      ${withStats.map((r) => r.tour)}::text[], ${withStats.map((r) => r.tourneyId)}::text[], ${withStats.map((r) => r.matchNum)}::int[], ${arr((r) => r.minutes)}::int[],
+      ${arr((r) => r.winnerSvpt)}::int[], ${arr((r) => r.winnerFirstIn)}::int[], ${arr((r) => r.winnerFirstWon)}::int[], ${arr((r) => r.winnerSecondWon)}::int[], ${arr((r) => r.winnerSvGms)}::int[], ${arr((r) => r.winnerBpSaved)}::int[], ${arr((r) => r.winnerBpFaced)}::int[],
+      ${arr((r) => r.loserSvpt)}::int[], ${arr((r) => r.loserFirstIn)}::int[], ${arr((r) => r.loserFirstWon)}::int[], ${arr((r) => r.loserSecondWon)}::int[], ${arr((r) => r.loserSvGms)}::int[], ${arr((r) => r.loserBpSaved)}::int[], ${arr((r) => r.loserBpFaced)}::int[]
+    ) AS v(tour, tid, mnum, minutes, wsvpt, wfi, wfw, wsw, wsg, wbs, wbf, lsvpt, lfi, lfw, lsw, lsg, lbs, lbf)
+    WHERE m."tour" = v.tour AND m."tourneyId" = v.tid AND m."matchNum" = v.mnum AND m."winnerSvpt" IS NULL AND m."minutes" IS NULL`;
 }

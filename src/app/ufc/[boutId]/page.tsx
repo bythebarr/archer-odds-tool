@@ -1,15 +1,21 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getUfcBoutHeader, type UfcFighterBio } from "@/lib/queries/ufcEvents";
+import { getUfcBoutHeader } from "@/lib/queries/ufcEvents";
 import { getUfcMatchup } from "@/lib/queries/ufcMatchup";
 import { getUfcBoutOdds } from "@/lib/queries/ufcOdds";
-import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
+import { CALIBRATION_SHRINK, STRENGTH_SENSITIVITY, computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { computeFinishProjection, scheduledRoundsForBout } from "@/lib/ufc/finishMath";
 import { refreshUfcOddsOnView } from "@/lib/ufc/refreshOddsOnView";
 import { BackLink } from "@/components/BackLink";
 import { FighterBadge } from "@/components/FighterBadge";
+import Link from "next/link";
 import { UfcWinProbabilityCard, RED_CORNER, BLUE_CORNER } from "@/components/ufc/UfcWinProbabilityCard";
-import { UfcOddsEvCard } from "@/components/ufc/UfcOddsEvCard";
+import { FaceOff, TaleOfTape, ValueStrip, WhyPanel, type Factor, type ValueRow } from "@/components/matchup/Matchup";
+import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
+import { calculateEv } from "@/lib/odds/devig";
+import { blendWithMarket, DEFAULT_MODEL_WEIGHT } from "@/lib/propModel/market";
+import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
+import { FEATURE_LABEL } from "@/lib/ufc/fightModel";
 import { UfcFinishProjectionCard } from "@/components/ufc/UfcFinishProjectionCard";
 import { UfcFightHistory } from "@/components/ufc/UfcFightHistory";
 import { UfcFightModelCard } from "@/components/ufc/UfcFightModelCard";
@@ -46,46 +52,11 @@ function heightLabel(inches: number | null): string {
   return `${Math.floor(inches / 12)}'${Math.round(inches % 12)}"`;
 }
 
-/** One tale-of-the-tape row: red's value, the label, blue's value — the bigger number bolded when it's an edge. */
-function TapeRow({
-  label,
-  red,
-  blue,
-  edge,
-}: {
-  label: string;
-  red: string;
-  blue: string;
-  /** Which side the comparison favors, when it's a measurable edge. */
-  edge?: "red" | "blue" | null;
-}) {
-  return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-2.5 text-sm">
-      <span className={`text-left font-mono ${edge === "red" ? "font-bold text-foreground" : "text-foreground/80"}`}>{red}</span>
-      <span className="text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className={`text-right font-mono ${edge === "blue" ? "font-bold text-foreground" : "text-foreground/80"}`}>{blue}</span>
-    </div>
-  );
-}
-
-function edgeOf(red: number | null, blue: number | null, minGap: number): "red" | "blue" | null {
-  if (red === null || blue === null || Math.abs(red - blue) < minGap) return null;
-  return red > blue ? "red" : "blue";
-}
-
-function FaceOffCorner({ fighter, color, prob }: { fighter: UfcFighterBio; color: string; prob: number | null }) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
-      <span className="rounded-full p-[3px]" style={{ background: color }}>
-        <FighterBadge name={fighter.name} imageUrl={fighter.imageUrl} size={88} />
-      </span>
-      <span className="mt-1 w-full truncate text-[15px] font-semibold">{fighter.name}</span>
-      {fighter.nickname ? <span className="w-full truncate text-[11px] italic text-[#8a90a0]">&ldquo;{fighter.nickname}&rdquo;</span> : null}
-      <span className="font-mono text-xs text-[#8a90a0]">{fighter.record ?? ""}</span>
-      {prob !== null && <span className="mt-1 font-display text-2xl font-extrabold italic leading-none">{Math.round(prob * 100)}%</span>}
-    </div>
-  );
-}
+const inchesEdge = (red: number | null, blue: number | null): "a" | "b" | null =>
+  red === null || blue === null || Math.abs(red - blue) < 1 ? null : red > blue ? "a" : "b";
+const logitPts = (x: number) => x * 25;
+const ptsLabel = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(1)} pts`;
+const fairAmerican = (p: number) => formatAmerican(Math.round(decimalToAmerican(1 / Math.min(0.995, Math.max(0.005, p)))));
 
 export default async function UfcBoutPage({ params }: { params: Promise<{ boutId: string }> }) {
   const { boutId } = await params;
@@ -118,78 +89,115 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
         : null;
   const loser = winner ? (winner.id === header.red.id ? header.blue : header.red) : null;
 
+  // ARCHR vs the book: the side whose best price returns more at ARCHR's chance.
+  const valueRows: ValueRow[] = [];
+  if (projection?.fighterAProb != null && odds && (odds.red || odds.blue)) {
+    // Edge on the same footing as every sport: the model blended with the books' no-vig line.
+    // (The fitted fight model's chance already carries the blend.)
+    const pRed = !fightModel?.beatsV1 && odds.marketFairProbRed !== null ? blendWithMarket(projection.fighterAProb, odds.marketFairProbRed, DEFAULT_MODEL_WEIGHT) : projection.fighterAProb;
+    const evRed = odds.red ? calculateEv(pRed, odds.red.priceAmerican) : null;
+    const evBlue = odds.blue ? calculateEv(1 - pRed, odds.blue.priceAmerican) : null;
+    const red = evRed !== null || evBlue !== null ? (evRed ?? -Infinity) >= (evBlue ?? -Infinity) : pRed >= 0.5;
+    const line = red ? odds.red : odds.blue;
+    valueRows.push({
+      market: "Moneyline",
+      pick: (red ? header.red : header.blue).name,
+      fair: fairAmerican(red ? pRed : 1 - pRed),
+      best: line ? { priceAmerican: line.priceAmerican, bookKey: line.bookKey, bookName: BOOK_NAMES[line.bookKey] ?? line.bookKey } : null,
+      edge: red ? evRed : evBlue,
+    });
+  }
+
+  // Why: each input's push on the win chance, positive toward red.
+  const factors: Factor[] = [];
+  if (fightModel?.beatsV1) {
+    for (const c of fightModel.contributions.slice(0, 7)) {
+      const v = logitPts(c.logit);
+      factors.push({ label: FEATURE_LABEL[c.feature], value: v, display: ptsLabel(v) });
+    }
+  } else if (v1 && v1.fighterAStrength !== null && v1.fighterBStrength !== null) {
+    const parts = [
+      { label: "Form & record", logit: (v1.fighterAStrength - v1.fighterBStrength) * STRENGTH_SENSITIVITY },
+      { label: "Shared opponents", logit: v1.commonOpponentAdjustment.logitShift },
+      { label: "Style matchup", logit: v1.styleAdjustment.logitShift },
+    ];
+    for (const p of parts) {
+      const v = logitPts(p.logit * CALIBRATION_SHRINK);
+      factors.push({ label: p.label, value: v, display: ptsLabel(v) });
+    }
+  }
+
   return (
     <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
       <BackLink fallbackHref="/ufc" className="text-sm text-muted-foreground hover:text-foreground">
         ← UFC
       </BackLink>
 
-      {/* Face-off: always ink, the two corners squared up over their win odds. */}
-      <div className="relative mt-3 overflow-hidden rounded-2xl bg-[#07080b] bg-[radial-gradient(110%_90%_at_50%_120%,rgba(200,245,58,0.14),transparent_60%)] px-4 pb-5 pt-4 text-[#eef0f4] ring-1 ring-white/10">
-        <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
-          {header.titleBout ? (
-            <span className="rounded bg-amber-400 px-1.5 py-0.5 text-[#07080b]">Title fight</span>
-          ) : header.isMainEvent ? (
-            <span className="rounded bg-[#c8f53a] px-1.5 py-0.5 text-[#07080b]">Main event</span>
-          ) : null}
-          <span className="text-[#8a90a0]">
-            {header.weightClass} · {scheduledRounds} rounds
-          </span>
-        </div>
-        <p className="mt-1 text-center text-[11px] text-[#8a90a0]">
-          {header.eventTitle} · {formatEventDate(header.eventDate)}
-          {header.location ? ` · ${header.location}` : ""}
-        </p>
-        <div className="mt-4 flex items-start justify-between gap-2">
-          <FaceOffCorner fighter={header.red} color={RED_CORNER} prob={projection?.fighterAProb ?? null} />
-          <span className="mt-9 shrink-0 font-display text-xl font-extrabold italic text-[#c8f53a]">VS</span>
-          <FaceOffCorner fighter={header.blue} color={BLUE_CORNER} prob={projection?.fighterBProb ?? null} />
-        </div>
-        {projection?.fighterAProb != null && (
-          <div className="mt-3">
-            <div className="flex h-1.5 overflow-hidden rounded-full" aria-hidden>
-              <span style={{ width: `${projection.fighterAProb * 100}%`, background: RED_CORNER }} />
-              <span className="flex-1" style={{ background: BLUE_CORNER }} />
-            </div>
-            <p className="mt-1.5 text-center text-[10px] uppercase tracking-wide text-[#8a90a0]">{fightModel?.beatsV1 ? "ARCHR fight model win probability" : "ARCHR fighter-math win probability"}</p>
-          </div>
-        )}
-        {winner && loser ? (
-          <p className="mt-4 border-t border-white/10 pt-3 text-center text-sm">
-            <span className="font-semibold">{winner.name}</span>
-            <span className="text-[#8a90a0]"> def. </span>
-            <span>{loser.name}</span>
-            {header.method ? <span className="text-[#8a90a0]"> · {header.method}</span> : null}
-            {header.methodDetails ? <span className="text-[#8a90a0]"> ({header.methodDetails})</span> : null}
-            {header.resultRound ? <span className="text-[#8a90a0]"> · R{header.resultRound}</span> : null}
-            {header.resultTime ? <span className="text-[#8a90a0]"> {header.resultTime}</span> : null}
-          </p>
-        ) : null}
-      </div>
+      <FaceOff
+        a={{ name: header.red.name, sub: [header.red.nickname ? `“${header.red.nickname}”` : null, header.red.record].filter(Boolean).join(" · ") || null, badge: <FighterBadge name={header.red.name} imageUrl={header.red.imageUrl} size={88} />, color: RED_CORNER }}
+        b={{ name: header.blue.name, sub: [header.blue.nickname ? `“${header.blue.nickname}”` : null, header.blue.record].filter(Boolean).join(" · ") || null, badge: <FighterBadge name={header.blue.name} imageUrl={header.blue.imageUrl} size={88} />, color: BLUE_CORNER }}
+        probA={projection?.fighterAProb ?? null}
+        probLabel={fightModel?.beatsV1 ? "ARCHR fight model win probability" : "ARCHR fighter-math win probability"}
+        chips={
+          <>
+            {header.titleBout ? (
+              <span className="rounded bg-amber-400 px-1.5 py-0.5 text-[#07080b]">Title fight</span>
+            ) : header.isMainEvent ? (
+              <span className="rounded bg-[#c8f53a] px-1.5 py-0.5 text-[#07080b]">Main event</span>
+            ) : null}
+            <span className="text-[#8a90a0]">
+              {header.weightClass} · {scheduledRounds} rounds
+            </span>
+          </>
+        }
+        meta={`${header.eventTitle} · ${formatEventDate(header.eventDate)}${header.location ? ` · ${header.location}` : ""}`}
+        footer={
+          winner && loser ? (
+            <p>
+              <span className="font-semibold">{winner.name}</span>
+              <span className="text-[#8a90a0]"> def. </span>
+              <span>{loser.name}</span>
+              {header.method ? <span className="text-[#8a90a0]"> · {header.method}</span> : null}
+              {header.methodDetails ? <span className="text-[#8a90a0]"> ({header.methodDetails})</span> : null}
+              {header.resultRound ? <span className="text-[#8a90a0]"> · R{header.resultRound}</span> : null}
+              {header.resultTime ? <span className="text-[#8a90a0]"> {header.resultTime}</span> : null}
+            </p>
+          ) : null
+        }
+      />
 
-      <section className="mt-6">
-        <h2 className="mb-1 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
-          <span className="brand-slash" aria-hidden />
-          Tale of the tape
-        </h2>
-        <div className="divide-y divide-border rounded-xl border border-border bg-card px-3.5">
-          <TapeRow label="Record" red={header.red.record ?? "—"} blue={header.blue.record ?? "—"} />
-          <TapeRow
-            label="Height"
-            red={heightLabel(header.red.heightInches)}
-            blue={heightLabel(header.blue.heightInches)}
-            edge={edgeOf(header.red.heightInches, header.blue.heightInches, 1)}
-          />
-          <TapeRow
-            label="Reach"
-            red={header.red.reachInches === null ? "—" : `${header.red.reachInches}"`}
-            blue={header.blue.reachInches === null ? "—" : `${header.blue.reachInches}"`}
-            edge={edgeOf(header.red.reachInches, header.blue.reachInches, 1)}
-          />
-          <TapeRow label="Stance" red={header.red.stance ?? "—"} blue={header.blue.stance ?? "—"} />
-          <TapeRow label="Division" red={header.red.division ?? "—"} blue={header.blue.division ?? "—"} />
-        </div>
-      </section>
+      {valueRows.length > 0 && (
+        <ValueStrip
+          rows={valueRows}
+          footnote={
+            <>
+              ARCHR&apos;s chance (the model blended with the market) against the best moneyline at every book{odds?.marketFairProbRed != null ? ` (market no-vig: ${Math.round(odds.marketFairProbRed * 100)}% · ${Math.round((odds.marketFairProbBlue ?? 0) * 100)}% from ${odds.bookCount} books)` : ""}; edge is what that price returns at ARCHR&apos;s chance.{" "}
+              <Link href="/models" className="font-semibold text-foreground underline-offset-2 hover:underline">
+                How accurate is it?
+              </Link>
+            </>
+          }
+        />
+      )}
+
+      <TaleOfTape
+        a={{ label: header.red.name.split(" ").at(-1)!, color: RED_CORNER }}
+        b={{ label: header.blue.name.split(" ").at(-1)!, color: BLUE_CORNER }}
+        rows={[
+          { label: "Record", a: header.red.record ?? "—", b: header.blue.record ?? "—" },
+          { label: "Height", a: heightLabel(header.red.heightInches), b: heightLabel(header.blue.heightInches), edge: inchesEdge(header.red.heightInches, header.blue.heightInches) },
+          { label: "Reach", a: header.red.reachInches === null ? "—" : `${header.red.reachInches}"`, b: header.blue.reachInches === null ? "—" : `${header.blue.reachInches}"`, edge: inchesEdge(header.red.reachInches, header.blue.reachInches) },
+          { label: "Stance", a: header.red.stance ?? "—", b: header.blue.stance ?? "—" },
+          { label: "Division", a: header.red.division ?? "—", b: header.blue.division ?? "—" },
+        ]}
+      />
+
+      <WhyPanel
+        factors={factors}
+        a={{ label: header.red.name.split(" ").at(-1)!, color: RED_CORNER }}
+        b={{ label: header.blue.name.split(" ").at(-1)!, color: BLUE_CORNER }}
+        footnote={fightModel?.beatsV1 ? "Each fighting stat's push on the fight model, in points of win chance (near even)." : "Form, shared opponents and style, each as its push in points of win chance (near even), after calibration."}
+      />
 
       {fightModel ? (
         <div className="mt-6">
@@ -200,18 +208,6 @@ export default async function UfcBoutPage({ params }: { params: Promise<{ boutId
       {v1 ? (
         <div className="mt-6">
           <UfcWinProbabilityCard redName={header.red.name} blueName={header.blue.name} projection={v1} />
-        </div>
-      ) : null}
-
-      {projection && projection.fighterAProb !== null && projection.fighterBProb !== null && odds ? (
-        <div className="mt-4">
-          <UfcOddsEvCard
-            redName={header.red.name}
-            blueName={header.blue.name}
-            redProb={projection.fighterAProb}
-            blueProb={projection.fighterBProb}
-            odds={odds}
-          />
         </div>
       ) : null}
 

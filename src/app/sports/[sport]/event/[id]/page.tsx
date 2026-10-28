@@ -40,7 +40,7 @@ export default async function AllSportEventPage({ params }: { params: Params }) 
   const { sport, id } = await params;
   const view = await load(id);
   if (!view || view.sport.key !== sport) notFound();
-  const propsHref = sport === "soccer" ? await soccerPropsLink(view.id) : null;
+  const propsHref = sport === "soccer" ? await soccerPropsLink(view.id) : sport === "tennis" && view.status === "scheduled" ? `/sports/tennis/props?match=${view.id}` : null;
   const teams = {
     home: { name: view.home, abbreviation: initials(view.home), logoUrl: view.homeLogo },
     away: { name: view.away, abbreviation: initials(view.away), logoUrl: view.awayLogo },
@@ -54,7 +54,7 @@ export default async function AllSportEventPage({ params }: { params: Params }) 
       <EventFaceOff view={view} when={when(view.startsAt, view.status)} />
       {propsHref && (
         <Link href={propsHref} className="mt-4 flex items-center justify-between rounded-xl border border-brand/40 bg-brand/10 px-4 py-3 text-sm font-semibold text-foreground hover:bg-brand/15">
-          <span>Player props · goalscorers, shots, saves, cards</span>
+          <span>{sport === "tennis" ? "Player props · games, total games, aces, double faults" : "Player props · goalscorers, shots, saves, cards"}</span>
           <span aria-hidden>›</span>
         </Link>
       )}

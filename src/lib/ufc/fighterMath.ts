@@ -14,7 +14,7 @@ import { computeStyleAdjustment, computeStyleProfile, type StyleAdjustment } fro
  */
 
 /** Scales the (roughly -0.5..0.5) strength differential into logit space — UFC's own constant, not reused from MLB's STRENGTH_SENSITIVITY since the [0,1] strength scores mean something different per sport. */
-const STRENGTH_SENSITIVITY = 4;
+export const STRENGTH_SENSITIVITY = 4;
 
 /**
  * Ceiling/floor on the final win probability — tighter than MLB's 0.85.
@@ -39,7 +39,7 @@ const PROB_FLOOR = 1 - PROB_CEILING;
  * (scripts/backtest-ufc-calibration.ts) and adjust if the re-fit shrink drifts
  * from 1.0.
  */
-const CALIBRATION_SHRINK = 0.5;
+export const CALIBRATION_SHRINK = 0.5;
 
 function logistic(x: number): number {
   return 1 / (1 + Math.exp(-x));
