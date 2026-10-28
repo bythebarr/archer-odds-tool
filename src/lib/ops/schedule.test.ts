@@ -25,4 +25,16 @@ describe("tick schedule", () => {
   it("every fixed hour is an hour the tick runs, so no job is stranded", () => {
     for (const j of JOBS) for (const h of j.hours ?? []) expect(TICK_HOURS).toContain(h);
   });
+
+  it("grades MLB outcomes after the results sync, on its cadence", () => {
+    const grade = JOBS.find((j) => j.path === "grade-outcomes");
+    const sync = JOBS.find((j) => j.path === "sync-results");
+    expect(grade).toMatchObject({ phase: 2, every: sync?.every });
+    // Never run: due on the first tick, with the sync in phase 1 ahead of it.
+    const due = dueJobs(at(13), () => undefined);
+    expect(due.find((j) => j.path === "sync-results")?.phase ?? 1).toBe(1);
+    expect(due.map((j) => j.path)).toContain("grade-outcomes");
+    // Ran an hour ago: not due again until its cadence passes.
+    expect(dueJobs(at(13), (p) => (p === "grade-outcomes" ? at(12).getTime() : undefined)).map((j) => j.path)).not.toContain("grade-outcomes");
+  });
 });
