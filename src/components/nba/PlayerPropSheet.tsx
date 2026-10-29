@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
-import { altLinePoints, altLineRows, booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
+import { NBA_ALT_COLUMNS, altLinePointsNba, altLineRows, booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
 import { fairPrice } from "@/lib/odds/marketValue";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import type { ProjectionContext } from "@/lib/nba/projection";
@@ -15,7 +15,9 @@ import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/Mo
 import { BooksTable, LinePicker, PlayerSheet, ProjectedNote, ProjectionCard, RecentGames, SheetFooter, SheetSection } from "@/components/props/kit";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import { MatchupPanel, SplitGrid } from "./Matchup";
-import { AltLinesTable } from "./AltLines";
+import { AltLinesTable } from "@/components/props/AltLinesTable";
+import { ParlayButton } from "@/components/props/Parlay";
+import type { ParlayLeg } from "@/lib/props/parlay";
 import type { DefenseTable } from "@/lib/nba/matchup";
 
 /** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
@@ -81,6 +83,8 @@ export function PlayerPropSheet({
   initialStat,
   side: initialSide,
   startLabel,
+  parlay,
+  onAddLeg,
   onClose,
 }: {
   player: SlatePlayer;
@@ -96,6 +100,9 @@ export function PlayerPropSheet({
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
+  /** The parlay being built on this page, and how to add this line to it. */
+  parlay: ParlayLeg[];
+  onAddLeg: (leg: ParlayLeg) => void;
   onClose: () => void;
 }) {
   const [stat, setStat] = useState<NbaPropStat>(initialStat);
@@ -121,7 +128,7 @@ export function PlayerPropSheet({
   const summary = useMemo(() => summarizeProp(prop, logs, statDef, side, context, point), [prop, logs, statDef, side, context, point]);
   // Yes/No milestones (double-double) have one line; everything else reads up and down the ladder.
   const ladder = useMemo(
-    () => (statDef.milestone ? [...new Set(prop.quotes.map((q) => q.point))].sort((a, b) => a - b) : altLinePoints(main, prop.quotes.map((q) => q.point))),
+    () => (statDef.milestone ? [...new Set(prop.quotes.map((q) => q.point))].sort((a, b) => a - b) : altLinePointsNba(main, prop.quotes.map((q) => q.point))),
     [statDef.milestone, main, prop.quotes]
   );
   const altRows = useMemo(
@@ -132,6 +139,19 @@ export function PlayerPropSheet({
   const pairs = useMemo(() => twoSidedAt(prop.quotes, point), [prop.quotes, point]);
   const fair = fairPrice(pairs);
   const bestBook = side === "over" ? summary?.over?.bookKey : summary?.under?.bookKey;
+
+  const leg: ParlayLeg = {
+    id: `${player.id}:${prop.stat}`,
+    gameId: player.gameId,
+    playerName: player.name,
+    team: player.team?.abbreviation ?? player.id,
+    statShort: statDef.shortLabel,
+    side,
+    sideLabel: statDef.milestone ? (side === "over" ? "Yes" : "No") : side === "over" ? "Over" : "Under",
+    point,
+    modelProb: summary?.model ? (side === "over" ? summary.model.probOver : summary.model.probUnder) : null,
+    logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, value: statDef.value(l) })),
+  };
 
   const statsOffered = NBA_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
   const chartLogs = useMemo(() => logs.map((l) => ({ ...l, volume: l.minutes })), [logs]);
@@ -169,6 +189,8 @@ export function PlayerPropSheet({
         point={point}
         onPoint={(p) => setPointByStat((m) => ({ ...m, [prop.stat]: p }))}
       />
+
+      <ParlayButton leg={leg} legs={parlay} onAdd={onAddLeg} />
 
       {summary?.projected && (
         <ProjectedNote>
@@ -208,10 +230,11 @@ export function PlayerPropSheet({
       {altRows.length > 1 && (
         <AltLinesTable
           rows={altRows}
+          columns={NBA_ALT_COLUMNS.map((c) => c.label)}
           point={point}
           main={main}
-          side={side}
-          projection={summary?.model?.projection.mean ?? null}
+          sideLabel={side === "over" ? "Over" : "Under"}
+          projection={summary?.model ? summary.model.projection.mean.toFixed(1) : null}
           statShort={statDef.shortLabel}
           onPoint={(p) => setPointByStat((m) => ({ ...m, [prop.stat]: p }))}
         />

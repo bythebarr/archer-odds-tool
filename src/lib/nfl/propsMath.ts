@@ -14,6 +14,7 @@ import type { NflPropStatDef, NflStatLine } from "./propStats";
 import { NFL_CALIBRATION_SHRINK, nflRawOver, projectNflProp, type NflProjection, type NflProjectionContext } from "./projection";
 import type { InjuryLevel } from "@/lib/injuries/status";
 import { modelWithheld, priceProp, type PricedProp } from "@/lib/propModel/price";
+import { altLinePoints, type AltLineRow } from "@/lib/props/altLines";
 
 export interface NflLogPoint extends NflStatLine {
   date: string;
@@ -187,4 +188,53 @@ export function sortNflSummaries(list: NflPropSummary[], sort: NflPropSort, side
     },
   };
   return list.sort((a, b) => Number(a.projected) - Number(b.projected) || key[sort](b) - key[sort](a));
+}
+
+/**
+ * The alt-line step for an NFL stat: yards move in 15s on a QB's line, 10s on a
+ * starter's, 5s below that and 2s on the shortest; counts move by 1 (2 once the
+ * line is 15+, e.g. completions). See props/altLines.
+ */
+export function nflAltStep(stat: NflPropStatDef, main: number): number {
+  if (stat.shape === "yards") return main >= 150 ? 15 : main >= 60 ? 10 : main >= 25 ? 5 : 2;
+  return main >= 15 ? 2 : 1;
+}
+
+/** The ladder around `main` for an NFL stat, merged with the books' lines. */
+export function altLinePointsNfl(stat: NflPropStatDef, main: number, bookPoints: number[] = []): number[] {
+  return altLinePoints(main, nflAltStep(stat, main), bookPoints);
+}
+
+/** The column windows of the NFL alt-line table, in order (the `l10` window is the last 8). */
+export const NFL_ALT_COLUMNS = [
+  { key: "l5", label: "L5" },
+  { key: "l10", label: "L8" },
+  { key: "season", label: "This szn" },
+  { key: "lastSeason", label: "Last szn" },
+] as const satisfies readonly { key: PropSplit["key"]; label: string }[];
+
+/** Every rung of the ladder, read the same way the sheet reads one line (see summarizeNflProp). */
+export function nflAltLineRows(
+  prop: NflSlateProp,
+  logs: NflLogPoint[],
+  stat: NflPropStatDef,
+  side: PropDirection,
+  ctx: Parameters<typeof summarizeNflProp>[4],
+  points: number[]
+): AltLineRow[] {
+  const posted = new Set(prop.quotes.map((q) => q.point));
+  return points.flatMap((point) => {
+    const s = summarizeNflProp(prop, logs, stat, side, ctx, point);
+    if (!s) return [];
+    const rate = (key: PropSplit["key"]) => s.splits.find((x) => x.key === key)!.rate;
+    return [
+      {
+        point,
+        posted: posted.has(point),
+        modelProb: s.model ? (side === "over" ? s.model.probOver : s.model.probUnder) : null,
+        rates: NFL_ALT_COLUMNS.map((c) => rate(c.key)),
+        best: side === "over" ? s.over : s.under,
+      },
+    ];
+  });
 }

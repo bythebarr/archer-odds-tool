@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { NFL_PROP_STATS, NFL_PROP_STAT_BY_KEY, type NflPropStatDef } from "@/lib/nfl/propStats";
-import { sortNflSummaries, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflPropSort, type NflPropSummary, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
+import { NFL_ALT_COLUMNS, altLinePointsNfl, nflAltLineRows, sortNflSummaries, summarizeNflProp, unpackNflLog, type NflLogPoint, type NflPropSort, type NflPropSummary, type NflSlateProp, type PackedNflLog } from "@/lib/nfl/propsMath";
 import { nflStatMatchup, type NflDefenseTable } from "@/lib/nfl/matchup";
 import { matchupGrade, ordinal } from "@/lib/nba/matchup";
 import { booksAtPoint, propConsensusPoint, twoSidedAt } from "@/lib/nba/propsMath";
@@ -23,6 +23,9 @@ import type { NflProjectionContext } from "@/lib/nfl/projection";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
+import { AltLinesTable } from "@/components/props/AltLinesTable";
+import { ParlayButton, ParlayTray } from "@/components/props/Parlay";
+import { addLeg, type ParlayLeg } from "@/lib/props/parlay";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import {
   ArchrLineChip,
@@ -351,7 +354,7 @@ function TeamPanel({ team, opponent, teams, position }: { team: string | undefin
   );
 }
 
-function Sheet({ player, props, logs, volume, season, projection, modelWeights, defense, teams, initialStat, side: initialSide, startLabel, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; defense: NflDefenseTable; teams: Record<string, NflTeamContext>; initialStat: NflPropStat; side: PropDirection; startLabel: string; onClose: () => void }) {
+function Sheet({ player, props, logs, volume, season, projection, modelWeights, defense, teams, initialStat, side: initialSide, startLabel, parlay, onAddLeg, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; defense: NflDefenseTable; teams: Record<string, NflTeamContext>; initialStat: NflPropStat; side: PropDirection; startLabel: string; parlay: ParlayLeg[]; onAddLeg: (leg: ParlayLeg) => void; onClose: () => void }) {
   const [statKey, setStatKey] = useState(initialStat);
   const [side, setSide] = useState(initialSide);
   const xtd = useMemo(() => advancedWindow(logs.slice(0, 8)), [logs]);
@@ -359,8 +362,13 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
   const stat = NFL_PROP_STAT_BY_KEY.get(prop.stat)!;
   const consensus = propConsensusPoint(prop.quotes);
   const [pointByStat, setPointByStat] = useState<Partial<Record<NflPropStat, number>>>({});
-  const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
-  const s = summarizeNflProp(prop, logs, stat, side, { season, venue: player.venue, opponent: player.opponent?.abbreviation ?? null, projection, injury: player.injury?.level ?? null, modelWeight: modelWeights[prop.stat] }, point);
+  const main = consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
+  const point = pointByStat[prop.stat] ?? main;
+  const ctx = { season, venue: player.venue, opponent: player.opponent?.abbreviation ?? null, projection, injury: player.injury?.level ?? null, modelWeight: modelWeights[prop.stat] };
+  const s = summarizeNflProp(prop, logs, stat, side, ctx, point);
+  // A Yes/No touchdown has one line; everything else reads up and down the ladder.
+  const ladder = stat.shape === "anytime" ? [] : altLinePointsNfl(stat, main, prop.quotes.map((q) => q.point));
+  const altRows = ladder.length > 1 ? nflAltLineRows(prop, logs, stat, side, ctx, ladder) : [];
   const books = booksAtPoint(prop.quotes, point, side);
   const pairs = twoSidedAt(prop.quotes, point);
   const fair = fairPrice(pairs);
@@ -372,6 +380,18 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
   const def = player.opponent ? nflStatMatchup(defense, player.opponent.abbreviation, stat, player.position) : null;
   const h2h = s?.splits.find((x) => x.key === "h2h");
   const volLabel = player.position === "QB" ? "Att" : player.position === "RB" ? "Car" : "Tgt";
+  const leg: ParlayLeg = {
+    id: `${player.id}:${prop.stat}`,
+    gameId: player.gameId,
+    playerName: player.name,
+    team: player.team?.abbreviation ?? player.id,
+    statShort: stat.shortLabel,
+    side,
+    sideLabel: sideLabelsOf(stat)[side === "over" ? 0 : 1],
+    point,
+    modelProb: m ? (side === "over" ? m.probOver : m.probUnder) : null,
+    logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, value: !stat.available || stat.available(l) ? stat.value(l) : null })),
+  };
   const volOf = (l: NflLogPoint) => (player.position === "QB" ? l.passAttempts : player.position === "RB" ? l.rushAttempts : l.targets);
 
   return (
@@ -405,10 +425,12 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
         side={side}
         onSide={setSide}
         sideLabels={sideLabelsOf(stat)}
-        ladder={stat.shape === "anytime" ? [] : (s?.points ?? []).map((p) => ({ point: p, main: p === consensus }))}
+        ladder={ladder.map((p) => ({ point: p, main: p === main }))}
         point={point}
         onPoint={(p) => setPointByStat((v) => ({ ...v, [prop.stat]: p }))}
       />
+
+      <ParlayButton leg={leg} legs={parlay} onAdd={onAddLeg} />
 
       {s?.projected && (
         <ProjectedNote>
@@ -490,6 +512,19 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
         </ProjectionCard>
       )}
 
+      {altRows.length > 1 && (
+        <AltLinesTable
+          rows={altRows}
+          columns={NFL_ALT_COLUMNS.map((c) => c.label)}
+          point={point}
+          main={main}
+          sideLabel={side === "over" ? "Over" : "Under"}
+          projection={m ? m.projection.mean.toFixed(digits(stat)) : null}
+          statShort={stat.shortLabel}
+          onPoint={(p) => setPointByStat((v) => ({ ...v, [prop.stat]: p }))}
+        />
+      )}
+
       {s && (
         <SheetSection title="Hit rates">
           <SplitGrid splits={s.splits} />
@@ -549,6 +584,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
   const [gameId, setGameId] = useState<string | null>(initialGame);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const [parlay, setParlay] = useState<ParlayLeg[]>([]);
   const close = useCallback(() => setOpen(null), []);
 
   const logs = useMemo(() => Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackNflLog)])) as Record<string, NflLogPoint[]>, [slate.logs]);
@@ -640,9 +676,12 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
             const g = gameById.get(openPlayer.gameId);
             return g ? `${kickoff(g.startUtc)} ET` : "";
           })()}
+          parlay={parlay}
+          onAddLeg={(leg) => setParlay((legs) => addLeg(legs, leg))}
           onClose={close}
         />
       )}
+      <ParlayTray legs={parlay} season={slate.season} onRemove={(id) => setParlay((legs) => legs.filter((l) => l.id !== id))} onClear={() => setParlay([])} />
     </>
   );
 }

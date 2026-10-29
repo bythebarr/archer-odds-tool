@@ -13,6 +13,8 @@ import { Logo } from "@/components/Logo";
 import { ArchrLineChip, BestPriceChip, EmptyList, GameChips, ListNote, ModelChip, ProjectedDivider, PropCard, PropsControls } from "@/components/props/kit";
 import { HitMeter, formatRate, rateTone } from "./HitMeter";
 import { PlayerPropSheet } from "./PlayerPropSheet";
+import { ParlayTray } from "@/components/props/Parlay";
+import { addLeg, type ParlayLeg } from "@/lib/props/parlay";
 import { MatchupChip } from "./Matchup";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
@@ -169,6 +171,7 @@ export function NbaPropsFinder({
   const [gameId, setGameId] = useState<string | null>(initialGame);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const [parlay, setParlay] = useState<ParlayLeg[]>([]);
 
   const update = useCallback(
     (change: Partial<PropsPrefs> & { game?: string | null }) => {
@@ -297,9 +300,12 @@ export function NbaPropsFinder({
             const g = gameById.get(openPlayer.gameId);
             return g ? `${startLabel(g.startUtc)} ET` : "";
           })()}
+          parlay={parlay}
+          onAddLeg={(leg) => setParlay((legs) => addLeg(legs, leg))}
           onClose={closeSheet}
         />
       )}
+      <ParlayTray legs={parlay} season={slate.season} onRemove={(id) => setParlay((legs) => legs.filter((l) => l.id !== id))} onClear={() => setParlay([])} />
     </>
   );
 }
