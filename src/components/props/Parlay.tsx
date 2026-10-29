@@ -131,7 +131,7 @@ function ParlayPanel({ legs, season, onRemove, onClear, onClose }: { legs: Parla
         </ul>
 
         {legs.length < 2 ? (
-          <p className="mt-3 text-xs text-muted-foreground">Add another leg from this game: tap a player, pick a line, then add it.</p>
+          <p className="mt-3 text-xs text-muted-foreground">Add another leg from this game: tap the game at the top of the board to see only its players, then tap one, pick a line and add it.</p>
         ) : (
           <>
             <p className="mt-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">All legs hit together</p>

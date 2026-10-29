@@ -178,3 +178,13 @@ describe("alt lines", () => {
     expect(rows.map((r) => r.rates[0].hits)).toEqual([1, 4]);
   });
 });
+
+describe("packed logs carry the player's team", () => {
+  it("round-trips the team, and reads an older tuple without one", () => {
+    const l = log(20, { team: "OKC" });
+    expect(unpackLog(packLog(l))).toEqual(l);
+    const { team: _team, ...noTeam } = l;
+    void _team;
+    expect(unpackLog(packLog(noTeam))).toEqual(noTeam);
+  });
+});

@@ -35,3 +35,12 @@ describe("NFL alt lines", () => {
     expect(rows.every((r) => r.modelProb === null)).toBe(true); // "out" withholds the model
   });
 });
+
+describe("packed NFL logs carry the player's team", () => {
+  it("round-trips the team", async () => {
+    const { packNflLog, unpackNflLog } = await import("./propsMath");
+    const l = { ...log(250), team: "DET" };
+    expect(unpackNflLog(packNflLog(l)).team).toBe("DET");
+    expect(unpackNflLog(packNflLog(log(250))).team).toBeUndefined();
+  });
+});

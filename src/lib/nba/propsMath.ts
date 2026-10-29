@@ -33,22 +33,26 @@ export interface GameLogPoint extends NbaStatLine {
   isHome: boolean;
   season: number;
   minutes: number;
+  /** The player's own team that night (a traded player's older games were for another). */
+  team?: string;
 }
 
 /**
  * A game log as a tuple for the wire: a night's slate ships two seasons of logs
  * for every player, and positional arrays drop the repeated keys (about half the
- * payload). [date, opponent, isHome, season, minutes, pts, reb, ast, 3pm, stl, blk, to]
+ * payload). [date, opponent, isHome, season, minutes, pts, reb, ast, 3pm, stl, blk, to, team]
  */
-export type PackedLog = [string, string, 0 | 1, number, number, number, number, number, number, number, number, number?];
+export type PackedLog = [string, string, 0 | 1, number, number, number, number, number, number, number, number, number?, string?];
 
 export function packLog(l: GameLogPoint): PackedLog {
-  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, l.minutes, l.points, l.rebounds, l.assists, l.threesMade, l.steals, l.blocks, l.turnovers];
+  const t: PackedLog = [l.date, l.opponent, l.isHome ? 1 : 0, l.season, l.minutes, l.points, l.rebounds, l.assists, l.threesMade, l.steals, l.blocks, l.turnovers];
+  if (l.team) t[12] = l.team;
+  return t;
 }
 
 export function unpackLog(t: PackedLog): GameLogPoint {
-  const [date, opponent, isHome, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers] = t;
-  return { date, opponent, isHome: isHome === 1, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers: turnovers ?? 0 };
+  const [date, opponent, isHome, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers, team] = t;
+  return { date, opponent, isHome: isHome === 1, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers: turnovers ?? 0, ...(team ? { team } : {}) };
 }
 
 export interface SlateProp {
