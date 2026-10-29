@@ -41,6 +41,13 @@ async function main() {
   const sameName = await prisma.team.groupBy({ by: ["name"], where: { name: { in: slateTeams.map((t) => t.name) } }, _count: true });
   console.log(`Team rows per slate team name (>1 = duplicates):`, sameName.filter((s) => s._count > 1).map((s) => `${s.name}×${s._count}`).join(", ") || "none");
 
+  // NBA: game logs by season (the board's "This szn" / "Last szn" windows read these).
+  const nbaLogs = await prisma.nbaPlayerGameLog.groupBy({ by: ["season"], _count: true, _min: { gameDate: true }, _max: { gameDate: true } });
+  console.log(
+    `NbaPlayerGameLog by season:`,
+    nbaLogs.map((l) => `${l.season}: ${l._count} (${l._min.gameDate?.toISOString().slice(0, 10)} → ${l._max.gameDate?.toISOString().slice(0, 10)})`).join(", ")
+  );
+
   // Tennis: the archive and ratings the props board reads.
   const [archive, ratings, distinctOverall] = await Promise.all([
     prisma.tennisArchiveMatch.count(),
