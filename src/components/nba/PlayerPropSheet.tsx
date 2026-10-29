@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
-import { booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
+import { altLinePoints, altLineRows, booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
 import { fairPrice } from "@/lib/odds/marketValue";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import type { ProjectionContext } from "@/lib/nba/projection";
@@ -15,6 +15,7 @@ import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/Mo
 import { BooksTable, LinePicker, PlayerSheet, ProjectedNote, ProjectionCard, RecentGames, SheetFooter, SheetSection } from "@/components/props/kit";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import { MatchupPanel, SplitGrid } from "./Matchup";
+import { AltLinesTable } from "./AltLines";
 import type { DefenseTable } from "@/lib/nba/matchup";
 
 /** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
@@ -66,8 +67,8 @@ function ProjectionPanel({ model, point, side, statShort, milestone = false }: {
 
 /**
  * Everything about one player's props in one panel: switch stat, pick any line
- * the books hang, see the hit rates and the last 20 games against it, and every
- * book's price at that line. A bottom sheet on phones, a centered dialog wider up.
+ * (the books' and ARCHR's alt ladder above and below the main one), see the hit
+ * rates and the last 20 games against it, and every book's price at that line. A bottom sheet on phones, a centered dialog wider up.
  */
 export function PlayerPropSheet({
   player,
@@ -103,20 +104,29 @@ export function PlayerPropSheet({
   const statDef = NBA_PROP_STAT_BY_KEY.get(prop.stat)!;
   const consensus = propConsensusPoint(prop.quotes);
   const [pointByStat, setPointByStat] = useState<Partial<Record<NbaPropStat, number>>>({});
-  const point = pointByStat[prop.stat] ?? consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
+  const main = consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
+  const point = pointByStat[prop.stat] ?? main;
 
-  const summary = useMemo(
-    () => summarizeProp(prop, logs, statDef, side, {
-          season,
-          venue: player.venue,
-          opponent: player.opponent?.abbreviation,
-          projection,
-          injury: player.injury?.level ?? null,
-          modelWeight: modelWeights[prop.stat],
-        },
-        point
-      ),
-    [prop, logs, statDef, side, season, player.venue, player.opponent?.abbreviation, player.injury?.level, projection, modelWeights, point]
+  const context = useMemo(
+    () => ({
+      season,
+      venue: player.venue,
+      opponent: player.opponent?.abbreviation,
+      projection,
+      injury: player.injury?.level ?? null,
+      modelWeight: modelWeights[prop.stat],
+    }),
+    [season, player.venue, player.opponent?.abbreviation, projection, player.injury?.level, modelWeights, prop.stat]
+  );
+  const summary = useMemo(() => summarizeProp(prop, logs, statDef, side, context, point), [prop, logs, statDef, side, context, point]);
+  // Yes/No milestones (double-double) have one line; everything else reads up and down the ladder.
+  const ladder = useMemo(
+    () => (statDef.milestone ? [...new Set(prop.quotes.map((q) => q.point))].sort((a, b) => a - b) : altLinePoints(main, prop.quotes.map((q) => q.point))),
+    [statDef.milestone, main, prop.quotes]
+  );
+  const altRows = useMemo(
+    () => (statDef.milestone ? [] : altLineRows(prop, logs, statDef, side, context, ladder)),
+    [statDef, prop, logs, side, context, ladder]
   );
   const books = useMemo(() => booksAtPoint(prop.quotes, point, side), [prop.quotes, point, side]);
   const pairs = useMemo(() => twoSidedAt(prop.quotes, point), [prop.quotes, point]);
@@ -155,7 +165,7 @@ export function PlayerPropSheet({
         value={point}
         side={side}
         onSide={setSide}
-        ladder={(summary?.points ?? []).map((p) => ({ point: p, main: p === consensus }))}
+        ladder={ladder.map((p) => ({ point: p, main: p === main }))}
         point={point}
         onPoint={(p) => setPointByStat((m) => ({ ...m, [prop.stat]: p }))}
       />
@@ -194,6 +204,18 @@ export function PlayerPropSheet({
       )}
 
       {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} />}
+
+      {altRows.length > 1 && (
+        <AltLinesTable
+          rows={altRows}
+          point={point}
+          main={main}
+          side={side}
+          projection={summary?.model?.projection.mean ?? null}
+          statShort={statDef.shortLabel}
+          onPoint={(p) => setPointByStat((m) => ({ ...m, [prop.stat]: p }))}
+        />
+      )}
 
       {summary && (
         <SheetSection title="Hit rates">

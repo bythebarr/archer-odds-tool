@@ -296,3 +296,61 @@ export function booksAtPoint(quotes: PropQuote[], point: number, side: PropDirec
   const price = (r: BookRow) => (r[side] === null ? -Infinity : americanToDecimal(r[side]!));
   return [...rows.values()].sort((a, b) => Number(b.bettable) - Number(a.bettable) || price(b) - price(a));
 }
+
+/** Lines on each side of the main one in the alt-line ladder. */
+const ALT_STEPS = 4;
+
+/**
+ * The alt-line ladder around `main`: every line a book hangs, plus ARCHR's own
+ * steps above and below it so a line can be read up and down before any book
+ * posts alternates. Steps are 1 (2 on lines of 15+, where one point barely
+ * moves the needle), kept on the half-point and above zero. Ascending.
+ */
+export function altLinePoints(main: number, bookPoints: number[] = []): number[] {
+  const step = main >= 15 ? 2 : 1;
+  const own = Array.from({ length: ALT_STEPS * 2 + 1 }, (_, i) => main + (i - ALT_STEPS) * step).filter((p) => p > 0);
+  return [...new Set([...own, ...bookPoints])].sort((a, b) => a - b);
+}
+
+/** One rung of the alt-line ladder: the model's chance and the hit rates at that line, for one side. */
+export interface AltLineRow {
+  point: number;
+  /** A book hangs this line. */
+  posted: boolean;
+  /** ARCHR's chance the side cashes here; null without a projection. */
+  modelProb: number | null;
+  l5: PropHitRateResult;
+  l10: PropHitRateResult;
+  season: PropHitRateResult;
+  lastSeason: PropHitRateResult;
+  /** Best bettable price on this side at this line, if any book posts it. */
+  best: PropQuote | null;
+}
+
+/** Every rung of the ladder, read the same way the sheet reads one line (see summarizeProp). */
+export function altLineRows(
+  prop: SlateProp,
+  logs: GameLogPoint[],
+  stat: NbaPropStatDef,
+  side: PropDirection,
+  context: PropContext,
+  points: number[]
+): AltLineRow[] {
+  const posted = new Set(prop.quotes.map((q) => q.point));
+  return points.flatMap((point) => {
+    const s = summarizeProp(prop, logs, stat, side, context, point);
+    if (!s) return [];
+    return [
+      {
+        point,
+        posted: posted.has(point),
+        modelProb: s.model ? (side === "over" ? s.model.probOver : s.model.probUnder) : null,
+        l5: s.hitRates.l5,
+        l10: s.hitRates.l10,
+        season: s.hitRates.season,
+        lastSeason: s.hitRates.lastSeason,
+        best: side === "over" ? s.over : s.under,
+      },
+    ];
+  });
+}

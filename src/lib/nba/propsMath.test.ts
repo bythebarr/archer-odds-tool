@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { booksAtPoint, packLog, propConsensusPoint, sortSummaries, summarizeProp, unpackLog, type GameLogPoint, type PropQuote, type SlateProp } from "./propsMath";
+import { altLinePoints, altLineRows, booksAtPoint, packLog, propConsensusPoint, sortSummaries, summarizeProp, unpackLog, type GameLogPoint, type PropQuote, type SlateProp } from "./propsMath";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 
 const POINTS = NBA_PROP_STAT_BY_KEY.get("points")!;
@@ -150,5 +150,31 @@ describe("injury handling", () => {
     const healthy = summarizeProp(prop, logs, POINTS, "over", { season: 2026, venue: null, projection: proj })!.model!;
     const q = summarizeProp(prop, logs, POINTS, "over", { season: 2026, venue: null, projection: proj, injury: "questionable" })!.model!;
     expect(Math.abs(q.probOver - 0.5)).toBeLessThan(Math.abs(healthy.probOver - 0.5));
+  });
+});
+
+describe("alt lines", () => {
+  const logs = [30, 20, 26, 22, 28, 10, 10, 10, 10, 10].map((p) => log(p)).concat([40, 40, 40, 40, 40].map((p) => log(p, { season: 2025, isHome: false })));
+
+  it("steps 2 either side of a big line, keeping the books' alternates", () => {
+    expect(altLinePoints(24.5, [24.5, 25.5])).toEqual([16.5, 18.5, 20.5, 22.5, 24.5, 25.5, 26.5, 28.5, 30.5, 32.5]);
+  });
+
+  it("steps 1 on a small line and never goes below zero", () => {
+    expect(altLinePoints(2.5)).toEqual([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5]);
+  });
+
+  it("reads hit rates at every rung: lower lines cash more often for the Over", () => {
+    const rows = altLineRows(prop, logs, POINTS, "over", { season: 2026, venue: "home" }, [20.5, 24.5, 28.5]);
+    expect(rows.map((r) => r.l5.hits)).toEqual([4, 3, 1]);
+    expect(rows.map((r) => r.lastSeason.hits)).toEqual([5, 5, 5]);
+    expect(rows.map((r) => r.posted)).toEqual([false, true, false]);
+    expect(rows[1].best).toMatchObject({ bookKey: "fanduel", priceAmerican: -108 });
+    expect(rows[0].best).toBeNull();
+  });
+
+  it("flips for the Under", () => {
+    const rows = altLineRows(prop, logs, POINTS, "under", { season: 2026, venue: "home" }, [20.5, 28.5]);
+    expect(rows.map((r) => r.l5.hits)).toEqual([1, 4]);
   });
 });
