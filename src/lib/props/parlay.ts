@@ -18,6 +18,8 @@ export interface ParlayLog {
   opponent: string;
   isHome: boolean;
   season: number;
+  /** The player's team that game; the leg's current team when not known. */
+  team?: string;
   value: number | null;
 }
 
@@ -72,8 +74,9 @@ function cashes(value: number, point: number, side: PropDirection): boolean {
 }
 
 /** The game a log belongs to, named the same way from either team's side. */
-export function parlayGameKey(team: string, log: Pick<ParlayLog, "date" | "opponent" | "isHome">): string {
-  return `${log.date}|${log.isHome ? `${log.opponent}@${team}` : `${team}@${log.opponent}`}`;
+export function parlayGameKey(team: string, log: Pick<ParlayLog, "date" | "opponent" | "isHome" | "team">): string {
+  const own = log.team || team;
+  return `${log.date}|${log.isHome ? `${log.opponent}@${own}` : `${own}@${log.opponent}`}`;
 }
 
 function count(games: ParlayGame[]): PropHitRateResult {

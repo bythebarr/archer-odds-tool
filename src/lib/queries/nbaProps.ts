@@ -318,6 +318,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     (logs[h.nbaPlayerId] ??= []).push({
       date: etDateOf(h.gameDate),
       opponent: (h.isHome ? h.game.awayTeam?.abbreviation : h.game.homeTeam?.abbreviation) ?? "",
+      team: (h.isHome ? h.game.homeTeam?.abbreviation : h.game.awayTeam?.abbreviation) ?? undefined,
       isHome: h.isHome,
       season: h.season,
       minutes: h.minutes,

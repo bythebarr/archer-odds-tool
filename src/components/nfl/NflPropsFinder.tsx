@@ -390,7 +390,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
     sideLabel: sideLabelsOf(stat)[side === "over" ? 0 : 1],
     point,
     modelProb: m ? (side === "over" ? m.probOver : m.probUnder) : null,
-    logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, value: !stat.available || stat.available(l) ? stat.value(l) : null })),
+    logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, team: l.team, value: !stat.available || stat.available(l) ? stat.value(l) : null })),
   };
   const volOf = (l: NflLogPoint) => (player.position === "QB" ? l.passAttempts : player.position === "RB" ? l.rushAttempts : l.targets);
 

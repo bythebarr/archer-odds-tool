@@ -85,3 +85,14 @@ describe("addLeg", () => {
     expect(addLeg([a, b], leg({ id: "c:points", gameId: "other" })).map((l) => l.id)).toEqual(["c:points"]);
   });
 });
+
+describe("traded players", () => {
+  it("matches a game by the team the player was on that night, not his current one", () => {
+    // Dort is a Hawk now, but last season's head-to-heads with Mitchell were for OKC.
+    const dort = leg({ id: "dort:points", team: "ATL", logs: [g("2026-02-10", "CLE", true, 12), g("2026-10-27", "MIA", true, 8)].map((l, i) => ({ ...l, team: i === 0 ? "OKC" : "ATL" })) });
+    const mitchell = leg({ id: "mitchell:points", team: "CLE", point: 25.5, logs: [{ ...g("2026-02-10", "OKC", false, 30), team: "CLE" }] });
+    const h = parlayHistory([dort, mitchell], 2026);
+    expect(h.games.map((x) => x.matchup)).toEqual(["CLE@OKC"]);
+    expect(h.together.hits).toBe(1);
+  });
+});

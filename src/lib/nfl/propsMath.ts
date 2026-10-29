@@ -21,10 +21,12 @@ export interface NflLogPoint extends NflStatLine {
   opponent: string;
   isHome: boolean;
   season: number;
+  /** The player's own team that week (a traded player's older games were for another). */
+  team?: string;
 }
 
-/** A log as a tuple: [date, opponent, isHome, season, ...core columns, ...extra columns (null = not on the box score)]. */
-export type PackedNflLog = [string, string, 0 | 1, number, ...(number | null)[]];
+/** A log as a tuple: [date, opponent, isHome, season, team ("" = unknown), ...core columns, ...extra columns (null = not on the box score)]. */
+export type PackedNflLog = [string, string, 0 | 1, number, string, ...(number | null)[]];
 
 /** The always-present columns, in wire order — also what the defense-by-position table sums. */
 export const NFL_LOG_COLUMNS = [
@@ -49,14 +51,14 @@ export function packNflLog(l: NflLogPoint): PackedNflLog {
   // Trailing nulls (a defender's, or a game before the advanced import) aren't sent: unpacking reads them back as null.
   let end = extra.length;
   while (end > 0 && extra[end - 1] === null) end--;
-  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, ...NFL_LOG_COLUMNS.map((c) => l[c]), ...extra.slice(0, end)];
+  return [l.date, l.opponent, l.isHome ? 1 : 0, l.season, l.team ?? "", ...NFL_LOG_COLUMNS.map((c) => l[c]), ...extra.slice(0, end)];
 }
 
 export function unpackNflLog(t: PackedNflLog): NflLogPoint {
-  const [date, opponent, isHome, season, ...rest] = t;
+  const [date, opponent, isHome, season, team, ...rest] = t;
   const core = Object.fromEntries(NFL_LOG_COLUMNS.map((c, i) => [c, rest[i] ?? 0]));
   const extra = Object.fromEntries(NFL_EXTRA_COLUMNS.map((c, i) => [c, rest[NFL_LOG_COLUMNS.length + i] ?? null]));
-  return { date, opponent, isHome: isHome === 1, season, ...core, ...extra } as unknown as NflLogPoint;
+  return { date, opponent, isHome: isHome === 1, season, ...(team ? { team } : {}), ...core, ...extra } as unknown as NflLogPoint;
 }
 
 /** A stat line with every extra column empty — for sums and fixtures. */

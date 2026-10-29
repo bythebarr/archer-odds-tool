@@ -335,6 +335,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     const point: NflLogPoint = {
       date: etDateOf(h.gameDate),
       opponent: (h.isHome ? h.game.awayTeam?.abbreviation : h.game.homeTeam?.abbreviation) ?? "",
+      team: (h.isHome ? h.game.homeTeam?.abbreviation : h.game.awayTeam?.abbreviation) ?? undefined,
       isHome: h.isHome,
       season: h.season,
       ...(Object.fromEntries([...COLUMNS, ...NFL_EXTRA_COLUMNS].map((c) => [c, h[c]])) as unknown as NflStatLine),

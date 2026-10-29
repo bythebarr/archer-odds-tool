@@ -150,7 +150,7 @@ export function PlayerPropSheet({
     sideLabel: statDef.milestone ? (side === "over" ? "Yes" : "No") : side === "over" ? "Over" : "Under",
     point,
     modelProb: summary?.model ? (side === "over" ? summary.model.probOver : summary.model.probUnder) : null,
-    logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, value: statDef.value(l) })),
+    logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, team: l.team, value: statDef.value(l) })),
   };
 
   const statsOffered = NBA_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
