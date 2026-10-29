@@ -4,7 +4,8 @@ name: Model lab (backtests and fits)
 # report, and saves each report card for the in-app /models page —
 # every model's accuracy, calibration and fitted constants come from here, not
 # from guesses. "report:all" runs every model. Needs a DATABASE_URL repository secret (Settings →
-# Secrets and variables → Actions). The scripts only write their own report cards (ModelReport).
+# Secrets and variables → Actions). The scripts only write their own report cards (ModelReport),
+# except import:tennis (loads the free Sackmann archive + Elo ratings) and diagnose:props (read-only).
 # Keeps the database awake for the run (a few minutes), so run it on purpose.
 on:
   # Weekly refresh of every report card (Monday morning ET). GitHub's scheduler
@@ -33,6 +34,8 @@ on:
           - backtest:nfl
           - backtest:nfl:clv
           - backtest:all
+          - import:tennis
+          - diagnose:props
       n:
         description: "Sample size (N), where the script takes one"
         required: false

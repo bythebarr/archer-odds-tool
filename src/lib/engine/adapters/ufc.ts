@@ -160,8 +160,8 @@ async function refresh(): Promise<void> {
 }
 
 /**
- * Grade one tracked UFC play against its bout — the exact logic of
- * postResults.gradeUfcPlay: no bout row → void, fight not `completed` →
+ * Grade one tracked UFC play against its bout — the one UFC grader (the recap's
+ * pass and postResults.settlePendingUfcPlays both call it): no bout row → void, fight not `completed` →
  * `"pending"` (fight nights finish late; a later pass settles it), else the
  * moneyline grade against the winner (a draw/no-contest is a push, never a loss).
  */

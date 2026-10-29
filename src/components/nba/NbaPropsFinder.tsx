@@ -37,6 +37,9 @@ function startLabel(iso: string): string {
 /** The model must clear a wider bar than the market read: it's one opinion against the whole market. */
 const MODEL_EV_FLAG = 0.03;
 
+/** Below this many games this season, the card shows last season's rate beside it. */
+const EARLY_SEASON_GAMES = 10;
+
 function NbaCard({
   summary,
   player,
@@ -59,9 +62,14 @@ function NbaCard({
   const value = side === "over" ? summary.value.over : summary.value.under;
   const statShort = stat.shortLabel;
   const rates = summary.hitRates;
-  // The card's split strip: short form, the season, and head-to-head when they've met (every window is in the sheet).
+  // The card's split strip: short form, this season, and head-to-head when they've met (every window is in the sheet).
+  // While this season is only a handful of games, last season rides along so a 3-for-3 start
+  // isn't the only "season" number on the card.
+  const earlySeason = rates.season.sampleSize < EARLY_SEASON_GAMES && rates.lastSeason.sampleSize > 0;
   const cardSplits = summary.splits.filter(
-    (sp) => ["l3", "l5", "season"].includes(sp.key) || (sp.key === "h2h" && sp.rate.sampleSize > 0)
+    (sp) =>
+      (earlySeason ? ["l5", "season", "lastSeason"] : ["l3", "l5", "season"]).includes(sp.key) ||
+      (sp.key === "h2h" && sp.rate.sampleSize > 0)
   );
   const m = summary.model;
   const modelProb = m ? (side === "over" ? m.probOver : m.probUnder) : null;
@@ -120,6 +128,10 @@ function NbaCard({
       strip={cardSplits.map((sp) => (
         <span key={sp.key}>
           {sp.label} <span className={`font-mono font-semibold ${rateTone(sp.rate)}`}>{formatRate(sp.rate)}</span>
+          {/* A season window can be a few games or eighty: say which. */}
+          {(sp.key === "season" || sp.key === "lastSeason") && sp.rate.sampleSize > 0 && (
+            <span className="font-mono text-[10px] text-muted-foreground"> {sp.rate.hits}/{sp.rate.sampleSize}</span>
+          )}
         </span>
       ))}
       stripRight={

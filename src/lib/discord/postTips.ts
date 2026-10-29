@@ -14,12 +14,8 @@
  */
 import { GLOSSARY, type GlossaryEntry } from "@/lib/glossary";
 import { todayEt } from "@/lib/dateEt";
-import { postWebhook } from "./postCard";
-import { mosesAuthor } from "./brand";
-
-const ARCHR_GREEN = 0x06996b;
-const RESEARCH_FOOTER =
-  "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
+import { postEmbeds } from "./webhook";
+import { mosesAuthor, ARCHR_GREEN, RESEARCH_FOOTER } from "./brand";
 
 /**
  * Every glossary entry EXCEPT the "getting-around" category, which names the
@@ -76,6 +72,6 @@ export async function postDailyTip(dateEt: string = todayEt()): Promise<TipPostR
   const entry = tipForDate(dateEt);
   if (!entry) return { posted: false, reason: "no teachable glossary entries" };
 
-  await postWebhook(url, { username: "Moses, Leader of Many", embeds: [renderTip(entry)] });
+  await postEmbeds(url, [renderTip(entry)]);
   return { posted: true, term: entry.term };
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { notFound } from "next/navigation";
 import { previewDailyCard } from "@/lib/discord/postCard";
 import { PageShell } from "@/components/PageShell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -43,6 +44,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Discord card preview",
   description: "Dry-run of exactly what the daily Discord card would post right now — no post, no spam.",
+  robots: { index: false, follow: false },
 };
 
 /**
@@ -137,7 +139,15 @@ function Post({
   );
 }
 
-export default async function DiscordPreviewPage() {
+/**
+ * Shows today's premium handpicks, so it's gated like /deck: CRON_SECRET in
+ * `?token=`, and a 404 without it so the page never reveals it exists.
+ */
+export default async function DiscordPreviewPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
+  const { token } = await searchParams;
+  const expected = process.env.CRON_SECRET;
+  if (!expected || !token || token !== expected) notFound();
+
   const card = await previewDailyCard();
 
   return (

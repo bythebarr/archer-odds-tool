@@ -167,7 +167,7 @@ export function summarizeProp(
     { key: "l10", label: "L10", values: values.slice(0, 10) },
     { key: "l15", label: "L15", values: values.slice(0, 15) },
     { key: "l20", label: "L20", values: values.slice(0, 20) },
-    { key: "season", label: "Season", values: of(seasonLogs) },
+    { key: "season", label: "This szn", values: of(seasonLogs) },
     { key: "lastSeason", label: "Last szn", values: of(logs.filter((l) => l.season === context.season - 1)) },
     {
       key: "venue",

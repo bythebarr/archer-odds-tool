@@ -2,7 +2,10 @@ import { todayEt, etDateOf } from "@/lib/dateEt";
 import { SITE_URL } from "@/lib/siteUrl";
 import { prisma } from "@/lib/prisma";
 import { unitsFor } from "@/lib/betting/kelly";
-import { mosesAuthor } from "./brand";
+import { mosesAuthor, ARCHR_GREEN, RESEARCH_FOOTER, KIND_TAG, prettyDate } from "./brand";
+import { postEmbeds } from "./webhook";
+import { markPosted } from "./postMarker";
+import { recordPollLog } from "@/lib/pollingPolicy";
 import { SPORTS, stakeable, type Play } from "@/lib/engine";
 import { getReportedVerdicts } from "@/lib/queries/modelTrust";
 import { getSelection, splitBySelection, type PlayStream } from "@/lib/card/selection";
@@ -13,11 +16,11 @@ import { getSelection, splitBySelection, type PlayStream } from "@/lib/card/sele
  * registered adapter's `listPlays` returns normalized, pre-priced `Play`s already
  * rendered in that sport's capper voice (`display.line`), so this file just
  * groups by sport, renders sections, records, and teases — with no "is this MLB?"
- * branch. MLB carries the model (+EV) lens; UFC brings its fighter-math leans as
- * a second section. (sport-engine Phase 3 — the board wired to the registry.)
+ * branch: each sport with plays gets its own section, in registry order.
  *
- * Posts the curated Best Plays card → #todays-card (DISCORD_WEBHOOK_URL). That
- * is the room's ONLY play surface: there is no free lean and no second board.
+ * Three posts a day (see postDailyCardToDiscord): the handpicked card
+ * (DISCORD_WEBHOOK_URL), the one free play (DISCORD_FREE_WEBHOOK_URL), and the
+ * unstaked slate (DISCORD_SLATE_WEBHOOK_URL).
  *
  * Dormant-safe: with no DISCORD_WEBHOOK_URL set, nothing posts and the caller
  * returns cleanly — the post-discord cron becomes a no-op until you paste a
@@ -30,6 +33,7 @@ import { getSelection, splitBySelection, type PlayStream } from "@/lib/card/sele
 // them (and unitsFor) from this module.
 export { unitsFor };
 export { selectionDisplay, playLine } from "@/lib/card/line";
+export { postWebhook } from "./webhook";
 
 /**
  * The premium card posts EVERY positive-Archer-EV play — no edge floor, no
@@ -38,14 +42,8 @@ export { selectionDisplay, playLine } from "@/lib/card/line";
  * filter: each adapter sizes every play by Kelly (edge × odds), hard-capped by
  * price so long-priced dogs never get fat (see @/lib/betting/kelly).
  */
-/** Discord allows 10 embeds/message; reserve 1 for a non-primary section (UFC). */
-const MAX_EMBEDS = 10;
-const MAX_PRIMARY_CHUNKS = MAX_EMBEDS - 1;
-/** Stamped on every post — keeps the compliance line in front of members daily. */
-const RESEARCH_FOOTER =
-  "Research/entertainment only · not betting advice · 21+ · gamble responsibly 1-800-522-4700";
-/** ARCHR accent green (matches the app's --accent), as a Discord embed color int. */
-const ARCHR_GREEN = 0x06996b;
+/** Most embeds one sport's section may take (each up to 4,000 chars); past it, a warning and a cut. */
+const MAX_SECTION_CHUNKS = 9;
 
 /**
  * Section chrome derives entirely from the adapter's own `meta` — icon, label,
@@ -70,14 +68,6 @@ function hexToInt(hex: string): number {
   return Number.isNaN(n) ? ARCHR_GREEN : n;
 }
 
-const KIND_TAG: Record<string, string> = { ml: "ML", spread: "SPR", total: "TOT", prop: "PROP" };
-
-/**
- * The slate's line — deliberately NOT the card's voice. #ev-slate is a data
- * board: uniform across sports, both EV lenses side by side, and **no units**,
- * because nothing on the slate is staked or recorded. The card keeps each
- * sport's capper voice (`display.line`); this is the flat read of the same play.
- */
 /**
  * Stamp the stake onto a card line. Units live here rather than in each sport's
  * renderer because the stake is the owner's call — set per play in the deck —
@@ -90,6 +80,12 @@ export function appendUnits(line: string, p: Play): string {
   return `${line} · **${String(Number(u.toFixed(2)))}u**`;
 }
 
+/**
+ * The slate's line — deliberately NOT the card's voice. #ev-slate is a data
+ * board: uniform across sports, both EV lenses side by side, and **no units**,
+ * because nothing on the slate is staked or recorded. The card keeps each
+ * sport's capper voice (`display.line`); this is the flat read of the same play.
+ */
 export function slateLine(p: Play): string {
   const meta = SPORTS.find((a) => a.key === p.sportKey)?.meta;
   const tag = `${meta?.label.toUpperCase() ?? p.sportKey.toUpperCase()} ${KIND_TAG[p.selection.kind] ?? ""}`.trim();
@@ -125,17 +121,12 @@ export interface DiscordPostResult {
   missingCount?: number;
   /** Selected plays from an untrusted model — posted on the slate, unstaked, not recorded. */
   heldCount?: number;
+  /** What failed after the card went out (free play, slate, recording). The card itself posted. */
+  errors?: string[];
 }
 
 const EMPTY_CARD =
   "_No plays cleared ARCHR Edge today. No card is a card — we don't force action._";
-
-/** YYYY-MM-DD → "Jul 9" (avoids Date parsing/tz drift on a plain ET date string). */
-function prettyDate(dateEt: string): string {
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const [, m, d] = dateEt.split("-").map(Number);
-  return `${months[m - 1]} ${d}`;
-}
 
 /**
  * Discord embed descriptions cap at 4096 chars, and we post EVERY positive play,
@@ -259,6 +250,9 @@ export async function collectPlays(dateEt: string): Promise<Play[]> {
         return await a.listPlays(dateEt);
       } catch (err) {
         console.error(`listPlays failed for ${a.key} (board continues without it):`, err);
+        // Logged where /api/status shows it, so a sport missing from the card isn't silent.
+        const message = err instanceof Error ? err.message : String(err);
+        await recordPollLog(`board:${a.key}`, `error: ${message.slice(0, 300)}`).catch(() => {});
         return [] as Play[];
       }
     })
@@ -282,19 +276,19 @@ export async function collectPlays(dateEt: string): Promise<Play[]> {
  * Turn board sections into Discord embeds. author + title + link land on each
  * section's FIRST embed, the compliance footer on its LAST, the section color on
  * every embed — reproducing the old MLB-green card + UFC-red Fight-Night embed
- * exactly, now from one branchless loop. The primary section is capped so a
- * non-primary section always has room within Discord's 10-embed limit.
+ * exactly, now from one branchless loop. There's no per-message cap here:
+ * postEmbeds splits the result into as many messages as Discord's limits need.
  */
 export function sectionsToEmbeds(sections: BoardSection[]): Record<string, unknown>[] {
   const embeds: Record<string, unknown>[] = [];
   for (const section of sections) {
     let chunks = packLines(section.lines);
-    if (chunks.length > MAX_PRIMARY_CHUNKS) {
+    if (chunks.length > MAX_SECTION_CHUNKS) {
       // No silent caps: a section this big means something's off upstream.
       console.warn(
-        `postCard: ${chunks.length} ${section.sportKey} chunks exceeds ${MAX_PRIMARY_CHUNKS}; posting the first ${MAX_PRIMARY_CHUNKS}.`
+        `postCard: ${chunks.length} ${section.sportKey} chunks exceeds ${MAX_SECTION_CHUNKS}; posting the first ${MAX_SECTION_CHUNKS}.`
       );
-      chunks = chunks.slice(0, MAX_PRIMARY_CHUNKS);
+      chunks = chunks.slice(0, MAX_SECTION_CHUNKS);
     }
     chunks.forEach((desc, i, arr) => {
       embeds.push({
@@ -305,7 +299,7 @@ export function sectionsToEmbeds(sections: BoardSection[]): Record<string, unkno
       });
     });
   }
-  return embeds.slice(0, MAX_EMBEDS);
+  return embeds;
 }
 
 /**
@@ -461,33 +455,99 @@ export async function previewDailyCard(dateEt: string = todayEt()): Promise<Dail
   };
 }
 
-export async function postWebhook(url: string, body: unknown): Promise<void> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Discord webhook failed: ${res.status} ${res.statusText} — ${text}`);
+/** The #🎁-free-play post: the play's line, same as premium sees it, on its own record. */
+export function freePlayEmbed(free: Play, label: string): Record<string, unknown> {
+  return {
+    author: mosesAuthor(),
+    title: `🎯 Free Play · ${label}`,
+    description: `${free.display?.line ?? slateLine(free)}\n\nTracked in #📊-the-ledger on its own record — wins and losses.`,
+    color: ARCHR_GREEN,
+    footer: { text: RESEARCH_FOOTER },
+  };
+}
+
+/** The #📈-the-firehose post: the flat two-EV read of every unstaked play, no units. */
+export function slateEmbeds(slate: Play[], label: string): Record<string, unknown>[] {
+  const embeds = sectionsToEmbeds(assembleSections(slate, label, "slate"));
+  if (embeds.length) {
+    embeds[0] = { ...embeds[0], title: `📊 Full +EV Slate · ${label}` };
+    embeds[embeds.length - 1] = {
+      ...embeds[embeds.length - 1],
+      footer: { text: `No units — information only. Today's staked card is in #👑-todays-card. ${RESEARCH_FOOTER}` },
+    };
   }
+  return embeds;
+}
+
+/** The steps of the daily drop, as runDrop orders them. A null post is a dormant channel. */
+export interface DropSteps {
+  postCard: () => Promise<void>;
+  markPosted: () => Promise<void>;
+  recordCard: () => Promise<void>;
+  postFree: (() => Promise<void>) | null;
+  recordFree: () => Promise<void>;
+  postSlate: (() => Promise<void>) | null;
+}
+
+/**
+ * Run the drop in the order that keeps a failure cheap (see
+ * postDailyCardToDiscord). A card failure throws before anything else runs;
+ * every later failure is caught, logged and returned, and the rest still runs.
+ */
+export async function runDrop(steps: DropSteps): Promise<{ freePosted: boolean; slatePosted: boolean; errors: string[] }> {
+  await steps.postCard();
+
+  const errors: string[] = [];
+  const attempt = async (what: string, step: () => Promise<void>): Promise<boolean> => {
+    try {
+      await step();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`postCard: ${what} failed (the card already went out):`, err);
+      errors.push(`${what}: ${message.slice(0, 300)}`);
+      return false;
+    }
+  };
+
+  // The card is out: mark and record it before anything else can fail.
+  await attempt("marking the day posted", steps.markPosted);
+  await attempt("recording the card", steps.recordCard);
+
+  // The free play rides its own record, so it's recorded only once it has posted.
+  const freePosted = steps.postFree ? await attempt("the free play post", steps.postFree) : false;
+  if (freePosted) await attempt("recording the free play", steps.recordFree);
+
+  // The slate: no units, never recorded.
+  const slatePosted = steps.postSlate ? await attempt("the slate post", steps.postSlate) : false;
+
+  return { freePosted, slatePosted, errors };
 }
 
 /**
  * The daily drop — three posts, from one pull of the board and one read of the
  * owner's deck picks (see @/lib/card/selection):
  *
- *   👑 #todays-card — his handpicks, with units. Recorded as `card`.
- *   🎯 #free-play   — the single free play, with units. Recorded as `free`.
- *   📊 #ev-slate    — everything he didn't pick. No units. NOT recorded.
+ *   👑 #👑-todays-card — his handpicks, with units. Recorded as `card`.
+ *   🎯 #🎁-free-play   — the single free play, with units. Recorded as `free`.
+ *   📊 #📈-the-firehose — everything else (including picks the trust gate
+ *                         held back). No units. NOT recorded.
  *
  * Each channel is independently dormant: an unset webhook skips that post and
  * the others still go. The card's webhook is the one required env — with it
  * unset nothing runs at all, preserving the "shippable while inert" posture.
  *
- * Ordering matters: the card posts BEFORE the slate. If the slate went first,
- * premium members would see the full board and could infer the card from what
- * was withheld.
+ * Order, and what a failure costs:
+ *   1. The card posts first. If it fails, this throws, nothing is recorded or
+ *      marked, and the next tick retries the whole drop.
+ *   2. Once it's out, the day is marked posted and the card is recorded, before
+ *      anything else can fail. A later failure can't re-post the card or leave
+ *      it off the record.
+ *   3. The free play and the slate each post on their own. A failure is logged
+ *      and returned in `errors`, and the other still goes. The free play is
+ *      recorded only if it actually posted.
+ * The card goes before the slate so premium members can't infer the card from
+ * what the full board withheld.
  */
 export async function postDailyCardToDiscord(
   dateEt: string = todayEt(),
@@ -519,63 +579,32 @@ export async function postDailyCardToDiscord(
           footer: { text: RESEARCH_FOOTER },
         },
       ];
-  await postWebhook(cardUrl, {
-    username: "Moses, Leader of Many",
-    content: cardIntro(card, slate, label),
-    embeds: cardEmbeds,
+  const freeUrl = process.env.DISCORD_FREE_WEBHOOK_URL;
+  const slateUrl = process.env.DISCORD_SLATE_WEBHOOK_URL;
+  if (free && !freeUrl) {
+    console.warn("postCard: a free play is picked but DISCORD_FREE_WEBHOOK_URL is unset; not posted or recorded");
+  }
+  const { freePosted, slatePosted, errors } = await runDrop({
+    postCard: () => postEmbeds(cardUrl, cardEmbeds, cardIntro(card, slate, label)),
+    markPosted: () => markPosted("post-card", dateEt),
+    recordCard: () => recordPlays(card, "card"),
+    postFree: freeUrl && free ? () => postEmbeds(freeUrl, [freePlayEmbed(free, label)]) : null,
+    recordFree: () => (free ? recordPlays([free], "free") : Promise.resolve()),
+    postSlate: slateUrl && slate.length ? () => postEmbeds(slateUrl, slateEmbeds(slate, label)) : null,
   });
 
-  // 🎯 The free play — selection + number, same as premium sees it. It carries
-  // units because it rides its own tracked record.
-  let freePosted = false;
-  const freeUrl = process.env.DISCORD_FREE_WEBHOOK_URL;
-  if (freeUrl && free) {
-    await postWebhook(freeUrl, {
-      username: "Moses, Leader of Many",
-      embeds: [
-        {
-          author: mosesAuthor(),
-          title: `🎯 Free Play · ${label}`,
-          description: `${free.display?.line ?? slateLine(free)}\n\nTracked in #results on its own record — wins and losses.`,
-          color: ARCHR_GREEN,
-          footer: { text: RESEARCH_FOOTER },
-        },
-      ],
-    });
-    freePosted = true;
-  }
-
-  // 📊 The slate — the firehose, no units, never recorded.
-  const slateUrl = process.env.DISCORD_SLATE_WEBHOOK_URL;
-  if (slateUrl && slate.length) {
-    const slateSections = assembleSections(slate, label, "slate");
-    const embeds = sectionsToEmbeds(slateSections);
-    if (embeds.length) {
-      embeds[0] = { ...embeds[0], title: `📊 Full +EV Slate · ${label}` };
-      embeds[embeds.length - 1] = {
-        ...embeds[embeds.length - 1],
-        footer: { text: `No units — information only. Today's staked card is in #todays-card. ${RESEARCH_FOOTER}` },
-      };
-    }
-    await postWebhook(slateUrl, { username: "Moses, Leader of Many", embeds });
-  }
-
-  // Record ONLY what carries units. The slate is deliberately absent from the
-  // ledger — nothing unstaked may ever move a record. Best-effort: a DB failure
-  // must not fail posts that already went out.
-  try {
-    await recordPlays(card, "card");
-    if (free) await recordPlays([free], "free");
-  } catch (err) {
-    console.error("recordPlays failed (posts still went out):", err);
-  }
+  // Where /api/status can see it: the day's drop, and anything that failed after the card.
+  await recordPollLog("discord:post-card", errors.length ? `partial: ${errors.join("; ")}`.slice(0, 900) : `ok ${dateEt}`).catch(
+    (err) => console.error("postCard: couldn't log the post outcome:", err)
+  );
 
   return {
     posted: true,
     cardCount: card.length,
     freePosted,
-    slateCount: slate.length,
+    slateCount: slatePosted ? slate.length : 0,
     missingCount: missing.length,
     heldCount: held.length,
+    ...(errors.length ? { errors } : {}),
   };
 }

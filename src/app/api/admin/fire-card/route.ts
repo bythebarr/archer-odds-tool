@@ -6,14 +6,12 @@ import { checkAdminAuth } from "@/lib/adminAuth";
 export const dynamic = "force-dynamic";
 
 /**
- * Admin: refresh MLB odds and post today's +EV card RIGHT NOW. For the day the
- * 10:30am cron gets skipped (e.g. a schedule change landing after 10:30, or a
- * one-off miss) — the crons handle every normal day, this is the manual kick.
- * Refreshes odds first (today's midday poll may have been skipped the same way),
- * then posts, so the card prices off current lines rather than last night's.
+ * Admin: refresh MLB odds and post today's card RIGHT NOW, for a day the
+ * scheduled post missed. Refreshes odds first, then posts, so the card prices
+ * off current lines rather than last night's. The poster marks the day posted,
+ * so the tick won't post a second card afterward.
  *
- * Same SSO gate as the other admin routes: only a logged-in Vercel team member
- * can reach it. Temporary-ish, but harmless to keep — it just re-posts the card.
+ * Gated like the other admin routes (lib/adminAuth: the CRON_SECRET token).
  * GET so it runs from a browser click; returns an HTML receipt.
  */
 export async function GET(request: Request) {
@@ -44,6 +42,8 @@ export async function GET(request: Request) {
         `${r.freePosted ? " · free play posted" : ""}` +
         `${r.slateCount ? ` · ${r.slateCount} on the slate` : ""}` +
         `${r.missingCount ? ` · ⚠️ ${r.missingCount} pick(s) no longer live, skipped` : ""}` +
+        `${r.heldCount ? ` · ${r.heldCount} pick(s) from untrusted models posted unstaked on the slate` : ""}` +
+        `${r.errors?.length ? ` · ⚠️ after the card: ${r.errors.join("; ")}` : ""}` +
         `. Go check Discord.`;
     } else {
       title = "⚠️ Card didn't post";

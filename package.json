@@ -44,6 +44,7 @@
     "calibrate:pitchers": "tsx scripts/calibrate-pitcher-props.ts",
     "matchup:pitcherk": "tsx scripts/matchup-pitcher-k.ts",
     "import:tennis": "tsx scripts/import-tennis-archive.ts",
+    "diagnose:props": "tsx scripts/diagnose-props.ts",
     "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts",
     "matchup:batter": "tsx scripts/matchup-batter.ts",
     "fit:pitcherramps": "tsx scripts/fit-pitcher-ramps.ts",

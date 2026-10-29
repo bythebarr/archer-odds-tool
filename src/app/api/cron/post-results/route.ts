@@ -10,7 +10,7 @@ import { alreadyPosted, markPosted } from "@/lib/discord/postMarker";
 import { todayEt } from "@/lib/dateEt";
 
 /**
- * The results tick. Runs frequently and usually does nothing: it posts a date's
+ * The results tick. Runs at its scheduled hours (lib/ops/schedule.ts) and usually does nothing: it posts a date's
  * recap the moment that date's LAST tracked play settles, rather than on a
  * morning timer (see @/lib/discord/schedule).
  *

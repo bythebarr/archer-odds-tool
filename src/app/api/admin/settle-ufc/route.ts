@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /**
  * Admin: inspect + settle the UFC ledger. A UFC PostedPlay only enters the
  * #results record once its bout is `status: "completed"` with a winner synced
- * (see gradeUfcPlay in postResults.ts); until then it sits PENDING and is
+ * (see the UFC adapter's grade, src/lib/engine/adapters/ufc.ts); until then it sits PENDING and is
  * invisible to the recap. When a fight card grades late — or backfill-ufc never
  * synced the result — the plays get stranded pending and the day looks like it
  * "never happened." This route makes that state visible and fixes it.
