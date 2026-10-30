@@ -86,6 +86,7 @@ export function PlayerPropSheet({
   defense,
   projection,
   modelWeights,
+  calibrationFactors,
   initialStat,
   side: initialSide,
   startLabel,
@@ -103,6 +104,8 @@ export function PlayerPropSheet({
   projection: ProjectionContext;
   /** Stat → the model's fitted weight against the market. */
   modelWeights: Record<string, number>;
+  /** Stat → the backtest's fitted calibration factor. */
+  calibrationFactors: Record<string, number>;
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
@@ -128,8 +131,9 @@ export function PlayerPropSheet({
       projection,
       injury: player.injury?.level ?? null,
       modelWeight: modelWeights[prop.stat],
+      calibrationFactor: calibrationFactors[prop.stat],
     }),
-    [season, player.venue, player.opponent?.abbreviation, projection, player.injury?.level, modelWeights, prop.stat]
+    [season, player.venue, player.opponent?.abbreviation, projection, player.injury?.level, modelWeights, calibrationFactors, prop.stat]
   );
   const summary = useMemo(() => summarizeProp(prop, logs, statDef, side, context, point), [prop, logs, statDef, side, context, point]);
   // Yes/No milestones (double-double) have one line; everything else reads up and down the ladder.

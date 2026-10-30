@@ -15,7 +15,7 @@ import { positionGroup, type PositionGroup } from "@/lib/nba/positionGroups";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import type { GameLines } from "@/lib/propModel/environment";
 import { getConsensusGameLines } from "./gameLines";
-import { getModelWeights } from "./modelWeights";
+import { getCalibrationFactors, getModelWeights } from "./modelWeights";
 
 export interface SlateTeam {
   abbreviation: string;
@@ -63,6 +63,8 @@ export interface NbaPropsSlate {
   lines: Record<string, GameLines>;
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
   modelWeights: Record<string, number>;
+  /** Stat → the props backtest's fitted calibration factor (stats without a fit keep the baked shrink). */
+  calibrationFactors: Record<string, number>;
   /** Position group → stat → league per-minute rate: the prior for players with only a few games (rookies). */
   positionRates: Record<string, Record<string, number>>;
   lastPolledAt: string | null;
@@ -222,6 +224,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     absences: {},
     lines: {},
     modelWeights: {},
+    calibrationFactors: {},
     positionRates: {},
     lastPolledAt: null,
   };
@@ -336,10 +339,11 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     });
   }
 
-  const [absences, gameLines, modelWeights] = await Promise.all([
+  const [absences, gameLines, modelWeights, calibrationFactors] = await Promise.all([
     nbaAbsences(slateGames, season, gte),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     getModelWeights("nba"),
+    getCalibrationFactors("nba-props"),
   ]);
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
@@ -374,6 +378,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     absences,
     lines: gameLines,
     modelWeights,
+    calibrationFactors,
     positionRates: rates,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };

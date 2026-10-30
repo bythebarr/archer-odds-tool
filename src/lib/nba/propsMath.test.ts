@@ -188,3 +188,15 @@ describe("packed logs carry the player's team", () => {
     expect(unpackLog(packLog(noTeam))).toEqual(noTeam);
   });
 });
+
+describe("fitted calibration factor", () => {
+  it("moves ARCHR's chance away from 50% when the backtest says the model was too timid", () => {
+    const logs = Array.from({ length: 20 }, (_, i) => log(30 + (i % 3)));
+    const projection = { defense: { season: 2026, fromLastSeason: false, teams: {} }, opponent: null, positionGroup: null };
+    const at = (calibrationFactor?: number) =>
+      summarizeProp(prop, logs, POINTS, "over", { season: 2026, venue: "home", projection, calibrationFactor, modelWeight: 1 }, 24.5)!.model!.probOver;
+    expect(at()).toBeGreaterThan(0.5);
+    expect(at(1.25)).toBeGreaterThan(at());
+    expect(at(0.8)).toBeLessThan(at());
+  });
+});
