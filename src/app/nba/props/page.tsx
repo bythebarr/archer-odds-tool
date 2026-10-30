@@ -27,7 +27,7 @@ export default async function NbaPropsPage({
   searchParams: Promise<{ date?: string; stat?: string; side?: string; sort?: string; game?: string }>;
 }) {
   const params = await searchParams;
-  await refreshOnView([["sync-results-nba", 60], ["espn-odds", 30]]);
+  await refreshOnView([["sync-results-nba", 60], ["espn-odds", 30], ["espn-props", 30]]);
   const days = await getLeagueDays("nba", todayEt());
   const date = params.date && isValidEtDate(params.date) ? params.date : (days[0] ?? todayEt());
   const prefs = await readPropsPrefs(params);

@@ -23,6 +23,9 @@ import {
 } from "@/lib/soccer/propModel";
 import type { EspnSoccerSummary } from "@/lib/soccer/playerStats";
 import { shotContext, teamShotTotals } from "@/lib/soccer/shotContext";
+import { SOCCER_STAT_BY_KEY } from "@/lib/odds/espnProps";
+import type { PropQuote } from "@/lib/nba/propsMath";
+import { eventPropQuotes } from "./eventPropLines";
 
 const DAYS_AHEAD = 5;
 const MAX_MATCHES = 12;
@@ -65,6 +68,8 @@ export interface SoccerPropsPlayer {
   /** "starting" / "bench" once the line-ups are out; null before. */
   lineup: "starting" | "bench" | null;
   projections: Partial<Record<SoccerPropStat, SoccerProjection>>;
+  /** Every book's price on each prop, from the ESPN prop feed (DraftKings today); empty until they post. */
+  books: Partial<Record<SoccerPropStat, PropQuote[]>>;
 }
 
 export interface SoccerPropsSlate {
@@ -188,6 +193,7 @@ async function leagueSlate(league: SoccerPropsLeague, leagues: SoccerPropsLeague
   }
   const playerBy = new Map(players.map((p) => [p.id, p]));
 
+  const books = await eventPropQuotes(events.map((e) => e.id), SOCCER_STAT_BY_KEY);
   const matches: SoccerPropsMatch[] = [];
   const out: Record<string, SoccerPropsPlayer> = {};
   const logs: Record<string, PackedSoccerLog[]> = {};
@@ -235,6 +241,7 @@ async function leagueSlate(league: SoccerPropsLeague, leagues: SoccerPropsLeague
           matchId: ev.id,
           lineup: role,
           projections,
+          books: (books[pid] ?? {}) as Partial<Record<SoccerPropStat, PropQuote[]>>,
         };
         logs[pid] = pl.slice(0, CARD_LOGS).map(packSoccerLog);
       }

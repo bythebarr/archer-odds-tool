@@ -26,6 +26,10 @@ export async function GET(request: Request) {
 
   const logs = await prisma.pollLog.findMany({ where: { jobName: { startsWith: "tick:" } }, select: { jobName: true, lastPolledAt: true } });
   const last = new Map(logs.map((l) => [l.jobName.slice(5), l.lastPolledAt.getTime()]));
+  // The cron can arrive on a deployment's own address, which Vercel guards
+  // with a login page; the jobs are called on the production domain instead.
+  const prodHost = process.env.VERCEL_ENV === "production" ? process.env.VERCEL_PROJECT_PRODUCTION_URL : undefined;
+  const origin = prodHost ? `https://${prodHost}` : url.origin;
   const due = force ? [{ path: force }] : dueJobs(now, (p) => last.get(p));
 
   const run = async (job: Job) => {
@@ -33,12 +37,16 @@ export async function GET(request: Request) {
     await recordPollLog(`tick:${job.path}`, "running");
     const t = Date.now();
     try {
-      const res = await fetch(`${url.origin}/api/cron/${job.path}`, {
+      const res = await fetch(`${origin}/api/cron/${job.path}`, {
         headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
+        // A redirect is a login page, not the job: report it rather than follow it.
+        redirect: "manual",
         signal: AbortSignal.timeout(Math.max(1000, DEADLINE_MS - (Date.now() - started))),
       });
-      const status = `${res.status} in ${((Date.now() - t) / 1000).toFixed(1)}s`;
-      await recordPollLog(`tick:${job.path}`, res.ok ? `ok ${status}` : `error ${status}`);
+      // Every job answers JSON; a 200 HTML page means something else answered.
+      const ok = res.ok && (res.headers.get("content-type") ?? "").includes("application/json");
+      const status = `${res.status}${res.ok && !ok ? ` ${res.headers.get("content-type") ?? "no content type"}` : ""} in ${((Date.now() - t) / 1000).toFixed(1)}s`;
+      await recordPollLog(`tick:${job.path}`, ok ? `ok ${status}` : `error ${status}`);
       return { path: job.path, status };
     } catch (error) {
       // Timed out on our side: the job's own call keeps running to its limit.

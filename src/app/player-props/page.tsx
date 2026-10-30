@@ -16,6 +16,7 @@ const PROPS: { sport: GlyphKey; label: string; href: string; covers: string }[] 
   { sport: "soccer", label: "Soccer", href: "/sports/soccer/props", covers: "Anytime scorer, shots, shots on target, assists, cards" },
   { sport: "tennis", label: "Tennis", href: "/sports/tennis/props", covers: "Games won, total games, aces, double faults" },
   { sport: "mlb", label: "MLB", href: "/mlb/props", covers: "Hits, total bases, strikeouts, home runs" },
+  { sport: "hockey", label: "NHL", href: "/player-props/lines?league=hockey%2Fnhl", covers: "Book lines: points, shots on goal, goals, assists, saves" },
 ];
 
 /**
@@ -30,7 +31,11 @@ export default function PlayerPropsHubPage() {
       <p className="mt-2 text-sm text-muted-foreground">
         ARCHR&apos;s own line and chance for every player with a role, before the books post. Their prices slot in when they do.
       </p>
-      <div className="mt-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      <p className="mt-4 text-xs text-muted-foreground">
+        <Link href="/nba/parlays" className="font-semibold text-foreground underline-offset-2 hover:underline">NBA Parlay Finder</Link>: same-game legs that have hit together ·{" "}
+        <Link href="/player-props/lines" className="font-semibold text-foreground underline-offset-2 hover:underline">Book prop lines</Link> for every league
+      </p>
+      <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {PROPS.map((p) => (
           <Link
             key={p.href}

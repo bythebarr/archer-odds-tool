@@ -86,4 +86,17 @@ describe("helpers", () => {
     expect(lone.quotes).toEqual([]);
     expect(lone.skipped.unpaired).toBe(1);
   });
+
+  it("drops a second ladder filed under the full game's name (a real feed: 2+ at +141 beside 3+ at −529)", () => {
+    const rung = (n: number, price: string) => ({ athlete: { $ref: "/athletes/5174563" }, type: { name: "Rebounds Milestones" }, odds: { american: { value: price } }, current: { target: { value: n } } });
+    const r = parseEspnProps([rung(3, "-529"), rung(4, "-222"), rung(5, "-108"), rung(6, "+173"), rung(7, "+321"), rung(2, "+141"), rung(3, "+467")]);
+    expect(r.quotes.map((q) => [q.point, q.priceAmerican])).toEqual([
+      [2.5, -529],
+      [3.5, -222],
+      [4.5, -108],
+      [5.5, 173],
+      [6.5, 321],
+    ]);
+    expect(r.skipped.strayRungs).toBe(2);
+  });
 });

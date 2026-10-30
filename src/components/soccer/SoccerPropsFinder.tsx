@@ -19,6 +19,8 @@ import {
 import type { SoccerPropsPlayer, SoccerPropsSlate } from "@/lib/queries/soccerProps";
 import type { PropDirection } from "@/lib/props/tally";
 import { tallyPropHits } from "@/lib/props/tally";
+import { booksAtPoint, twoSidedAt } from "@/lib/nba/propsMath";
+import { fairPrice } from "@/lib/odds/marketValue";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { Logo } from "@/components/Logo";
 import { LeagueLogo } from "@/components/allSports/LeagueLogo";
@@ -150,7 +152,13 @@ function Sheet({ player, initialStat, side: initialSide, season, cardLogs, start
   const logs = fullLogs ?? cardLogs;
   const over = projectionOver(proj, point, stat);
   const splits = soccerSplits(logs, stat, point, side, { season, venue: player.venue, opponent: player.opponent });
-  const ladder = stat.shape === "anytime" ? [] : [0.5, 1.5, 2.5, 3.5, 4.5, 5.5].filter((p) => p <= Math.max(2.5, main + 2));
+  const quotes = player.books?.[statKey] ?? [];
+  const bookPoints = quotes.map((q) => q.point);
+  const ladder = stat.shape === "anytime" ? [] : [...new Set([...[0.5, 1.5, 2.5, 3.5, 4.5, 5.5].filter((p) => p <= Math.max(2.5, main + 2)), ...bookPoints])].sort((a, b) => a - b);
+  const books = booksAtPoint(quotes, point, side);
+  const pairs = twoSidedAt(quotes, point);
+  const fair = fairPrice(pairs);
+  const bestBook = books.find((b) => b.bettable && b[side] !== null)?.bookKey ?? null;
   const h2h = splits.find((x) => x.key === "h2h");
 
   useEffect(() => {
@@ -273,7 +281,7 @@ function Sheet({ player, initialStat, side: initialSide, season, cardLogs, start
         />
       </SheetSection>
 
-      <BooksTable point={point} books={[]} pairs={[]} side={side} bestBook={null} fairProbOver={null} projected sideLabels={sideLabelsOf(stat)} />
+      <BooksTable point={point} books={books} pairs={pairs} side={side} bestBook={bestBook} fairProbOver={fair?.probA ?? null} projected={quotes.length === 0} sideLabels={sideLabelsOf(stat)} />
 
       <RecentGames
         rows={played.map((l) => ({ date: l.date, opponent: abbr(l.opponent), isHome: l.isHome, volume: `${l.minutes}′`, value: stat.value(l) }))}
