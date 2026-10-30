@@ -13,6 +13,11 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
  * how long the search took. Run: `npm run diagnose:parlays`.
  */
 async function main() {
+  const logsOf = await prisma.pollLog.findMany({ where: { jobName: { in: ["espn-props", "tick:espn-props", "tick"] } }, select: { jobName: true, lastPolledAt: true, lastStatus: true } });
+  for (const l of logsOf) console.log(`poll ${l.jobName}: ${l.lastPolledAt.toISOString()} ${String(l.lastStatus).slice(0, 300)}`);
+  const byLeague = await prisma.eventPropLine.groupBy({ by: ["league"], _count: true });
+  console.log("EventPropLine:", byLeague.map((r) => `${r.league} ${r._count}`).join(", ") || "empty");
+  console.log("EventPropLine NBA with a game:", await prisma.eventPropLine.count({ where: { league: "basketball/nba", eventRef: { not: null } } }), "· CurrentNbaPropLine:", await prisma.currentNbaPropLine.count());
   const slate = toWireSlate(await getNbaPropsSlate(process.env.DATE ?? todayEt()));
   const logs = Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackLog)])) as Record<string, GameLogPoint[]>;
   console.log(`${slate.date}: ${slate.games.length} games, ${slate.props.length} props, ${slate.props.reduce((a, p) => a + p.quotes.length, 0)} quotes`);
