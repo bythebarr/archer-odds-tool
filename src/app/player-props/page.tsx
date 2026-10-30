@@ -32,7 +32,9 @@ export default function PlayerPropsHubPage() {
         ARCHR&apos;s own line and chance for every player with a role, before the books post. Their prices slot in when they do.
       </p>
       <p className="mt-4 text-xs text-muted-foreground">
-        <Link href="/nba/parlays" className="font-semibold text-foreground underline-offset-2 hover:underline">NBA Parlay Finder</Link>: same-game legs that have hit together ·{" "}
+        <Link href="/parlay-builder" className="font-semibold text-foreground underline-offset-2 hover:underline">Parlay Builder</Link>: every sport, your hit-rate and ARCHR bars ·{" "}
+        <Link href="/nba/parlays" className="font-semibold text-foreground underline-offset-2 hover:underline">NBA</Link> and{" "}
+        <Link href="/nfl/parlays" className="font-semibold text-foreground underline-offset-2 hover:underline">NFL</Link> Parlay Finders: same-game legs that have hit together ·{" "}
         <Link href="/player-props/lines" className="font-semibold text-foreground underline-offset-2 hover:underline">Book prop lines</Link> for every league
       </p>
       <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">

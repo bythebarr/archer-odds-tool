@@ -57,10 +57,27 @@ const corePath = (espnPath: string) => {
   return `${sport}/leagues/${league}`;
 };
 
-interface ScoreboardEvent {
+export interface ScoreboardEvent {
   id: string;
   date: string;
-  competitions: { status?: { type?: { state?: string } }; competitors: { homeAway: "home" | "away"; team: { displayName: string } }[] }[];
+  competitions: {
+    id?: string;
+    date?: string;
+    /** Racing splits a weekend into sessions: FP1, FP2, FP3, Qual, Race. */
+    type?: { abbreviation?: string };
+    status?: { type?: { state?: string } };
+    competitors?: { homeAway?: "home" | "away"; team?: { displayName: string } }[];
+  }[];
+}
+
+/**
+ * The competition the books price: a game's only one, or a race weekend's Race
+ * session (F1), whose id, start and status differ from the weekend's first
+ * practice.
+ */
+export function mainCompetition(e: ScoreboardEvent): { id: string; date: string; state: string | undefined } {
+  const c = e.competitions.find((x) => x.type?.abbreviation === "Race") ?? e.competitions[0];
+  return { id: c?.id ?? e.id, date: c?.date ?? e.date, state: c?.status?.type?.state };
 }
 
 async function upcomingEvents(espnPath: string, now: Date): Promise<ScoreboardEvent[]> {
@@ -68,8 +85,9 @@ async function upcomingEvents(espnPath: string, now: Date): Promise<ScoreboardEv
   const boards = await Promise.all(days.map((day) => getJson<{ events?: ScoreboardEvent[] }>(`${SITE}/${espnPath}/scoreboard?dates=${day}&limit=500`)));
   const out: ScoreboardEvent[] = [];
   for (const e of boards.flatMap((sb) => sb?.events ?? [])) {
-    const t = new Date(e.date).getTime();
-    if (e.competitions[0]?.status?.type?.state === "pre" && t >= now.getTime() && t <= now.getTime() + LOOKAHEAD_MS && !out.some((x) => x.id === e.id)) out.push(e);
+    const c = mainCompetition(e);
+    const t = new Date(c.date).getTime();
+    if (c.state === "pre" && t >= now.getTime() && t <= now.getTime() + LOOKAHEAD_MS && !out.some((x) => x.id === e.id)) out.push(e);
   }
   return out;
 }
@@ -83,8 +101,8 @@ async function eachLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<
 }
 
 /** Every book's props on one event: { bookKey → quotes }. */
-async function eventProps(espnPath: string, eventId: string): Promise<{ bookKey: string; quotes: EspnPropQuote[]; refs: Map<string, string> }[]> {
-  const base = `${CORE}/${corePath(espnPath)}/events/${eventId}/competitions/${eventId}/odds`;
+async function eventProps(espnPath: string, eventId: string, competitionId: string): Promise<{ bookKey: string; quotes: EspnPropQuote[]; refs: Map<string, string> }[]> {
+  const base = `${CORE}/${corePath(espnPath)}/events/${eventId}/competitions/${competitionId}/odds`;
   const odds = await getJson<{ items?: { provider?: { id?: string; name?: string }; propBets?: unknown }[] }>(base);
   const out: { bookKey: string; quotes: EspnPropQuote[]; refs: Map<string, string> }[] = [];
   if (!odds?.items?.length) booksSeen[`${espnPath} no odds`] = (booksSeen[`${espnPath} no odds`] ?? 0) + 1;
@@ -154,15 +172,15 @@ const TYPED: Record<string, Typed> = {
 
 function matchupName(e: ScoreboardEvent): string | null {
   const c = e.competitions[0];
-  const home = c?.competitors.find((x) => x.homeAway === "home")?.team.displayName;
-  const away = c?.competitors.find((x) => x.homeAway === "away")?.team.displayName;
+  const home = c?.competitors?.find((x) => x.homeAway === "home")?.team?.displayName;
+  const away = c?.competitors?.find((x) => x.homeAway === "away")?.team?.displayName;
   return home && away ? `${away} @ ${home}` : null;
 }
 
 async function gameIdFor(espnPath: string, e: ScoreboardEvent): Promise<string | null> {
   const c = e.competitions[0];
-  const homeName = c?.competitors.find((x) => x.homeAway === "home")?.team.displayName ?? "";
-  const awayName = c?.competitors.find((x) => x.homeAway === "away")?.team.displayName ?? "";
+  const homeName = c?.competitors?.find((x) => x.homeAway === "home")?.team?.displayName ?? "";
+  const awayName = c?.competitors?.find((x) => x.homeAway === "away")?.team?.displayName ?? "";
   const typed = TYPED[espnPath];
   if (typed) {
     const home = typed.league.lookupTeam(homeName);
@@ -186,7 +204,7 @@ async function gameIdFor(espnPath: string, e: ScoreboardEvent): Promise<string |
 
 /** The leagues to read: the big four, then every active ESPN league in the all-sports engine. */
 async function leaguePaths(): Promise<string[]> {
-  const fixed = ["basketball/nba", "football/nfl", "baseball/mlb", "hockey/nhl", "mma/ufc"];
+  const fixed = ["basketball/nba", "football/nfl", "baseball/mlb", "hockey/nhl", "mma/ufc", "racing/f1"];
   const rows = await prisma.league.findMany({ where: { active: true, espnPath: { not: null }, upcomingCount: { gt: 0 } }, select: { espnPath: true }, orderBy: { rank: "asc" } });
   return [...new Set([...fixed, ...rows.map((r) => r.espnPath!)])];
 }
@@ -213,7 +231,7 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
         return;
       }
       out.eventsChecked++;
-      const books = await eventProps(espnPath, e.id);
+      const books = await eventProps(espnPath, e.id, mainCompetition(e).id);
       if (!books.some((b) => b.quotes.length)) return;
       out.eventsWithProps++;
       out.byLeague[espnPath] = (out.byLeague[espnPath] ?? 0) + 1;
@@ -238,7 +256,7 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
       for (const { bookKey, quotes } of books) {
         if (!quotes.length) continue;
         const polledAt = new Date();
-        const startsAt = new Date(e.date);
+        const startsAt = new Date(mainCompetition(e).date);
         const rows = quotes.map((q) => ({
           league: espnPath,
           espnEventId: e.id,

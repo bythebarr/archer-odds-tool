@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { findParlays, type FinderLeg, type FoundParlay } from "@/lib/props/parlayFinder";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { ParlayTray } from "@/components/props/Parlay";
@@ -180,7 +181,10 @@ export function ParlayFinder({
       <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
         A shared game is one where every player in the parlay played. One player&apos;s stats nearly always hit together, so the finder starts at one leg per
         player; allow more to see those. It tries thousands of combinations, so some records are partly luck: weigh ARCHR&apos;s chance beside each one.
-        Books price same-game parlays below the &quot;if unrelated&quot; number when legs move together. Research only.
+        Books price same-game parlays below the &quot;if unrelated&quot; number when legs move together. Research only.{" "}
+        <Link href="/parlay-builder" className="font-semibold text-foreground underline-offset-2 hover:underline">
+          Build across games and sports →
+        </Link>
       </p>
       <ParlayTray legs={lab} season={season} onRemove={(id) => setLab((l) => l.filter((x) => x.id !== id))} onClear={() => setLab([])} />
     </>
