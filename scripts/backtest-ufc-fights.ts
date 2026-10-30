@@ -2,7 +2,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { loadUfcHistory } from "@/lib/ufc/fightData";
 import { UfcReplay, FEATURES, FEATURE_LABEL, coefficientVector } from "@/lib/ufc/fightModel";
-import { fitLogistic, fitTemperature, logitOf, logLossOf, predictLogistic } from "@/lib/stats/logistic";
+import { fitLogistic, fitTemperature, logitOf, logLossOf, predictLogistic, recencyWeights } from "@/lib/stats/logistic";
 import { getUfcMatchupAsOf } from "@/lib/queries/ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { fitModelWeight, type BlendSample } from "@/lib/propModel/fit";
@@ -61,15 +61,31 @@ async function main() {
   }
   const trainValid = rows.slice(0, cut2);
   // Newer bouts carry richer stats than the old ones most of the fit learns
-  // from, so the fitted spread can run timid on recent fights. A temperature
-  // fitted on the validation bouts (by the train-only fit) corrects it; it's
-  // kept only when it also improves the never-seen test bouts.
-  const trainOnly = fitLogistic(X(train), Y(train), best.lambda);
+  // from, so an even-weighted fit runs timid on today's fights. Older bouts are
+  // down-weighted by a half-life chosen on the validation bouts; a temperature
+  // fitted there too is kept only when it also improves the never-seen test bouts.
+  const W = (r: typeof rows, halfLife: number) => recencyWeights(r.map((s) => s.date), r[r.length - 1].date, halfLife);
+  let halfLife = Infinity;
+  let bestHl = Infinity;
+  for (const hl of [Infinity, 12, 8, 5, 3, 2]) {
+    const fit = fitLogistic(X(train), Y(train), best.lambda, { weights: W(train, hl) });
+    const ll = logLossOf(fit.coefficients, X(valid), Y(valid));
+    console.log(`  half-life ${hl === Infinity ? "none" : `${hl}y`}: validation log loss ${ll.toFixed(4)}`);
+    if (ll < bestHl) {
+      bestHl = ll;
+      halfLife = hl;
+    }
+  }
+  const trainOnly = fitLogistic(X(train), Y(train), best.lambda, { weights: W(train, halfLife) });
   const tFit = fitTemperature(valid.map((r) => logitOf(trainOnly.coefficients, r.x)), Y(valid));
-  const raw = fitLogistic(X(trainValid), Y(trainValid), best.lambda);
+  const even = fitLogistic(X(trainValid), Y(trainValid), best.lambda);
+  const raw = fitLogistic(X(trainValid), Y(trainValid), best.lambda, { weights: W(trainValid, halfLife) });
   const rawTest = logLossOf(raw.coefficients, X(test), Y(test));
   const scaledTest = logLossOf(raw.coefficients.map((c) => c * tFit), X(test), Y(test));
   const temperature = scaledTest < rawTest ? tFit : 1;
+  console.log(
+    `Recency half-life ${halfLife === Infinity ? "none" : `${halfLife}y`}: test log loss ${logLossOf(even.coefficients, X(test), Y(test)).toFixed(4)} even-weighted → ${rawTest.toFixed(4)}`
+  );
   console.log(`Temperature ${tFit.toFixed(2)} (fitted on validation): test log loss ${rawTest.toFixed(4)} → ${scaledTest.toFixed(4)}, ${temperature === 1 ? "not kept" : "kept"}`);
   const v2 = { ...raw, coefficients: raw.coefficients.map((c) => c * temperature) };
   const eloIdx = FEATURES.indexOf("elo");
@@ -132,7 +148,7 @@ async function main() {
   }
 
   // Final coefficients on everything, and the test-set report card.
-  const finalRaw = fitLogistic(X(rows), Y(rows), best.lambda);
+  const finalRaw = fitLogistic(X(rows), Y(rows), best.lambda, { weights: W(rows, halfLife) });
   const final = { ...finalRaw, coefficients: finalRaw.coefficients.map((c) => c * temperature) };
   console.log("\nCoefficients (logit per unit):");
   FEATURES.forEach((f, j) => console.log(`  ${FEATURE_LABEL[f].padEnd(30)} ${final.coefficients[j].toFixed(4)}`));
@@ -149,6 +165,7 @@ async function main() {
     coefficients: Object.fromEntries(FEATURES.map((f, j) => [f, final.coefficients[j]])),
     lambda: best.lambda,
     temperature,
+    halfLifeYears: Number.isFinite(halfLife) ? halfLife : null,
     testLogLoss: v2Test,
     eloOnlyLogLoss: eloTest,
     v1LogLoss: n1 ? v1Sum / n1 : null,
