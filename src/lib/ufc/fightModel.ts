@@ -398,3 +398,31 @@ export function fightSeconds(resultRound: number | null, resultTime: string | nu
   if (!Number.isFinite(m) || !Number.isFinite(s)) return null;
   return (resultRound - 1) * 300 + m * 60 + s;
 }
+
+const SAME_FIGHT_MS = 3 * 86_400_000;
+
+/**
+ * One record per fight. The Cito feed sometimes lists a card twice (a generic
+ * "UFC Fight Night" a day after the named one) and the UFCStats archive can add
+ * its own copy beside Cito's, so the same pair can appear in two completed
+ * bouts days apart. Replaying both counts the fight twice, and the second copy
+ * is "predicted" by ratings that already saw its result. Keeps the copy with
+ * both corners' stats (else the first), and drops results dated in the future.
+ */
+export function dedupeBouts(bouts: BoutRecord[], now: Date): BoutRecord[] {
+  const out: BoutRecord[] = [];
+  const lastByPair = new Map<string, number>();
+  const full = (b: BoutRecord) => !!(b.redStats && b.blueStats);
+  for (const b of bouts) {
+    if (b.date.getTime() > now.getTime()) continue;
+    const pair = [b.red, b.blue].sort().join("|");
+    const i = lastByPair.get(pair);
+    if (i !== undefined && b.date.getTime() - out[i].date.getTime() <= SAME_FIGHT_MS) {
+      if (full(b) && !full(out[i])) out[i] = b;
+      continue;
+    }
+    lastByPair.set(pair, out.length);
+    out.push(b);
+  }
+  return out;
+}

@@ -94,7 +94,7 @@ async function main() {
   console.log(`UFC fighter names held by more than one row: ${Number(dupFighters[0]?.n ?? 0)}`);
   const future = await prisma.$queryRaw<{ title: string; d: Date; n: bigint; cito: string }[]>`
     SELECT e.title, e."eventDate" AS d, e."citoEventId" AS cito, count(*) AS n FROM "UfcBout" b JOIN "UfcEvent" e ON e.id = b."eventId"
-    WHERE b."winnerFighterId" IS NOT NULL AND e."eventDate" > now() GROUP BY 1, 2, 4 ORDER BY 2`;
+    WHERE b."winnerFighterId" IS NOT NULL AND e."eventDate" > now() GROUP BY 1, 2, 3 ORDER BY 2`;
   for (const f of future) console.log(`  future event with results: ${f.d.toISOString().slice(0, 10)} "${f.title}" [${f.cito}] ${f.n} bouts`);
 
   // Tennis: the archive and ratings the props board reads.

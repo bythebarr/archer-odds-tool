@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { UfcReplay, fightSeconds, weightClassLbs, type BoutRecord, type FighterInfo } from "./fightModel";
+import { UfcReplay, dedupeBouts, fightSeconds, weightClassLbs, type BoutRecord, type FighterInfo } from "./fightModel";
 import { fitLogistic, predictLogistic } from "@/lib/stats/logistic";
 
 /** A deterministic league: fighter i has skill i; the more skilled fighter usually wins and outstrikes. */
@@ -80,5 +80,24 @@ describe("helpers", () => {
     expect(weightClassLbs("Lightweight")).toBe(155);
     expect(weightClassLbs("Women's Strawweight")).toBe(115);
     expect(weightClassLbs("Catch Weight")).toBeNull();
+  });
+});
+
+describe("dedupeBouts", () => {
+  const stats = { sigLanded: 10, sigAttempted: 20, tdLanded: 0, tdAttempted: 0, knockdowns: 0, subAttempts: 0, controlSeconds: 0 };
+  const bout = (id: string, day: string, red: string, blue: string, withStats: boolean): BoutRecord => ({
+    id, date: new Date(`${day}T03:00:00Z`), weightClass: "Lightweight", red, blue, winner: red, method: "Decision", seconds: 900,
+    redStats: withStats ? stats : null, blueStats: withStats ? stats : null,
+  });
+  const now = new Date("2026-10-30T00:00:00Z");
+
+  it("keeps one record per fight, preferring the copy with stats, whichever corner is which", () => {
+    const out = dedupeBouts([bout("cito", "2025-03-28", "a", "b", false), bout("archive", "2025-03-29", "b", "a", true), bout("other", "2025-03-29", "c", "d", true)], now);
+    expect(out.map((b) => b.id)).toEqual(["archive", "other"]);
+  });
+
+  it("keeps a real rematch and drops results dated in the future", () => {
+    const out = dedupeBouts([bout("first", "2024-01-10", "a", "b", true), bout("rematch", "2025-02-01", "a", "b", true), bout("future", "2027-01-05", "c", "d", true)], now);
+    expect(out.map((b) => b.id)).toEqual(["first", "rematch"]);
   });
 });
