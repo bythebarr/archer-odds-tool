@@ -1713,6 +1713,8 @@ model EventPropLine {
   espnEventId       String
   /// Our event when we have it: Game.id (NBA/NFL/MLB) or SportEvent.id ("espn:<id>").
   eventRef          String?
+  /// "Away @ Home" as ESPN lists it, so the board can name any event.
+  eventName         String?
   startsAt          DateTime
   /// ESPN athlete id ("" never occurs today: team markets are left to the game-line feeds).
   athleteId         String

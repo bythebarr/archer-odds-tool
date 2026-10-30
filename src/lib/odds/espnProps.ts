@@ -222,6 +222,20 @@ export const NFL_STAT_BY_KEY: Record<string, string> = {
 };
 
 /**
+ * Soccer stat keys → SoccerPropStat. DraftKings lists most soccer props as
+ * ladders ("Shots Milestones": 1+, 2+, …) and the rest as Yes props.
+ */
+export const SOCCER_STAT_BY_KEY: Record<string, string> = {
+  "anytime goalscorer": "goal",
+  assists: "assist",
+  shots: "shots",
+  "shots on target": "shotsOnTarget",
+  "goalkeeper saves": "saves",
+  "to receive a card": "card",
+  "fouls committed": "fouls",
+};
+
+/**
  * A quote in the typed tables' terms (side over/under, a number to beat): a
  * Yes prop is Over 0.5, the way the NBA's double-double and the NFL's anytime
  * TD are stored. Full-game only: the typed tables carry no period.

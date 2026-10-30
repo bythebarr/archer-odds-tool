@@ -119,6 +119,13 @@ const TYPED: Record<string, Typed> = {
   "football/nfl": { kind: "nfl", league: NFL_LEAGUE },
 };
 
+function matchupName(e: ScoreboardEvent): string | null {
+  const c = e.competitions[0];
+  const home = c?.competitors.find((x) => x.homeAway === "home")?.team.displayName;
+  const away = c?.competitors.find((x) => x.homeAway === "away")?.team.displayName;
+  return home && away ? `${away} @ ${home}` : null;
+}
+
 async function gameIdFor(espnPath: string, e: ScoreboardEvent): Promise<string | null> {
   const c = e.competitions[0];
   const homeName = c?.competitors.find((x) => x.homeAway === "home")?.team.displayName ?? "";
@@ -198,6 +205,7 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
           league: espnPath,
           espnEventId: e.id,
           eventRef,
+          eventName: matchupName(e),
           startsAt,
           athleteId: q.athleteId,
           athleteName: names.get(q.athleteId) ?? null,
