@@ -116,6 +116,8 @@ export function summarizeNflProp(
     injury?: InjuryLevel;
     /** The model's weight against the market for this stat (see propModel/market). */
     modelWeight?: number;
+    /** This stat's refit from the latest props backtest (× NFL_CALIBRATION_SHRINK); 1 when none. */
+    calibrationFactor?: number;
   },
   atPoint?: number
 ): NflPropSummary | null {
@@ -166,7 +168,7 @@ export function summarizeNflProp(
           projection,
           ...priceProp({
             rawProbOver: nflRawOver(projection, point),
-            calibrationShrink: NFL_CALIBRATION_SHRINK,
+            calibrationShrink: NFL_CALIBRATION_SHRINK * (ctx.calibrationFactor ?? 1),
             injury: ctx.injury,
             pairs,
             modelWeight: ctx.modelWeight,

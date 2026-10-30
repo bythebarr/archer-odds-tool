@@ -354,7 +354,7 @@ function TeamPanel({ team, opponent, teams, position }: { team: string | undefin
   );
 }
 
-function Sheet({ player, props, logs, volume, season, projection, modelWeights, defense, teams, initialStat, side: initialSide, startLabel, parlay, onAddLeg, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; defense: NflDefenseTable; teams: Record<string, NflTeamContext>; initialStat: NflPropStat; side: PropDirection; startLabel: string; parlay: ParlayLeg[]; onAddLeg: (leg: ParlayLeg) => void; onClose: () => void }) {
+function Sheet({ player, props, logs, volume, season, projection, modelWeights, calibrationFactors, defense, teams, initialStat, side: initialSide, startLabel, parlay, onAddLeg, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; calibrationFactors: Record<string, number>; defense: NflDefenseTable; teams: Record<string, NflTeamContext>; initialStat: NflPropStat; side: PropDirection; startLabel: string; parlay: ParlayLeg[]; onAddLeg: (leg: ParlayLeg) => void; onClose: () => void }) {
   const [statKey, setStatKey] = useState(initialStat);
   const [side, setSide] = useState(initialSide);
   const xtd = useMemo(() => advancedWindow(logs.slice(0, 8)), [logs]);
@@ -364,7 +364,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
   const [pointByStat, setPointByStat] = useState<Partial<Record<NflPropStat, number>>>({});
   const main = consensus ?? prop.quotes[0]?.point ?? prop.projectedPoint ?? 0;
   const point = pointByStat[prop.stat] ?? main;
-  const ctx = { season, venue: player.venue, opponent: player.opponent?.abbreviation ?? null, projection, injury: player.injury?.level ?? null, modelWeight: modelWeights[prop.stat] };
+  const ctx = { season, venue: player.venue, opponent: player.opponent?.abbreviation ?? null, projection, injury: player.injury?.level ?? null, modelWeight: modelWeights[prop.stat], calibrationFactor: calibrationFactors[prop.stat] };
   const s = summarizeNflProp(prop, logs, stat, side, ctx, point);
   // A Yes/No touchdown has one line; everything else reads up and down the ladder.
   const ladder = stat.shape === "anytime" ? [] : altLinePointsNfl(stat, main, prop.quotes.map((q) => q.point));
@@ -610,6 +610,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
         projection: nflProjectionContext(slate, player),
         injury: player.injury?.level ?? null,
         modelWeight: slate.modelWeights[prop.stat],
+        calibrationFactor: slate.calibrationFactors[prop.stat],
       });
       if (s) out.push(s);
     }
@@ -668,6 +669,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           season={slate.season}
           projection={nflProjectionContext(slate, openPlayer)}
           modelWeights={slate.modelWeights}
+          calibrationFactors={slate.calibrationFactors}
           defense={slate.defense}
           teams={slate.teams ?? {}}
           initialStat={statKey}
