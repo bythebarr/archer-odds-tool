@@ -20,6 +20,8 @@ async function main() {
     });
     const main = rows.filter((r) => r.main);
     const kb = (list: ScreenerProp[]) => Math.round(JSON.stringify(list).length / 1024);
+    const biggest = Math.max(...[true, false].flatMap((m) => [0, 1, 2, 3].map((i) => kb(rows.filter((r) => r.main === m).slice(i * 2500, (i + 1) * 2500)))));
+    console.log(`${name}: biggest cached chunk ${biggest} KB`);
     console.log(`${name}: ${rows.length} props, ${((Date.now() - t) / 1000).toFixed(1)}s · main ${main.length} (${kb(main)} KB), alt ${rows.length - main.length} (${kb(rows.filter((r) => !r.main))} KB), priced ${rows.filter((r) => r.priceAmerican !== null).length}`);
     pool.push(...rows);
   }

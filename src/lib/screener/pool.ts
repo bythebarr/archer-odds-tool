@@ -27,24 +27,33 @@ function build(sport: Sport): Promise<ScreenerProp[]> {
 }
 
 /**
- * Main lines and alt rungs are cached as separate entries: a sport's whole
- * slice can pass the cache's 2 MB an entry, and the default screen (main
- * lines) needs only the first.
+ * Each sport is cached as main lines and alt rungs apart (the default screen
+ * needs only main lines), and each part in chunks of CHUNK_ROWS, since a whole
+ * slice can pass the cache's 2 MB an entry (soccer's main lines run ~3 MB).
  */
 type Part = "main" | "alt";
+const CHUNK_ROWS = 2500;
+const CHUNKS = 4;
 const cached = Object.fromEntries(
   SCREENER_SPORTS.flatMap(({ key }) =>
-    (["main", "alt"] as Part[]).map((part) => [
-      `${key}:${part}`,
-      unstable_cache(async () => (await build(key)).filter((p) => p.main === (part === "main")), ["screener-pool", key, part], { revalidate: 600, tags: ["screener-pool"] }),
-    ])
+    (["main", "alt"] as Part[]).flatMap((part) =>
+      Array.from({ length: CHUNKS }, (_, i) => [
+        `${key}:${part}:${i}`,
+        unstable_cache(
+          async () => (await build(key)).filter((p) => p.main === (part === "main")).slice(i * CHUNK_ROWS, (i + 1) * CHUNK_ROWS),
+          ["screener-pool", key, part, String(i)],
+          { revalidate: 600, tags: ["screener-pool"] }
+        ),
+      ])
+    )
   )
 ) as Record<string, () => Promise<ScreenerProp[]>>;
 
 /** Every sport's props, or one sport's; alt rungs only when asked for. */
 export async function getScreenerPool(sport: string | null, withAlts: boolean): Promise<ScreenerProp[]> {
   const sports = SCREENER_SPORTS.map((s) => s.key).filter((k) => !sport || k === sport);
-  const keys = sports.flatMap((s) => (withAlts ? [`${s}:main`, `${s}:alt`] : [`${s}:main`]));
+  const parts: Part[] = withAlts ? ["main", "alt"] : ["main"];
+  const keys = sports.flatMap((s) => parts.flatMap((p) => Array.from({ length: CHUNKS }, (_, i) => `${s}:${p}:${i}`)));
   const slices = await Promise.all(
     keys.map((k) =>
       cached[k]().catch((error) => {
@@ -53,5 +62,6 @@ export async function getScreenerPool(sport: string | null, withAlts: boolean): 
       })
     )
   );
-  return slices.flat();
+  // Chunks refreshed at different moments can overlap: each prop once.
+  return [...new Map(slices.flat().map((p) => [p.id, p])).values()];
 }
