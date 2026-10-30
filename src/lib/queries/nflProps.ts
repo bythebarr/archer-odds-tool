@@ -23,7 +23,7 @@ import { projectNflProp } from "@/lib/nfl/projection";
 import { projectedLine } from "@/lib/nba/propsMath";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { getConsensusGameLines } from "./gameLines";
-import { getModelWeights } from "./modelWeights";
+import { getCalibrationFactors, getModelWeights } from "./modelWeights";
 
 export interface NflSlatePlayer {
   id: string;
@@ -54,6 +54,8 @@ export interface NflPropsSlate {
   teamPoints: Record<string, number>;
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
   modelWeights: Record<string, number>;
+  /** Each stat's calibration refit from the latest props backtest (missing = baked value). */
+  calibrationFactors: Record<string, number>;
   /** Team abbreviation → its offense and defense this season from the play-by-play, with league ranks. */
   teams: Record<string, NflTeamContext>;
   lastPolledAt: string | null;
@@ -237,7 +239,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
   });
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, teams: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -350,11 +352,12 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     const i = injuryById.get(espnIdOf.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
   }
-  const [absences, gameLines, teamPoints, modelWeights] = await Promise.all([
+  const [absences, gameLines, teamPoints, modelWeights, calibrationFactors] = await Promise.all([
     nflAbsences(slateGames, injuries, season, now),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     nflTeamPoints(games.flatMap((g) => [g.homeTeam, g.awayTeam].filter((t) => t !== null)), now),
     getModelWeights("nfl"),
+    getCalibrationFactors("nfl-props"),
   ]);
 
   // ARCHR's line for each position's core stats a book hasn't posted (out / doubtful players sit out).
@@ -385,6 +388,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     lines: gameLines,
     teamPoints,
     modelWeights,
+    calibrationFactors,
     teams,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
@@ -419,6 +423,7 @@ export async function getValueNflProps(limit = 6) {
         projection: nflProjectionContext(slate, player),
         injury: player.injury?.level ?? null,
         modelWeight: slate.modelWeights[prop.stat],
+        calibrationFactor: slate.calibrationFactors[prop.stat],
       });
       const best = s && (side === "over" ? s.over : s.under);
       const value = s && (side === "over" ? s.value.over : s.value.under);

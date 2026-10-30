@@ -9,7 +9,7 @@
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { bestBettableLine, consensusPoint, isBettableBook } from "@/lib/odds/bestPrice";
 import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
-import { CALIBRATION_SHRINK, projectMilestone, projectProp, rawOver, type ProjectionContext, type PropProjection } from "./projection";
+import { CALIBRATION_SHRINK, THIN_CALIBRATION_SHRINK, projectMilestone, projectProp, rawOver, type ProjectionContext, type PropProjection } from "./projection";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 import type { InjuryLevel } from "@/lib/injuries/status";
 import { modelWithheld, priceProp, type PricedProp } from "@/lib/propModel/price";
@@ -91,6 +91,8 @@ export interface PropContext {
   injury?: InjuryLevel;
   /** The model's weight against the market for this stat (see propModel/market). */
   modelWeight?: number;
+  /** The backtest's fitted calibration factor for this stat, on top of CALIBRATION_SHRINK (see getCalibrationFactors). */
+  calibrationFactor?: number;
 }
 
 /** ARCHR's read on a prop at its line: the projection, blended with the market (see propModel/price). */
@@ -207,7 +209,7 @@ export function summarizeProp(
         projection,
         ...priceProp({
           rawProbOver: rawOver(projection, point),
-          calibrationShrink: CALIBRATION_SHRINK,
+          calibrationShrink: projection.thin ? THIN_CALIBRATION_SHRINK : CALIBRATION_SHRINK * (context.calibrationFactor ?? 1),
           injury: context.injury,
           pairs,
           modelWeight: context.modelWeight,

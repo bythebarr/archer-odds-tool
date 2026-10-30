@@ -2,7 +2,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { loadUfcHistory } from "@/lib/ufc/fightData";
 import { UfcReplay, FEATURES, FEATURE_LABEL, coefficientVector } from "@/lib/ufc/fightModel";
-import { fitLogistic, logLossOf, predictLogistic } from "@/lib/stats/logistic";
+import { fitLogistic, fitTemperature, logitOf, logLossOf, predictLogistic } from "@/lib/stats/logistic";
 import { getUfcMatchupAsOf } from "@/lib/queries/ufcMatchup";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { fitModelWeight, type BlendSample } from "@/lib/propModel/fit";
@@ -60,7 +60,18 @@ async function main() {
     if (ll < best.ll) best = { lambda, ll };
   }
   const trainValid = rows.slice(0, cut2);
-  const v2 = fitLogistic(X(trainValid), Y(trainValid), best.lambda);
+  // Newer bouts carry richer stats than the old ones most of the fit learns
+  // from, so the fitted spread can run timid on recent fights. A temperature
+  // fitted on the validation bouts (by the train-only fit) corrects it; it's
+  // kept only when it also improves the never-seen test bouts.
+  const trainOnly = fitLogistic(X(train), Y(train), best.lambda);
+  const tFit = fitTemperature(valid.map((r) => logitOf(trainOnly.coefficients, r.x)), Y(valid));
+  const raw = fitLogistic(X(trainValid), Y(trainValid), best.lambda);
+  const rawTest = logLossOf(raw.coefficients, X(test), Y(test));
+  const scaledTest = logLossOf(raw.coefficients.map((c) => c * tFit), X(test), Y(test));
+  const temperature = scaledTest < rawTest ? tFit : 1;
+  console.log(`Temperature ${tFit.toFixed(2)} (fitted on validation): test log loss ${rawTest.toFixed(4)} → ${scaledTest.toFixed(4)}, ${temperature === 1 ? "not kept" : "kept"}`);
+  const v2 = { ...raw, coefficients: raw.coefficients.map((c) => c * temperature) };
   const eloIdx = FEATURES.indexOf("elo");
   const eloOnly = fitLogistic(trainValid.map((r) => [r.x[eloIdx]]), Y(trainValid), best.lambda);
   const v2Test = logLossOf(v2.coefficients, X(test), Y(test));
@@ -121,7 +132,8 @@ async function main() {
   }
 
   // Final coefficients on everything, and the test-set report card.
-  const final = fitLogistic(X(rows), Y(rows), best.lambda);
+  const finalRaw = fitLogistic(X(rows), Y(rows), best.lambda);
+  const final = { ...finalRaw, coefficients: finalRaw.coefficients.map((c) => c * temperature) };
   console.log("\nCoefficients (logit per unit):");
   FEATURES.forEach((f, j) => console.log(`  ${FEATURE_LABEL[f].padEnd(30)} ${final.coefficients[j].toFixed(4)}`));
   const testSamples = test
@@ -136,6 +148,7 @@ async function main() {
   await saveReport("ufc-fights:ml", "UFC fights — moneyline (v2)", "bout", report, {
     coefficients: Object.fromEntries(FEATURES.map((f, j) => [f, final.coefficients[j]])),
     lambda: best.lambda,
+    temperature,
     testLogLoss: v2Test,
     eloOnlyLogLoss: eloTest,
     v1LogLoss: n1 ? v1Sum / n1 : null,

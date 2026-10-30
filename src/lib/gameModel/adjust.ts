@@ -63,10 +63,15 @@ export function statusWeight(level: "out" | "doubtful" | "questionable" | "proba
 /**
  * NBA player impact on margin: his box-score production per game above what a
  * replacement produces in the same minutes, scaled to points of margin.
- * A star (~30/7/7) lands around 6, an average starter around 1, a bench piece ~0.
+ * A star (~30/7/7) lands around 3.5, an average starter around 0.6, a bench piece ~0.
+ *
+ * The scale is fitted: `npm run backtest:games` measured 0.56 points of margin
+ * actually lost per point of the old 0.35 scale over 1,020 NBA team-games with
+ * players out (2026-10-28), so 0.35 × 0.56 ≈ 0.2. Re-check it when the backtest's
+ * "missing players" line drifts from 1.00.
  */
 export const NBA_REPLACEMENT_PER_MIN = 0.55;
-export const NBA_IMPACT_SCALE = 0.35;
+export const NBA_IMPACT_SCALE = 0.2;
 export function nbaPlayerImpact(logs: { minutes: number; points: number; rebounds: number; assists: number; steals: number; blocks: number; turnovers: number }[]): number {
   const g = logs.filter((l) => l.minutes > 0).slice(0, 15);
   if (g.length < 3) return 0;
@@ -76,7 +81,12 @@ export function nbaPlayerImpact(logs: { minutes: number; points: number; rebound
   return Math.min(Math.max(surplus * NBA_IMPACT_SCALE, 0), 9);
 }
 
-/** NFL: a starting QB out is the biggest single swing in the sport; others count a little. */
-export const NFL_QB_IMPACT = 4.5;
+/**
+ * NFL: a starting QB out is the biggest single swing in the sport; others count a little.
+ * `npm run backtest:games` (2026-10-30, 60 first games without last week's starter) found
+ * teams lost only ~0.2 points per point of the old 4.5, a noisy read (±0.35), so this
+ * moves partway toward it rather than all the way.
+ */
+export const NFL_QB_IMPACT = 3;
 export const NFL_SKILL_IMPACT = 0.6;
 export const NFL_SKILL_CAP = 2;

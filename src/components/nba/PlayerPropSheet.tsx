@@ -48,6 +48,12 @@ function ProjectionPanel({ model, point, side, statShort, milestone = false }: {
         </>
       }
     >
+      {p.thin && (
+        <p className="mt-3 rounded-lg bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-200">
+          <span className="font-semibold">Only {p.games} NBA games.</span> His per-minute rate is steadied by his position&apos;s league rate and the range is widened
+          until he has 5 games of his own.
+        </p>
+      )}
       <BlendLine model={model} side={side} />
       <SeasonMixLine seasons={p.seasons} />
       <EnvLine
@@ -80,6 +86,7 @@ export function PlayerPropSheet({
   defense,
   projection,
   modelWeights,
+  calibrationFactors,
   initialStat,
   side: initialSide,
   startLabel,
@@ -97,6 +104,8 @@ export function PlayerPropSheet({
   projection: ProjectionContext;
   /** Stat → the model's fitted weight against the market. */
   modelWeights: Record<string, number>;
+  /** Stat → the backtest's fitted calibration factor. */
+  calibrationFactors: Record<string, number>;
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
@@ -122,8 +131,9 @@ export function PlayerPropSheet({
       projection,
       injury: player.injury?.level ?? null,
       modelWeight: modelWeights[prop.stat],
+      calibrationFactor: calibrationFactors[prop.stat],
     }),
-    [season, player.venue, player.opponent?.abbreviation, projection, player.injury?.level, modelWeights, prop.stat]
+    [season, player.venue, player.opponent?.abbreviation, projection, player.injury?.level, modelWeights, calibrationFactors, prop.stat]
   );
   const summary = useMemo(() => summarizeProp(prop, logs, statDef, side, context, point), [prop, logs, statDef, side, context, point]);
   // Yes/No milestones (double-double) have one line; everything else reads up and down the ladder.

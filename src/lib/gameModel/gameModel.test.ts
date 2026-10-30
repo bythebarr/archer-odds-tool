@@ -67,7 +67,8 @@ describe("adjustments", () => {
   it("values a star far above a bench player", () => {
     const star = Array.from({ length: 10 }, () => ({ minutes: 35, points: 30, rebounds: 7, assists: 7, steals: 1, blocks: 1, turnovers: 3 }));
     const bench = Array.from({ length: 10 }, () => ({ minutes: 15, points: 5, rebounds: 2, assists: 1, steals: 0, blocks: 0, turnovers: 1 }));
-    expect(nbaPlayerImpact(star)).toBeGreaterThan(5);
+    expect(nbaPlayerImpact(star)).toBeGreaterThan(3);
+    expect(nbaPlayerImpact(star)).toBeLessThan(4.5);
     expect(nbaPlayerImpact(bench)).toBeLessThan(0.5);
   });
 });

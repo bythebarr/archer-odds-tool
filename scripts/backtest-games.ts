@@ -145,11 +145,12 @@ async function loadMissing(sport: Sport, games: G[]): Promise<Map<string, Missin
       for (const team of [g.home, g.away]) {
         const tonight = byGameTeam.get(key(g.id, team));
         if (!tonight) continue;
-        const qb = lastQb.get(team);
+        // Last game's starter, this season only: a QB who left in the offseason isn't "out".
+        const qb = lastQb.get(`${team}|${g.season}`);
         if (qb && !tonight.some((l) => l.nflPlayerId === qb)) out.set(key(g.id, team), [{ name: qb, status: "Out", impact: NFL_QB_IMPACT }]);
         const att = tonight.reduce((a, l) => a + l.passAttempts, 0);
         const lead = [...tonight].sort((a, b) => b.passAttempts - a.passAttempts)[0];
-        if (lead && att > 0 && lead.passAttempts / att >= 0.6) lastQb.set(team, lead.nflPlayerId);
+        if (lead && att > 0 && lead.passAttempts / att >= 0.6) lastQb.set(`${team}|${g.season}`, lead.nflPlayerId);
       }
     }
   }

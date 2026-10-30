@@ -97,6 +97,12 @@ function leagueLevels(results: Result[]) {
 export const GOALS_LR: Record<string, number> = { soccer: 0.06, hockey: 0.006 };
 export const POINTS_K: Record<string, number> = { basketball: 0.12, football: 0.15 };
 
+/**
+ * Final-margin spread per point a team scores, where scores come in big lumps:
+ * NFL ~13.5 on ~22, college ~17 on ~28, NRL/union ~15 on ~22, AFL ~35 on ~85.
+ */
+export const MARGIN_SD_PER_POINT: Record<string, number> = { football: 0.6, "rugby-league": 0.7, "rugby-union": 0.7, rugby: 0.7, "aussie-rules": 0.42 };
+
 function goalsRatings(results: Result[], sport: string, lr = GOALS_LR[sport] ?? 0.06): LeagueRatings {
   const lv = leagueLevels(results);
   const avg = results.length >= 30 ? lv.avg : sport === "hockey" ? 3 : 1.35;
@@ -170,8 +176,10 @@ function pointsRatings(results: Result[], sport: string, k = POINTS_K[sport] ?? 
     forms.add(r.home, r.homeScore, r.awayScore);
     forms.add(r.away, r.awayScore, r.homeScore);
   }
-  // Without enough history, spreads scale with the scoring level (basketball ~ 0.11×, football ~ 0.6×).
-  const fallbackM = Math.max(3, avg * 0.12 + 2);
+  // Without enough history, spreads scale with the scoring level: basketball's
+  // many small scores ~ 0.12× + 2, the try/touchdown codes far wider per point.
+  const perPoint = MARGIN_SD_PER_POINT[sport];
+  const fallbackM = perPoint ? avg * perPoint : Math.max(3, avg * 0.12 + 2);
   const fallbackT = fallbackM * 1.3;
   const shrink = Math.min(1, n / 200);
   return {

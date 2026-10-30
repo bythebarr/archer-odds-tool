@@ -24,8 +24,9 @@ export interface GameModelLeague {
 export const NBA_GAME_MODEL: GameModelLeague = {
   sport: "nba",
   // Home edge ~3 pts in older data and smaller since 2020; learned from 2.5.
-  ratings: { k: 0.06, revert: 0.3, hfa: 2.5, leagueAvg: 114, driftK: 0.002 },
-  marginSd: 12,
+  // k fitted by `npm run backtest:games` (0.05 best of 0.03–0.10, 1,254 games, 2026-10-28).
+  ratings: { k: 0.05, revert: 0.3, hfa: 2.5, leagueAvg: 114, driftK: 0.002 },
+  marginSd: 14.5, // measured 14.53 over 1,254 games (2026-10-28); the live model reads the latest fit
   totalSd: 18,
   ties: false,
   minGames: 8,
@@ -51,7 +52,8 @@ export const NFL_KEY_NUMBERS: KeyNumbers = {
 
 export const NFL_GAME_MODEL: GameModelLeague = {
   sport: "nfl",
-  ratings: { k: 0.1, revert: 0.33, hfa: 1.8, leagueAvg: 22.5, driftK: 0.003 },
+  // k fitted by `npm run backtest:games` (0.075 best of 0.05–0.2, 315 games, 2026-10-30).
+  ratings: { k: 0.075, revert: 0.33, hfa: 1.8, leagueAvg: 22.5, driftK: 0.003 },
   marginSd: 13.5,
   totalSd: 13.5,
   keyNumbers: NFL_KEY_NUMBERS,

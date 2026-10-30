@@ -7,7 +7,7 @@ import type { NbaPropsSlate, SlatePlayer } from "@/lib/queries/nbaProps";
 import type { ProjectionContext } from "./projection";
 import { NO_LINES } from "@/lib/propModel/environment";
 
-type SlateInputs = Pick<NbaPropsSlate, "defense" | "absences" | "lines">;
+type SlateInputs = Pick<NbaPropsSlate, "defense" | "absences" | "lines"> & Partial<Pick<NbaPropsSlate, "positionRates">>;
 
 export function nbaProjectionContext(slate: SlateInputs, player: SlatePlayer): ProjectionContext {
   const team = player.team?.abbreviation;
@@ -19,5 +19,6 @@ export function nbaProjectionContext(slate: SlateInputs, player: SlatePlayer): P
     lines: slate.lines[player.gameId] ?? NO_LINES,
     isHome: player.venue === null ? null : player.venue === "home",
     baselineTotal: team ? (slate.defense.teams[team]?.combinedPoints ?? null) : null,
+    positionRates: player.positionGroup ? slate.positionRates?.[player.positionGroup] : undefined,
   };
 }

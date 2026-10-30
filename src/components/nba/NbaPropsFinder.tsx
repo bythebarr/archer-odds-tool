@@ -220,6 +220,7 @@ export function NbaPropsFinder({
         projection: nbaProjectionContext(slate, player),
         injury: player.injury?.level ?? null,
         modelWeight: slate.modelWeights[prop.stat],
+        calibrationFactor: slate.calibrationFactors?.[prop.stat],
       });
       if (s) out.push(s);
     }
@@ -294,6 +295,7 @@ export function NbaPropsFinder({
           defense={slate.defense}
           projection={nbaProjectionContext(slate, openPlayer)}
           modelWeights={slate.modelWeights}
+          calibrationFactors={slate.calibrationFactors ?? {}}
           initialStat={prefs.stat}
           side={prefs.side}
           startLabel={(() => {

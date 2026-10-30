@@ -47,3 +47,35 @@ export function fitLogistic(X: number[][], y: (0 | 1)[], lambda = 1, iterations 
   const coefficients = w.map((v, j) => v / scale[j]);
   return { coefficients, logLoss: logLossOf(coefficients, X, y), n };
 }
+
+/**
+ * The temperature `t` that makes `sigmoid(t × z)` best fit the outcomes (lowest
+ * log loss, t in [0.5, 3]). Above 1 the model was too timid, below 1 too sure.
+ * Log loss is convex in t, so a ternary search finds it.
+ */
+export function fitTemperature(logits: number[], y: (0 | 1)[]): number {
+  const loss = (t: number) => {
+    let s = 0;
+    logits.forEach((z, i) => {
+      const p = Math.min(Math.max(sigmoid(t * z), 1e-6), 1 - 1e-6);
+      s -= y[i] ? Math.log(p) : Math.log(1 - p);
+    });
+    return s;
+  };
+  let lo = 0.5;
+  let hi = 3;
+  for (let it = 0; it < 60; it++) {
+    const a = lo + (hi - lo) / 3;
+    const b = hi - (hi - lo) / 3;
+    if (loss(a) < loss(b)) hi = b;
+    else lo = a;
+  }
+  return (lo + hi) / 2;
+}
+
+/** The logit behind `predictLogistic`. */
+export function logitOf(coefficients: number[], x: number[]): number {
+  let z = 0;
+  for (let j = 0; j < coefficients.length; j++) z += coefficients[j] * (x[j] ?? 0);
+  return z;
+}

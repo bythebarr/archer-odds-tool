@@ -48,6 +48,20 @@ async function main() {
     nbaLogs.map((l) => `${l.season}: ${l._count} (${l._min.gameDate?.toISOString().slice(0, 10)} → ${l._max.gameDate?.toISOString().slice(0, 10)})`).join(", ")
   );
 
+  // Closing lines: what the game-model backtest measures itself against.
+  for (const sport of ["nba", "nfl", "mlb"] as const) {
+    const finals = await prisma.game.findMany({ where: { sport, status: "final", scheduledStartUtc: { gte: new Date(now.getTime() - 30 * day) } }, select: { id: true, scheduledStartUtc: true } });
+    const ids = finals.map((g) => g.id);
+    const [withClosing, snaps, preStart] = await Promise.all([
+      prisma.gameClosingLine.groupBy({ by: ["gameId"], where: { gameId: { in: ids } } }),
+      prisma.oddsSnapshot.groupBy({ by: ["gameId"], where: { gameId: { in: ids } } }),
+      prisma.$queryRaw<{ n: bigint }[]>`SELECT count(DISTINCT s."gameId") AS n FROM "OddsSnapshot" s JOIN "Game" g ON g.id = s."gameId" WHERE g.id = ANY(${ids}) AND s."polledAt" < g."scheduledStartUtc"`,
+    ]);
+    console.log(`${sport}: ${finals.length} finals in 30 days; ${snaps.length} with any odds snapshot, ${Number(preStart[0]?.n ?? 0)} with a pre-start snapshot, ${withClosing.length} with a closing line`);
+  }
+  const oldest = await prisma.oddsSnapshot.findFirst({ orderBy: { polledAt: "asc" }, select: { polledAt: true } });
+  console.log(`Oldest odds snapshot kept: ${oldest?.polledAt.toISOString() ?? "none"}`);
+
   // Tennis: the archive and ratings the props board reads.
   const [archive, ratings, distinctOverall] = await Promise.all([
     prisma.tennisArchiveMatch.count(),
