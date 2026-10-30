@@ -1700,6 +1700,46 @@ model SportEventLine {
   @@index([eventId])
 }
 
+/// The latest price per (ESPN event, book, market, period, player, side,
+/// number) for any sport's player props: soccer, NHL, UFC, college, every ESPN
+/// league, and the NBA/NFL/MLB markets their typed tables don't carry (first
+/// basket, quarter props). Written from ESPN's free odds feed (DraftKings
+/// today); another feed adds books as more rows. NBA and NFL also write their
+/// typed CurrentNbaPropLine / CurrentNflPropLine, which their boards read.
+model EventPropLine {
+  id                String    @id @default(cuid())
+  /// ESPN's league path: "basketball/nba", "soccer/eng.1", "hockey/nhl", "mma/ufc", …
+  league            String
+  espnEventId       String
+  /// Our event when we have it: Game.id (NBA/NFL/MLB) or SportEvent.id ("espn:<id>").
+  eventRef          String?
+  startsAt          DateTime
+  /// ESPN athlete id ("" never occurs today: team markets are left to the game-line feeds).
+  athleteId         String
+  athleteName       String?
+  /// The book's market as listed, period suffix removed: "Total Points", "Points Milestones".
+  market            String
+  /// The stat words (see espnProps.statKeyOf), e.g. "points", "assists+points+rebounds".
+  statKey           String
+  /// "game" | "q1"…"q4" | "h1" | "h2" | "p1"…
+  period            String    @default("game")
+  /// "over" | "under" | "yes"
+  side              String
+  /// The number to beat (an "N+" rung is over N − 0.5); 0 for a yes-only prop.
+  point             Float     @default(0)
+  bookKey           String
+  /// Null when the book shows the number but no price yet (NFL props midweek).
+  priceAmerican     Int?
+  openPriceAmerican Int?
+  sourceUpdatedAt   DateTime?
+  polledAt          DateTime
+
+  @@unique([espnEventId, bookKey, market, period, athleteId, side, point])
+  @@index([league, startsAt])
+  @@index([eventRef])
+  @@index([athleteId])
+}
+
 /// A team or player in the all-sports feed, with its logo once found. Logos come
 /// from ESPN's team lists, the provider's participant logos, then the team's
 /// Wikipedia crest — looked up once and cached here.

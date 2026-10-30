@@ -68,6 +68,7 @@ export async function runRetentionCleanup(now: Date = new Date()): Promise<Clean
   const pastGames = { game: { scheduledStartUtc: { lt: new Date(now.getTime() - 2 * 86_400_000) } } };
   deleted.CurrentNbaPropLine = (await prisma.currentNbaPropLine.deleteMany({ where: pastGames })).count;
   deleted.CurrentNflPropLine = (await prisma.currentNflPropLine.deleteMany({ where: pastGames })).count;
+  deleted.EventPropLine = (await prisma.eventPropLine.deleteMany({ where: { startsAt: { lt: new Date(now.getTime() - 2 * 86_400_000) } } })).count;
 
   const creditLog = await prisma.pollCreditLog.deleteMany({ where: { polledAt: { lt: cutoff } } });
   deleted.PollCreditLog = creditLog.count;

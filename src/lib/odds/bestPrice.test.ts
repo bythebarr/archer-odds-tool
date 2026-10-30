@@ -50,6 +50,15 @@ describe("bestBettableLine", () => {
     expect(best?.bookKey).toBe("fanduel");
   });
 
+  it("on a one-book alt ladder, takes the rung nearest even money as the main number", () => {
+    const best = bestBettableLine([
+      line("draftkings", "over", -900, 14.5),
+      line("draftkings", "over", -115, 29.5),
+      line("draftkings", "over", +450, 44.5),
+    ]);
+    expect(best?.point).toBe(29.5);
+  });
+
   it("finds the consensus among bettable books only", () => {
     // Pinnacle's number doesn't get a vote on which number the board shows.
     const best = bestBettableLine([

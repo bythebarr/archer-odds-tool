@@ -32,6 +32,7 @@ export const THIN_RATIO = 0.6;
 export const JOBS: Job[] = [
   // Free, every tick: boards, fixtures and box scores.
   { path: "espn-odds", every: 55 },
+  { path: "espn-props", every: 55 },
   { path: "poll-all-sports", every: 55 },
   { path: "tennis-fixtures", every: 55 },
   { path: "soccer-player-stats", every: 115 },
