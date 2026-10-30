@@ -171,6 +171,24 @@ async function ingestEvent(
     // always have a real round >= 1, so this is a no-op for them.
     const resultRound = citoBout.resultRound || null;
 
+    // The UFCStats archive may have stored this fight first (its own row, id
+    // "ufcstats:…"): adopt that row instead of adding a second copy beside it.
+    if (!(await prisma.ufcBout.findUnique({ where: { citoBoutId: citoBout.id }, select: { id: true } }))) {
+      const day = new Date(citoEvent.eventDate).getTime();
+      const archived = await prisma.ufcBout.findFirst({
+        where: {
+          citoBoutId: { startsWith: "ufcstats:" },
+          event: { eventDate: { gte: new Date(day - 3 * 86_400_000), lte: new Date(day + 3 * 86_400_000) } },
+          OR: [
+            { redCornerFighterId: redFighterId, blueCornerFighterId: blueFighterId },
+            { redCornerFighterId: blueFighterId, blueCornerFighterId: redFighterId },
+          ],
+        },
+        select: { id: true },
+      });
+      if (archived) await prisma.ufcBout.update({ where: { id: archived.id }, data: { citoBoutId: citoBout.id } });
+    }
+
     const bout = await prisma.ufcBout.upsert({
       where: { citoBoutId: citoBout.id },
       create: {
