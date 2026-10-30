@@ -48,6 +48,12 @@ function ProjectionPanel({ model, point, side, statShort, milestone = false }: {
         </>
       }
     >
+      {p.thin && (
+        <p className="mt-3 rounded-lg bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-200">
+          <span className="font-semibold">Only {p.games} NBA games.</span> His per-minute rate is steadied by his position&apos;s league rate and the range is widened
+          until he has 5 games of his own.
+        </p>
+      )}
       <BlendLine model={model} side={side} />
       <SeasonMixLine seasons={p.seasons} />
       <EnvLine

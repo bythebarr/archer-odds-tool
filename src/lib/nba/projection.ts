@@ -46,8 +46,19 @@ const RATE_WINDOW = 30;
 const RATE_HALF_LIFE = 10;
 /** Weight (in games) of the two-season rate the recent rate is shrunk toward. */
 const RATE_PRIOR_GAMES = 8;
-/** Games needed before projecting at all. */
+/** Games needed before projecting from a player's own history alone. */
 export const MIN_GAMES = 5;
+/**
+ * A player with fewer than MIN_GAMES (a rookie, or anyone new to the league)
+ * is still projected from his second game: his per-minute rate is steadied by
+ * his position's league rate (PRIOR_MINUTES of it), his spread is widened, and
+ * the calibration pulls harder toward 50% (THIN_CALIBRATION_SHRINK) until he
+ * has MIN_GAMES of his own.
+ */
+export const THIN_MIN_GAMES = 2;
+const PRIOR_MINUTES = 60;
+const THIN_VARIANCE_FACTOR = 1.3;
+export const THIN_CALIBRATION_SHRINK = 0.6;
 
 const MATCHUP_REGRESSION = 0.5;
 const MATCHUP_CAP = 0.12;
@@ -75,6 +86,8 @@ export interface PropProjection {
   env: NbaEnvironment;
   /** How much of the per-minute rate rests on this season vs last. */
   seasons: SeasonMix;
+  /** Fewer than MIN_GAMES of his own: the rate leans on his position's, and the spread is wider. */
+  thin: boolean;
   distribution: StatDistribution;
 }
 
@@ -112,12 +125,15 @@ export interface ProjectionContext {
   baselineTotal?: number | null;
   /** Tonight's season, for the season mix (default: his latest game's). */
   season?: number;
+  /** League per-minute rate of each stat for his position group (see positionRates), the prior for a thin sample. */
+  positionRates?: Record<string, number>;
 }
 
-/** Projects one stat for one player from his logs (most recent first). Null with fewer than MIN_GAMES. */
+/** Projects one stat for one player from his logs (most recent first). Null with fewer than THIN_MIN_GAMES. */
 export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: ProjectionContext): PropProjection | null {
   const played = logs.filter((l) => l.minutes > 0);
-  if (played.length < MIN_GAMES) return null;
+  if (played.length < THIN_MIN_GAMES) return null;
+  const thin = played.length < MIN_GAMES;
 
   const minutes = weighted(played.slice(0, MINUTES_WINDOW).map((l) => l.minutes), MINUTES_HALF_LIFE).mean;
 
@@ -137,6 +153,9 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
       (totalMinutes ? ((1 - recentShare) * l.minutes) / totalMinutes : 0)
   );
   const seasons = seasonMix(played, gameWeights, ctx.season ?? played[0].season, stat.value);
+  // A thin sample: steady his rate with his position's, worth PRIOR_MINUTES of play.
+  const prior = ctx.positionRates?.[stat.key];
+  if (thin && prior !== undefined) perMinute = (perMinute * totalMinutes + prior * PRIOR_MINUTES) / (totalMinutes + PRIOR_MINUTES);
   let minutesAdj = minutes;
 
   // Teammates out tonight: lean on the games he's already played without them.
@@ -177,7 +196,8 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
   const sMean = sample.reduce((a, b) => a + b, 0) / sample.length;
   const sVar = sample.reduce((a, b) => a + (b - sMean) ** 2, 0) / Math.max(sample.length - 1, 1);
   const dispersion = sMean > 0 ? sVar / sMean : 1; // variance per unit of mean
-  const variance = Math.max(mean, mean * Math.max(dispersion, 1));
+  // A few games can't show his real spread: widen it until he has MIN_GAMES.
+  const variance = Math.max(mean, mean * Math.max(dispersion, 1)) * (thin ? THIN_VARIANCE_FACTOR : 1);
 
   return {
     mean,
@@ -190,8 +210,38 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     absence,
     env,
     seasons,
+    thin,
     distribution: { kind: "count", mean, variance },
   };
+}
+
+/**
+ * Each position group's league per-minute rate for every stat, from the
+ * slate's logs (two seasons): the prior a thin sample leans on. Groups and
+ * stats with under 500 logged minutes are left out.
+ */
+export function positionRates(
+  players: { id: string; positionGroup: PositionGroup | null }[],
+  logs: Record<string, GameLogPoint[]>,
+  stats: NbaPropStatDef[]
+): Record<string, Record<string, number>> {
+  const sums = new Map<PositionGroup, { minutes: number; totals: number[] }>();
+  for (const p of players) {
+    if (!p.positionGroup) continue;
+    const s = sums.get(p.positionGroup) ?? { minutes: 0, totals: stats.map(() => 0) };
+    for (const l of logs[p.id] ?? []) {
+      if (l.minutes <= 0) continue;
+      s.minutes += l.minutes;
+      stats.forEach((st, i) => (s.totals[i] += st.value(l)));
+    }
+    sums.set(p.positionGroup, s);
+  }
+  const out: Record<string, Record<string, number>> = {};
+  for (const [group, s] of sums) {
+    if (s.minutes < 500) continue;
+    out[group] = Object.fromEntries(stats.map((st, i) => [st.key, s.totals[i] / s.minutes]));
+  }
+  return out;
 }
 
 /** The model's uncalibrated chance the Over cashes at `point` (pushes refund). */

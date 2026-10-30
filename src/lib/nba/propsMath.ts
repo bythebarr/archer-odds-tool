@@ -9,7 +9,7 @@
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { bestBettableLine, consensusPoint, isBettableBook } from "@/lib/odds/bestPrice";
 import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
-import { CALIBRATION_SHRINK, projectMilestone, projectProp, rawOver, type ProjectionContext, type PropProjection } from "./projection";
+import { CALIBRATION_SHRINK, THIN_CALIBRATION_SHRINK, projectMilestone, projectProp, rawOver, type ProjectionContext, type PropProjection } from "./projection";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 import type { InjuryLevel } from "@/lib/injuries/status";
 import { modelWithheld, priceProp, type PricedProp } from "@/lib/propModel/price";
@@ -207,7 +207,7 @@ export function summarizeProp(
         projection,
         ...priceProp({
           rawProbOver: rawOver(projection, point),
-          calibrationShrink: CALIBRATION_SHRINK,
+          calibrationShrink: projection.thin ? THIN_CALIBRATION_SHRINK : CALIBRATION_SHRINK,
           injury: context.injury,
           pairs,
           modelWeight: context.modelWeight,

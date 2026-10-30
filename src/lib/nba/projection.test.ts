@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countCdf, MIN_GAMES, probOver, projectProp, rawOver } from "./projection";
+import { countCdf, MIN_GAMES, THIN_MIN_GAMES, positionRates, probOver, projectProp, rawOver } from "./projection";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 import type { GameLogPoint } from "./propsMath";
 import type { DefenseTable } from "./matchup";
@@ -45,8 +45,24 @@ describe("countCdf", () => {
 
 describe("projectProp", () => {
   it("needs a minimum sample", () => {
-    expect(projectProp(steady(MIN_GAMES - 1), PTS, { defense, opponent: "MID", positionGroup: null })).toBeNull();
+    expect(projectProp(steady(THIN_MIN_GAMES - 1), PTS, { defense, opponent: "MID", positionGroup: null })).toBeNull();
+    expect(projectProp(steady(MIN_GAMES), PTS, { defense, opponent: "MID", positionGroup: null })!.thin).toBe(false);
   });
+
+  it("projects a rookie from his second game, steadied by his position and with a wider range", () => {
+    // Two hot nights at 34 min (about 1.0 pts/min); guards league-wide score 0.5 pts/min.
+    const rookie = [log(36, 34, 0), log(32, 34, 1)];
+    const ctx = { defense, opponent: "MID", positionGroup: "G" as const };
+    const alone = projectProp(rookie, PTS, ctx)!;
+    const steadied = projectProp(rookie, PTS, { ...ctx, positionRates: { points: 0.5 } })!;
+    expect(alone.thin).toBe(true);
+    expect(steadied.mean).toBeLessThan(alone.mean); // pulled toward the position's rate
+    expect(steadied.mean).toBeGreaterThan(0.5 * 34); // but still his own minutes and more than the average guard
+    // The same mean from a full sample would carry a narrower range.
+    const veteran = projectProp(steady(20, 34), PTS, ctx)!;
+    expect(steadied.sd / Math.sqrt(steadied.mean)).toBeGreaterThan(veteran.sd / Math.sqrt(veteran.mean));
+  });
+
 
   it("projects near the player's level against an average opponent", () => {
     const p = projectProp(steady(20), PTS, { defense, opponent: "MID", positionGroup: null })!;
@@ -122,5 +138,14 @@ describe("projectMilestone", () => {
     expect(dd.mean).toBeGreaterThan(0.6);
     expect(td.mean).toBeLessThan(0.25);
     expect(rawOver(dd, 0.5)).toBeCloseTo(dd.mean, 6);
+  });
+});
+
+describe("positionRates", () => {
+  it("is each position group's per-minute rate, skipping thin groups", () => {
+    const logs = { a: Array.from({ length: 20 }, (_, i) => log(20, 30, i)), b: [log(10, 30)] };
+    const rates = positionRates([{ id: "a", positionGroup: "G" }, { id: "b", positionGroup: "C" }], logs, [PTS]);
+    expect(rates.G.points).toBeCloseTo(20 / 30);
+    expect(rates.C).toBeUndefined(); // 30 minutes isn't enough to read a position's rate
   });
 });

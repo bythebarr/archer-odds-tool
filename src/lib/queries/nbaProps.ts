@@ -4,9 +4,9 @@ import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
 import { espnTeamLogoUrl, nbaHeadshotUrl } from "@/lib/logos";
 import { NBA_LEAGUE } from "@/lib/nba/league";
 import { packLog, projectedLine, summarizeProp, type GameLogPoint, type PackedLog, type SlateProp } from "@/lib/nba/propsMath";
-import { projectProp } from "@/lib/nba/projection";
+import { THIN_MIN_GAMES, positionRates, projectProp } from "@/lib/nba/projection";
 import { nbaProjectionContext } from "@/lib/nba/slateContext";
-import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
+import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import type { DefenseTable, TeamDefenseRow } from "@/lib/nba/matchup";
 import { EV_FLAG } from "@/lib/odds/marketValue";
 import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
@@ -63,6 +63,8 @@ export interface NbaPropsSlate {
   lines: Record<string, GameLines>;
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
   modelWeights: Record<string, number>;
+  /** Position group → stat → league per-minute rate: the prior for players with only a few games (rookies). */
+  positionRates: Record<string, Record<string, number>>;
   lastPolledAt: string | null;
 }
 
@@ -220,6 +222,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     absences: {},
     lines: {},
     modelWeights: {},
+    positionRates: {},
     lastPolledAt: null,
   };
 
@@ -286,8 +289,9 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     if (players[p.id]) continue;
     const played = p.gameLogs.filter((l) => l.minutes > 0);
     const avgMinutes = played.length ? played.reduce((a, l) => a + l.minutes, 0) / played.length : 0;
-    // Over 48 a game is a team aggregate row, not a player.
-    if (played.length < 3 || avgMinutes < ROTATION_MINUTES_PROJECTED || avgMinutes > 48) continue;
+    // Over 48 a game is a team aggregate row, not a player. Two games is enough
+    // for a rookie (or anyone new): the projection leans on his position until he has more.
+    if (played.length < THIN_MIN_GAMES || avgMinutes < ROTATION_MINUTES_PROJECTED || avgMinutes > 48) continue;
     const g = games.find((x) => x.homeTeamId === p.teamId || x.awayTeamId === p.teamId)!;
     const venue = p.teamId === g.homeTeamId ? "home" : "away";
     players[p.id] = {
@@ -346,7 +350,8 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
   }
 
   // ARCHR's line for every core stat a book hasn't posted (out / doubtful players sit out).
-  const inputs = { defense, absences, lines: gameLines };
+  const rates = positionRates(Object.values(players), logs, NBA_PROP_STATS.filter((s) => !s.milestone));
+  const inputs = { defense, absences, lines: gameLines, positionRates: rates };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful") continue;
@@ -369,6 +374,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     absences,
     lines: gameLines,
     modelWeights,
+    positionRates: rates,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
 });
