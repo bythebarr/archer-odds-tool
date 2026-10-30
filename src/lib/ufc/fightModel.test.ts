@@ -96,6 +96,12 @@ describe("dedupeBouts", () => {
     expect(out.map((b) => b.id)).toEqual(["archive", "other"]);
   });
 
+  it("catches a copy dated a year late by its identical finish", () => {
+    const late = { ...bout("cito", "2025-11-15", "a", "b", false), seconds: 754 };
+    const real = { ...bout("archive", "2024-11-16", "a", "b", true), seconds: 754 };
+    expect(dedupeBouts([real, late], now).map((b) => b.id)).toEqual(["archive"]);
+  });
+
   it("keeps a real rematch and drops results dated in the future", () => {
     const out = dedupeBouts([bout("first", "2024-01-10", "a", "b", true), bout("rematch", "2025-02-01", "a", "b", true), bout("future", "2027-01-05", "c", "d", true)], now);
     expect(out.map((b) => b.id)).toEqual(["first", "rematch"]);
