@@ -66,6 +66,12 @@ describe("points and winner families", () => {
     expect(h.win).toBeGreaterThan(0.7);
   });
 
+  it("a young rugby league prices with a rugby-wide spread, not basketball's", () => {
+    const few = league([["A", "B", 24, 18], ["B", "C", 20, 16], ["A", "C", 26, 12]]).map((x, i) => ({ ...x, date: day(i) }));
+    expect(rateLeague("points", "rugby-league", few).marginSd).toBeGreaterThan(12);
+    expect(rateLeague("points", "basketball", few).marginSd).toBeLessThan(6);
+  });
+
   it("winner sports price the moneyline only", () => {
     const w = rateLeague("winner", "darts", league([["X", "Y", 6, 2], ["X", "Z", 6, 4], ["Y", "Z", 6, 5]]));
     expect(lineOutcomeFor(w, "X", "Z", { kind: "ml", period: "game", side: "home", team: "", point: 0 }, "darts")!.win).toBeGreaterThan(0.5);
