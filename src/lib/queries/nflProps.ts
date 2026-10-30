@@ -24,6 +24,8 @@ import { projectedLine } from "@/lib/nba/propsMath";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { getConsensusGameLines } from "./gameLines";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
+import { eventPropPostedLines, type PostedLine } from "./eventPropLines";
+import { NFL_STAT_BY_KEY } from "@/lib/odds/espnProps";
 
 export interface NflSlatePlayer {
   id: string;
@@ -446,4 +448,15 @@ export async function getValueNflProps(limit = 6) {
   out.sort((a, b) => b.ev - a.ev);
   const seen = new Set<string>();
   return out.filter((p) => !seen.has(p.playerId) && seen.add(p.playerId)).slice(0, limit);
+}
+
+/**
+ * The numbers posted on this week's games (priced or not), per our NFL player
+ * id and stat, for the parlay finder. ESPN carries DraftKings' NFL numbers
+ * before their prices, so this is often all there is midweek.
+ */
+export async function getNflPostedLines(gameIds: string[]): Promise<Record<string, Record<string, PostedLine[]>>> {
+  const byAthlete = await eventPropPostedLines(gameIds, NFL_STAT_BY_KEY);
+  const players = await prisma.nflPlayer.findMany({ where: { espnAthleteId: { in: Object.keys(byAthlete) } }, select: { id: true, espnAthleteId: true } });
+  return Object.fromEntries(players.map((p) => [p.id, byAthlete[p.espnAthleteId]]));
 }

@@ -4,7 +4,7 @@ import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { unpackLog, type GameLogPoint } from "@/lib/nba/propsMath";
 import { nbaFinderLegs } from "@/lib/nba/parlayLegs";
 import { findParlays, type FinderLeg, type FinderOptions } from "@/lib/props/parlayFinder";
-import { getNflPropsSlate } from "@/lib/queries/nflProps";
+import { getNflPostedLines, getNflPropsSlate } from "@/lib/queries/nflProps";
 import { unpackNflLog, type NflLogPoint } from "@/lib/nfl/propsMath";
 import { nflFinderLegs } from "@/lib/nfl/parlayLegs";
 import { todayEt } from "@/lib/dateEt";
@@ -29,8 +29,9 @@ async function main() {
 
   const nfl = await getNflPropsSlate();
   const nflLogs = Object.fromEntries(Object.entries(nfl.logs).map(([id, l]) => [id, l.map(unpackNflLog)])) as Record<string, NflLogPoint[]>;
-  console.log(`\nNFL: ${nfl.games.length} games, ${nfl.props.filter((p) => p.quotes.length).length} props with lines`);
-  for (const g of nfl.games) report(`NFL ${g.away.abbreviation} @ ${g.home.abbreviation}`, () => nflFinderLegs(nfl, nflLogs, g.id, { shortestPrice: -500 }), { seasons: [nfl.season, nfl.season - 1], minShared: 8 });
+  const posted = await getNflPostedLines(nfl.games.map((g) => g.id));
+  console.log(`\nNFL: ${nfl.games.length} games, ${nfl.props.filter((p) => p.quotes.length).length} priced props, ${Object.keys(posted).length} players with posted lines`);
+  for (const g of nfl.games) report(`NFL ${g.away.abbreviation} @ ${g.home.abbreviation}`, () => nflFinderLegs(nfl, nflLogs, g.id, { shortestPrice: -500, posted }), { seasons: [nfl.season, nfl.season - 1], minShared: 8 });
 }
 
 /** The page's default (one leg per player) and the uncapped search, side by side. */
