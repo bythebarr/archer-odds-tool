@@ -37,7 +37,7 @@ async function main() {
     pool.push(...legs);
   }
 
-  const base: BuilderOptions = { sports: [], legs: 4, window: "l10", minRate: 0.7, minArchr: 0, minEdge: null, sameGame: false, sort: "archr", count: 3 };
+  const base: BuilderOptions = { sports: [], legs: 4, window: "l10", minRate: 0.7, minArchr: 0, minEdge: null, sameGame: false, shortest: -500, sort: "archr", count: 3 };
   const runs: [string, Partial<BuilderOptions>][] = [
     ["default (4 legs, 70% L10, rank by ARCHR)", {}],
     ["6 legs, 80% L10, ARCHR 60%+", { legs: 6, minRate: 0.8, minArchr: 0.6 }],

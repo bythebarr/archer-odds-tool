@@ -3,15 +3,15 @@
  * games in the next few days (soccer, hockey, college football, baseball,
  * tennis, MMA beyond the UFC, …), each main moneyline (with the draw where the
  * sport has one), spread and total at the best price, ARCHR's blended chance,
- * and each bet's record in the two teams' recent games. A game no book has
- * priced yet still brings ARCHR's moneyline, unpriced.
+ * and each bet's record in the two teams' recent games. Only games a book has
+ * priced: a parlay is built from bets someone will take.
  *
  * Leagues with their own source (NBA, NFL, UFC) are left out here.
  */
 import { prisma } from "@/lib/prisma";
 import { mainOffer } from "@/lib/gameModel/offers";
 import { leagueRatings } from "@/lib/allSports/model/history";
-import { archrRead, priceEvent, type PricedOffer } from "@/lib/allSports/model/price";
+import { priceEvent, type PricedOffer } from "@/lib/allSports/model/price";
 import { dropEspnTwins } from "@/lib/queries/allSports";
 import { edgeOf, ratesOf, type BuilderLeg } from "../types";
 import { teamBetOutcomes, type PastGame, type TeamBet } from "../teamHistory";
@@ -76,14 +76,6 @@ export async function allSportsLegs(now = new Date()): Promise<BuilderLeg[]> {
           const team = s.side === "home" ? e.home : s.side === "away" ? e.away : null;
           const bet: TeamBet = team ? { kind: "ml", team } : { kind: "draw", home: e.home, away: e.away };
           add(`ml:${s.side}`, "ml", team ? `${team} ML` : "Draw", "ml", s.prob, s.best?.priceAmerican ?? null, s.best?.bookName ?? null, bet);
-        }
-      } else {
-        // Nothing priced yet: ARCHR's own moneyline, so the game still shows.
-        const read = archrRead(ratings, e.home, e.away, league.sport);
-        if (read) {
-          add("ml:home", "ml", `${e.home} ML`, "ml", read.probs.home, null, null, { kind: "ml", team: e.home });
-          add("ml:away", "ml", `${e.away} ML`, "ml", read.probs.away, null, null, { kind: "ml", team: e.away });
-          if (read.probs.draw > 0) add("ml:draw", "ml", "Draw", "ml", read.probs.draw, null, null, { kind: "draw", home: e.home, away: e.away });
         }
       }
       const pick = (kind: "spread" | "total"): PricedOffer | null => mainOffer(game.filter((o) => o.kind === kind)) as PricedOffer | null;

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-type Params = { sports?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; sgp?: string; sort?: string };
+type Params = { sports?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; short?: string; sgp?: string; sort?: string };
 
 const LEG_COUNTS = [2, 3, 4, 5, 6, 8, 10, 12, 15];
 const WINDOWS: { key: BuilderWindow; label: string }[] = [
@@ -23,7 +23,14 @@ const WINDOWS: { key: BuilderWindow; label: string }[] = [
   { key: "l20", label: "Last 20" },
   { key: "season", label: "Season" },
 ];
-const RATES = [0.5, 0.6, 0.7, 0.8, 0.9, 1];
+const RATES = [0.6, 0.7, 0.8, 0.9, 1];
+const SHORTEST: { key: string; label: string }[] = [
+  { key: "-200", label: "−200" },
+  { key: "-300", label: "−300" },
+  { key: "-500", label: "−500" },
+  { key: "-1000", label: "−1000" },
+  { key: "any", label: "Any" },
+];
 const ARCHR = [0, 0.55, 0.6, 0.7, 0.8];
 const EDGES: { key: string; label: string }[] = [
   { key: "any", label: "Any" },
@@ -37,14 +44,15 @@ const SORTS: { key: BuilderSort; label: string }[] = [
   { key: "hit", label: "Hit rate" },
   { key: "edge", label: "ARCHR edge" },
 ];
-const DEFAULTS = { legs: 4, window: "l10" as BuilderWindow, rate: 0.7, archr: 0, edge: "any", sgp: false, sort: "archr" as BuilderSort };
+const DEFAULTS = { legs: 4, window: "l10" as BuilderWindow, rate: 0.7, archr: 0, edge: "any", short: "-500", sgp: false, sort: "archr" as BuilderSort };
 
 const SPORT_LABEL: Record<string, string> = { nba: "NBA", nfl: "NFL", ufc: "UFC", ...Object.fromEntries(ALL_SPORTS.map((s) => [s.key, s.label])) };
 const SPORT_ORDER = ["nba", "nfl", "ufc", ...ALL_SPORTS.map((s) => s.key)];
 
-function readOptions(p: Params): BuilderOptions & { edgeKey: string } {
+function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: string } {
   const num = (v: string | undefined, allowed: number[], d: number) => (v !== undefined && allowed.includes(Number(v)) ? Number(v) : d);
   const edgeKey = EDGES.some((e) => e.key === p.edge) ? p.edge! : DEFAULTS.edge;
+  const shortKey = SHORTEST.some((e) => e.key === p.short) ? p.short! : DEFAULTS.short;
   return {
     sports: (p.sports ?? "").split(",").filter(Boolean),
     legs: num(p.legs, LEG_COUNTS, DEFAULTS.legs),
@@ -53,6 +61,8 @@ function readOptions(p: Params): BuilderOptions & { edgeKey: string } {
     minArchr: num(p.archr, ARCHR, DEFAULTS.archr),
     minEdge: edgeKey === "any" ? null : Number(edgeKey),
     edgeKey,
+    shortest: shortKey === "any" ? -Infinity : Number(shortKey),
+    shortKey,
     sameGame: p.sgp === "1",
     sort: SORTS.some((s) => s.key === p.sort) ? (p.sort as BuilderSort) : DEFAULTS.sort,
   };
@@ -162,6 +172,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       rate: String(o.minRate),
       archr: String(o.minArchr),
       edge: o.edgeKey,
+      short: o.shortKey,
       sgp: o.sameGame ? "1" : "",
       sort: o.sort,
       ...change,
@@ -221,6 +232,13 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </Link>
         ))}
       </Row>
+      <Row title="Shortest leg">
+        {SHORTEST.map((e) => (
+          <Link key={e.key} href={href({ short: e.key })} className={chip(o.shortKey === e.key)}>
+            {e.label}
+          </Link>
+        ))}
+      </Row>
       <Row title="Rank by">
         {SORTS.map((s) => (
           <Link key={s.key} href={href({ sort: s.key })} className={chip(o.sort === s.key)}>
@@ -256,7 +274,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
 
       <p className="mt-5 text-[11px] leading-relaxed text-muted-foreground">
         A leg&apos;s record is how often the same bet cashed over the sample: a prop at tonight&apos;s number in the player&apos;s games, a moneyline,
-        spread or total at tonight&apos;s number in the teams&apos; games (for UFC, the fighter&apos;s fights). Legs from different games are treated as
+        spread or total at tonight&apos;s number in the teams&apos; games (for UFC, the fighter&apos;s fights). An edge above 50% is left out of the
+        edge filter and ranking: ARCHR disagreeing with the book that much is the model&apos;s weak spot (alt lines, mostly), not a bet. Legs from different games are treated as
         independent, so the parlay&apos;s ARCHR chance and record are the legs&apos; multiplied. Prices are the best one posted; &quot;—&quot; is a line posted
         before its price. Research only.
       </p>

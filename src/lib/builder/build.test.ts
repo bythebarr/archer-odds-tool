@@ -21,7 +21,7 @@ const leg = (id: string, over: Partial<BuilderLeg> = {}): BuilderLeg => ({
   ...over,
 });
 
-const opts: BuilderOptions = { sports: [], legs: 2, window: "l10", minRate: 0.7, minArchr: 0, minEdge: null, sameGame: false, sort: "archr" };
+const opts: BuilderOptions = { sports: [], legs: 2, window: "l10", minRate: 0.7, minArchr: 0, minEdge: null, sameGame: false, shortest: -Infinity, sort: "archr" };
 
 describe("buildParlays", () => {
   it("stacks the best qualifying legs, multiplying chances and prices", () => {
@@ -60,6 +60,16 @@ describe("buildParlays", () => {
     const uses = new Map<string, number>();
     for (const p of parlays) for (const l of p.legs) uses.set(l.id, (uses.get(l.id) ?? 0) + 1);
     expect(Math.max(...uses.values())).toBeLessThanOrEqual(2);
+  });
+
+  it("leaves out legs shorter than the shortest price allowed, priced or (by ARCHR) unpriced", () => {
+    const pool = [leg("short", { priceAmerican: -700 }), leg("sureUnpriced", { priceAmerican: null, archr: 0.9 }), leg("ok", { priceAmerican: -200 }), leg("okUnpriced", { priceAmerican: null, archr: 0.7 })];
+    expect(buildParlays(pool, { ...opts, shortest: -500 }).qualifying).toBe(2);
+  });
+
+  it("doesn't count an edge too big to trust", () => {
+    const pool = [leg("wild", { priceAmerican: 500, archr: 0.45, edge: edgeOf(0.45, 500) }), leg("fair", { archr: 0.65, edge: 0.04 })];
+    expect(buildParlays(pool, { ...opts, minEdge: 0.03 }).qualifying).toBe(1);
   });
 });
 

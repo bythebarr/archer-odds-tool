@@ -26,6 +26,8 @@ export interface BuilderOptions {
   /** ARCHR's edge on each leg at least this, as a fraction (null = any, and unpriced legs are allowed). */
   minEdge: number | null;
   sameGame: boolean;
+  /** Skip legs priced shorter than this (−500); an unpriced leg, when ARCHR rates it surer than that price. −Infinity = any. */
+  shortest: number;
   sort: BuilderSort;
   /** Parlays returned. */
   count?: number;
@@ -46,6 +48,14 @@ export interface BuiltParlay {
 const MIN_GAMES: Record<BuilderWindow, number> = { l5: 5, l10: 8, l20: 12, season: 5 };
 /** Each leg joins at most this many of the parlays returned. */
 const MAX_USES = 2;
+/**
+ * An edge past this is ARCHR disagreeing with the book far more than it ever
+ * earns (an alt rung its props model reads loosely, mostly): not counted as
+ * edge, so it can't top an edge filter or ranking.
+ */
+export const MAX_TRUSTED_EDGE = 0.5;
+const trustedEdge = (l: BuilderLeg) => (l.edge !== null && l.edge <= MAX_TRUSTED_EDGE ? l.edge : null);
+const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
 
 const rateOf = (l: BuilderLeg, w: BuilderWindow) => {
   const [h, n] = l.rates[w];
@@ -65,13 +75,17 @@ export function qualifies(l: BuilderLeg, o: BuilderOptions): boolean {
   const [, n] = l.rates[o.window];
   if (n < MIN_GAMES[o.window] || rateOf(l, o.window) < o.minRate) return false;
   if (o.minArchr > 0 && (l.archr === null || l.archr < o.minArchr)) return false;
-  if (o.minEdge !== null && (l.edge === null || l.edge < o.minEdge)) return false;
+  const edge = trustedEdge(l);
+  if (o.minEdge !== null && (edge === null || edge < o.minEdge)) return false;
+  if (o.shortest > -Infinity) {
+    if (l.priceAmerican !== null ? l.priceAmerican < o.shortest : l.archr !== null && l.archr > implied(o.shortest)) return false;
+  }
   return true;
 }
 
 function scoreOf(l: BuilderLeg, o: BuilderOptions): number {
   const [h, n] = l.rates[o.window];
-  if (o.sort === "edge") return l.edge ?? -1;
+  if (o.sort === "edge") return trustedEdge(l) ?? -1;
   if (o.sort === "archr") return l.archr ?? floor(h, n) - 0.5;
   return floor(h, n);
 }

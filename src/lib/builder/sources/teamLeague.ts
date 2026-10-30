@@ -27,10 +27,14 @@ const LABEL = { nba: "NBA", nfl: "NFL" } as const;
 /** How far ahead game lines are read: NBA posts a day or two out, the NFL a week. */
 const LOOKAHEAD_DAYS = { nba: 2, nfl: 8 } as const;
 
-/** Worth a place in the pool: the record or ARCHR has it better than a coin flip. */
+/**
+ * Worth a place in the pool: a record of 60%+ over some window (the builder's
+ * lowest bar) or ARCHR at 60%+. Keeps each sport's cached slice well under the
+ * cache's 2 MB an entry.
+ */
 export function worthKeeping(l: BuilderLeg): boolean {
   const best = Math.max(...Object.values(l.rates).map(([h, n]) => (n ? h / n : 0)));
-  return best >= 0.5 || (l.archr ?? 0) >= 0.55;
+  return best >= 0.6 || (l.archr ?? 0) >= 0.6;
 }
 
 function propLeg(sport: TeamLeagueSport, l: FinderLeg, season: number, event: { label: string; startsAt: string }): BuilderLeg {
