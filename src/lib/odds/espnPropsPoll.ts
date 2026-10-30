@@ -24,6 +24,8 @@ const CORE = "https://sports.core.api.espn.com/v2/sports";
 const LOOKAHEAD_DAYS = 4;
 const LOOKAHEAD_MS = LOOKAHEAD_DAYS * 86_400_000;
 const ALLOWED = new Set<string>(ALLOWED_BOOK_KEYS);
+/** Events polled at once. */
+const EVENT_CONCURRENCY = 4;
 
 async function getJson<T>(url: string): Promise<T | null> {
   try {
@@ -47,16 +49,22 @@ interface ScoreboardEvent {
 }
 
 async function upcomingEvents(espnPath: string, now: Date): Promise<ScoreboardEvent[]> {
+  const days = Array.from({ length: LOOKAHEAD_DAYS + 1 }, (_, d) => etDateOf(new Date(now.getTime() + d * 86_400_000)).replace(/-/g, ""));
+  const boards = await Promise.all(days.map((day) => getJson<{ events?: ScoreboardEvent[] }>(`${SITE}/${espnPath}/scoreboard?dates=${day}&limit=500`)));
   const out: ScoreboardEvent[] = [];
-  for (let d = 0; d <= LOOKAHEAD_DAYS; d++) {
-    const day = etDateOf(new Date(now.getTime() + d * 86_400_000)).replace(/-/g, "");
-    const sb = await getJson<{ events?: ScoreboardEvent[] }>(`${SITE}/${espnPath}/scoreboard?dates=${day}&limit=500`);
-    for (const e of sb?.events ?? []) {
-      const t = new Date(e.date).getTime();
-      if (e.competitions[0]?.status?.type?.state === "pre" && t >= now.getTime() && t <= now.getTime() + LOOKAHEAD_MS && !out.some((x) => x.id === e.id)) out.push(e);
-    }
+  for (const e of boards.flatMap((sb) => sb?.events ?? [])) {
+    const t = new Date(e.date).getTime();
+    if (e.competitions[0]?.status?.type?.state === "pre" && t >= now.getTime() && t <= now.getTime() + LOOKAHEAD_MS && !out.some((x) => x.id === e.id)) out.push(e);
   }
   return out;
+}
+
+/** Runs `fn` over `items`, `limit` at a time. */
+async function eachLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) await fn(items[next++]);
+  }));
 }
 
 /** Every book's props on one event: { bookKey → quotes }. */
@@ -170,14 +178,15 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
     }
     const events = await upcomingEvents(espnPath, now);
     out.leagues++;
-    for (const e of events) {
+    // A few events at a time: the run is mostly waiting on ESPN.
+    await eachLimit(events, EVENT_CONCURRENCY, async (e) => {
       if (Date.now() > deadline) {
         out.stoppedEarly = true;
-        break;
+        return;
       }
       out.eventsChecked++;
       const books = await eventProps(espnPath, e.id);
-      if (!books.some((b) => b.quotes.length)) continue;
+      if (!books.some((b) => b.quotes.length)) return;
       out.eventsWithProps++;
       const eventRef = await gameIdFor(espnPath, e);
       const typed = TYPED[espnPath];
@@ -270,7 +279,7 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
           out.nflLinesStored += data.length;
         }
       }
-    }
+    });
   }
   out.unmatchedAthletes = unmatched.size;
   return out;
