@@ -62,6 +62,17 @@ async function main() {
   const oldest = await prisma.oddsSnapshot.findFirst({ orderBy: { polledAt: "asc" }, select: { polledAt: true } });
   console.log(`Oldest odds snapshot kept: ${oldest?.polledAt.toISOString() ?? "none"}`);
 
+  // UFC: red-corner win rate by year. A symmetric fight model assumes the corner
+  // means little; a source that lists the winner first would show up here.
+  const ufc = await prisma.$queryRaw<{ yr: number; n: bigint; red: bigint; archive: bigint }[]>`
+    SELECT EXTRACT(YEAR FROM e."eventDate")::int AS yr, count(*) AS n,
+      count(*) FILTER (WHERE b."winnerFighterId" = b."redCornerFighterId") AS red,
+      count(*) FILTER (WHERE b."ufcStatsId" IS NOT NULL) AS archive
+    FROM "UfcBout" b JOIN "UfcEvent" e ON e.id = b."eventId"
+    WHERE b."winnerFighterId" IS NOT NULL GROUP BY 1 ORDER BY 1`;
+  console.log(`UFC decided bouts by year (red-corner win %, % from the UFCStats archive):`);
+  for (const r of ufc) console.log(`  ${r.yr}: ${r.n} bouts, red ${Math.round((Number(r.red) / Number(r.n)) * 100)}%, archive ${Math.round((Number(r.archive) / Number(r.n)) * 100)}%`);
+
   // Tennis: the archive and ratings the props board reads.
   const [archive, ratings, distinctOverall] = await Promise.all([
     prisma.tennisArchiveMatch.count(),
