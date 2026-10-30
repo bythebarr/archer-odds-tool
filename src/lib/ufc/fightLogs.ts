@@ -4,7 +4,7 @@
  * fighter sheet, the props slate and the props backtest.
  */
 import { prisma } from "@/lib/prisma";
-import { fightSeconds, weightClassLbs } from "./fightModel";
+import { dedupeFights, fightSeconds, weightClassLbs } from "./fightModel";
 import type { DivisionPrior, UfcFightLog, UfcLogLine } from "./propModel";
 
 /** "Women's Flyweight" → "w125"; "Light Heavyweight" → "205"; unknown → "open". */
@@ -107,7 +107,7 @@ export async function loadUfcBouts(fighterIds?: string[]): Promise<UfcBoutForLog
       fighterStats: { select: LINE_SELECT },
     },
   });
-  return rows.map((b) => {
+  const bouts = rows.map((b) => {
     const red = b.fighterStats.find((s) => s.fighterId === b.redCornerFighterId);
     const blue = b.fighterStats.find((s) => s.fighterId === b.blueCornerFighterId);
     return {
@@ -127,6 +127,8 @@ export async function loadUfcBouts(fighterIds?: string[]): Promise<UfcBoutForLog
       blueLine: blue ? toLogLine(blue) : null,
     };
   });
+  // The same fight can be stored twice (see dedupeBouts); show it once.
+  return dedupeFights(bouts, new Date(), { seconds: (b) => fightSeconds(b.round, b.time), hasStats: (b) => !!(b.redLine && b.blueLine) });
 }
 
 /** The bout from one fighter's side. */

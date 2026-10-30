@@ -412,21 +412,30 @@ const SAME_FIGHT_MS = 3 * 86_400_000;
  * with both corners' stats (else the earlier one), and drops future-dated results.
  */
 export function dedupeBouts(bouts: BoutRecord[], now: Date): BoutRecord[] {
-  const out: (BoutRecord | null)[] = [];
+  return dedupeFights(bouts, now, { seconds: (b) => b.seconds, hasStats: (b) => !!(b.redStats && b.blueStats) });
+}
+
+/** `dedupeBouts` for any bout shape (the fight logs carry their own). */
+export function dedupeFights<T extends { date: Date; red: string; blue: string; winner: string | null }>(
+  bouts: T[],
+  now: Date,
+  read: { seconds: (b: T) => number | null; hasStats: (b: T) => boolean }
+): T[] {
+  const out: T[] = [];
   const lastByPair = new Map<string, number>();
   const byFinish = new Map<string, number>();
-  const full = (b: BoutRecord) => !!(b.redStats && b.blueStats);
-  const keep = (i: number, b: BoutRecord) => {
-    if (full(b) && !full(out[i]!)) out[i] = b;
+  const keep = (i: number, b: T) => {
+    if (read.hasStats(b) && !read.hasStats(out[i])) out[i] = b;
   };
   for (const b of bouts) {
     if (b.date.getTime() > now.getTime()) continue;
     const pair = [b.red, b.blue].sort().join("|");
     // Stoppages only: every decision of the same length ends at the same second.
-    const finish = b.winner && b.seconds && b.seconds % 300 !== 0 ? `${pair}|${b.winner}|${b.seconds}` : null;
+    const seconds = read.seconds(b);
+    const finish = b.winner && seconds && seconds % 300 !== 0 ? `${pair}|${b.winner}|${seconds}` : null;
     const near = lastByPair.get(pair);
     const same = finish !== null ? byFinish.get(finish) : undefined;
-    if (near !== undefined && b.date.getTime() - out[near]!.date.getTime() <= SAME_FIGHT_MS) {
+    if (near !== undefined && b.date.getTime() - out[near].date.getTime() <= SAME_FIGHT_MS) {
       keep(near, b);
       continue;
     }
@@ -438,5 +447,5 @@ export function dedupeBouts(bouts: BoutRecord[], now: Date): BoutRecord[] {
     if (finish) byFinish.set(finish, out.length);
     out.push(b);
   }
-  return out.filter((b): b is BoutRecord => b !== null);
+  return out;
 }
