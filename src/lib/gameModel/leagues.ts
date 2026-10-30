@@ -26,7 +26,7 @@ export const NBA_GAME_MODEL: GameModelLeague = {
   // Home edge ~3 pts in older data and smaller since 2020; learned from 2.5.
   // k fitted by `npm run backtest:games` (0.05 best of 0.03–0.10, 1,254 games, 2026-10-28).
   ratings: { k: 0.05, revert: 0.3, hfa: 2.5, leagueAvg: 114, driftK: 0.002 },
-  marginSd: 12,
+  marginSd: 14.5, // measured 14.53 over 1,254 games (2026-10-28); the live model reads the latest fit
   totalSd: 18,
   ties: false,
   minGames: 8,
