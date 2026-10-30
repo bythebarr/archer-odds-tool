@@ -15,17 +15,40 @@ export const SCREENER_SPORTS = [
 type Sport = (typeof SCREENER_SPORTS)[number]["key"];
 
 const BUILD: Record<Sport, () => Promise<ScreenerProp[]>> = { nba: nbaScreener, nfl: nflScreener, soccer: () => soccerScreener() };
-const cached = Object.fromEntries(
-  SCREENER_SPORTS.map(({ key }) => [key, unstable_cache(() => BUILD[key](), ["screener-pool", key], { revalidate: 600, tags: ["screener-pool"] })])
-) as Record<Sport, () => Promise<ScreenerProp[]>>;
 
-/** Every sport's props, or one sport's. */
-export async function getScreenerPool(sport: string | null): Promise<ScreenerProp[]> {
+/** One build serves both parts of a sport's slice when they refresh together. */
+const building = new Map<Sport, { at: number; rows: Promise<ScreenerProp[]> }>();
+function build(sport: Sport): Promise<ScreenerProp[]> {
+  const hit = building.get(sport);
+  if (hit && Date.now() - hit.at < 60_000) return hit.rows;
+  const rows = BUILD[sport]();
+  building.set(sport, { at: Date.now(), rows });
+  return rows;
+}
+
+/**
+ * Main lines and alt rungs are cached as separate entries: a sport's whole
+ * slice can pass the cache's 2 MB an entry, and the default screen (main
+ * lines) needs only the first.
+ */
+type Part = "main" | "alt";
+const cached = Object.fromEntries(
+  SCREENER_SPORTS.flatMap(({ key }) =>
+    (["main", "alt"] as Part[]).map((part) => [
+      `${key}:${part}`,
+      unstable_cache(async () => (await build(key)).filter((p) => p.main === (part === "main")), ["screener-pool", key, part], { revalidate: 600, tags: ["screener-pool"] }),
+    ])
+  )
+) as Record<string, () => Promise<ScreenerProp[]>>;
+
+/** Every sport's props, or one sport's; alt rungs only when asked for. */
+export async function getScreenerPool(sport: string | null, withAlts: boolean): Promise<ScreenerProp[]> {
   const sports = SCREENER_SPORTS.map((s) => s.key).filter((k) => !sport || k === sport);
+  const keys = sports.flatMap((s) => (withAlts ? [`${s}:main`, `${s}:alt`] : [`${s}:main`]));
   const slices = await Promise.all(
-    sports.map((s) =>
-      cached[s]().catch((error) => {
-        console.error(`screener pool ${s} failed`, error);
+    keys.map((k) =>
+      cached[k]().catch((error) => {
+        console.error(`screener pool ${k} failed`, error);
         return [] as ScreenerProp[];
       })
     )

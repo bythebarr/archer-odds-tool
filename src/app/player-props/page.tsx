@@ -114,7 +114,7 @@ export default async function PlayerPropsHubPage({ searchParams }: { searchParam
   const params = await searchParams;
   await refreshOnView([["espn-props", 30]]);
   const read = readFilters(params);
-  const pool = await getScreenerPool(read.sport);
+  const pool = await getScreenerPool(read.sport, !read.mainOnly);
   // A game, team or stat left over from another sport would screen everything out: drop it.
   const f: ScreenFilters = {
     ...read,

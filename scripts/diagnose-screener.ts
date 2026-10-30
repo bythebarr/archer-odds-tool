@@ -18,8 +18,9 @@ async function main() {
       console.error(`${name} failed:`, e);
       return [] as ScreenerProp[];
     });
-    const main = rows.filter((r) => r.main).length;
-    console.log(`${name}: ${rows.length} props (${main} main lines), ${Math.round(JSON.stringify(rows).length / 1024)} KB, ${((Date.now() - t) / 1000).toFixed(1)}s`);
+    const main = rows.filter((r) => r.main);
+    const kb = (list: ScreenerProp[]) => Math.round(JSON.stringify(list).length / 1024);
+    console.log(`${name}: ${rows.length} props, ${((Date.now() - t) / 1000).toFixed(1)}s · main ${main.length} (${kb(main)} KB), alt ${rows.length - main.length} (${kb(rows.filter((r) => !r.main))} KB), priced ${rows.filter((r) => r.priceAmerican !== null).length}`);
     pool.push(...rows);
   }
   const runs: [string, Partial<ScreenFilters>][] = [

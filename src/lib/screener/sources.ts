@@ -20,6 +20,8 @@ import { SOCCER_PROP_STATS, projectionOver, unpackSoccerLog } from "@/lib/soccer
 import { edgeOf } from "@/lib/builder/types";
 import type { FinderLeg } from "@/lib/props/parlayFinder";
 import { mainPoint, screenRates, type ScreenerProp } from "./types";
+import { eventPropPostedLines } from "@/lib/queries/eventPropLines";
+import { SOCCER_STAT_BY_KEY } from "@/lib/odds/espnProps";
 
 /** Rungs shorter than this aren't worth screening. */
 const SHORTEST = -1000;
@@ -113,6 +115,8 @@ export async function soccerScreener(now = new Date()): Promise<ScreenerProp[]> 
   for (const league of leagues) {
     const slate = league.id === first.league?.id ? first : await getSoccerPropsSlate(league.slug, now);
     const matches = new Map(slate.matches.map((m) => [m.id, m]));
+    // DraftKings' soccer numbers reach the feed before (often without) their prices: read every posted number.
+    const posted = await eventPropPostedLines(slate.matches.map((m) => m.id), SOCCER_STAT_BY_KEY);
     for (const player of Object.values(slate.players)) {
       const match = matches.get(player.matchId);
       if (!match) continue;
@@ -122,12 +126,13 @@ export async function soccerScreener(now = new Date()): Promise<ScreenerProp[]> 
         if (!projection) continue;
         // Only what a book has posted: ARCHR's own line on every player and stat is the soccer board's job.
         const quotes = player.books[stat.key] ?? [];
-        if (!quotes.length) continue;
-        const main = mainPoint(quotes) ?? quotes[0]!.point;
-        const points = [...new Set(quotes.map((q) => q.point))];
+        const numbers = [...quotes, ...(posted[player.id]?.[stat.key] ?? [])];
+        if (!numbers.length) continue;
+        const main = mainPoint(numbers) ?? numbers[0]!.point;
         const sides: ("over" | "under" | "yes")[] = stat.shape === "anytime" ? ["yes"] : ["over", "under"];
-        for (const point of points) {
+        for (const point of [...new Set(numbers.map((q) => q.point))]) {
           for (const side of sides) {
+            if (side !== "yes" && !numbers.some((q) => q.point === point && q.side === side)) continue;
             const priced = quotes.filter((q) => q.point === point && (side === "under" ? q.side === "under" : q.side === "over"));
             const best = priced.sort((a, b) => b.priceAmerican - a.priceAmerican)[0] ?? null;
             const over = projectionOver(projection, point, stat);
