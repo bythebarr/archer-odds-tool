@@ -52,7 +52,8 @@ export const NFL_KEY_NUMBERS: KeyNumbers = {
 
 export const NFL_GAME_MODEL: GameModelLeague = {
   sport: "nfl",
-  ratings: { k: 0.1, revert: 0.33, hfa: 1.8, leagueAvg: 22.5, driftK: 0.003 },
+  // k fitted by `npm run backtest:games` (0.075 best of 0.05–0.2, 315 games, 2026-10-30).
+  ratings: { k: 0.075, revert: 0.33, hfa: 1.8, leagueAvg: 22.5, driftK: 0.003 },
   marginSd: 13.5,
   totalSd: 13.5,
   keyNumbers: NFL_KEY_NUMBERS,
