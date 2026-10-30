@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { findParlays, parlayPrice, rateFloor, type FinderLeg } from "./parlayFinder";
 
 /** 30 games between BOS and NYK; `values(i)` is the stat in game i (0 = newest). */
-function leg(key: string, team: string, side: "over" | "under", point: number, values: (i: number) => number | null, price: number | null = -110, group = key): FinderLeg {
+function leg(key: string, team: string, side: "over" | "under", point: number, values: (i: number) => number | null, price: number | null = -110, group = key, player = group): FinderLeg {
   return {
     key,
     group,
+    player,
     id: group,
     gameId: "g",
     playerName: key,
@@ -61,6 +62,24 @@ describe("findParlays", () => {
     for (const r of res) for (const p of r.parlays) expect(p.legs.some((l) => l.key === "R")).toBe(false);
     const fewShared = leg("F", "NYK", "over", 1.5, (i) => (i < 5 ? 9 : null));
     expect(findParlays([a, fewShared], { minLegRate: 0.3, minShared: 10 })).toEqual([]);
+  });
+
+  it("caps one player's legs, so a near-copy of his own stat can't crowd out the other players", () => {
+    // A's points + assists moves with A's points every game: the best pair, on one player.
+    const aPra = leg("A-PA", "BOS", "over", 25.5, (i) => (i % 3 === 0 ? 14 : 30), -110, "A-PA", "A");
+    const aPts = { ...a, player: "A" };
+    const free = findParlays([aPts, aPra, b], { minLegRate: 0.3, minShared: 10 });
+    expect(free.find((r) => r.size === 2)!.parlays[0].legs.map((l) => l.player)).toEqual(["A", "A"]);
+    const capped = findParlays([aPts, aPra, b], { minLegRate: 0.3, minShared: 10, maxPerPlayer: 1 });
+    for (const r of capped) for (const p of r.parlays) expect(new Set(p.legs.map((l) => l.player)).size).toBe(p.legs.length);
+    expect(capped.find((r) => r.size === 2)!.parlays.length).toBeGreaterThan(0);
+  });
+
+  it("shows each combination once, at its best rung", () => {
+    const b2 = leg("B2", "NYK", "over", 7.5, (i) => (i % 3 === 0 ? 4 : 12), -150, "B");
+    const res = findParlays([a, b, b2], { minLegRate: 0.3, minShared: 10 });
+    const pairs = res.find((r) => r.size === 2)!.parlays.map((p) => p.legs.map((l) => l.group).sort().join("|"));
+    expect(new Set(pairs).size).toBe(pairs.length);
   });
 });
 

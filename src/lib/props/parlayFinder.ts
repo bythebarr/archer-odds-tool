@@ -11,6 +11,13 @@
  * combination is ranked by the low end of its hit rate's confidence range
  * (Wilson, one standard error), so 9 of 10 doesn't beat 28 of 30.
  *
+ * One player's stats nearly always move together (his points carry his
+ * points + assists), so left alone those combinations crowd every slot of the
+ * beam and the search never reaches mixes of several players. `maxPerPlayer`
+ * caps a player's legs per parlay, and the beam keeps at most two
+ * combinations of the same player-stats (two rungs of one combination are one
+ * idea), which leaves room to grow the others.
+ *
  * Past joint hits are a description, not a forecast: searching thousands of
  * combinations always turns up some that cashed together by luck. The finder
  * shows the model's own chance beside the record for that reason. Pure.
@@ -23,6 +30,8 @@ export interface FinderLeg extends ParlayLeg {
   key: string;
   /** One leg per group in a parlay (a player's stat: its rungs are nested). */
   group: string;
+  /** The player (or team) the leg is on: `maxPerPlayer` counts these. */
+  player: string;
   /** The best bettable price at this number, or null if no book hangs it. */
   priceAmerican: number | null;
   bookName: string | null;
@@ -36,6 +45,8 @@ export interface FinderOptions {
   /** …and all its legs must have cashed together at least this often (0–1). */
   minRate: number;
   maxLegs: number;
+  /** At most this many legs on one player in a parlay. */
+  maxPerPlayer: number;
   /** Combinations kept per size while searching. */
   beam: number;
   /** Combinations returned per size. */
@@ -44,7 +55,10 @@ export interface FinderOptions {
   seasons?: number[];
 }
 
-export const DEFAULT_FINDER: FinderOptions = { minLegRate: 0.6, minShared: 10, minRate: 0.5, maxLegs: 15, beam: 60, perSize: 3 };
+export const DEFAULT_FINDER: FinderOptions = { minLegRate: 0.6, minShared: 10, minRate: 0.5, maxLegs: 15, maxPerPlayer: Infinity, beam: 150, perSize: 5 };
+
+/** Beam states allowed per set of player-stats (the same combination at other rungs). */
+const PER_SIGNATURE = 2;
 
 export interface FoundParlay {
   legs: FinderLeg[];
@@ -104,6 +118,9 @@ interface State {
   hits: number;
   score: number;
 }
+
+/** The player-stats a combination covers, whatever the rungs. */
+const signatureOf = (legs: FinderLeg[], idx: number[]) => idx.map((i) => legs[i].group).sort().join("|");
 
 export function findParlays(legs: FinderLeg[], options: Partial<FinderOptions> = {}): { size: number; parlays: FoundParlay[] }[] {
   const o = { ...DEFAULT_FINDER, ...options };
@@ -177,8 +194,10 @@ export function findParlays(legs: FinderLeg[], options: Partial<FinderOptions> =
     const next: State[] = [];
     for (const s of beam) {
       const groups = new Set(s.idx.map((i) => legs[i].group));
+      const perPlayer = new Map<string, number>();
+      for (const i of s.idx) perPlayer.set(legs[i].player, (perPlayer.get(legs[i].player) ?? 0) + 1);
       for (const j of usable) {
-        if (groups.has(legs[j].group)) continue;
+        if (groups.has(legs[j].group) || (perPlayer.get(legs[j].player) ?? 0) >= o.maxPerPlayer) continue;
         const p = and(s.played, played[j]);
         const shared = popcount(p);
         if (shared < o.minShared) continue;
@@ -192,8 +211,26 @@ export function findParlays(legs: FinderLeg[], options: Partial<FinderOptions> =
       }
     }
     next.sort((a, b) => b.score - a.score || b.shared - a.shared);
-    beam = next.slice(0, o.beam);
-    if (beam.length) out.push({ size, parlays: beam.slice(0, o.perSize).map(result) });
+    // Keep the beam varied: a couple of rungs per combination, then the next idea.
+    const bySignature = new Map<string, number>();
+    beam = [];
+    for (const s of next) {
+      if (beam.length >= o.beam) break;
+      const sig = signatureOf(legs, s.idx);
+      const n = bySignature.get(sig) ?? 0;
+      if (n >= PER_SIGNATURE) continue;
+      bySignature.set(sig, n + 1);
+      beam.push(s);
+    }
+    // What's shown: the best rung of each combination only.
+    const shown = new Set<string>();
+    const best = beam.filter((s) => {
+      const sig = signatureOf(legs, s.idx);
+      if (shown.has(sig)) return false;
+      shown.add(sig);
+      return true;
+    });
+    if (best.length) out.push({ size, parlays: best.slice(0, o.perSize).map(result) });
   }
   return out;
 }

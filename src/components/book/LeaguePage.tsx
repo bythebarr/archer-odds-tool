@@ -20,6 +20,7 @@ export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props" | "
   }
   if (sport === "nfl") {
     tabs.push({ label: "Player Props", href: "/nfl/props", active: active === "props" });
+    tabs.push({ label: "Parlay Finder", href: "/nfl/parlays", active: active === "parlays" });
     tabs.push({ label: "Research", href: "/nfl/research", active: false });
   }
   return tabs;

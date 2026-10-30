@@ -45,6 +45,7 @@ export function nbaFinderLegs(slate: WireNbaPropsSlate, logs: Record<string, Gam
         out.push({
           key: `${prop.playerId}:${prop.stat}:${side}:${point}`,
           group: `${prop.playerId}:${prop.stat}`,
+          player: prop.playerId,
           id: `${prop.playerId}:${prop.stat}`,
           gameId,
           playerName: player.name,
