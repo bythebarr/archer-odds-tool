@@ -48,6 +48,7 @@
     "fix:ufc-duplicates": "tsx scripts/fix-ufc-duplicates.ts",
     "diagnose:parlays": "tsx scripts/diagnose-parlays.ts",
     "diagnose:builder": "tsx scripts/diagnose-builder.ts",
+    "diagnose:screener": "tsx scripts/diagnose-screener.ts",
     "poll:espn-props": "tsx scripts/poll-espn-props.ts",
     "fix:ufc-duplicates:apply": "APPLY=1 tsx scripts/fix-ufc-duplicates.ts",
     "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts",
