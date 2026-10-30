@@ -27,13 +27,23 @@ const ALLOWED = new Set<string>(ALLOWED_BOOK_KEYS);
 /** Events polled at once. */
 const EVENT_CONCURRENCY = 4;
 
+/** Requests that still failed after retries, this run (a throttled ESPN shows here, not as "no props"). */
+let fetchFailures = 0;
+
 async function getJson<T>(url: string): Promise<T | null> {
-  try {
-    const res = await fetch(url.replace(/^http:/, "https:"), { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
-    return res.ok ? ((await res.json()) as T) : null;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
+    try {
+      const res = await fetch(url.replace(/^http:/, "https:"), { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
+      if (res.ok) return (await res.json()) as T;
+      // A missing page or event is an answer; throttling and server errors are worth another try.
+      if (res.status !== 429 && res.status < 500) return null;
+    } catch {
+      // Network error or timeout: try again.
+    }
   }
+  fetchFailures++;
+  return null;
 }
 
 /** "soccer/eng.1" → "soccer/leagues/eng.1" (the core API's shape). */
@@ -119,6 +129,8 @@ export interface EspnPropsSummary {
   /** Athletes with props but no NbaPlayer / NflPlayer row (rookies not yet logged, mostly). */
   unmatchedAthletes: number;
   stoppedEarly: boolean;
+  /** ESPN requests that failed even after retrying. */
+  fetchFailures: number;
 }
 
 type Typed = { kind: "nba" | "nfl"; league: TeamLeague };
@@ -167,7 +179,8 @@ async function leaguePaths(): Promise<string[]> {
 }
 
 export async function pollEspnProps(deadline: number, now = new Date()): Promise<EspnPropsSummary> {
-  const out: EspnPropsSummary = { leagues: 0, eventsChecked: 0, eventsWithProps: 0, quotesStored: 0, unpriced: 0, nbaLinesStored: 0, nflLinesStored: 0, unmappedTyped: {}, unmatchedAthletes: 0, stoppedEarly: false };
+  const out: EspnPropsSummary = { leagues: 0, eventsChecked: 0, eventsWithProps: 0, quotesStored: 0, unpriced: 0, nbaLinesStored: 0, nflLinesStored: 0, unmappedTyped: {}, unmatchedAthletes: 0, stoppedEarly: false, fetchFailures: 0 };
+  fetchFailures = 0;
   const names = new Map<string, string>();
   const unmatched = new Set<string>();
 
@@ -282,5 +295,6 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
     });
   }
   out.unmatchedAthletes = unmatched.size;
+  out.fetchFailures = fetchFailures;
   return out;
 }
