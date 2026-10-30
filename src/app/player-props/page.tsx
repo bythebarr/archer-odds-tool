@@ -5,7 +5,7 @@ import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
 import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { FilterPanel } from "@/components/screener/FilterPanel";
 import { getScreenerPool, SCREENER_SPORTS } from "@/lib/screener/pool";
-import { DEFAULT_FILTERS, SCREEN_WINDOWS, barsOf, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
+import { DEFAULT_FILTERS, SCREEN_WINDOWS, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
 
@@ -345,7 +345,7 @@ export default async function PlayerPropsHubPage({ searchParams }: { searchParam
                   {results.slice(0, ROWS).map((p) => (
                     <tr key={p.id} className="bg-card">
                       <td className="px-3 py-2">
-                        <Link href={p.href} className="font-semibold text-foreground hover:underline">
+                        <Link href={propHref(p)} className="font-semibold text-foreground hover:underline">
                           {p.player}
                         </Link>
                         <span className="ml-1.5 text-muted-foreground">{sideText(p)}</span>
@@ -379,8 +379,7 @@ export default async function PlayerPropsHubPage({ searchParams }: { searchParam
           <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
             Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
             last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-            L15 and season columns read &quot;—&quot;. Prices are the best one posted (&quot;—&quot;: a number posted before its price, or
-            ARCHR&apos;s own line before the books post). ARCHR&apos;s edge is its chance against that price. Research only.
+            L15 and season columns read &quot;—&quot;. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. Research only.
           </p>
         </section>
       </div>

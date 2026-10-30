@@ -31,7 +31,6 @@ export interface ScreenerProp {
   team: string;
   opponent: string;
   player: string;
-  playerId: string;
   /** The sport's stat key and its short label ("PTS"). */
   stat: string;
   statLabel: string;
@@ -44,7 +43,14 @@ export interface ScreenerProp {
   archr: number | null;
   edge: number | null;
   rates: Record<ScreenWindow, Rate>;
-  href: string;
+  /** Soccer: the league's slug, for the link to its props board. */
+  leagueSlug?: string;
+}
+
+/** The sport's props board for this prop's game or league (kept off the row: the cached slice must stay small). */
+export function propHref(p: Pick<ScreenerProp, "sport" | "gameId" | "leagueSlug">): string {
+  if (p.sport === "soccer") return `/sports/soccer/props${p.leagueSlug ? `?league=${p.leagueSlug}` : ""}`;
+  return `/${p.sport}/props?game=${p.gameId.slice(p.sport.length + 1)}`;
 }
 
 /** A window's record from game values (newest first, null = not on the box score), at a side and number. */

@@ -11,7 +11,6 @@ const prop = (id: string, over: Partial<ScreenerProp> = {}): ScreenerProp => ({
   team: "BOS",
   opponent: "NYK",
   player: id,
-  playerId: id,
   stat: "points",
   statLabel: "PTS",
   side: "over",
@@ -22,7 +21,6 @@ const prop = (id: string, over: Partial<ScreenerProp> = {}): ScreenerProp => ({
   archr: 0.55,
   edge: 0.05,
   rates: { l3: [3, 3], l5: [4, 5], l10: [8, 10], l15: [12, 15], szn: [8, 10], last: [50, 70] },
-  href: "/",
   ...over,
 });
 

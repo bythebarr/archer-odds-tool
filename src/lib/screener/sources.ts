@@ -1,7 +1,7 @@
 /**
  * The screener's props, per sport: every number a book has posted (main line
- * and alt rungs) — or, before the books post, ARCHR's own line — with its
- * price, ARCHR's chance and its record over each window.
+ * and alt rungs; NFL numbers before their prices too) with its price, ARCHR's
+ * chance and its record over each window.
  *
  * NBA and NFL read the full game logs, so every window is real. Soccer's slate
  * carries a player's last ten matches only: its L3/L5/L10 are real and its
@@ -16,7 +16,7 @@ import { getNflPostedLines, getNflPropsSlate } from "@/lib/queries/nflProps";
 import { unpackNflLog, type NflLogPoint } from "@/lib/nfl/propsMath";
 import { nflFinderLegs } from "@/lib/nfl/parlayLegs";
 import { getSoccerPropsSlate } from "@/lib/queries/soccerProps";
-import { SOCCER_PROP_STATS, projectionOver, soccerLine, unpackSoccerLog } from "@/lib/soccer/propModel";
+import { SOCCER_PROP_STATS, projectionOver, unpackSoccerLog } from "@/lib/soccer/propModel";
 import { edgeOf } from "@/lib/builder/types";
 import type { FinderLeg } from "@/lib/props/parlayFinder";
 import { mainPoint, screenRates, type ScreenerProp } from "./types";
@@ -26,9 +26,12 @@ const SHORTEST = -1000;
 /** Soccer leagues read (the ones with matches soonest, big leagues first). */
 const SOCCER_LEAGUES = 10;
 
-/** An alt rung earns a row when some window has it at 60%+; main lines always do. */
+/**
+ * An alt rung earns a row when some window of five games or more has it at
+ * 70%+; main lines always do. Keeps each sport's cached slice under 2 MB.
+ */
 function keep(p: ScreenerProp): boolean {
-  return p.main || Object.values(p.rates).some(([h, n]) => n >= 3 && h / n >= 0.6);
+  return p.main || Object.values(p.rates).some(([h, n]) => n >= 5 && h / n >= 0.7);
 }
 
 function fromFinderLeg(
@@ -48,7 +51,6 @@ function fromFinderLeg(
     team: l.team,
     opponent: ctx.opponent,
     player: l.playerName,
-    playerId: l.group.split(":")[0]!,
     stat: ctx.stat,
     statLabel: l.statShort,
     side: yes ? "yes" : l.side,
@@ -59,7 +61,6 @@ function fromFinderLeg(
     archr: l.modelProb,
     edge: edgeOf(l.modelProb, l.priceAmerican),
     rates: screenRates(l.logs, l.side, l.point, season),
-    href: `/${sport}/props?game=${l.gameId}`,
   };
 }
 
@@ -119,9 +120,11 @@ export async function soccerScreener(now = new Date()): Promise<ScreenerProp[]> 
       for (const stat of SOCCER_PROP_STATS) {
         const projection = player.projections[stat.key];
         if (!projection) continue;
+        // Only what a book has posted: ARCHR's own line on every player and stat is the soccer board's job.
         const quotes = player.books[stat.key] ?? [];
-        const main = mainPoint(quotes) ?? (stat.shape === "anytime" ? 0.5 : soccerLine(stat, projection));
-        const points = quotes.length ? [...new Set(quotes.map((q) => q.point))] : [main];
+        if (!quotes.length) continue;
+        const main = mainPoint(quotes) ?? quotes[0]!.point;
+        const points = [...new Set(quotes.map((q) => q.point))];
         const sides: ("over" | "under" | "yes")[] = stat.shape === "anytime" ? ["yes"] : ["over", "under"];
         for (const point of points) {
           for (const side of sides) {
@@ -145,7 +148,6 @@ export async function soccerScreener(now = new Date()): Promise<ScreenerProp[]> 
               team: player.team,
               opponent: player.opponent,
               player: player.name,
-              playerId: player.id,
               stat: stat.key,
               statLabel: stat.shortLabel,
               side,
@@ -157,7 +159,7 @@ export async function soccerScreener(now = new Date()): Promise<ScreenerProp[]> 
               edge: edgeOf(archr, best?.priceAmerican ?? null),
               // Ten matches in the slate: the longer windows aren't known here.
               rates: { ...rates, l15: [0, 0], szn: [0, 0], last: [0, 0] },
-              href: `/sports/soccer/props?league=${league.slug}`,
+              leagueSlug: league.slug,
             });
           }
         }
