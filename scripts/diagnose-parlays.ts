@@ -13,7 +13,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
  * how long the search took. Run: `npm run diagnose:parlays`.
  */
 async function main() {
-  const logsOf = await prisma.pollLog.findMany({ where: { jobName: { in: ["espn-props", "tick:espn-props", "tick"] } }, select: { jobName: true, lastPolledAt: true, lastStatus: true } });
+  const logsOf = await prisma.pollLog.findMany({ where: { OR: [{ jobName: { contains: "props" } }, { jobName: { in: ["tick", "espn-odds", "tick:espn-odds"] } }] }, select: { jobName: true, lastPolledAt: true, lastStatus: true } });
   for (const l of logsOf) console.log(`poll ${l.jobName}: ${l.lastPolledAt.toISOString()} ${String(l.lastStatus).slice(0, 300)}`);
   const byLeague = await prisma.eventPropLine.groupBy({ by: ["league"], _count: true });
   console.log("EventPropLine:", byLeague.map((r) => `${r.league} ${r._count}`).join(", ") || "empty");

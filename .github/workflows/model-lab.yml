@@ -42,6 +42,7 @@ on:
           - import:tennis
           - diagnose:props
           - diagnose:parlays
+          - poll:espn-props
           - fix:ufc-duplicates
           - fix:ufc-duplicates:apply
       n:
