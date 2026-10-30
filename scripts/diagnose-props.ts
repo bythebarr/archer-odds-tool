@@ -73,6 +73,30 @@ async function main() {
   console.log(`UFC decided bouts by year (red-corner win %, % from the UFCStats archive):`);
   for (const r of ufc) console.log(`  ${r.yr}: ${r.n} bouts, red ${Math.round((Number(r.red) / Number(r.n)) * 100)}%, archive ${Math.round((Number(r.archive) / Number(r.n)) * 100)}%`);
 
+  // UFC duplicates: the same pair of fighters in two completed bouts within 3 days,
+  // events within 2 days of each other, fighters sharing a name, and future "results".
+  const dupBouts = await prisma.$queryRaw<{ yr: number; n: bigint; sameEvent: bigint }[]>`
+    SELECT EXTRACT(YEAR FROM e1."eventDate")::int AS yr, count(*) AS n, count(*) FILTER (WHERE b1."eventId" = b2."eventId") AS "sameEvent"
+    FROM "UfcBout" b1 JOIN "UfcEvent" e1 ON e1.id = b1."eventId"
+    JOIN "UfcBout" b2 ON b2.id > b1.id
+      AND LEAST(b2."redCornerFighterId", b2."blueCornerFighterId") = LEAST(b1."redCornerFighterId", b1."blueCornerFighterId")
+      AND GREATEST(b2."redCornerFighterId", b2."blueCornerFighterId") = GREATEST(b1."redCornerFighterId", b1."blueCornerFighterId")
+    JOIN "UfcEvent" e2 ON e2.id = b2."eventId" AND abs(extract(epoch FROM e2."eventDate" - e1."eventDate")) < 3 * 86400
+    WHERE b1.status = 'completed' AND b2.status = 'completed' GROUP BY 1 ORDER BY 1`;
+  console.log(`UFC duplicate completed bouts (same fighter pair, ≤3 days apart):`, dupBouts.map((r) => `${r.yr}: ${r.n} (${r.sameEvent} same event)`).join(", ") || "none");
+  const dupEvents = await prisma.$queryRaw<{ a: string; b: string; da: Date; db: Date; ca: string; cb: string }[]>`
+    SELECT e1.title AS a, e2.title AS b, e1."eventDate" AS da, e2."eventDate" AS db, e1."citoEventId" AS ca, e2."citoEventId" AS cb
+    FROM "UfcEvent" e1 JOIN "UfcEvent" e2 ON e2.id > e1.id AND abs(extract(epoch FROM e2."eventDate" - e1."eventDate")) < 2 * 86400
+    WHERE e1."eventDate" > '2024-06-01' ORDER BY e1."eventDate" LIMIT 12`;
+  console.log(`UFC events within 2 days of another (since mid-2024, first 12):`);
+  for (const e of dupEvents) console.log(`  ${e.da.toISOString().slice(0, 10)} "${e.a}" [${e.ca}] ~ ${e.db.toISOString().slice(0, 10)} "${e.b}" [${e.cb}]`);
+  const dupFighters = await prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM (SELECT lower("fullName") FROM "UfcFighter" GROUP BY 1 HAVING count(*) > 1) x`;
+  console.log(`UFC fighter names held by more than one row: ${Number(dupFighters[0]?.n ?? 0)}`);
+  const future = await prisma.$queryRaw<{ title: string; d: Date; n: bigint; cito: string }[]>`
+    SELECT e.title, e."eventDate" AS d, e."citoEventId" AS cito, count(*) AS n FROM "UfcBout" b JOIN "UfcEvent" e ON e.id = b."eventId"
+    WHERE b."winnerFighterId" IS NOT NULL AND e."eventDate" > now() GROUP BY 1, 2, 4 ORDER BY 2`;
+  for (const f of future) console.log(`  future event with results: ${f.d.toISOString().slice(0, 10)} "${f.title}" [${f.cito}] ${f.n} bouts`);
+
   // Tennis: the archive and ratings the props board reads.
   const [archive, ratings, distinctOverall] = await Promise.all([
     prisma.tennisArchiveMatch.count(),
