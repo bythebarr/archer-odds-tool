@@ -4,7 +4,7 @@
  * Shared by the live query and the backtest so both see identical inputs.
  */
 import { prisma } from "@/lib/prisma";
-import { fightSeconds, type BoutRecord, type BoutStatLine, type FighterInfo } from "./fightModel";
+import { dedupeBouts, fightSeconds, type BoutRecord, type BoutStatLine, type FighterInfo } from "./fightModel";
 
 export interface UfcHistory {
   fighters: Map<string, FighterInfo>;
@@ -80,5 +80,5 @@ export async function loadUfcHistory(): Promise<UfcHistory> {
       blueStats: blue ? statLine(blue) : null,
     };
   });
-  return { fighters, bouts };
+  return { fighters, bouts: dedupeBouts(bouts, new Date()) };
 }

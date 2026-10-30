@@ -398,3 +398,54 @@ export function fightSeconds(resultRound: number | null, resultTime: string | nu
   if (!Number.isFinite(m) || !Number.isFinite(s)) return null;
   return (resultRound - 1) * 300 + m * 60 + s;
 }
+
+const SAME_FIGHT_MS = 3 * 86_400_000;
+
+/**
+ * One record per fight. The Cito feed sometimes lists a card twice (a generic
+ * "UFC Fight Night" a day after the named one), dates some cards a year or two
+ * late, and the UFCStats archive can add its own copy beside Cito's, so the same
+ * fight can appear as two completed bouts. Replaying both counts it twice, and
+ * the second copy is "predicted" by ratings that already saw its result. A copy
+ * is the same pair within 3 days, or the same pair, winner and stoppage time on
+ * any date (a rematch stopped at the same second doesn't happen). Keeps the copy
+ * with both corners' stats (else the earlier one), and drops future-dated results.
+ */
+export function dedupeBouts(bouts: BoutRecord[], now: Date): BoutRecord[] {
+  return dedupeFights(bouts, now, { seconds: (b) => b.seconds, hasStats: (b) => !!(b.redStats && b.blueStats) });
+}
+
+/** `dedupeBouts` for any bout shape (the fight logs carry their own). */
+export function dedupeFights<T extends { date: Date; red: string; blue: string; winner: string | null }>(
+  bouts: T[],
+  now: Date,
+  read: { seconds: (b: T) => number | null; hasStats: (b: T) => boolean }
+): T[] {
+  const out: T[] = [];
+  const lastByPair = new Map<string, number>();
+  const byFinish = new Map<string, number>();
+  const keep = (i: number, b: T) => {
+    if (read.hasStats(b) && !read.hasStats(out[i])) out[i] = b;
+  };
+  for (const b of bouts) {
+    if (b.date.getTime() > now.getTime()) continue;
+    const pair = [b.red, b.blue].sort().join("|");
+    // Stoppages only: every decision of the same length ends at the same second.
+    const seconds = read.seconds(b);
+    const finish = b.winner && seconds && seconds % 300 !== 0 ? `${pair}|${b.winner}|${seconds}` : null;
+    const near = lastByPair.get(pair);
+    const same = finish !== null ? byFinish.get(finish) : undefined;
+    if (near !== undefined && b.date.getTime() - out[near].date.getTime() <= SAME_FIGHT_MS) {
+      keep(near, b);
+      continue;
+    }
+    if (same !== undefined) {
+      keep(same, b);
+      continue;
+    }
+    lastByPair.set(pair, out.length);
+    if (finish) byFinish.set(finish, out.length);
+    out.push(b);
+  }
+  return out;
+}

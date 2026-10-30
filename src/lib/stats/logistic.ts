@@ -28,10 +28,18 @@ export function logLossOf(coefficients: number[], X: number[][], y: (0 | 1)[]): 
   return X.length ? s / X.length : NaN;
 }
 
-export function fitLogistic(X: number[][], y: (0 | 1)[], lambda = 1, iterations = 600, learningRate = 0.5): LogisticFit {
+export function fitLogistic(
+  X: number[][],
+  y: (0 | 1)[],
+  lambda = 1,
+  opts: { iterations?: number; learningRate?: number; /** Per-row weights (e.g. recency); default all 1. */ weights?: number[] } = {}
+): LogisticFit {
+  const { iterations = 600, learningRate = 0.5, weights } = opts;
   const n = X.length;
   const d = X[0]?.length ?? 0;
   if (n === 0 || d === 0) return { coefficients: new Array(d).fill(0), logLoss: NaN, n };
+  const wt = weights ?? new Array(n).fill(1);
+  const total = wt.reduce((a, b) => a + b, 0) || 1;
   // Scale by root-mean-square (no centering: differences are already symmetric around 0).
   const scale = Array.from({ length: d }, (_, j) => Math.sqrt(X.reduce((a, x) => a + x[j] * x[j], 0) / n) || 1);
   const Z = X.map((x) => x.map((v, j) => v / scale[j]));
@@ -39,13 +47,20 @@ export function fitLogistic(X: number[][], y: (0 | 1)[], lambda = 1, iterations 
   for (let it = 0; it < iterations; it++) {
     const grad = new Array(d).fill(0);
     for (let i = 0; i < n; i++) {
-      const err = predictLogistic(w, Z[i]) - y[i];
+      const err = (predictLogistic(w, Z[i]) - y[i]) * wt[i];
       for (let j = 0; j < d; j++) grad[j] += err * Z[i][j];
     }
-    for (let j = 0; j < d; j++) w[j] -= learningRate * (grad[j] / n + (lambda / n) * w[j]);
+    for (let j = 0; j < d; j++) w[j] -= learningRate * (grad[j] / total + (lambda / total) * w[j]);
   }
   const coefficients = w.map((v, j) => v / scale[j]);
   return { coefficients, logLoss: logLossOf(coefficients, X, y), n };
+}
+
+/** Weights that halve every `halfLifeYears` before `asOf` (Infinity = all 1). */
+export function recencyWeights(dates: Date[], asOf: Date, halfLifeYears: number): number[] {
+  if (!Number.isFinite(halfLifeYears)) return dates.map(() => 1);
+  const year = 365.25 * 86_400_000;
+  return dates.map((d) => Math.pow(0.5, Math.max(0, asOf.getTime() - d.getTime()) / year / halfLifeYears));
 }
 
 /**
