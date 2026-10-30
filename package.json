@@ -45,6 +45,8 @@
     "matchup:pitcherk": "tsx scripts/matchup-pitcher-k.ts",
     "import:tennis": "tsx scripts/import-tennis-archive.ts",
     "diagnose:props": "tsx scripts/diagnose-props.ts",
+    "fix:ufc-duplicates": "tsx scripts/fix-ufc-duplicates.ts",
+    "fix:ufc-duplicates:apply": "APPLY=1 tsx scripts/fix-ufc-duplicates.ts",
     "ratings:tennis": "tsx scripts/compute-tennis-ratings.ts",
     "matchup:batter": "tsx scripts/matchup-batter.ts",
     "fit:pitcherramps": "tsx scripts/fit-pitcher-ramps.ts",
