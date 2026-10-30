@@ -5,7 +5,7 @@ name: Model lab (backtests and fits)
 # every model's accuracy, calibration and fitted constants come from here, not
 # from guesses. "report:all" runs every model. Needs a DATABASE_URL repository secret (Settings →
 # Secrets and variables → Actions). The scripts only write their own report cards (ModelReport),
-# except import:tennis (loads the free Sackmann archive + Elo ratings), diagnose:props, diagnose:parlays and diagnose:builder (read-only)
+# except import:tennis (loads the free Sackmann archive + Elo ratings), diagnose:props, diagnose:parlays, diagnose:builder and diagnose:screener (read-only)
 # and fix:ufc-duplicates (dry run; the :apply choice merges UFC fights stored twice).
 # Keeps the database awake for the run (a few minutes), so run it on purpose.
 on:
@@ -43,6 +43,7 @@ on:
           - diagnose:props
           - diagnose:parlays
           - diagnose:builder
+          - diagnose:screener
           - poll:espn-props
           - fix:ufc-duplicates
           - fix:ufc-duplicates:apply
