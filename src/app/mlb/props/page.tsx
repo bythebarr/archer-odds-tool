@@ -6,6 +6,8 @@ import { SportPage } from "@/components/book/SportPage";
 import { SportTabs } from "@/components/book/SportTabs";
 import { EmptyState } from "@/components/EmptyState";
 import { MlbPropsFinder } from "@/components/mlb/MlbPropsFinder";
+import { PropsScreener, type ScreenerParams } from "@/components/screener/PropsScreener";
+import { PropsViewToggle, wantsScreen } from "@/components/screener/PropsViewToggle";
 
 export const metadata: Metadata = {
   title: "MLB Props — hits, total bases, home runs, strikeouts",
@@ -16,13 +18,15 @@ export const dynamic = "force-dynamic";
 
 const dayLabel = (d: string) => new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
 
-export default async function MlbPropsPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
-  const { date: dateParam } = await searchParams;
+export default async function MlbPropsPage({ searchParams }: { searchParams: Promise<{ date?: string } & ScreenerParams> }) {
+  const params = await searchParams;
+  const { date: dateParam } = params;
+  const screen = wantsScreen(params);
   const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && isValidEtDate(dateParam) ? dateParam : null;
   const [slate, dates] = await Promise.all([getMlbPropsSlate(date), mlbPropDates()]);
 
   return (
-    <SportPage sport="mlb" width="2xl">
+    <SportPage sport="mlb" width={screen ? "6xl" : "2xl"}>
       <div className="mt-3">
         <SportTabs
           tabs={[
@@ -31,7 +35,13 @@ export default async function MlbPropsPage({ searchParams }: { searchParams: Pro
           ]}
         />
       </div>
-      {dates.length > 1 && (
+      <PropsViewToggle basePath="/mlb/props" screen={screen} />
+      {screen && (
+        <div className="mt-4">
+          <PropsScreener params={params} basePath="/mlb/props" sport="mlb" keep={{ view: "screen" }} />
+        </div>
+      )}
+      {!screen && dates.length > 1 && (
         <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
           {dates.map((d) => (
             <Link key={d} href={`/mlb/props?date=${d}`} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold ${d === slate.date ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
@@ -40,7 +50,7 @@ export default async function MlbPropsPage({ searchParams }: { searchParams: Pro
           ))}
         </div>
       )}
-      {slate.props.length === 0 ? (
+      {screen ? null : slate.props.length === 0 ? (
         <div className="mt-8">
           <EmptyState title={slate.games.length ? "No player props priced for these games yet" : "No MLB games on this date"}>
             {slate.games.length

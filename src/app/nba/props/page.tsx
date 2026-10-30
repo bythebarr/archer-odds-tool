@@ -12,6 +12,8 @@ import { FreshnessStamp } from "@/components/FreshnessStamp";
 import { NbaPropsFinder } from "@/components/nba/NbaPropsFinder";
 import { readPropsPrefs } from "@/lib/nba/propsPrefs";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
+import { PropsScreener, type ScreenerParams } from "@/components/screener/PropsScreener";
+import { PropsViewToggle, wantsScreen } from "@/components/screener/PropsViewToggle";
 
 export const metadata: Metadata = {
   title: "NBA Props — best price and hit rate at every line",
@@ -24,9 +26,10 @@ export const dynamic = "force-dynamic";
 export default async function NbaPropsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; stat?: string; side?: string; sort?: string; game?: string }>;
+  searchParams: Promise<{ date?: string; stat?: string; side?: string; sort?: string; game?: string } & ScreenerParams>;
 }) {
   const params = await searchParams;
+  const screen = wantsScreen(params);
   await refreshOnView([["sync-results-nba", 60], ["espn-odds", 30], ["espn-props", 30]]);
   const days = await getLeagueDays("nba", todayEt());
   const date = params.date && isValidEtDate(params.date) ? params.date : (days[0] ?? todayEt());
@@ -36,12 +39,20 @@ export default async function NbaPropsPage({
   const initialGame = params.game && slate.games.some((g) => g.id === params.game) ? params.game : null;
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
+    <div className={`mx-auto min-h-screen w-full min-w-0 px-4 pb-10 pt-5 font-sans ${screen ? "max-w-6xl" : "max-w-2xl"}`}>
       <SportCarousel active="nba" />
       <LeagueHeader sport="nba" />
       <div className="mt-3">
         <SportTabs tabs={leagueTabs("nba", "props")} />
       </div>
+      <PropsViewToggle basePath="/nba/props" screen={screen} />
+      {screen && (
+        <div className="mt-4">
+          <PropsScreener params={params} basePath="/nba/props" sport="nba" keep={{ view: "screen" }} />
+        </div>
+      )}
+      {!screen && (
+        <>
 
       <div className="mt-4">
         <DateStrip days={days.includes(date) ? days : [date, ...days].sort()} active={date} href={(d) => `/nba/props?date=${d}`} />
@@ -59,6 +70,8 @@ export default async function NbaPropsPage({
           <div className="mt-6">
             <FreshnessStamp freshness={freshness} />
           </div>
+        </>
+      )}
         </>
       )}
     </div>

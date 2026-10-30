@@ -14,12 +14,12 @@ export function SportPage({
   sport: NavSport;
   title?: string;
   description?: ReactNode;
-  width?: "2xl" | "3xl";
+  width?: "2xl" | "3xl" | "6xl";
   children: ReactNode;
 }) {
   const meta = sportMetaByKey[sport];
   return (
-    <div className={`mx-auto min-h-screen w-full min-w-0 ${width === "3xl" ? "max-w-3xl" : "max-w-2xl"} px-4 pb-10 pt-5 font-sans`}>
+    <div className={`mx-auto min-h-screen w-full min-w-0 ${width === "6xl" ? "max-w-6xl" : width === "3xl" ? "max-w-3xl" : "max-w-2xl"} px-4 pb-10 pt-5 font-sans`}>
       <SportCarousel active={sport} />
       <div className="mt-5 flex items-center gap-2.5 text-foreground">
         <LeagueMark sport={sport} size={30} />
