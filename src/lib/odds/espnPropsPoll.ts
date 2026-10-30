@@ -29,6 +29,8 @@ const EVENT_CONCURRENCY = 4;
 
 /** Requests that still failed after retries, this run (a throttled ESPN shows here, not as "no props"). */
 let fetchFailures = 0;
+/** Non-OK answers by status, this run. */
+let statuses: Record<string, number> = {};
 
 async function getJson<T>(url: string): Promise<T | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -36,6 +38,7 @@ async function getJson<T>(url: string): Promise<T | null> {
     try {
       const res = await fetch(url.replace(/^http:/, "https:"), { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
       if (res.ok) return (await res.json()) as T;
+      statuses[res.status] = (statuses[res.status] ?? 0) + 1;
       // A missing page or event is an answer; throttling and server errors are worth another try.
       if (res.status !== 429 && res.status < 500) return null;
     } catch {
@@ -131,6 +134,10 @@ export interface EspnPropsSummary {
   stoppedEarly: boolean;
   /** ESPN requests that failed even after retrying. */
   fetchFailures: number;
+  /** ESPN's non-OK answers by HTTP status (a 404 is a page that isn't there). */
+  statuses: Record<string, number>;
+  /** Events with props, by league. */
+  byLeague: Record<string, number>;
 }
 
 type Typed = { kind: "nba" | "nfl"; league: TeamLeague };
@@ -179,8 +186,9 @@ async function leaguePaths(): Promise<string[]> {
 }
 
 export async function pollEspnProps(deadline: number, now = new Date()): Promise<EspnPropsSummary> {
-  const out: EspnPropsSummary = { leagues: 0, eventsChecked: 0, eventsWithProps: 0, quotesStored: 0, unpriced: 0, nbaLinesStored: 0, nflLinesStored: 0, unmappedTyped: {}, unmatchedAthletes: 0, stoppedEarly: false, fetchFailures: 0 };
+  const out: EspnPropsSummary = { leagues: 0, eventsChecked: 0, eventsWithProps: 0, quotesStored: 0, unpriced: 0, nbaLinesStored: 0, nflLinesStored: 0, unmappedTyped: {}, unmatchedAthletes: 0, stoppedEarly: false, fetchFailures: 0, statuses: {}, byLeague: {} };
   fetchFailures = 0;
+  statuses = {};
   const names = new Map<string, string>();
   const unmatched = new Set<string>();
 
@@ -201,6 +209,7 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
       const books = await eventProps(espnPath, e.id);
       if (!books.some((b) => b.quotes.length)) return;
       out.eventsWithProps++;
+      out.byLeague[espnPath] = (out.byLeague[espnPath] ?? 0) + 1;
       const eventRef = await gameIdFor(espnPath, e);
       const typed = TYPED[espnPath];
 
@@ -296,5 +305,6 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
   }
   out.unmatchedAthletes = unmatched.size;
   out.fetchFailures = fetchFailures;
+  out.statuses = statuses;
   return out;
 }
