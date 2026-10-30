@@ -43,6 +43,8 @@ export const NAV_ITEMS: NavItem[] = [
   // Props opens the all-sports props hub, one door per sport. (The old MLB props
   // board at /props is still reachable by URL.)
   { href: "/player-props", label: "Props", icon: "props", carriesDate: false, primary: true },
+  // Cross-sport parlays from the legs that clear your bars (desktop nav; the props hub links it on mobile).
+  { href: "/parlay-builder", label: "Parlay Builder", icon: "props", carriesDate: false },
 ];
 
 /**
