@@ -18,8 +18,9 @@ export function isBettableBook(bookKey: string): boolean {
 
 /**
  * The number most books are hanging for one side, or null for a market with no
- * points (moneyline). Ties go to the number whose best price is higher, so the
- * pick is deterministic rather than insertion-order.
+ * points (moneyline). Ties go to the number whose best price is nearest even
+ * money: that's where a book sets its main line, and on a one-book alt ladder
+ * (every rung a tie) it picks the main number rather than the longest shot.
  */
 export function consensusPoint(lines: PricedLine[]): number | null {
   const byPoint = new Map<number, { count: number; bestDecimal: number }>();
@@ -33,7 +34,8 @@ export function consensusPoint(lines: PricedLine[]): number | null {
   }
   let best: { point: number; count: number; bestDecimal: number } | null = null;
   for (const [point, entry] of byPoint) {
-    if (!best || entry.count > best.count || (entry.count === best.count && entry.bestDecimal > best.bestDecimal)) {
+    const nearerEven = (a: number, b: number) => Math.abs(Math.log(a - 1)) < Math.abs(Math.log(b - 1));
+    if (!best || entry.count > best.count || (entry.count === best.count && nearerEven(entry.bestDecimal, best.bestDecimal))) {
       best = { point, ...entry };
     }
   }
