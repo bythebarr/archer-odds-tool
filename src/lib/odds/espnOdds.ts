@@ -11,19 +11,20 @@
  */
 import type { OddsApiBookmaker, OddsApiMarket } from "./oddsApiClient";
 
-/** ESPN's provider names → our book keys. */
+/** ESPN's provider names, lowercased with spaces dropped → our book keys. */
 const PROVIDER_KEYS: Record<string, string> = {
   draftkings: "draftkings",
-  "espn bet": "espnbet",
-  "thescore bet": "espnbet",
+  espnbet: "espnbet",
+  thescorebet: "espnbet",
   caesars: "caesars",
-  "william hill": "caesars",
+  williamhill: "caesars",
   fanduel: "fanduel",
   betmgm: "betmgm",
 };
 
 export function providerKey(name: string | undefined): string | null {
-  return name ? (PROVIDER_KEYS[name.trim().toLowerCase()] ?? null) : null;
+  // ESPN writes the same book both ways ("DraftKings" on one league, "Draft Kings" on another).
+  return name ? (PROVIDER_KEYS[name.toLowerCase().replace(/\s+/g, "")] ?? null) : null;
 }
 
 /** "+105" / "-120" / "EVEN" / 150 → American odds; null for "OFF", blanks and nonsense. */

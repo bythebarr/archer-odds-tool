@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAmerican, parseLine, pickcenterToBookmaker, scoreboardOddsToBookmaker } from "./espnOdds";
+import { parseAmerican, parseLine, pickcenterToBookmaker, providerKey, scoreboardOddsToBookmaker } from "./espnOdds";
 
 describe("ESPN odds parsing", () => {
   it("reads American prices and lines in ESPN's spellings", () => {
@@ -40,5 +40,15 @@ describe("ESPN odds parsing", () => {
     expect(bm.markets[0]!.outcomes.map((o) => o.name)).toEqual(["Chelsea", "Manchester United", "Draw"]);
     expect(bm.markets[1]!.outcomes[1]).toEqual({ name: "Manchester United", price: 100, point: 0.5 });
     expect(pickcenterToBookmaker({ provider: { name: "DraftKings" } }, "A", "B")).toBeNull();
+  });
+});
+
+describe("providerKey", () => {
+  it("reads a book however ESPN spaces its name", () => {
+    expect(providerKey("DraftKings")).toBe("draftkings");
+    expect(providerKey("Draft Kings")).toBe("draftkings");
+    expect(providerKey("ESPN BET")).toBe("espnbet");
+    expect(providerKey("William Hill")).toBe("caesars");
+    expect(providerKey("Some Book")).toBeNull();
   });
 });
