@@ -81,7 +81,12 @@ export function nbaPlayerImpact(logs: { minutes: number; points: number; rebound
   return Math.min(Math.max(surplus * NBA_IMPACT_SCALE, 0), 9);
 }
 
-/** NFL: a starting QB out is the biggest single swing in the sport; others count a little. */
-export const NFL_QB_IMPACT = 4.5;
+/**
+ * NFL: a starting QB out is the biggest single swing in the sport; others count a little.
+ * `npm run backtest:games` (2026-10-30, 60 first games without last week's starter) found
+ * teams lost only ~0.2 points per point of the old 4.5, a noisy read (±0.35), so this
+ * moves partway toward it rather than all the way.
+ */
+export const NFL_QB_IMPACT = 3;
 export const NFL_SKILL_IMPACT = 0.6;
 export const NFL_SKILL_CAP = 2;
