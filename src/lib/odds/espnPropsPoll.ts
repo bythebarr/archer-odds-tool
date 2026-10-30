@@ -31,6 +31,8 @@ const EVENT_CONCURRENCY = 4;
 let fetchFailures = 0;
 /** Non-OK answers by status, this run. */
 let statuses: Record<string, number> = {};
+/** Books ESPN listed per league ("nba DraftKings props"), this run: what the feed offered, before our filters. */
+let booksSeen: Record<string, number> = {};
 
 async function getJson<T>(url: string): Promise<T | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -85,7 +87,10 @@ async function eventProps(espnPath: string, eventId: string): Promise<{ bookKey:
   const base = `${CORE}/${corePath(espnPath)}/events/${eventId}/competitions/${eventId}/odds`;
   const odds = await getJson<{ items?: { provider?: { id?: string; name?: string }; propBets?: unknown }[] }>(base);
   const out: { bookKey: string; quotes: EspnPropQuote[]; refs: Map<string, string> }[] = [];
+  if (!odds?.items?.length) booksSeen[`${espnPath} no odds`] = (booksSeen[`${espnPath} no odds`] ?? 0) + 1;
   for (const item of odds?.items ?? []) {
+    const seen = `${espnPath} ${item.provider?.name ?? "?"}${item.propBets ? " props" : ""}`;
+    booksSeen[seen] = (booksSeen[seen] ?? 0) + 1;
     const bookKey = providerKey(item.provider?.name);
     if (!item.propBets || !item.provider?.id || !bookKey || !ALLOWED.has(bookKey)) continue;
     const items: EspnPropBet[] = [];
@@ -138,6 +143,7 @@ export interface EspnPropsSummary {
   statuses: Record<string, number>;
   /** Events with props, by league. */
   byLeague: Record<string, number>;
+  booksSeen: Record<string, number>;
 }
 
 type Typed = { kind: "nba" | "nfl"; league: TeamLeague };
@@ -186,7 +192,8 @@ async function leaguePaths(): Promise<string[]> {
 }
 
 export async function pollEspnProps(deadline: number, now = new Date()): Promise<EspnPropsSummary> {
-  const out: EspnPropsSummary = { leagues: 0, eventsChecked: 0, eventsWithProps: 0, quotesStored: 0, unpriced: 0, nbaLinesStored: 0, nflLinesStored: 0, unmappedTyped: {}, unmatchedAthletes: 0, stoppedEarly: false, fetchFailures: 0, statuses: {}, byLeague: {} };
+  const out: EspnPropsSummary = { leagues: 0, eventsChecked: 0, eventsWithProps: 0, quotesStored: 0, unpriced: 0, nbaLinesStored: 0, nflLinesStored: 0, unmappedTyped: {}, unmatchedAthletes: 0, stoppedEarly: false, fetchFailures: 0, statuses: {}, byLeague: {}, booksSeen: {} };
+  booksSeen = {};
   fetchFailures = 0;
   statuses = {};
   const names = new Map<string, string>();
@@ -306,5 +313,7 @@ export async function pollEspnProps(deadline: number, now = new Date()): Promise
   out.unmatchedAthletes = unmatched.size;
   out.fetchFailures = fetchFailures;
   out.statuses = statuses;
+  // The big leagues only: the soccer list is long and reads the same.
+  out.booksSeen = Object.fromEntries(Object.entries(booksSeen).filter(([k]) => !k.startsWith("soccer/")));
   return out;
 }
