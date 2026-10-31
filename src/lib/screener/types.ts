@@ -21,7 +21,7 @@ export type Rate = [number, number];
 
 export interface ScreenerProp {
   id: string;
-  /** "nba" | "nfl" | "soccer". */
+  /** "nba" | "nfl" | "soccer" | "mlb" | "ufc" | "tennis". */
   sport: string;
   league: string;
   gameId: string;
@@ -49,8 +49,12 @@ export interface ScreenerProp {
 
 /** The sport's props board for this prop's game or league (kept off the row: the cached slice must stay small). */
 export function propHref(p: Pick<ScreenerProp, "sport" | "gameId" | "leagueSlug">): string {
+  const id = p.gameId.slice(p.sport.length + 1);
+  if (p.sport === "mlb") return "/mlb/props";
+  if (p.sport === "ufc") return `/ufc/props?bout=${id}`;
+  if (p.sport === "tennis") return `/sports/tennis/props?match=${id}`;
   if (p.sport === "soccer") return `/sports/soccer/props${p.leagueSlug ? `?league=${p.leagueSlug}` : ""}`;
-  return `/${p.sport}/props?game=${p.gameId.slice(p.sport.length + 1)}`;
+  return `/${p.sport}/props?game=${id}`;
 }
 
 /** A window's record from game values (newest first, null = not on the box score), at a side and number. */

@@ -5,16 +5,20 @@
  */
 import { unstable_cache } from "next/cache";
 import type { ScreenerProp } from "./types";
-import { nbaScreener, nflScreener, soccerScreener } from "./sources";
+import { mlbScreener, nbaScreener, nflScreener, soccerScreener, tennisScreener, ufcScreener } from "./sources";
 
 export const SCREENER_SPORTS = [
   { key: "nba", label: "NBA" },
   { key: "nfl", label: "NFL" },
   { key: "soccer", label: "Soccer" },
+  { key: "mlb", label: "MLB" },
+  { key: "ufc", label: "UFC" },
+  { key: "tennis", label: "Tennis" },
 ] as const;
-type Sport = (typeof SCREENER_SPORTS)[number]["key"];
+export type ScreenerSport = (typeof SCREENER_SPORTS)[number]["key"];
+type Sport = ScreenerSport;
 
-const BUILD: Record<Sport, () => Promise<ScreenerProp[]>> = { nba: nbaScreener, nfl: nflScreener, soccer: () => soccerScreener() };
+const BUILD: Record<Sport, () => Promise<ScreenerProp[]>> = { nba: nbaScreener, nfl: nflScreener, soccer: () => soccerScreener(), mlb: mlbScreener, ufc: () => ufcScreener(), tennis: tennisScreener };
 
 /** One build serves both parts of a sport's slice when they refresh together. */
 const building = new Map<Sport, { at: number; rows: Promise<ScreenerProp[]> }>();

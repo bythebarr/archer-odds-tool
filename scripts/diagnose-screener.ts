@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
-import { nbaScreener, nflScreener, soccerScreener } from "@/lib/screener/sources";
+import { mlbScreener, nbaScreener, nflScreener, soccerScreener, tennisScreener, ufcScreener } from "@/lib/screener/sources";
 import { DEFAULT_FILTERS, screen, type ScreenFilters, type ScreenerProp } from "@/lib/screener/types";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 
@@ -12,7 +12,7 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
  */
 async function main() {
   const pool: ScreenerProp[] = [];
-  for (const [name, build] of [["nba", nbaScreener], ["nfl", nflScreener], ["soccer", () => soccerScreener()]] as const) {
+  for (const [name, build] of [["nba", nbaScreener], ["nfl", nflScreener], ["soccer", () => soccerScreener()], ["mlb", mlbScreener], ["ufc", () => ufcScreener()], ["tennis", tennisScreener]] as const) {
     const t = Date.now();
     const rows = await build().catch((e) => {
       console.error(`${name} failed:`, e);
@@ -27,6 +27,9 @@ async function main() {
   }
   const runs: [string, Partial<ScreenFilters>][] = [
     ["every window 80%+ (main lines)", { all: 0.8 }],
+    ["UFC, L5 80%+", { sport: "ufc", min: { l5: 0.8 } }],
+    ["tennis, L10 70%+", { sport: "tennis", min: { l10: 0.7 } }],
+    ["MLB, L10 70%+", { sport: "mlb", min: { l10: 0.7 } }],
     ["NBA points, L10 and this season 80%+", { sport: "nba", stat: "points", min: { l10: 0.8, szn: 0.8 } }],
     ["NFL, L5 100% and last season 70%+, alt lines too", { sport: "nfl", mainOnly: false, min: { l5: 1, last: 0.7 } }],
     ["soccer, L10 70%+, sorted by ARCHR", { sport: "soccer", min: { l10: 0.7 }, sort: "archr" }],

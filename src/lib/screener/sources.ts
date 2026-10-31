@@ -5,7 +5,10 @@
  *
  * NBA and NFL read the full game logs, so every window is real. Soccer's slate
  * carries a player's last ten matches only: its L3/L5/L10 are real and its
- * L15 and season windows are left empty rather than guessed.
+ * L15 and season windows are left empty rather than guessed. MLB reads the
+ * books' lines like NBA. UFC and tennis have no book prop lines in the feed, so
+ * each is screened at ARCHR's own line (unpriced), Over and Under; a fighter's
+ * "season" is the calendar year.
  */
 import { todayEt } from "@/lib/dateEt";
 import { getLeagueDays } from "@/lib/queries/lobby";
@@ -22,6 +25,13 @@ import type { FinderLeg } from "@/lib/props/parlayFinder";
 import { mainPoint, screenRates, type ScreenerProp } from "./types";
 import { eventPropPostedLines } from "@/lib/queries/eventPropLines";
 import { SOCCER_STAT_BY_KEY } from "@/lib/odds/espnProps";
+import { getMlbPropsSlate } from "@/lib/queries/mlbProps";
+import { MLB_PROP_STAT_BY_KEY, priceMlbLine, roleLogs, unpackMlbLog } from "@/lib/mlb/propsSlate";
+import { getUfcPropsSlate } from "@/lib/queries/ufcProps";
+import { UFC_PROP_STATS, ufcPropLine, ufcPropOver } from "@/lib/ufc/propModel";
+import { getTennisPropsSlate } from "@/lib/queries/tennisProps";
+import { TENNIS_PROP_STATS, tennisLine, tennisOver } from "@/lib/tennis/propModel";
+import { unpackTennisLog } from "@/lib/tennis/matchLog";
 
 /** Rungs shorter than this aren't worth screening. */
 const SHORTEST = -1000;
@@ -172,4 +182,124 @@ export async function soccerScreener(now = new Date()): Promise<ScreenerProp[]> 
     }
   }
   return out.filter(keep);
+}
+
+export async function mlbScreener(): Promise<ScreenerProp[]> {
+  const slate = await getMlbPropsSlate(null);
+  const games = new Map(slate.games.map((g) => [g.id, g]));
+  const out: ScreenerProp[] = [];
+  for (const prop of slate.props) {
+    const player = slate.players[prop.playerId];
+    const def = MLB_PROP_STAT_BY_KEY.get(prop.stat);
+    const game = player && games.get(player.gameId);
+    if (!player || !def || !game || !prop.quotes.length) continue;
+    const logs = roleLogs((slate.logs[prop.playerId] ?? []).map(unpackMlbLog), def.role).map((l) => ({ season: l.season, value: def.value(l) }));
+    const main = mainPoint(prop.quotes);
+    for (const point of [...new Set(prop.quotes.map((q) => q.point))]) {
+      const priced = priceMlbLine(prop.projection.distribution, prop.quotes, point, prop.stat);
+      for (const side of ["over", "under"] as const) {
+        const best = prop.quotes.filter((q) => q.point === point && q.side === side).sort((a, b) => b.priceAmerican - a.priceAmerican)[0];
+        if (!best) continue;
+        const archr = side === "over" ? priced.probOver : priced.probUnder;
+        out.push({
+          id: `mlb:${prop.playerId}:${prop.stat}:${side}:${point}`,
+          sport: "mlb",
+          league: "MLB",
+          gameId: `mlb:${game.id}`,
+          game: `${game.away.abbreviation} @ ${game.home.abbreviation}`,
+          startsAt: game.startUtc,
+          team: player.team.abbreviation,
+          opponent: player.opponent.abbreviation,
+          player: player.name,
+          stat: prop.stat,
+          statLabel: def.shortLabel,
+          side,
+          point,
+          main: main === null ? true : point === main,
+          priceAmerican: best.priceAmerican,
+          bookName: best.bookName,
+          archr,
+          edge: edgeOf(archr, best.priceAmerican),
+          rates: screenRates(logs, side, point, slate.season),
+        });
+      }
+    }
+  }
+  return out.filter(keep);
+}
+
+/** A row at ARCHR's own line, for the sports no book posts props for in our feed. */
+function archrLine(base: Omit<ScreenerProp, "id" | "side" | "point" | "main" | "priceAmerican" | "bookName" | "archr" | "edge" | "rates">, idBase: string, point: number, over: number, logs: { season: number; value: number | null }[], season: number): ScreenerProp[] {
+  return (["over", "under"] as const).map((side) => {
+    const archr = side === "over" ? over : 1 - over;
+    return { ...base, id: `${idBase}:${side}:${point}`, side, point, main: true, priceAmerican: null, bookName: null, archr, edge: null, rates: screenRates(logs, side, point, season) };
+  });
+}
+
+export async function ufcScreener(now = new Date()): Promise<ScreenerProp[]> {
+  const slate = await getUfcPropsSlate();
+  const bouts = new Map(slate.bouts.filter((b) => !b.completed).map((b) => [b.id, b]));
+  const season = now.getUTCFullYear();
+  return Object.values(slate.fighters).flatMap((f) => {
+    const bout = bouts.get(f.boutId);
+    if (!bout) return [];
+    const logs = slate.logs[f.fighterId] ?? [];
+    return UFC_PROP_STATS.flatMap((stat) => {
+      const proj = f.projections[stat.key];
+      const point = ufcPropLine(proj);
+      return archrLine(
+        {
+          sport: "ufc",
+          league: "UFC",
+          gameId: `ufc:${bout.id}`,
+          game: `${bout.red.name} vs ${bout.blue.name}`,
+          startsAt: bout.eventDate,
+          team: "",
+          opponent: f.opponent,
+          player: f.name,
+          stat: stat.key,
+          statLabel: stat.shortLabel,
+        },
+        `ufc:${f.id}:${stat.key}`,
+        point,
+        ufcPropOver(proj, point),
+        logs.map((l) => ({ season: Number(l.date.slice(0, 4)), value: l.mine ? stat.value(l.mine) : null })),
+        season
+      );
+    });
+  });
+}
+
+export async function tennisScreener(): Promise<ScreenerProp[]> {
+  const slate = await getTennisPropsSlate();
+  const matches = new Map(slate.matches.map((m) => [m.id, m]));
+  return Object.values(slate.players).flatMap((p) => {
+    const match = matches.get(p.matchId);
+    if (!match) return [];
+    const logs = (slate.logs[p.id] ?? []).map(unpackTennisLog).filter((l) => !l.incomplete);
+    return TENNIS_PROP_STATS.flatMap((stat) => {
+      const proj = p.projections[stat.key];
+      if (!proj) return [];
+      const point = tennisLine(proj);
+      return archrLine(
+        {
+          sport: "tennis",
+          league: p.tour.toUpperCase(),
+          gameId: `tennis:${match.id}`,
+          game: `${match.away.name} vs ${match.home.name}`,
+          startsAt: match.startsAt,
+          team: "",
+          opponent: p.opponent,
+          player: p.name,
+          stat: stat.key,
+          statLabel: stat.shortLabel,
+        },
+        `tennis:${p.id}:${stat.key}`,
+        point,
+        tennisOver(proj, point),
+        logs.map((l) => ({ season: l.season, value: stat.value(l) })),
+        slate.season
+      );
+    });
+  });
 }
