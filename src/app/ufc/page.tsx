@@ -9,6 +9,7 @@ import { SportTabs } from "@/components/book/SportTabs";
 import { UfcCardSections, UfcEventHero, formatFightDate } from "@/components/book/UfcFightCard";
 import { EmptyState } from "@/components/EmptyState";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
+import { ScrollRow } from "@/components/ScrollRow";
 
 // UFC events are ingested by a daily backfill cron, so both the upcoming and
 // recent lists change day to day — render per request rather than statically.
@@ -84,7 +85,7 @@ export default async function UfcPage({ searchParams }: { searchParams: Promise<
       </div>
 
       {upcoming.length > 1 && (
-        <div className="-mx-4 mt-4 overflow-x-auto px-4 [scrollbar-width:none]">
+        <ScrollRow className="-mx-4 mt-4 px-4">
           <div className="flex gap-2">
             {upcoming.map((e) => {
               const active = e.id === event?.id;
@@ -104,7 +105,7 @@ export default async function UfcPage({ searchParams }: { searchParams: Promise<
               );
             })}
           </div>
-        </div>
+        </ScrollRow>
       )}
 
       {!event ? (

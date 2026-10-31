@@ -5,6 +5,7 @@ import { propBoardEvents, propBoardFor, propBoardLeagues } from "@/lib/queries/p
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import type { BoardMarket, BoardPrice } from "@/lib/props/propBoard";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
+import { ScrollRow } from "@/components/ScrollRow";
 
 export const metadata: Metadata = {
   title: "Book prop lines — every league",
@@ -82,20 +83,20 @@ export default async function PropLinesPage({ searchParams }: { searchParams: Pr
         <p className="mt-8 rounded-2xl border border-dashed border-border px-6 py-10 text-center text-sm text-muted-foreground">No book has prop lines up for the next few days yet.</p>
       ) : (
         <>
-          <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+          <ScrollRow className="-mx-4 mt-4 flex gap-2 px-4 pb-1">
             {leagues.map((l) => (
               <Link key={l.path} href={href({ league: l.path })} className={chip(l.path === league.path)}>
                 {l.name} <span className="opacity-60">{l.events}</span>
               </Link>
             ))}
-          </div>
-          <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+          </ScrollRow>
+          <ScrollRow className="-mx-4 mt-2 flex gap-2 px-4 pb-1">
             {events.map((e) => (
               <Link key={e.espnEventId} href={href({ league: league.path, event: e.espnEventId })} className={chip(e.espnEventId === event?.espnEventId)}>
                 {e.label} <span className="font-normal opacity-60">{startLabel(e.startsAt)}</span>
               </Link>
             ))}
-          </div>
+          </ScrollRow>
           <p className="mt-4 text-xs text-muted-foreground">
             {players.length} players · {event?.lines ?? 0} lines · tap a player for every market
           </p>

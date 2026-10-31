@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { MlbPropsFinder } from "@/components/mlb/MlbPropsFinder";
 import { PropsScreener, type ScreenerParams } from "@/components/screener/PropsScreener";
 import { PropsViewToggle, wantsScreen } from "@/components/screener/PropsViewToggle";
+import { ScrollRow } from "@/components/ScrollRow";
 
 export const metadata: Metadata = {
   title: "MLB Props — hits, total bases, home runs, strikeouts",
@@ -42,13 +43,13 @@ export default async function MlbPropsPage({ searchParams }: { searchParams: Pro
         </div>
       )}
       {!screen && dates.length > 1 && (
-        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+        <ScrollRow className="-mx-4 mt-3 flex gap-2 px-4">
           {dates.map((d) => (
             <Link key={d} href={`/mlb/props?date=${d}`} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold ${d === slate.date ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
               {dayLabel(d)}
             </Link>
           ))}
-        </div>
+        </ScrollRow>
       )}
       {screen ? null : slate.props.length === 0 ? (
         <div className="mt-8">

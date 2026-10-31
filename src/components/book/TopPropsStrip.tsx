@@ -3,6 +3,7 @@ import type { TopProp } from "@/lib/queries/nbaProps";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
+import { ScrollRow } from "@/components/ScrollRow";
 
 function initials(name: string): string {
   return name
@@ -15,7 +16,7 @@ function initials(name: string): string {
 /** Horizontally scrolling prop cards — the lobby's way into the props finder. */
 export function TopPropsStrip({ props }: { props: TopProp[] }) {
   return (
-    <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+    <ScrollRow className="-mx-4 px-4 pb-1">
       <ul className="flex gap-2.5">
         {props.map((p) => (
           <li key={`${p.playerId}:${p.stat}:${p.side}`} className="w-44 shrink-0">
@@ -46,6 +47,6 @@ export function TopPropsStrip({ props }: { props: TopProp[] }) {
           </li>
         ))}
       </ul>
-    </div>
+    </ScrollRow>
   );
 }

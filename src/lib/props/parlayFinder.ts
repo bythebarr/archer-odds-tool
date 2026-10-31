@@ -53,6 +53,8 @@ export interface FinderOptions {
   perSize: number;
   /** Only count these seasons' games (all when omitted). */
   seasons?: number[];
+  /** Also return the best single legs (size 1), for pairing two teams' combinations. */
+  includeSingles?: boolean;
 }
 
 export const DEFAULT_FINDER: FinderOptions = { minLegRate: 0.6, minShared: 10, minRate: 0.5, maxLegs: 15, maxPerPlayer: Infinity, beam: 150, perSize: 5 };
@@ -64,6 +66,8 @@ export interface FoundParlay {
   legs: FinderLeg[];
   hits: number;
   shared: number;
+  /** How often each leg cashed on its own in those same shared games (same order as legs). */
+  legHits: number[];
   /** All legs cashed, over the last ten shared games. */
   last10: { hits: number; shared: number };
   /** The price if the legs were unrelated (every leg's best price multiplied); null when a leg has none. */
@@ -179,6 +183,7 @@ export function findParlays(legs: FinderLeg[], options: Partial<FinderOptions> =
       legs: chosen,
       hits: s.hits,
       shared: s.shared,
+      legHits: s.idx.map((i) => popcount(and(hit[i], s.played))),
       last10: { hits: popcount(and(s.hit, recentShared)), shared: taken },
       priceAmerican: parlayPrice(chosen),
       model: chosen.every((l) => l.modelProb !== null) ? chosen.reduce((p, l) => p * l.modelProb!, 1) : null,
@@ -190,6 +195,17 @@ export function findParlays(legs: FinderLeg[], options: Partial<FinderOptions> =
     const hits = popcount(hit[i]);
     return { idx: [i], played: played[i], hit: hit[i], shared, hits, score: rateFloor(hits, shared) };
   });
+  if (o.includeSingles && beam.length) {
+    const singles = [...beam].sort((a, b) => b.score - a.score || b.shared - a.shared);
+    const shown = new Set<string>();
+    const best = singles.filter((s) => {
+      const g = legs[s.idx[0]].group;
+      if (shown.has(g)) return false;
+      shown.add(g);
+      return true;
+    });
+    out.push({ size: 1, parlays: best.slice(0, o.perSize).map(result) });
+  }
   for (let size = 2; size <= o.maxLegs && beam.length; size++) {
     const next: State[] = [];
     for (const s of beam) {
@@ -231,6 +247,106 @@ export function findParlays(legs: FinderLeg[], options: Partial<FinderOptions> =
       return true;
     });
     if (best.length) out.push({ size, parlays: best.slice(0, o.perSize).map(result) });
+  }
+  return out;
+}
+
+/**
+ * A parlay with legs on both teams. Players on opposite teams only share the
+ * games those two teams played each other (a handful), so a joint record across
+ * teams says almost nothing. Instead each team's side is searched on its own
+ * (its legs' record together in that team's games) and the two sides are
+ * paired: the estimate is the two records multiplied, as if one team's side
+ * says nothing about the other's. The head-to-head record, when the teams have
+ * met, is shown beside it.
+ */
+export interface TwoTeamParlay {
+  legs: FinderLeg[];
+  /** Each team's side: its combination and record in that team's games. */
+  sides: { team: string; parlay: FoundParlay }[];
+  /** The sides' records multiplied. */
+  estimate: number;
+  /** Every leg cashed, in the games these two teams played each other. */
+  h2h: { hits: number; shared: number };
+  priceAmerican: number | null;
+  model: number | null;
+}
+
+/** A side combination may appear in this many pairings per size (keeps the list varied). */
+const PER_SIDE = 2;
+/** Side combinations kept per size before pairing. */
+const SIDE_PER_SIZE = 6;
+
+function headToHead(legs: FinderLeg[], seasons: Set<number> | null): { hits: number; shared: number } {
+  const maps = legs.map((leg) => {
+    const m = new Map<string, boolean>();
+    for (const l of leg.logs) {
+      if (l.value === null || (seasons && !seasons.has(l.season))) continue;
+      m.set(parlayGameKey(leg.team, l), leg.side === "over" ? l.value > leg.point : l.value < leg.point);
+    }
+    return m;
+  });
+  let shared = 0;
+  let hits = 0;
+  for (const [key] of maps[0] ?? new Map()) {
+    if (!maps.every((m) => m.has(key))) continue;
+    shared++;
+    if (maps.every((m) => m.get(key))) hits++;
+  }
+  return { hits, shared };
+}
+
+export function findTwoTeamParlays(legs: FinderLeg[], options: Partial<FinderOptions> = {}): { size: number; parlays: TwoTeamParlay[] }[] {
+  const o = { ...DEFAULT_FINDER, ...options };
+  const teams = [...new Set(legs.map((l) => l.team))];
+  if (teams.length !== 2) return [];
+  const seasons = o.seasons ? new Set(o.seasons) : null;
+  const sideResults = teams.map((team) => {
+    const bySize = new Map<number, FoundParlay[]>();
+    for (const r of findParlays(
+      legs.filter((l) => l.team === team),
+      { ...o, includeSingles: true, perSize: SIDE_PER_SIZE, maxLegs: o.maxLegs - 1 }
+    ))
+      bySize.set(r.size, r.parlays);
+    return bySize;
+  });
+  const sideKey = (p: FoundParlay) => p.legs.map((l) => l.key).join("|");
+  const floor = (p: FoundParlay) => rateFloor(p.hits, p.shared);
+
+  const out: { size: number; parlays: TwoTeamParlay[] }[] = [];
+  for (let size = 2; size <= o.maxLegs; size++) {
+    const pairs: { a: FoundParlay; b: FoundParlay; score: number }[] = [];
+    for (let k = 1; k < size; k++) {
+      for (const a of sideResults[0].get(k) ?? [])
+        for (const b of sideResults[1].get(size - k) ?? []) {
+          if (a.hits / a.shared * (b.hits / b.shared) < o.minRate) continue;
+          pairs.push({ a, b, score: floor(a) * floor(b) });
+        }
+    }
+    pairs.sort((x, y) => y.score - x.score);
+    const uses = new Map<string, number>();
+    const picked: TwoTeamParlay[] = [];
+    for (const { a, b } of pairs) {
+      if (picked.length >= o.perSize) break;
+      const ka = sideKey(a);
+      const kb = sideKey(b);
+      if ((uses.get(ka) ?? 0) >= PER_SIDE || (uses.get(kb) ?? 0) >= PER_SIDE) continue;
+      uses.set(ka, (uses.get(ka) ?? 0) + 1);
+      uses.set(kb, (uses.get(kb) ?? 0) + 1);
+      const all = [...a.legs, ...b.legs];
+      picked.push({
+        legs: all,
+        sides: [
+          { team: teams[0], parlay: a },
+          { team: teams[1], parlay: b },
+        ],
+        estimate: (a.hits / a.shared) * (b.hits / b.shared),
+        h2h: headToHead(all, seasons),
+        priceAmerican: parlayPrice(all),
+        model: all.every((l) => l.modelProb !== null) ? all.reduce((p, l) => p * l.modelProb!, 1) : null,
+      });
+    }
+    if (picked.length) out.push({ size, parlays: picked });
   }
   return out;
 }

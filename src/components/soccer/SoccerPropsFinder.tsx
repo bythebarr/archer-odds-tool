@@ -27,6 +27,7 @@ import { LeagueLogo } from "@/components/allSports/LeagueLogo";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { PropGameChart } from "@/components/props/PropGameChart";
+import { ScrollRow } from "@/components/ScrollRow";
 import {
   ArchrLineChip,
   BooksTable,
@@ -341,7 +342,7 @@ export function SoccerPropsFinder({ slate, initialMatch = null }: { slate: Socce
   return (
     <>
       {slate.leagues.length > 1 && (
-        <nav aria-label="Leagues" className="-mx-4 mt-4 overflow-x-auto px-4 [scrollbar-width:none]">
+        <ScrollRow aria-label="Leagues" className="-mx-4 mt-4 px-4">
           <ul className="flex gap-2">
             {slate.leagues.map((l) => (
               <li key={l.id} className="shrink-0">
@@ -356,7 +357,7 @@ export function SoccerPropsFinder({ slate, initialMatch = null }: { slate: Socce
               </li>
             ))}
           </ul>
-        </nav>
+        </ScrollRow>
       )}
 
       <PropsControls

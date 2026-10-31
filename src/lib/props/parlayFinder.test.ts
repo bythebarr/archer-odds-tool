@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findParlays, parlayPrice, rateFloor, type FinderLeg } from "./parlayFinder";
+import { findParlays, findTwoTeamParlays, parlayPrice, rateFloor, type FinderLeg } from "./parlayFinder";
 
 /** 30 games between BOS and NYK; `values(i)` is the stat in game i (0 = newest). */
 function leg(key: string, team: string, side: "over" | "under", point: number, values: (i: number) => number | null, price: number | null = -110, group = key, player = group): FinderLeg {
@@ -92,5 +92,41 @@ describe("helpers", () => {
     const l = (p: number | null) => ({ priceAmerican: p }) as FinderLeg;
     expect(parlayPrice([l(-110), l(-110)])).toBe(264);
     expect(parlayPrice([l(-110), l(null)])).toBeNull();
+  });
+});
+
+describe("findParlays: each leg's own record", () => {
+  it("reports how often each leg cashed in the games the combination shared", () => {
+    const a = leg("A", "BOS", "over", 20.5, (i) => (i % 3 === 0 ? 10 : 25));
+    const d = leg("D", "BOS", "over", 1.5, (i) => (i === 5 ? 0 : 3), -110, "D", "Dp");
+    const p = findParlays([a, d], { minLegRate: 0.3, minShared: 10 }).find((r) => r.size === 2)!.parlays[0];
+    const byKey = Object.fromEntries(p.legs.map((l, i) => [l.key, p.legHits[i]]));
+    expect(byKey).toEqual({ A: 20, D: 29 });
+  });
+});
+
+describe("findTwoTeamParlays", () => {
+  const a = leg("A", "BOS", "over", 20.5, (i) => (i % 3 === 0 ? 10 : 25));
+  const c = leg("C", "BOS", "over", 2.5, (i) => (i % 5 === 0 ? 1 : 4));
+  const b = leg("B", "NYK", "over", 8.5, (i) => (i % 3 === 0 ? 4 : 12));
+  const d = leg("D", "NYK", "over", 1.5, (i) => (i === 5 ? 0 : 3));
+
+  it("puts legs from both teams in every parlay, the estimate the two sides' records multiplied", () => {
+    const res = findTwoTeamParlays([a, b, c, d], { minLegRate: 0.3, minShared: 10, minRate: 0.3 });
+    expect(res[0].size).toBe(2);
+    for (const r of res)
+      for (const p of r.parlays) {
+        expect(new Set(p.legs.map((l) => l.team))).toEqual(new Set(["BOS", "NYK"]));
+        const [x, y] = p.sides.map((s) => s.parlay.hits / s.parlay.shared);
+        expect(p.estimate).toBeCloseTo(x * y);
+        expect(p.legs.length).toBe(r.size);
+      }
+    // These teams meet in every fixture game, so the head-to-head record is the joint one.
+    const ab = res[0].parlays.find((p) => p.legs.map((l) => l.key).sort().join() === "A,B")!;
+    expect(ab.h2h).toEqual({ hits: 20, shared: 30 });
+  });
+
+  it("returns nothing without two teams", () => {
+    expect(findTwoTeamParlays([a, c], { minLegRate: 0.3, minShared: 10 })).toEqual([]);
   });
 });

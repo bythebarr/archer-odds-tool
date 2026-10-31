@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SPORT_METAS } from "@/lib/engine/sportsMeta";
 import { activeAllSports } from "@/lib/queries/allSports";
 import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
+import { ScrollRow } from "@/components/ScrollRow";
 
 interface Tile {
   key: string;
@@ -23,7 +24,7 @@ export async function SportCarousel({ active }: { active?: string }) {
     .map((s) => ({ key: s.key, label: s.label, href: `/sports/${s.key}`, glyph: s.glyph as GlyphKey }));
   const tiles = [...deep, ...more, { key: "all", label: "All", href: "/sports", glyph: "all" as GlyphKey }];
   return (
-    <nav aria-label="Sports" className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none]">
+    <ScrollRow aria-label="Sports" className="-mx-4 px-4">
       <ul className="flex gap-4">
         {tiles.map((s) => {
           const isActive = s.key === active;
@@ -46,6 +47,6 @@ export async function SportCarousel({ active }: { active?: string }) {
           );
         })}
       </ul>
-    </nav>
+    </ScrollRow>
   );
 }
