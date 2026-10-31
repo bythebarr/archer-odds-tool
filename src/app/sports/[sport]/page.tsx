@@ -10,6 +10,7 @@ import { AllSportEventRow, AllSportListHeader } from "@/components/allSports/All
 import { EmptyState } from "@/components/EmptyState";
 import { SportTabs } from "@/components/book/SportTabs";
 import { refreshOnView, type ViewJob } from "@/lib/ops/refreshOnView";
+import { ScrollRow } from "@/components/ScrollRow";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export default async function SportBoardPage({ params }: { params: Promise<{ spo
       </p>
 
       {board.chips.length > 0 && (
-        <nav aria-label="Leagues" className="-mx-4 mt-4 overflow-x-auto px-4 [scrollbar-width:none]">
+        <ScrollRow aria-label="Leagues" className="-mx-4 mt-4 px-4">
           <ul className="flex gap-2">
             {board.chips.map((c) => (
               <li key={c.id} className="shrink-0">
@@ -65,7 +66,7 @@ export default async function SportBoardPage({ params }: { params: Promise<{ spo
               </li>
             ))}
           </ul>
-        </nav>
+        </ScrollRow>
       )}
 
       {board.futures.length > 0 && (

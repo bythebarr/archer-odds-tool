@@ -16,6 +16,7 @@ import type { PropDirection } from "@/lib/props/tally";
 import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
 import { EvTag } from "@/components/EvTag";
+import { ScrollRow } from "@/components/ScrollRow";
 
 export const initials = (name: string) =>
   name
@@ -86,14 +87,14 @@ export function PropsControls<S extends string, O extends string>({
 }) {
   return (
     <div className="sticky top-[45px] z-10 -mx-4 mt-4 border-b border-border bg-background/90 px-4 pb-2.5 pt-2.5 backdrop-blur-md">
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]" role="tablist" aria-label="Stat">
+      <ScrollRow className="-mx-4 flex gap-1.5 px-4" role="tablist" aria-label="Stat">
         {stats.map((s) => (
           <button key={s.key} type="button" role="tab" aria-selected={s.key === stat} onClick={() => onStat(s.key)} className={chip(s.key === stat)}>
             {s.label}
             {s.count ? <span className={`ml-1 font-normal ${s.key === stat ? "opacity-70" : "opacity-60"}`}>{s.count}</span> : null}
           </button>
         ))}
-      </div>
+      </ScrollRow>
       <div className="mt-2 flex items-center gap-2">
         <Segmented options={sideOptions(sideLabels)} value={side} onChange={onSide} />
         <label className="relative shrink-0">
@@ -155,7 +156,7 @@ export function GameChips({
 }) {
   if (games.length < 2) return null;
   return (
-    <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+    <ScrollRow className="-mx-4 mt-3 flex gap-2 px-4 pb-1">
       <button type="button" onClick={() => onSelect(null)} className={chip(active === null)}>
         {allLabel}
       </button>
@@ -170,7 +171,7 @@ export function GameChips({
           {g.tag}
         </button>
       ))}
-    </div>
+    </ScrollRow>
   );
 }
 
@@ -397,7 +398,7 @@ export function PlayerSheet({
             </button>
           </div>
           {stats.length > 1 && (
-            <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
+            <ScrollRow className="-mx-4 mt-3 flex gap-1.5 px-4">
               {stats.map((s) => (
                 <button
                   key={s.key}
@@ -410,7 +411,7 @@ export function PlayerSheet({
                   {s.label}
                 </button>
               ))}
-            </div>
+            </ScrollRow>
           )}
         </div>
         <div className="space-y-5 px-4 pb-8 pt-4">{children}</div>
@@ -449,7 +450,7 @@ export function LinePicker({
         <Segmented options={sideOptions(sideLabels)} value={side} onChange={onSide} />
       </div>
       {ladder.length > 1 && (
-        <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]" aria-label="Lines">
+        <ScrollRow className="-mx-4 mt-3 flex gap-1.5 px-4" aria-label="Lines">
           {ladder.map((l) => (
             <button
               key={l.point}
@@ -466,7 +467,7 @@ export function LinePicker({
               {l.sub ? <span className="block font-mono text-[10px] text-muted-foreground">{l.sub}</span> : null}
             </button>
           ))}
-        </div>
+        </ScrollRow>
       )}
     </section>
   );

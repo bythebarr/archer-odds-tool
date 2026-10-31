@@ -4,6 +4,7 @@ import { SportCarousel } from "@/components/book/SportCarousel";
 import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
 import { PropsScreener, type ScreenerParams } from "@/components/screener/PropsScreener";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
+import { ScrollRow } from "@/components/ScrollRow";
 
 export const metadata: Metadata = {
   title: "Player Props — every sport, screened by hit rate",
@@ -39,14 +40,14 @@ export default async function PlayerPropsHubPage({ searchParams }: { searchParam
     <div className="mx-auto min-h-screen w-full min-w-0 max-w-6xl px-4 pb-24 pt-5 font-sans">
       <SportCarousel active="all" />
       <h1 className="mt-5 font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight text-foreground">Player Props</h1>
-      <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+      <ScrollRow className="-mx-4 mt-3 flex gap-2 px-4 pb-1">
         {PROPS.map((p) => (
           <Link key={p.href} href={p.href} className="flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/70">
             <Glyph name={p.sport} className="size-4" />
             {p.label}
           </Link>
         ))}
-      </div>
+      </ScrollRow>
       <p className="mt-3 text-xs text-muted-foreground">
         <Link href="/parlay-builder" className="font-semibold text-foreground underline-offset-2 hover:underline">Parlay Builder</Link> ·{" "}
         <Link href="/nba/parlays" className="font-semibold text-foreground underline-offset-2 hover:underline">NBA</Link> and{" "}

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { unpackLog, type GameLogPoint } from "@/lib/nba/propsMath";
 import { nbaFinderLegs } from "@/lib/nba/parlayLegs";
-import { findParlays, type FinderLeg, type FinderOptions } from "@/lib/props/parlayFinder";
+import { findParlays, findTwoTeamParlays, type FinderLeg, type FinderOptions } from "@/lib/props/parlayFinder";
 import { getNflPostedLines, getNflPropsSlate } from "@/lib/queries/nflProps";
 import { unpackNflLog, type NflLogPoint } from "@/lib/nfl/propsMath";
 import { nflFinderLegs } from "@/lib/nfl/parlayLegs";
@@ -52,6 +52,16 @@ function report(label: string, build: () => FinderLeg[], opts: Partial<FinderOpt
       );
       console.log(`     ${p.legs.map((l) => `${l.playerName} ${l.sideLabel} ${l.point} ${l.statShort} (${l.priceAmerican !== null ? formatAmerican(l.priceAmerican) : "—"})`).join(" | ")}`);
     }
+  }
+  // Both teams: each side searched in its own team's games, the records multiplied.
+  const t3 = Date.now();
+  const two = findTwoTeamParlays(legs, { ...opts, maxPerPlayer: 1 });
+  console.log(`\n${label} [both teams]: search ${Date.now() - t3} ms, sizes ${two.map((r) => r.size).join(",")}`);
+  for (const r of two.filter((x) => [2, 3, 4, 6, 8].includes(x.size))) {
+    const p = r.parlays[0];
+    const sides = p.sides.map((s) => `${s.team} ${s.parlay.hits}/${s.parlay.shared}`).join(" × ");
+    console.log(`  ${r.size} legs: est ${Math.round(p.estimate * 100)}% (${sides}), h2h ${p.h2h.hits}/${p.h2h.shared}, ${p.priceAmerican !== null ? formatAmerican(p.priceAmerican) : "—"}, model ${p.model !== null ? Math.round(p.model * 100) + "%" : "—"}`);
+    console.log(`     ${p.legs.map((l) => `${l.team} ${l.playerName} ${l.sideLabel} ${l.point} ${l.statShort}`).join(" | ")}`);
   }
 }
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { shiftEtDate, todayEt } from "@/lib/dateEt";
+import { ScrollRow } from "@/components/ScrollRow";
 
 function dayLabel(dateEt: string, today: string): { top: string; bottom: string } {
   const d = new Date(`${dateEt}T12:00:00Z`);
@@ -14,7 +15,7 @@ export function DateStrip({ days, active, href }: { days: string[]; active: stri
   if (days.length === 0) return null;
   const today = todayEt();
   return (
-    <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none]">
+    <ScrollRow className="-mx-4 px-4">
       <div className="flex gap-2">
         {days.map((d) => {
           const { top, bottom } = dayLabel(d, today);
@@ -35,6 +36,6 @@ export function DateStrip({ days, active, href }: { days: string[]; active: stri
           );
         })}
       </div>
-    </div>
+    </ScrollRow>
   );
 }

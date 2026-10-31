@@ -7,6 +7,7 @@ import type { SlipSport } from "@/lib/slip/SlipContext";
 import { Logo } from "@/components/Logo";
 import { BetSheet } from "./BetSheet";
 import { PERIOD_LABEL, signedLine, type TeamNames } from "./labels";
+import { ScrollRow } from "@/components/ScrollRow";
 
 type Section = "popular" | "game" | "alt" | "teamTotals" | "h1" | "h2" | "quarters";
 
@@ -203,7 +204,7 @@ export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Off
 
   return (
     <div className="mt-4">
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+      <ScrollRow className="-mx-4 flex gap-1.5 px-4 pb-1">
         {sections.map((s) => (
           <button
             key={s}
@@ -214,7 +215,7 @@ export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Off
             {SECTION_LABEL[s]}
           </button>
         ))}
-      </div>
+      </ScrollRow>
       {edges > 0 && (
         <p className="mt-2 text-[11px] text-muted-foreground">
           <span className="rounded bg-brand px-1 font-mono text-[10px] font-bold text-brand-foreground">+x.x</span> {`${edges} price${edges === 1 ? "" : "s"} `}where ARCHR&apos;s
