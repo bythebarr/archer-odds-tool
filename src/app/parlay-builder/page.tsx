@@ -6,6 +6,7 @@ import type { BuilderLeg, BuilderWindow } from "@/lib/builder/types";
 import { ALL_SPORTS } from "@/lib/allSports/sports";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
+import { ScrollRow } from "@/components/ScrollRow";
 
 export const metadata: Metadata = {
   title: "Parlay Builder — legs that clear your hit rate and ARCHR's bar, every sport",
@@ -80,7 +81,7 @@ function Row({ title, children }: { title: string; children: React.ReactNode }) 
   return (
     <div className="mt-3">
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">{children}</div>
+      <ScrollRow className="-mx-4 flex gap-2 px-4 pb-1">{children}</ScrollRow>
     </div>
   );
 }
