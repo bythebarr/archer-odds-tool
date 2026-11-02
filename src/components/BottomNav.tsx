@@ -34,14 +34,14 @@ export function BottomNav() {
               key={tab.href}
               href={href}
               aria-current={isActive ? "page" : undefined}
-              className={`relative flex flex-1 flex-col items-center gap-1 pt-3 pb-6 text-[11px] font-semibold transition-colors ${
+              className={`relative flex flex-1 flex-col items-center gap-1 pt-3 pb-6 text-[10px] font-semibold transition-colors ${
                 isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {/* Active tab: a short volt stroke at the arrow's angle. */}
               {isActive && <span aria-hidden className="absolute top-0 h-[3px] w-7 -skew-x-[18deg] rounded-b-sm bg-brand" />}
               <Glyph name={tab.icon} className="size-6" />
-              {tab.label}
+              <span className="whitespace-nowrap">{tab.shortLabel ?? tab.label}</span>
             </Link>
           );
         })}

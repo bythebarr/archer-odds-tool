@@ -5,6 +5,7 @@ import { allSportsLegs } from "@/lib/builder/sources/allSports";
 import { ufcLegs } from "@/lib/builder/sources/ufc";
 import { buildParlays, type BuilderOptions } from "@/lib/builder/build";
 import type { BuilderLeg } from "@/lib/builder/types";
+import { optimizeParlays } from "@/lib/builder/optimize";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 
 /**
@@ -56,6 +57,23 @@ async function main() {
         const [h, n] = l.rates[change.window ?? base.window];
         console.log(`     [${l.league}] ${l.label} (${l.eventLabel}) ${l.priceAmerican !== null ? formatAmerican(l.priceAmerican) : "—"} · ${h}/${n} · ARCHR ${l.archr !== null ? Math.round(l.archr * 100) + "%" : "—"}`);
       }
+    }
+  }
+
+  // The payout optimizer: the likeliest parlay at each target.
+  for (const [label, opts] of [
+    ["+300, any legs", { target: 300 }],
+    ["+500, any legs", { target: 500 }],
+    ["+1000, any legs", { target: 1000 }],
+    ["+500, 3 legs", { target: 500, legs: 3 }],
+    ["+2000, any legs, NBA only", { target: 2000, sports: ["nba"] }],
+  ] as const) {
+    const t = Date.now();
+    const { candidates, parlays } = optimizeParlays(pool, { ...opts, sports: "sports" in opts ? [...opts.sports] : [] });
+    console.log(`\noptimizer ${label}: ${candidates} candidate legs, ${parlays.length} parlays (${Date.now() - t} ms)`);
+    for (const p of parlays.slice(0, 2)) {
+      console.log(`  ${formatAmerican(p.priceAmerican)} · est ${(p.prob * 100).toFixed(1)}% · ARCHR ${p.archr !== null ? (p.archr * 100).toFixed(1) + "%" : "—"} · cons EV ${(p.edge * 100).toFixed(1)}%`);
+      for (const l of p.legs) console.log(`     [${l.league}] ${l.label} (${l.eventLabel}) ${formatAmerican(l.priceAmerican!)} · est ${Math.round(l.prob * 100)}%`);
     }
   }
 }

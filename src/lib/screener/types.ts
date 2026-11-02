@@ -6,6 +6,8 @@
  * alt rungs, ARCHR's chance and edge, and a price range. Pure.
  */
 
+import { conservativeProb, relativeEdge } from "@/lib/builder/conservative";
+
 export type ScreenWindow = "l3" | "l5" | "l10" | "l15" | "szn" | "last";
 export const SCREEN_WINDOWS: { key: ScreenWindow; label: string }[] = [
   { key: "l3", label: "L3" },
@@ -77,7 +79,17 @@ export function screenRates(
   };
 }
 
-export type ScreenSort = ScreenWindow | "archr" | "edge" | "price";
+export type ScreenSort = ScreenWindow | "archr" | "edge" | "cedge" | "price";
+
+/**
+ * The prop's conservative relative edge: the lower of ARCHR's chance and the
+ * low end of its L10 record's range (the season's when L10 is thin), over the
+ * chance the price implies, minus one. Null without a price or a read.
+ */
+export function conservativeEdge(p: Pick<ScreenerProp, "archr" | "priceAmerican" | "rates">): number | null {
+  const rate = p.rates.l10[1] >= 5 ? p.rates.l10 : p.rates.szn;
+  return relativeEdge(conservativeProb(p.archr, rate), p.priceAmerican);
+}
 
 export interface ScreenFilters {
   sport: string | null;
@@ -155,6 +167,7 @@ function sortValue(p: ScreenerProp, s: ScreenSort): number {
   if (s === "archr") return p.archr ?? -1;
   if (s === "edge") return p.edge !== null && p.edge <= MAX_TRUSTED_EDGE ? p.edge : -1;
   if (s === "price") return p.priceAmerican ?? -Infinity;
+  if (s === "cedge") return conservativeEdge(p) ?? -Infinity;
   return rateOf(p.rates[s]);
 }
 
