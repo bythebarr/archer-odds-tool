@@ -12,6 +12,7 @@ import { FilterPanel } from "@/components/screener/FilterPanel";
 import { getScreenerPool, SCREENER_SPORTS, type ScreenerSport } from "@/lib/screener/pool";
 import { DEFAULT_FILTERS, SCREEN_WINDOWS, conservativeEdge, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
 import { formatAmerican } from "@/lib/odds/americanOdds";
+import { MAX_TRUSTED_RELATIVE_EDGE } from "@/lib/builder/conservative";
 
 export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>>;
 
@@ -98,6 +99,12 @@ function SortHead({ href, active, children, className = "" }: { href: string; ac
 function ConsEdgeCell({ p }: { p: ScreenerProp }) {
   const e = conservativeEdge(p);
   if (e === null) return <td className="px-2 py-2 text-center font-mono text-[11px] text-muted-foreground">—</td>;
+  if (e > MAX_TRUSTED_RELATIVE_EDGE)
+    return (
+      <td className="px-2 py-2 text-center font-mono text-[11px] text-muted-foreground" title="Far above the price: likely a price that doesn't belong to this line; not sorted as edge">
+        +{Math.round(e * 100)}%?
+      </td>
+    );
   return (
     <td className={`px-2 py-2 text-center font-mono text-[11px] font-semibold ${e > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
       {e > 0 ? "+" : ""}
@@ -380,7 +387,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. The conservative edge reads the prop cautiously: the lower of ARCHR&apos;s chance and the low end of its L10 record&apos;s range (one standard error), against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Click a column to sort by it. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. The conservative edge reads the prop cautiously: the lower of ARCHR&apos;s chance and the low end of its L10 record&apos;s range (one standard error), against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Past +50% it reads &quot;?&quot; and isn&apos;t sorted as edge: a gap that wide is a price that doesn&apos;t belong to the line, not value. Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

@@ -11,6 +11,14 @@
  */
 import type { Rate } from "./types";
 
+/**
+ * A conservative read more than this far above the price's (+50%) is a price
+ * that doesn't belong to the line (a misread alt rung, a stale or swapped
+ * price), not value: such legs are left out of the optimizer and of sorting by
+ * conservative edge. The same bar the builder puts on ARCHR's edge.
+ */
+export const MAX_TRUSTED_RELATIVE_EDGE = 0.5;
+
 /** Fewer games than this and the record alone doesn't make a chance. */
 const MIN_GAMES = 3;
 
@@ -40,4 +48,9 @@ export function conservativeProb(archr: number | null, rate: Rate): number | nul
 export function relativeEdge(prob: number | null, priceAmerican: number | null): number | null {
   if (prob === null || priceAmerican === null) return null;
   return prob / impliedProb(priceAmerican) - 1;
+}
+
+/** The relative edge where it can be believed; null past MAX_TRUSTED_RELATIVE_EDGE. */
+export function trustedRelativeEdge(edge: number | null): number | null {
+  return edge !== null && edge <= MAX_TRUSTED_RELATIVE_EDGE ? edge : null;
 }

@@ -52,6 +52,8 @@ describe("optimizeParlays", () => {
     }
   }
   const probOf = (l: BuilderLeg) => conservativeProb(l.archr, l.rates.l10)!;
+  /** What the optimizer may use: a chance of 30%+, and a price not wildly longer than it (a price that doesn't belong to the line). */
+  const usable = (l: BuilderLeg) => probOf(l) >= 0.3 && relativeEdge(probOf(l), l.priceAmerican)! <= 0.5;
 
   /** Every combination, one leg per game, by brute force. */
   function bruteBest(target: number, legs: number | null) {
@@ -65,7 +67,7 @@ describe("optimizeParlays", () => {
         return;
       }
       walk(i + 1, n, dec, p);
-      for (const l of games[i]) if (probOf(l) >= 0.3) walk(i + 1, n + 1, dec * americanToDecimal(l.priceAmerican!), p * probOf(l));
+      for (const l of games[i]) if (usable(l)) walk(i + 1, n + 1, dec * americanToDecimal(l.priceAmerican!), p * probOf(l));
     };
     walk(0, 0, 1, 1);
     return best;
@@ -100,5 +102,13 @@ describe("optimizeParlays", () => {
 
   it("returns nothing when no combination reaches the payout", () => {
     expect(optimizeParlays(pool.slice(0, 2), { target: 100000, shortest: -Infinity }).parlays).toEqual([]);
+  });
+});
+
+describe("optimizeParlays: prices that don't belong", () => {
+  it("leaves out a leg priced far longer than its cautious read", () => {
+    const pool = [leg("good1", "a", -150, 0.7, 8), leg("good2", "b", -150, 0.7, 8), leg("bogus", "c", 332, 0.7, 8)];
+    const { parlays } = optimizeParlays(pool, { target: 100, shortest: -Infinity });
+    for (const p of parlays) expect(p.legs.some((l) => l.id === "bogus")).toBe(false);
   });
 });

@@ -6,7 +6,7 @@
  * alt rungs, ARCHR's chance and edge, and a price range. Pure.
  */
 
-import { conservativeProb, relativeEdge } from "@/lib/builder/conservative";
+import { conservativeProb, relativeEdge, trustedRelativeEdge } from "@/lib/builder/conservative";
 
 export type ScreenWindow = "l3" | "l5" | "l10" | "l15" | "szn" | "last";
 export const SCREEN_WINDOWS: { key: ScreenWindow; label: string }[] = [
@@ -167,7 +167,7 @@ function sortValue(p: ScreenerProp, s: ScreenSort): number {
   if (s === "archr") return p.archr ?? -1;
   if (s === "edge") return p.edge !== null && p.edge <= MAX_TRUSTED_EDGE ? p.edge : -1;
   if (s === "price") return p.priceAmerican ?? -Infinity;
-  if (s === "cedge") return conservativeEdge(p) ?? -Infinity;
+  if (s === "cedge") return trustedRelativeEdge(conservativeEdge(p)) ?? -Infinity;
   return rateOf(p.rates[s]);
 }
 

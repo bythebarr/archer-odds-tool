@@ -404,7 +404,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         independent, so the parlay&apos;s ARCHR chance and record are the legs&apos; multiplied. Prices are the best one posted; &quot;—&quot; is a line posted
         before its price. Hit a payout: each leg&apos;s estimate is its conservative chance, the lower of ARCHR&apos;s chance and the low end of its
         record&apos;s range over the window (one standard error); the optimizer searches every combination (one leg per game) for the likeliest
-        whose price pays at least what you picked, and the alternatives below it each leave one of its legs out. The conservative edge
+        whose price pays at least what you picked, and the alternatives below it each leave one of its legs out. Legs whose price is far
+        longer than their cautious read (more than +50% conservative edge) are left out: that gap is a price that doesn&apos;t belong to the line. The conservative edge
         compares a leg&apos;s conservative chance with the chance its price implies. Research only.
       </p>
     </div>
