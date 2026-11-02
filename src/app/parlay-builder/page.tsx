@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getBuilderPool } from "@/lib/builder/pool";
-import { buildParlays, type BuilderOptions, type BuilderSort, type BuiltParlay } from "@/lib/builder/build";
+import { buildParlays, legConservativeEdge, type BuilderOptions, type BuilderSort, type BuiltParlay } from "@/lib/builder/build";
+import { optimizeParlays, type OptimizedParlay } from "@/lib/builder/optimize";
 import type { BuilderLeg, BuilderWindow } from "@/lib/builder/types";
 import { ALL_SPORTS } from "@/lib/allSports/sports";
 import { formatAmerican } from "@/lib/odds/americanOdds";
@@ -15,7 +16,11 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-type Params = { sports?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; short?: string; sgp?: string; sort?: string };
+type Params = { mode?: string; pay?: string; n?: string; sports?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; short?: string; sgp?: string; sort?: string };
+
+/** Payouts the optimizer aims for (American), and its leg counts. */
+const PAYOUTS = [100, 200, 300, 500, 750, 1000, 2000, 5000];
+const OPT_LEGS = ["any", "2", "3", "4", "5", "6", "8"];
 
 const LEG_COUNTS = [2, 3, 4, 5, 6, 8, 10, 12, 15];
 const WINDOWS: { key: BuilderWindow; label: string }[] = [
@@ -44,13 +49,14 @@ const SORTS: { key: BuilderSort; label: string }[] = [
   { key: "archr", label: "ARCHR chance" },
   { key: "hit", label: "Hit rate" },
   { key: "edge", label: "ARCHR edge" },
+  { key: "cedge", label: "Conservative edge" },
 ];
 const DEFAULTS = { legs: 4, window: "l10" as BuilderWindow, rate: 0.7, archr: 0, edge: "any", short: "-500", sgp: false, sort: "archr" as BuilderSort };
 
 const SPORT_LABEL: Record<string, string> = { nba: "NBA", nfl: "NFL", ufc: "UFC", ...Object.fromEntries(ALL_SPORTS.map((s) => [s.key, s.label])) };
 const SPORT_ORDER = ["nba", "nfl", "ufc", ...ALL_SPORTS.map((s) => s.key)];
 
-function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: string } {
+function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: string; mode: "bars" | "payout"; pay: number; n: string } {
   const num = (v: string | undefined, allowed: number[], d: number) => (v !== undefined && allowed.includes(Number(v)) ? Number(v) : d);
   const edgeKey = EDGES.some((e) => e.key === p.edge) ? p.edge! : DEFAULTS.edge;
   const shortKey = SHORTEST.some((e) => e.key === p.short) ? p.short! : DEFAULTS.short;
@@ -66,6 +72,9 @@ function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: s
     shortKey,
     sameGame: p.sgp === "1",
     sort: SORTS.some((s) => s.key === p.sort) ? (p.sort as BuilderSort) : DEFAULTS.sort,
+    mode: p.mode === "payout" ? "payout" : "bars",
+    pay: num(p.pay, PAYOUTS, 500),
+    n: OPT_LEGS.includes(p.n ?? "") ? p.n! : "any",
   };
 }
 
@@ -86,8 +95,9 @@ function Row({ title, children }: { title: string; children: React.ReactNode }) 
   );
 }
 
-function LegRow({ l, window }: { l: BuilderLeg; window: BuilderWindow }) {
+function LegRow({ l, window, prob }: { l: BuilderLeg; window: BuilderWindow; prob?: number }) {
   const [h, n] = l.rates[window];
+  const cedge = legConservativeEdge(l, window);
   return (
     <li className="flex items-start justify-between gap-3 px-3 py-2 text-xs">
       <div className="min-w-0">
@@ -109,7 +119,14 @@ function LegRow({ l, window }: { l: BuilderLeg; window: BuilderWindow }) {
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {h}/{n}
           {l.archr !== null && <> · ARCHR {pct(l.archr)}</>}
+          {prob !== undefined && <> · est {pct(prob)}</>}
         </p>
+        {cedge !== null && (
+          <p className={`text-[10px] ${cedge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+            cons. edge {cedge > 0 ? "+" : ""}
+            {(cedge * 100).toFixed(1)}%
+          </p>
+        )}
       </div>
     </li>
   );
@@ -147,6 +164,37 @@ function ParlayCard({ p, window, index }: { p: BuiltParlay; window: BuilderWindo
   );
 }
 
+function OptimizedCard({ p, window, index, target }: { p: OptimizedParlay; window: BuilderWindow; index: number; target: number }) {
+  return (
+    <li className="rounded-xl border border-border bg-card">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-3 pt-3">
+        <p className="text-sm font-semibold text-foreground">
+          #{index + 1} · {p.legs.length} legs <span className="ml-2 font-mono text-foreground">{formatAmerican(p.priceAmerican)}</span>
+          {p.priceAmerican > target * 1.15 && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">(over your {formatAmerican(target)})</span>}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          est. chance <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{(p.prob * 100).toFixed(1)}%</span>
+          {p.archr !== null && (
+            <>
+              {" · "}ARCHR <span className="font-mono text-foreground">{(p.archr * 100).toFixed(1)}%</span>
+            </>
+          )}
+          {" · "}cons. EV{" "}
+          <span className={`font-mono ${p.edge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+            {p.edge >= 0 ? "+" : ""}
+            {(p.edge * 100).toFixed(1)}%
+          </span>
+        </p>
+      </div>
+      <ul className="mt-2 divide-y divide-border border-t border-border">
+        {p.legs.map((l) => (
+          <LegRow key={l.id} l={l} window={window} prob={l.prob} />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 /**
  * The parlay builder: every sport's legs (player props, moneylines, spreads,
  * totals) in one pool, filtered by the bars you set — sports, legs, the hit
@@ -159,7 +207,18 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
   await refreshOnView([["espn-props", 30], ["espn-odds", 30]]);
   const o = readOptions(params);
   const pool = await getBuilderPool();
-  const { qualifying, parlays } = buildParlays(pool, o);
+  const payout = o.mode === "payout";
+  const { qualifying, parlays } = payout ? { qualifying: 0, parlays: [] } : buildParlays(pool, o);
+  const optimized = payout
+    ? optimizeParlays(pool, {
+        target: o.pay,
+        legs: o.n === "any" ? null : Number(o.n),
+        sports: o.sports,
+        window: o.window,
+        sameGame: o.sameGame,
+        shortest: o.shortest,
+      })
+    : null;
 
   const counts = new Map<string, number>();
   for (const l of pool) counts.set(l.sport, (counts.get(l.sport) ?? 0) + 1);
@@ -176,6 +235,9 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       short: o.shortKey,
       sgp: o.sameGame ? "1" : "",
       sort: o.sort,
+      mode: o.mode === "payout" ? "payout" : "",
+      pay: String(o.pay),
+      n: o.n,
       ...change,
     };
     const qs = new URLSearchParams(Object.entries(next).filter(([, v]) => v !== undefined && v !== "") as [string, string][]);
@@ -186,7 +248,19 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
   return (
     <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-24 pt-5 font-sans">
       <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight text-foreground">Parlay Builder</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Set your bars; it stacks the legs that clear them, from every sport on the board.</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {payout
+          ? "Pick the payout you want; it finds the legs most likely to get you there, from every sport on the board."
+          : "Set your bars; it stacks the legs that clear them, from every sport on the board."}
+      </p>
+      <div className="mt-3 flex max-w-sm gap-1 rounded-full bg-muted p-1">
+        <Link href={href({ mode: "" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${!payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+          Build by bars
+        </Link>
+        <Link href={href({ mode: "payout" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+          Hit a payout
+        </Link>
+      </div>
 
       <Row title="Sports">
         <Link href={href({ sports: "" })} className={chip(o.sports.length === 0)}>
@@ -198,6 +272,25 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </Link>
         ))}
       </Row>
+      {payout && (
+        <>
+          <Row title="Payout you want (at least)">
+            {PAYOUTS.map((v) => (
+              <Link key={v} href={href({ pay: String(v) })} className={chip(o.pay === v)}>
+                {formatAmerican(v)}
+              </Link>
+            ))}
+          </Row>
+          <Row title="Legs">
+            {OPT_LEGS.map((n) => (
+              <Link key={n} href={href({ n })} className={chip(o.n === n)}>
+                {n === "any" ? "Any (2–8)" : n}
+              </Link>
+            ))}
+          </Row>
+        </>
+      )}
+      {!payout && (
       <Row title="Legs">
         {LEG_COUNTS.map((n) => (
           <Link key={n} href={href({ legs: String(n) })} className={chip(o.legs === n)}>
@@ -205,6 +298,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </Link>
         ))}
       </Row>
+      )}
+      {!payout && (
       <Row title="Each leg has hit at least">
         {RATES.map((r) => (
           <Link key={r} href={href({ rate: String(r) })} className={chip(o.minRate === r)}>
@@ -212,13 +307,16 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </Link>
         ))}
       </Row>
-      <Row title="Over">
+      )}
+      <Row title={payout ? "Record window behind each leg's estimate" : "Over"}>
         {WINDOWS.map((w) => (
           <Link key={w.key} href={href({ window: w.key })} className={chip(o.window === w.key)}>
             {w.label}
           </Link>
         ))}
       </Row>
+      {!payout && (
+        <>
       <Row title="ARCHR chance per leg">
         {ARCHR.map((a) => (
           <Link key={a} href={href({ archr: String(a) })} className={chip(o.minArchr === a)}>
@@ -233,6 +331,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </Link>
         ))}
       </Row>
+        </>
+      )}
       <Row title="Shortest leg">
         {SHORTEST.map((e) => (
           <Link key={e.key} href={href({ short: e.key })} className={chip(o.shortKey === e.key)}>
@@ -240,6 +340,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </Link>
         ))}
       </Row>
+      {!payout && (
       <Row title="Rank by">
         {SORTS.map((s) => (
           <Link key={s.key} href={href({ sort: s.key })} className={chip(o.sort === s.key)}>
@@ -247,6 +348,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </Link>
         ))}
       </Row>
+      )}
       <Row title="Same game">
         <Link href={href({ sgp: "" })} className={chip(!o.sameGame)}>
           One leg per game
@@ -256,21 +358,43 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         </Link>
       </Row>
 
-      <p className="mt-4 text-xs text-muted-foreground">
-        {qualifying.toLocaleString()} of {pool.length.toLocaleString()} legs clear your bars
-      </p>
-
-      {parlays.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-border p-6 text-center">
-          <p className="text-sm font-semibold text-foreground">Not enough legs clear these bars for a {o.legs}-leg parlay</p>
-          <p className="mt-1 text-xs text-muted-foreground">Lower the hit rate or ARCHR bar, pick a longer sample, add sports, or allow same-game legs.</p>
-        </div>
+      {optimized ? (
+        <>
+          <p className="mt-4 text-xs text-muted-foreground">
+            {optimized.candidates.toLocaleString()} priced legs searched · the likeliest parlays paying {formatAmerican(o.pay)} or more
+          </p>
+          {optimized.parlays.length === 0 ? (
+            <div className="mt-6 rounded-xl border border-dashed border-border p-6 text-center">
+              <p className="text-sm font-semibold text-foreground">No combination reaches {formatAmerican(o.pay)} here</p>
+              <p className="mt-1 text-xs text-muted-foreground">Allow more legs, shorter-priced legs, more sports, or same-game legs.</p>
+            </div>
+          ) : (
+            <ul className="mt-3 flex flex-col gap-3">
+              {optimized.parlays.map((p, i) => (
+                <OptimizedCard key={p.legs.map((l) => l.id).join("|")} p={p} window={o.window} index={i} target={o.pay} />
+              ))}
+            </ul>
+          )}
+        </>
       ) : (
-        <ul className="mt-3 flex flex-col gap-3">
-          {parlays.map((p, i) => (
-            <ParlayCard key={p.legs.map((l) => l.id).join("|")} p={p} window={o.window} index={i} />
-          ))}
-        </ul>
+        <>
+        <p className="mt-4 text-xs text-muted-foreground">
+          {qualifying.toLocaleString()} of {pool.length.toLocaleString()} legs clear your bars
+        </p>
+
+        {parlays.length === 0 ? (
+          <div className="mt-6 rounded-xl border border-dashed border-border p-6 text-center">
+            <p className="text-sm font-semibold text-foreground">Not enough legs clear these bars for a {o.legs}-leg parlay</p>
+            <p className="mt-1 text-xs text-muted-foreground">Lower the hit rate or ARCHR bar, pick a longer sample, add sports, or allow same-game legs.</p>
+          </div>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-3">
+            {parlays.map((p, i) => (
+              <ParlayCard key={p.legs.map((l) => l.id).join("|")} p={p} window={o.window} index={i} />
+            ))}
+          </ul>
+        )}
+        </>
       )}
 
       <p className="mt-5 text-[11px] leading-relaxed text-muted-foreground">
@@ -278,7 +402,11 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         spread or total at tonight&apos;s number in the teams&apos; games (for UFC, the fighter&apos;s fights). An edge above 50% is left out of the
         edge filter and ranking: ARCHR disagreeing with the book that much is the model&apos;s weak spot (alt lines, mostly), not a bet. Legs from different games are treated as
         independent, so the parlay&apos;s ARCHR chance and record are the legs&apos; multiplied. Prices are the best one posted; &quot;—&quot; is a line posted
-        before its price. Research only.
+        before its price. Hit a payout: each leg&apos;s estimate is its conservative chance, the lower of ARCHR&apos;s chance and the low end of its
+        record&apos;s range over the window (one standard error); the optimizer searches every combination (one leg per game) for the likeliest
+        whose price pays at least what you picked, and the alternatives below it each leave one of its legs out. Legs whose price is far
+        longer than their cautious read (more than +50% conservative edge) are left out: that gap is a price that doesn&apos;t belong to the line. The conservative edge
+        compares a leg&apos;s conservative chance with the chance its price implies. Research only.
       </p>
     </div>
   );

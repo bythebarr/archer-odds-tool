@@ -10,8 +10,9 @@ import Link from "next/link";
 import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { FilterPanel } from "@/components/screener/FilterPanel";
 import { getScreenerPool, SCREENER_SPORTS, type ScreenerSport } from "@/lib/screener/pool";
-import { DEFAULT_FILTERS, SCREEN_WINDOWS, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
+import { DEFAULT_FILTERS, SCREEN_WINDOWS, conservativeEdge, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
 import { formatAmerican } from "@/lib/odds/americanOdds";
+import { MAX_TRUSTED_RELATIVE_EDGE } from "@/lib/builder/conservative";
 
 export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>>;
 
@@ -24,6 +25,7 @@ const SORTS: { key: ScreenSort; label: string }[] = [
   ...SCREEN_WINDOWS.map((w) => ({ key: w.key as ScreenSort, label: `${w.label} rate` })),
   { key: "archr", label: "ARCHR chance" },
   { key: "edge", label: "ARCHR edge" },
+  { key: "cedge", label: "Conservative edge" },
   { key: "price", label: "Longest price" },
 ];
 const ROWS = 150;
@@ -83,6 +85,34 @@ function RateCell({ rate, bar }: { rate: Rate; bar: number | undefined }) {
   );
 }
 
+function SortHead({ href, active, children, className = "" }: { href: string; active: boolean; children: React.ReactNode; className?: string }) {
+  return (
+    <th className={`py-2 font-semibold ${className}`} aria-sort={active ? "descending" : undefined}>
+      <Link href={href} scroll={false} className={`inline-flex items-center gap-0.5 hover:text-foreground ${active ? "text-foreground" : ""}`}>
+        {children}
+        {active && <span aria-hidden>↓</span>}
+      </Link>
+    </th>
+  );
+}
+
+function ConsEdgeCell({ p }: { p: ScreenerProp }) {
+  const e = conservativeEdge(p);
+  if (e === null) return <td className="px-2 py-2 text-center font-mono text-[11px] text-muted-foreground">—</td>;
+  if (e > MAX_TRUSTED_RELATIVE_EDGE)
+    return (
+      <td className="px-2 py-2 text-center font-mono text-[11px] text-muted-foreground" title="Far above the price: likely a price that doesn't belong to this line; not sorted as edge">
+        +{Math.round(e * 100)}%?
+      </td>
+    );
+  return (
+    <td className={`px-2 py-2 text-center font-mono text-[11px] font-semibold ${e > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+      {e > 0 ? "+" : ""}
+      {(e * 100).toFixed(1)}%
+    </td>
+  );
+}
+
 function sideText(p: ScreenerProp): string {
   if (p.side === "yes") return `${p.statLabel} Yes`;
   return `${p.side === "over" ? "Over" : "Under"} ${p.point} ${p.statLabel}`;
@@ -108,6 +138,11 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
   const active = [sport ? null : f.sport, f.gameId, f.team, f.stat, f.side, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
   const query = new URLSearchParams(keep).toString();
   const clearHref = query ? `${basePath}?${query}` : basePath;
+  /** The same screen sorted by another column (the table's headers are links). */
+  const sortHref = (sort: ScreenSort) => {
+    const qs = new URLSearchParams({ ...(Object.fromEntries(Object.entries(params).filter(([, v]) => typeof v === "string" && v !== "")) as Record<string, string>), ...keep, sort });
+    return `${basePath}?${qs.toString()}`;
+  };
 
   return (
     <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -293,17 +328,24 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
           </div>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-xl border border-border">
-            <table className="w-full min-w-[720px] text-left text-xs">
+            <table className="w-full min-w-[780px] text-left text-xs">
               <thead className="bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-semibold">Player · prop</th>
-                  <th className="px-2 py-2 text-right font-semibold">Price</th>
+                  <SortHead href={sortHref("price")} active={f.sort === "price"} className="px-2 text-right">
+                    Price
+                  </SortHead>
                   {SCREEN_WINDOWS.map((w) => (
-                    <th key={w.key} className={`px-1.5 py-2 text-center font-semibold ${bars[w.key] ? "text-foreground" : ""}`}>
+                    <SortHead key={w.key} href={sortHref(w.key)} active={f.sort === w.key} className={`px-1.5 text-center ${bars[w.key] ? "text-foreground" : ""}`}>
                       {w.label}
-                    </th>
+                    </SortHead>
                   ))}
-                  <th className="px-2 py-2 text-center font-semibold">ARCHR</th>
+                  <SortHead href={sortHref("archr")} active={f.sort === "archr"} className="px-2 text-center">
+                    ARCHR
+                  </SortHead>
+                  <SortHead href={sortHref("cedge")} active={f.sort === "cedge"} className="px-2 text-center">
+                    <span title="The lower of ARCHR's chance and the low end of the L10 record, over the price's implied chance">Cons. edge</span>
+                  </SortHead>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -335,6 +377,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                         </span>
                       )}
                     </td>
+                    <ConsEdgeCell p={p} />
                   </tr>
                 ))}
               </tbody>
@@ -344,7 +387,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. The conservative edge reads the prop cautiously: the lower of ARCHR&apos;s chance and the low end of its L10 record&apos;s range (one standard error), against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Past +50% it reads &quot;?&quot; and isn&apos;t sorted as edge: a gap that wide is a price that doesn&apos;t belong to the line, not value. Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

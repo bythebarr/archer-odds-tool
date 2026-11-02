@@ -7,7 +7,7 @@ import { ArchrMark } from "./ArchrMark";
 export type GlyphKey =
   | "home" | "props" | "nba" | "nfl" | "ufc" | "mlb" | "tennis" | "soccer" | "f1" | "cfb"
   | "hockey" | "cricket" | "table-tennis" | "esports" | "darts" | "boxing" | "rugby" | "volleyball"
-  | "handball" | "snooker" | "golf" | "lacrosse" | "badminton" | "curling" | "cycling" | "all";
+  | "handball" | "snooker" | "golf" | "lacrosse" | "badminton" | "curling" | "cycling" | "all" | "parlay";
 
 const PATHS: Record<Exclude<GlyphKey, "home">, React.ReactNode> = {
   nba: (
@@ -166,6 +166,13 @@ const PATHS: Record<Exclude<GlyphKey, "home">, React.ReactNode> = {
       <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
       <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
       <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  // A bet slip: three legs stacked, each with its check.
+  parlay: (
+    <>
+      <rect x="4.5" y="3" width="15" height="18" rx="2" />
+      <path d="M8 8.5l1.2 1.2 2-2.2M13.5 9h3M8 13.5l1.2 1.2 2-2.2M13.5 14h3M8 18h8.5" />
     </>
   ),
   props: (

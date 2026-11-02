@@ -11,8 +11,12 @@
  */
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
 import type { BuilderLeg, BuilderWindow } from "./types";
+import { conservativeProb, relativeEdge, trustedRelativeEdge } from "./conservative";
 
-export type BuilderSort = "archr" | "edge" | "hit";
+/** A leg's conservative relative edge over a window (see conservative.ts); null without a price or a read. */
+export const legConservativeEdge = (l: BuilderLeg, w: BuilderWindow) => relativeEdge(conservativeProb(l.archr, l.rates[w]), l.priceAmerican);
+
+export type BuilderSort = "archr" | "edge" | "cedge" | "hit";
 
 export interface BuilderOptions {
   /** Sports to draw from; empty = every sport. */
@@ -86,6 +90,7 @@ export function qualifies(l: BuilderLeg, o: BuilderOptions): boolean {
 function scoreOf(l: BuilderLeg, o: BuilderOptions): number {
   const [h, n] = l.rates[o.window];
   if (o.sort === "edge") return trustedEdge(l) ?? -1;
+  if (o.sort === "cedge") return trustedRelativeEdge(legConservativeEdge(l, o.window)) ?? -1;
   if (o.sort === "archr") return l.archr ?? floor(h, n) - 0.5;
   return floor(h, n);
 }
