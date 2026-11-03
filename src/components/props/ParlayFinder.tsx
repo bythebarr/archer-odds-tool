@@ -16,6 +16,7 @@ type ShortestKey = "-300" | "-500" | "-1000" | "any";
 type LegRateKey = "0.6" | "0.7" | "0.8";
 type PerPlayerKey = "1" | "2" | "any";
 type TeamsKey = "one" | "both";
+type SidesKey = "all" | "over" | "under";
 
 export interface FinderGame {
   id: string;
@@ -182,10 +183,13 @@ export function ParlayFinder({
   const [legRate, setLegRate] = useState<LegRateKey>("0.6");
   const [perPlayer, setPerPlayer] = useState<PerPlayerKey>("1");
   const [teams, setTeams] = useState<TeamsKey>("one");
+  const [sides, setSides] = useState<SidesKey>("all");
   const [size, setSize] = useState<number | null>(null);
   const [lab, setLab] = useState<ParlayLeg[]>([]);
 
-  const legs = useMemo(() => (gameId ? legsFor(gameId, shortest === "any" ? -Infinity : Number(shortest)) : []), [legsFor, gameId, shortest]);
+  const allLegs = useMemo(() => (gameId ? legsFor(gameId, shortest === "any" ? -Infinity : Number(shortest)) : []), [legsFor, gameId, shortest]);
+  // Overs only, unders only, or both (a Yes leg, like an anytime TD, counts as an over).
+  const legs = useMemo(() => (sides === "all" ? allLegs : allLegs.filter((l) => l.side === sides)), [allLegs, sides]);
   const options = useMemo(
     () => ({
       minLegRate: Number(legRate),
@@ -216,6 +220,15 @@ export function ParlayFinder({
           ]}
           value={teams}
           onChange={setTeams}
+        />
+        <Segmented<SidesKey>
+          options={[
+            { key: "all", label: "Overs + unders" },
+            { key: "over", label: "Overs only" },
+            { key: "under", label: "Unders only" },
+          ]}
+          value={sides}
+          onChange={setSides}
         />
         <Segmented<PerPlayerKey>
           options={[
@@ -266,7 +279,7 @@ export function ParlayFinder({
       )}
 
       <ListNote>
-        {legs.length} lines on this game
+        {legs.length} {sides === "all" ? "" : sides === "over" ? "over " : "under "}lines on this game
         {shown
           ? teams === "one"
             ? ` · the best ${shown.size}-leg combinations by how often every leg cashed in the same game`

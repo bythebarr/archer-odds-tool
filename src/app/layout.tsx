@@ -11,6 +11,7 @@ import { SlipButton } from "@/components/slip/SlipButton";
 import { THEME_COLORS } from "@/lib/theme";
 import { SITE_URL } from "@/lib/siteUrl";
 import "./globals.css";
+import { NavProgress } from "@/components/NavProgress";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -89,6 +90,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col pb-16 sm:pb-0">
         <ArchrMarkSymbol />
         <LaunchIntro />
+        <Suspense fallback={null}>
+          <NavProgress />
+        </Suspense>
         <SlipProvider>
           <Suspense fallback={<div className="h-[57px] border-b border-border" />}>
             <SiteNav />

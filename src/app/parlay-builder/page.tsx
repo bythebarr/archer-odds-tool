@@ -204,7 +204,7 @@ function OptimizedCard({ p, window, index, target }: { p: OptimizedParlay; windo
  */
 export default async function ParlayBuilderPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
-  await refreshOnView([["espn-props", 30], ["espn-odds", 30]]);
+  await refreshOnView([["sync-injuries", 20], ["espn-props", 30], ["espn-odds", 30]]);
   const o = readOptions(params);
   const pool = await getBuilderPool();
   const payout = o.mode === "payout";
@@ -254,20 +254,20 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           : "Set your bars; it stacks the legs that clear them, from every sport on the board."}
       </p>
       <div className="mt-3 flex max-w-sm gap-1 rounded-full bg-muted p-1">
-        <Link href={href({ mode: "" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${!payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+        <Link scroll={false} href={href({ mode: "" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${!payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
           Build by bars
         </Link>
-        <Link href={href({ mode: "payout" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+        <Link scroll={false} href={href({ mode: "payout" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
           Hit a payout
         </Link>
       </div>
 
       <Row title="Sports">
-        <Link href={href({ sports: "" })} className={chip(o.sports.length === 0)}>
+        <Link scroll={false} href={href({ sports: "" })} className={chip(o.sports.length === 0)}>
           All sports
         </Link>
         {sports.map((s) => (
-          <Link key={s} href={href({ sports: toggleSport(s) })} className={chip(o.sports.includes(s))}>
+          <Link key={s} scroll={false} href={href({ sports: toggleSport(s) })} className={chip(o.sports.includes(s))}>
             {SPORT_LABEL[s] ?? s} <span className="opacity-60">{counts.get(s) ?? 0}</span>
           </Link>
         ))}
@@ -276,14 +276,14 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         <>
           <Row title="Payout you want (at least)">
             {PAYOUTS.map((v) => (
-              <Link key={v} href={href({ pay: String(v) })} className={chip(o.pay === v)}>
+              <Link key={v} scroll={false} href={href({ pay: String(v) })} className={chip(o.pay === v)}>
                 {formatAmerican(v)}
               </Link>
             ))}
           </Row>
           <Row title="Legs">
             {OPT_LEGS.map((n) => (
-              <Link key={n} href={href({ n })} className={chip(o.n === n)}>
+              <Link key={n} scroll={false} href={href({ n })} className={chip(o.n === n)}>
                 {n === "any" ? "Any (2–8)" : n}
               </Link>
             ))}
@@ -293,7 +293,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       {!payout && (
       <Row title="Legs">
         {LEG_COUNTS.map((n) => (
-          <Link key={n} href={href({ legs: String(n) })} className={chip(o.legs === n)}>
+          <Link key={n} scroll={false} href={href({ legs: String(n) })} className={chip(o.legs === n)}>
             {n}
           </Link>
         ))}
@@ -302,7 +302,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       {!payout && (
       <Row title="Each leg has hit at least">
         {RATES.map((r) => (
-          <Link key={r} href={href({ rate: String(r) })} className={chip(o.minRate === r)}>
+          <Link key={r} scroll={false} href={href({ rate: String(r) })} className={chip(o.minRate === r)}>
             {pct(r)}
           </Link>
         ))}
@@ -310,7 +310,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       )}
       <Row title={payout ? "Record window behind each leg's estimate" : "Over"}>
         {WINDOWS.map((w) => (
-          <Link key={w.key} href={href({ window: w.key })} className={chip(o.window === w.key)}>
+          <Link key={w.key} scroll={false} href={href({ window: w.key })} className={chip(o.window === w.key)}>
             {w.label}
           </Link>
         ))}
@@ -319,14 +319,14 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         <>
       <Row title="ARCHR chance per leg">
         {ARCHR.map((a) => (
-          <Link key={a} href={href({ archr: String(a) })} className={chip(o.minArchr === a)}>
+          <Link key={a} scroll={false} href={href({ archr: String(a) })} className={chip(o.minArchr === a)}>
             {a === 0 ? "Any" : `${pct(a)}+`}
           </Link>
         ))}
       </Row>
       <Row title="ARCHR edge per leg">
         {EDGES.map((e) => (
-          <Link key={e.key} href={href({ edge: e.key })} className={chip(o.edgeKey === e.key)}>
+          <Link key={e.key} scroll={false} href={href({ edge: e.key })} className={chip(o.edgeKey === e.key)}>
             {e.label}
           </Link>
         ))}
@@ -335,7 +335,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       )}
       <Row title="Shortest leg">
         {SHORTEST.map((e) => (
-          <Link key={e.key} href={href({ short: e.key })} className={chip(o.shortKey === e.key)}>
+          <Link key={e.key} scroll={false} href={href({ short: e.key })} className={chip(o.shortKey === e.key)}>
             {e.label}
           </Link>
         ))}
@@ -343,17 +343,17 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       {!payout && (
       <Row title="Rank by">
         {SORTS.map((s) => (
-          <Link key={s.key} href={href({ sort: s.key })} className={chip(o.sort === s.key)}>
+          <Link key={s.key} scroll={false} href={href({ sort: s.key })} className={chip(o.sort === s.key)}>
             {s.label}
           </Link>
         ))}
       </Row>
       )}
       <Row title="Same game">
-        <Link href={href({ sgp: "" })} className={chip(!o.sameGame)}>
+        <Link scroll={false} href={href({ sgp: "" })} className={chip(!o.sameGame)}>
           One leg per game
         </Link>
-        <Link href={href({ sgp: "1" })} className={chip(o.sameGame)}>
+        <Link scroll={false} href={href({ sgp: "1" })} className={chip(o.sameGame)}>
           Allow same-game legs
         </Link>
       </Row>

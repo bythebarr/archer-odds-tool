@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NbaParlaysPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const params = await searchParams;
-  await refreshOnView([["sync-results-nba", 60], ["espn-props", 30]]);
+  await refreshOnView([["sync-injuries", 20], ["sync-results-nba", 60], ["espn-props", 30]]);
   const days = await getLeagueDays("nba", todayEt());
   const date = params.date && isValidEtDate(params.date) ? params.date : (days[0] ?? todayEt());
   const [slate, freshness] = await Promise.all([getNbaPropsSlate(date), getFeedFreshness("nbaProps")]);

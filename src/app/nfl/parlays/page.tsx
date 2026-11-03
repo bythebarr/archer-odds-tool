@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function NflParlaysPage() {
-  await refreshOnView([["sync-results-nfl", 60], ["espn-props", 30]]);
+  await refreshOnView([["sync-injuries", 20], ["sync-results-nfl", 60], ["espn-props", 30]]);
   const [slate, freshness] = await Promise.all([getNflPropsSlate(), getFeedFreshness("nflProps")]);
   // DraftKings' NFL numbers reach the feed days before their prices: the finder only needs the numbers.
   const posted = await getNflPostedLines(slate.games.map((g) => g.id));

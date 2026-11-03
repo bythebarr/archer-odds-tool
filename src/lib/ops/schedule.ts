@@ -36,6 +36,8 @@ export const JOBS: Job[] = [
   { path: "poll-all-sports", every: 55 },
   { path: "tennis-fixtures", every: 55 },
   { path: "soccer-player-stats", every: 115 },
+  // Injury reports move right up to tip-off: every tick (pages also refresh them on view).
+  { path: "sync-injuries", every: 50 },
   { path: "sync-results-nba", every: 175 },
   { path: "sync-results-nfl", every: 175 },
   { path: "ufc-history", every: 175 },
@@ -49,6 +51,8 @@ export const JOBS: Job[] = [
   { path: "crawl-history", hours: [2, 8, 12, 16] },
   { path: "backfill-all-sports", hours: [6, 18] },
   { path: "sync-schedule", hours: [10, 18] },
+  // Trades and signings, before each day's slate.
+  { path: "sync-rosters", hours: [12, 18, 22] },
   { path: "tennis-history", hours: [8] },
   { path: "backfill-f1", hours: [8] },
   { path: "backfill-ufc", hours: [10] },
