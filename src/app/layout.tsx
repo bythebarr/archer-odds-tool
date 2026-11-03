@@ -12,6 +12,7 @@ import { THEME_COLORS } from "@/lib/theme";
 import { SITE_URL } from "@/lib/siteUrl";
 import "./globals.css";
 import { NavProgress } from "@/components/NavProgress";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -93,6 +94,7 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <NavProgress />
         </Suspense>
+        <Analytics />
         <SlipProvider>
           <Suspense fallback={<div className="h-[57px] border-b border-border" />}>
             <SiteNav />
