@@ -35,7 +35,7 @@ const PROPS: { sport: GlyphKey; label: string; href: string }[] = [
  */
 export default async function PlayerPropsHubPage({ searchParams }: { searchParams: Promise<ScreenerParams> }) {
   const params = await searchParams;
-  await refreshOnView([["espn-props", 30]]);
+  await refreshOnView([["sync-injuries", 20], ["espn-props", 30]]);
   return (
     <div className="mx-auto min-h-screen w-full min-w-0 max-w-6xl px-4 pb-24 pt-5 font-sans">
       <SportCarousel active="all" />

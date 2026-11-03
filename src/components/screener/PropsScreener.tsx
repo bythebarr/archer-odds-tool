@@ -148,7 +148,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
     <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
       <FilterPanel
         active={active}
-        className="group rounded-xl border border-border bg-card p-3 lg:sticky lg:top-4 lg:self-start"
+        className="group rounded-xl border border-border bg-card p-3 lg:sticky lg:top-[72px] lg:max-h-[calc(100vh-88px)] lg:self-start lg:overflow-y-auto lg:overscroll-contain"
         summary={
           <>
             Filters {active > 0 && <span className="ml-1 rounded-full bg-foreground px-1.5 py-0.5 text-[10px] text-background">{active}</span>}

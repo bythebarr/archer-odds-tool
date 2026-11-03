@@ -11,6 +11,6 @@ export const dynamic = "force-dynamic";
 
 export default async function NbaPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const { date } = await searchParams;
-  await refreshOnView([["espn-odds", 30], ["sync-results-nba", 60]]);
+  await refreshOnView([["sync-injuries", 20], ["espn-odds", 30], ["sync-results-nba", 60]]);
   return <LeaguePage sport="nba" dateParam={date} />;
 }

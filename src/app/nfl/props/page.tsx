@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function NflPropsPage({ searchParams }: { searchParams: Promise<ScreenerParams> }) {
   const params = await searchParams;
   const screen = wantsScreen(params);
-  await refreshOnView([["sync-results-nfl", 60], ["nfl-advanced", 180], ["espn-odds", 30]]);
+  await refreshOnView([["sync-injuries", 20], ["sync-results-nfl", 60], ["nfl-advanced", 180], ["espn-odds", 30]]);
   const [slate, freshness] = await Promise.all([getNflPropsSlate(), getFeedFreshness("nflProps")]);
   return (
     <div className={`mx-auto min-h-screen w-full min-w-0 px-4 pb-10 pt-5 font-sans ${screen ? "max-w-6xl" : "max-w-2xl"}`}>
