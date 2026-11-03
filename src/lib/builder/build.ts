@@ -87,7 +87,7 @@ export function qualifies(l: BuilderLeg, o: BuilderOptions): boolean {
   return true;
 }
 
-function scoreOf(l: BuilderLeg, o: BuilderOptions): number {
+export function scoreOf(l: BuilderLeg, o: BuilderOptions): number {
   const [h, n] = l.rates[o.window];
   if (o.sort === "edge") return trustedEdge(l) ?? -1;
   if (o.sort === "cedge") return trustedRelativeEdge(legConservativeEdge(l, o.window)) ?? -1;
