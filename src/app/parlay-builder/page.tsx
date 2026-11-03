@@ -8,6 +8,7 @@ import { ALL_SPORTS } from "@/lib/allSports/sports";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
 import { ScrollRow } from "@/components/ScrollRow";
+import { ParlayGenerator } from "@/components/builder/ParlayGenerator";
 
 export const metadata: Metadata = {
   title: "Parlay Builder — legs that clear your hit rate and ARCHR's bar, every sport",
@@ -56,7 +57,7 @@ const DEFAULTS = { legs: 4, window: "l10" as BuilderWindow, rate: 0.7, archr: 0,
 const SPORT_LABEL: Record<string, string> = { nba: "NBA", nfl: "NFL", ufc: "UFC", ...Object.fromEntries(ALL_SPORTS.map((s) => [s.key, s.label])) };
 const SPORT_ORDER = ["nba", "nfl", "ufc", ...ALL_SPORTS.map((s) => s.key)];
 
-function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: string; mode: "bars" | "payout"; pay: number; n: string } {
+function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: string; mode: "gen" | "bars" | "payout"; pay: number; n: string } {
   const num = (v: string | undefined, allowed: number[], d: number) => (v !== undefined && allowed.includes(Number(v)) ? Number(v) : d);
   const edgeKey = EDGES.some((e) => e.key === p.edge) ? p.edge! : DEFAULTS.edge;
   const shortKey = SHORTEST.some((e) => e.key === p.short) ? p.short! : DEFAULTS.short;
@@ -72,7 +73,8 @@ function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: s
     shortKey,
     sameGame: p.sgp === "1",
     sort: SORTS.some((s) => s.key === p.sort) ? (p.sort as BuilderSort) : DEFAULTS.sort,
-    mode: p.mode === "payout" ? "payout" : "bars",
+    // Generate is the default: the tool most people come for.
+    mode: p.mode === "payout" ? "payout" : p.mode === "bars" ? "bars" : "gen",
     pay: num(p.pay, PAYOUTS, 500),
     n: OPT_LEGS.includes(p.n ?? "") ? p.n! : "any",
   };
@@ -208,7 +210,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
   const o = readOptions(params);
   const pool = await getBuilderPool();
   const payout = o.mode === "payout";
-  const { qualifying, parlays } = payout ? { qualifying: 0, parlays: [] } : buildParlays(pool, o);
+  const gen = o.mode === "gen";
+  const { qualifying, parlays } = payout || gen ? { qualifying: 0, parlays: [] } : buildParlays(pool, o);
   const optimized = payout
     ? optimizeParlays(pool, {
         target: o.pay,
@@ -235,7 +238,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       short: o.shortKey,
       sgp: o.sameGame ? "1" : "",
       sort: o.sort,
-      mode: o.mode === "payout" ? "payout" : "",
+      mode: o.mode === "gen" ? "" : o.mode,
       pay: String(o.pay),
       n: o.n,
       ...change,
@@ -249,12 +252,17 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
     <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-24 pt-5 font-sans">
       <h1 className="font-display text-3xl font-extrabold uppercase italic leading-none tracking-tight text-foreground">Parlay Builder</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        {payout
-          ? "Pick the payout you want; it finds the legs most likely to get you there, from every sport on the board."
-          : "Set your bars; it stacks the legs that clear them, from every sport on the board."}
+        {gen
+          ? "Pick your legs and filters, generate, lock the legs you like and regenerate the rest, from every sport on the board."
+          : payout
+            ? "Pick the payout you want; it finds the legs most likely to get you there, from every sport on the board."
+            : "Set your bars; it stacks the legs that clear them, from every sport on the board."}
       </p>
-      <div className="mt-3 flex max-w-sm gap-1 rounded-full bg-muted p-1">
-        <Link scroll={false} href={href({ mode: "" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${!payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+      <div className="mt-3 flex max-w-md gap-1 rounded-full bg-muted p-1">
+        <Link scroll={false} href={href({ mode: "" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${gen ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+          Generate
+        </Link>
+        <Link scroll={false} href={href({ mode: "bars" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${o.mode === "bars" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
           Build by bars
         </Link>
         <Link scroll={false} href={href({ mode: "payout" })} className={`flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold ${payout ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
@@ -262,6 +270,9 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         </Link>
       </div>
 
+      {gen && <ParlayGenerator sports={sports.map((s) => ({ key: s, label: SPORT_LABEL[s] ?? s, count: counts.get(s) ?? 0 }))} />}
+      {!gen && (
+        <>
       <Row title="Sports">
         <Link scroll={false} href={href({ sports: "" })} className={chip(o.sports.length === 0)}>
           All sports
@@ -408,6 +419,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         longer than their cautious read (more than +50% conservative edge) are left out: that gap is a price that doesn&apos;t belong to the line. The conservative edge
         compares a leg&apos;s conservative chance with the chance its price implies. Research only.
       </p>
+        </>
+      )}
     </div>
   );
 }

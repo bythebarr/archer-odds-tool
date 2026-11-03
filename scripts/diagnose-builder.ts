@@ -6,6 +6,7 @@ import { ufcLegs } from "@/lib/builder/sources/ufc";
 import { buildParlays, type BuilderOptions } from "@/lib/builder/build";
 import type { BuilderLeg } from "@/lib/builder/types";
 import { optimizeParlays } from "@/lib/builder/optimize";
+import { generateParlay } from "@/lib/builder/generate";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 
 /**
@@ -75,6 +76,19 @@ async function main() {
       console.log(`  ${formatAmerican(p.priceAmerican)} · est ${(p.prob * 100).toFixed(1)}% · ARCHR ${p.archr !== null ? (p.archr * 100).toFixed(1) + "%" : "—"} · cons EV ${(p.edge * 100).toFixed(1)}%`);
       for (const l of p.legs) console.log(`     [${l.league}] ${l.label} (${l.eventLabel}) ${formatAmerican(l.priceAmerican!)} · est ${Math.round(l.prob * 100)}%`);
     }
+  }
+
+  // The generator: a few random draws at the page's defaults, and a too-strict filter.
+  const gen = { ...base, legs: 4, kinds: [], pricedOnly: false, lockedIds: [] as string[], exclude: [] as string[] };
+  for (const [label, change] of [
+    ["generate, defaults, seed 1", { seed: 1 }],
+    ["generate, defaults, seed 2", { seed: 2 }],
+    ["generate, book-priced only", { seed: 3, pricedOnly: true }],
+    ["generate, 15 legs at 100% L10 (too strict)", { seed: 4, legs: 15, minRate: 1 }],
+  ] as const) {
+    const r = generateParlay(pool, { ...gen, ...change });
+    console.log(`\n${label}: ${r.qualifying} qualify, short ${r.short}, ${r.parlay.priceAmerican !== null ? formatAmerican(r.parlay.priceAmerican) : "—"}${r.parlay.estimated ? " (est.)" : ""}`);
+    for (const l of r.parlay.legs) console.log(`     [${l.league}] ${l.label} ${l.displayPrice !== null ? formatAmerican(l.displayPrice) : "—"}${l.fair ? " fair" : ""}`);
   }
 }
 
