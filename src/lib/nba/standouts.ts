@@ -26,6 +26,7 @@ import { nbaProjectionContext } from "./slateContext";
 import type { WireNbaPropsSlate, SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import { mainPoint } from "@/lib/screener/types";
+import { MAX_TRUSTED_RELATIVE_EDGE, relativeEdge } from "@/lib/builder/conservative";
 
 /** The stats the page reads (milestones and the thin defensive stats are left out). */
 export const STANDOUT_STATS = ["points", "rebounds", "assists", "threes", "pointsReboundsAssists", "pointsRebounds", "pointsAssists", "reboundsAssists"] as const;
@@ -35,6 +36,12 @@ const MIN_ALT_CHANCE = 0.3;
 /** His last-ten record on the side must be at least this. */
 const MIN_L10 = 0.4;
 const MIN_GAMES = 8;
+/**
+ * A main line this far from his last-10 average isn't his full-game line (a
+ * partial-game market or a stray rung that reached the feed): the call is left
+ * out rather than shouted.
+ */
+const LINE_RANGE = [0.55, 1.8] as const;
 
 export interface Reason {
   text: string;
@@ -83,7 +90,10 @@ function reasonsFor(s: PropSummary, side: PropDirection, stat: NbaPropStatDef, p
   if (!proj) return [];
   const up = side === "over";
   const out: Reason[] = [];
+  /** A reason that pushes the stat up (or down): it supports an over (or an under). */
   const add = (text: string, pushesUp: boolean) => out.push({ text, supports: pushesUp === up });
+  /** A record already on the call's side: it supports the call when it mostly cashed. */
+  const record = (text: string, cashed: number, games: number) => out.push({ text, supports: cashed / games >= 0.5 });
   const opp = player.opponent?.abbreviation ?? "the opponent";
 
   // Minutes and why they moved.
@@ -113,9 +123,13 @@ function reasonsFor(s: PropSummary, side: PropDirection, stat: NbaPropStatDef, p
     if (b > 0 && Math.abs(a / b - 1) >= 0.15) add(`${a > b ? "Hot" : "Cold"}: ${a.toFixed(1)} over his last 5 against ${b.toFixed(1)} this season`, a > b);
   }
   const h2h = s.hitRates.h2h;
-  if (h2h.sampleSize >= 3) add(`${h2h.hits}/${h2h.sampleSize} ${up ? "over" : "under"} ${s.point} against ${opp}`, h2h.hits / h2h.sampleSize >= 0.5);
+  if (h2h.sampleSize >= 3) record(`${h2h.hits}/${h2h.sampleSize} ${up ? "over" : "under"} ${s.point} against ${opp}`, h2h.hits, h2h.sampleSize);
+  // Home or away, only when the split leans hard one way.
   const venue = s.splits.find((x) => x.key === "venue");
-  if (venue && venue.rate.sampleSize >= 6 && venue.avg !== null) add(`${venue.label}: ${venue.rate.hits}/${venue.rate.sampleSize} ${up ? "over" : "under"}, ${venue.avg.toFixed(1)} a game`, venue.rate.hits / venue.rate.sampleSize >= 0.5);
+  if (venue && venue.rate.sampleSize >= 6 && venue.avg !== null) {
+    const r = venue.rate.hits / venue.rate.sampleSize;
+    if (r >= 0.7 || r <= 0.3) record(`${venue.label}: ${venue.rate.hits}/${venue.rate.sampleSize} ${up ? "over" : "under"}, ${venue.avg.toFixed(1)} a game`, venue.rate.hits, venue.rate.sampleSize);
+  }
   // Supporting reasons first.
   return out.sort((a, b) => Number(b.supports) - Number(a.supports));
 }
@@ -136,6 +150,9 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
     // The main line: the number hung on both sides (alt ladders are over-only), as the screener reads it.
     const main = mainPoint(prop.quotes);
     if (main === null) continue;
+    const l10Values = playerLogs.filter((l) => l.minutes > 0).slice(0, 10).map((l) => stat.value(l));
+    const l10Avg = l10Values.reduce((a, b) => a + b, 0) / l10Values.length;
+    if (l10Avg >= 2 && (main < LINE_RANGE[0] * l10Avg || main > LINE_RANGE[1] * l10Avg)) continue;
     const context: PropContext = {
       season: slate.season,
       venue: player.venue,
@@ -164,6 +181,8 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       const q = side === "over" ? at?.over : at?.under;
       const c = at?.model ? (side === "over" ? at.model.probOver : at.model.probUnder) : null;
       if (!at || !q || c === null || c < MIN_ALT_CHANCE) continue;
+      // A price far longer than the chance says isn't value, it's a price that doesn't belong to the rung.
+      if ((relativeEdge(c, q.priceAmerican) ?? 0) > MAX_TRUSTED_RELATIVE_EDGE) continue;
       const ev = c * americanToDecimal(q.priceAmerican) - 1;
       if (!alt || ev > alt.ev) alt = { point, priceAmerican: q.priceAmerican, bookName: q.bookName, chance: c, ev, l10: rate(at, "l10") };
     }

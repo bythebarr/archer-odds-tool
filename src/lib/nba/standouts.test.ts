@@ -25,7 +25,7 @@ const logsAt = (points: (i: number) => number): GameLogPoint[] =>
 const quotes = (point: number, alts: number[] = []) => [
   { bookKey: "draftkings", bookName: "DraftKings", side: "over" as const, point, priceAmerican: -110 },
   { bookKey: "draftkings", bookName: "DraftKings", side: "under" as const, point, priceAmerican: -110 },
-  ...alts.map((p) => ({ bookKey: "draftkings", bookName: "DraftKings", side: "over" as const, point: p, priceAmerican: 150 })),
+  ...alts.map((p) => ({ bookKey: "draftkings", bookName: "DraftKings", side: "over" as const, point: p, priceAmerican: p < 28 ? -150 : 2000 })),
 ];
 
 const player = (id: string) => ({
@@ -77,10 +77,16 @@ describe("nbaStandouts", () => {
     expect(s.hit.l10).toEqual([10, 10]);
   });
 
-  it("suggests the best-value alternate line beyond the main one", () => {
+  it("suggests the best-value alternate line beyond the main one, never a price that can't be right", () => {
     const s = nbaStandouts(slate(), logs)[0];
-    expect(s.alt?.point).toBeGreaterThan(22.5);
-    expect(s.alt?.priceAmerican).toBe(150);
+    expect(s.alt?.point).toBe(26.5);
+    expect(s.alt?.priceAmerican).toBe(-150);
+  });
+
+  it("leaves out a main line far from his average (not his full-game line)", () => {
+    const sl = slate();
+    sl.props[0] = { ...sl.props[0], quotes: quotes(12.5) } as never;
+    expect(nbaStandouts(sl, logs)).toEqual([]);
   });
 
   it("skips players out or doubtful tonight", () => {
