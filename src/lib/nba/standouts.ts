@@ -13,7 +13,8 @@
  * The reasons are the projection's own inputs, in words: his minutes tonight
  * (teammates out, rest, a return, tonight's lineup, blowout risk), what the
  * opponent allows to his position, the game total, his recent form against
- * his season, and how he's done against this opponent and at this venue.
+ * his season, and how he's done against this opponent, against teams that
+ * play like it (styleMatch.ts), and at this venue.
  *
  * The alternate line: of the rungs a book hangs beyond the main line on that
  * side, the one with the best expected value at ARCHR's chance (a chance of at
@@ -27,6 +28,7 @@ import type { WireNbaPropsSlate, SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import { mainPoint } from "@/lib/screener/types";
 import { MAX_TRUSTED_RELATIVE_EDGE, relativeEdge } from "@/lib/builder/conservative";
+import { styleRecord, type StyleRecord } from "./styleMatch";
 
 /** The stats the page reads (milestones and the thin defensive stats are left out). */
 export const STANDOUT_STATS = ["points", "rebounds", "assists", "threes", "pointsReboundsAssists", "pointsRebounds", "pointsAssists", "reboundsAssists"] as const;
@@ -74,6 +76,8 @@ export interface Standout {
   ev: number | null;
   minutes: number | null;
   hit: { l5: [number, number]; l10: [number, number]; season: [number, number]; h2h: [number, number] };
+  /** His record at the main line against teams that play like tonight's opponent; null when too few games. */
+  style: StyleRecord | null;
   alt: { point: number; priceAmerican: number; bookName: string; chance: number; ev: number; l10: [number, number] } | null;
   reasons: Reason[];
 }
@@ -85,7 +89,15 @@ function rate(s: PropSummary, key: "l5" | "l10" | "season" | "h2h"): [number, nu
   return [r.hits, r.sampleSize];
 }
 
-function reasonsFor(s: PropSummary, side: PropDirection, stat: NbaPropStatDef, player: SlatePlayer, logs: GameLogPoint[], season: number): Reason[] {
+function reasonsFor(
+  s: PropSummary,
+  side: PropDirection,
+  stat: NbaPropStatDef,
+  player: SlatePlayer,
+  logs: GameLogPoint[],
+  season: number,
+  style: StyleRecord | null
+): Reason[] {
   const proj = s.model?.projection;
   if (!proj) return [];
   const up = side === "over";
@@ -124,6 +136,15 @@ function reasonsFor(s: PropSummary, side: PropDirection, stat: NbaPropStatDef, p
   }
   const h2h = s.hitRates.h2h;
   if (h2h.sampleSize >= 3) record(`${h2h.hits}/${h2h.sampleSize} ${up ? "over" : "under"} ${s.point} against ${opp}`, h2h.hits, h2h.sampleSize);
+  if (style) {
+    const diff = style.avg - style.overall;
+    const vsUsual = Math.abs(diff) >= 0.5 ? ` (${diff > 0 ? "+" : ""}${diff.toFixed(1)} on his usual)` : "";
+    record(
+      `vs teams like ${opp} (${style.teams.slice(0, 3).join(", ")}): ${style.hits}/${style.games} ${up ? "over" : "under"}, ${style.avg.toFixed(1)} a game${vsUsual}`,
+      style.hits,
+      style.games
+    );
+  }
   // Home or away, only when the split leans hard one way.
   const venue = s.splits.find((x) => x.key === "venue");
   if (venue && venue.rate.sampleSize >= 6 && venue.avg !== null) {
@@ -134,8 +155,16 @@ function reasonsFor(s: PropSummary, side: PropDirection, stat: NbaPropStatDef, p
   return out.sort((a, b) => Number(b.supports) - Number(a.supports));
 }
 
-/** Every standout prop on the slate, the biggest gaps first. */
-export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, GameLogPoint[]>): Standout[] {
+/** Whether a call clears the page's bar: the gap, ARCHR's chance, and a last-ten record that doesn't flatly disagree. */
+export function isStandout(z: number, chance: number, [hits, games]: [number, number]): boolean {
+  return Math.abs(z) >= MIN_Z && chance >= MIN_CHANCE && !(games >= 5 && hits / games < MIN_L10);
+}
+
+/**
+ * Every standout prop on the slate, the biggest gaps first. `all` keeps every
+ * call, standout or not (the backtest compares the two).
+ */
+export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, GameLogPoint[]>, opts: { all?: boolean } = {}): Standout[] {
   const games = new Map(slate.games.map((g) => [g.id, g]));
   const out: Standout[] = [];
   for (const prop of slate.props) {
@@ -170,8 +199,9 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
     const s = side === "over" ? base : summarizeProp(prop, playerLogs, stat, "under", context, main)!;
     const chance = side === "over" ? base.model.probOver : base.model.probUnder;
     const l10 = rate(s, "l10");
-    if (Math.abs(z) < MIN_Z || chance < MIN_CHANCE || (l10[1] >= 5 && l10[0] / l10[1] < MIN_L10)) continue;
+    if (!opts.all && !isStandout(z, chance, l10)) continue;
     const quote = side === "over" ? s.over : s.under;
+    const style = styleRecord(playerLogs, slate.defense, player.opponent?.abbreviation, stat, player.positionGroup, side, main);
 
     // The alternate line: the best-value rung beyond the main line on this side.
     let alt: Standout["alt"] = null;
@@ -208,8 +238,9 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       ev: quote ? chance * americanToDecimal(quote.priceAmerican) - 1 : null,
       minutes: proj.minutes,
       hit: { l5: rate(s, "l5"), l10, season: rate(s, "season"), h2h: rate(s, "h2h") },
+      style,
       alt,
-      reasons: reasonsFor(s, side, stat, player, playerLogs, slate.season),
+      reasons: reasonsFor(s, side, stat, player, playerLogs, slate.season, style),
     });
   }
   return out.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
