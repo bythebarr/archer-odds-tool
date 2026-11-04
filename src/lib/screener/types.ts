@@ -47,6 +47,8 @@ export interface ScreenerProp {
   rates: Record<ScreenWindow, Rate>;
   /** Soccer: the league's slug, for the link to its props board. */
   leagueSlug?: string;
+  /** NBA: ARCHR's projected minutes tonight (lib/nba/minutes). */
+  minutes?: number;
 }
 
 /** The sport's props board for this prop's game or league (kept off the row: the cached slice must stay small). */
@@ -79,7 +81,7 @@ export function screenRates(
   };
 }
 
-export type ScreenSort = ScreenWindow | "archr" | "edge" | "cedge" | "price";
+export type ScreenSort = ScreenWindow | "archr" | "edge" | "cedge" | "price" | "minutes";
 
 /**
  * The prop's conservative relative edge: the lower of ARCHR's chance and the
@@ -105,6 +107,8 @@ export interface ScreenFilters {
   /** A window needs at least this many games before its bar counts it as met. */
   minGames: number;
   minArchr: number;
+  /** NBA: projected minutes at least this (0 = any); props without a minutes projection drop out when it's set. */
+  minMinutes: number;
   minEdge: number | null;
   /** Price range, American; null = open. */
   shortest: number | null;
@@ -123,6 +127,7 @@ export const DEFAULT_FILTERS: ScreenFilters = {
   all: 0,
   minGames: 3,
   minArchr: 0,
+  minMinutes: 0,
   minEdge: null,
   shortest: null,
   longest: null,
@@ -157,6 +162,7 @@ export function passes(p: ScreenerProp, f: ScreenFilters): boolean {
     if (n < Math.min(f.minGames, w === "l3" ? 3 : f.minGames) || h / n < bar) return false;
   }
   if (f.minArchr > 0 && (p.archr === null || p.archr < f.minArchr)) return false;
+  if (f.minMinutes > 0 && (p.minutes === undefined || p.minutes < f.minMinutes)) return false;
   if (f.minEdge !== null && (p.edge === null || p.edge > MAX_TRUSTED_EDGE || p.edge < f.minEdge)) return false;
   if (f.shortest !== null && (p.priceAmerican === null || p.priceAmerican < f.shortest)) return false;
   if (f.longest !== null && (p.priceAmerican === null || p.priceAmerican > f.longest)) return false;
@@ -167,6 +173,7 @@ function sortValue(p: ScreenerProp, s: ScreenSort): number {
   if (s === "archr") return p.archr ?? -1;
   if (s === "edge") return p.edge !== null && p.edge <= MAX_TRUSTED_EDGE ? p.edge : -1;
   if (s === "price") return p.priceAmerican ?? -Infinity;
+  if (s === "minutes") return p.minutes ?? -Infinity;
   if (s === "cedge") return trustedRelativeEdge(conservativeEdge(p)) ?? -Infinity;
   return rateOf(p.rates[s]);
 }

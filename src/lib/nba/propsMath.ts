@@ -35,24 +35,34 @@ export interface GameLogPoint extends NbaStatLine {
   minutes: number;
   /** The player's own team that night (a traded player's older games were for another). */
   team?: string;
+  /** Started the game (minutes projection: his current role); undefined when unknown. */
+  starter?: boolean;
 }
 
 /**
  * A game log as a tuple for the wire: a night's slate ships two seasons of logs
  * for every player, and positional arrays drop the repeated keys (about half the
- * payload). [date, opponent, isHome, season, minutes, pts, reb, ast, 3pm, stl, blk, to, team]
+ * payload). [date, opponent, isHome, season, minutes, pts, reb, ast, 3pm, stl, blk, to, team, starter]
  */
-export type PackedLog = [string, string, 0 | 1, number, number, number, number, number, number, number, number, number?, string?];
+export type PackedLog = [string, string, 0 | 1, number, number, number, number, number, number, number, number, number?, string?, (0 | 1)?];
 
 export function packLog(l: GameLogPoint): PackedLog {
   const t: PackedLog = [l.date, l.opponent, l.isHome ? 1 : 0, l.season, l.minutes, l.points, l.rebounds, l.assists, l.threesMade, l.steals, l.blocks, l.turnovers];
   if (l.team) t[12] = l.team;
+  if (l.starter !== undefined) {
+    t[12] = l.team ?? "";
+    t[13] = l.starter ? 1 : 0;
+  }
   return t;
 }
 
 export function unpackLog(t: PackedLog): GameLogPoint {
-  const [date, opponent, isHome, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers, team] = t;
-  return { date, opponent, isHome: isHome === 1, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers: turnovers ?? 0, ...(team ? { team } : {}) };
+  const [date, opponent, isHome, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers, team, starter] = t;
+  return {
+    date, opponent, isHome: isHome === 1, season, minutes, points, rebounds, assists, threesMade, steals, blocks, turnovers: turnovers ?? 0,
+    ...(team ? { team } : {}),
+    ...(starter === undefined ? {} : { starter: starter === 1 }),
+  };
 }
 
 export interface SlateProp {

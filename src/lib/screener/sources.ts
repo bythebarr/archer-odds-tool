@@ -15,6 +15,7 @@ import { getLeagueDays } from "@/lib/queries/lobby";
 import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { unpackLog, type GameLogPoint } from "@/lib/nba/propsMath";
 import { nbaFinderLegs } from "@/lib/nba/parlayLegs";
+import { nbaTonightMinutes } from "@/lib/nba/slateContext";
 import { getNflPostedLines, getNflPropsSlate } from "@/lib/queries/nflProps";
 import { unpackNflLog, type NflLogPoint } from "@/lib/nfl/propsMath";
 import { nflFinderLegs } from "@/lib/nfl/parlayLegs";
@@ -50,7 +51,7 @@ function fromFinderLeg(
   sport: "nba" | "nfl",
   l: FinderLeg,
   season: number,
-  ctx: { game: string; startsAt: string; opponent: string; main: number | null; stat: string }
+  ctx: { game: string; startsAt: string; opponent: string; main: number | null; stat: string; minutes?: number | null }
 ): ScreenerProp {
   const yes = l.sideLabel === "Yes";
   return {
@@ -73,6 +74,7 @@ function fromFinderLeg(
     archr: l.modelProb,
     edge: edgeOf(l.modelProb, l.priceAmerican),
     rates: screenRates(l.logs, l.side, l.point, season),
+    ...(ctx.minutes !== undefined && ctx.minutes !== null ? { minutes: Math.round(ctx.minutes * 10) / 10 } : {}),
   };
 }
 
@@ -81,6 +83,11 @@ export async function nbaScreener(): Promise<ScreenerProp[]> {
   const slate = toWireSlate(await getNbaPropsSlate(days[0] ?? todayEt()));
   const logs = Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackLog)])) as Record<string, GameLogPoint[]>;
   const mains = new Map(slate.props.map((p) => [`${p.playerId}:${p.stat}`, mainPoint(p.quotes)]));
+  const minutesOf = new Map<string, number | null>();
+  const tonightMinutes = (id: string) => {
+    if (!minutesOf.has(id)) minutesOf.set(id, slate.players[id] ? nbaTonightMinutes(slate, slate.players[id], logs[id] ?? []) : null);
+    return minutesOf.get(id)!;
+  };
   return slate.games.flatMap((g) =>
     nbaFinderLegs(slate, logs, g.id, { shortestPrice: SHORTEST }).map((l) => {
       const player = slate.players[l.group.split(":")[0]!];
@@ -90,6 +97,7 @@ export async function nbaScreener(): Promise<ScreenerProp[]> {
         opponent: player?.opponent?.abbreviation ?? "",
         main: mains.get(l.group) ?? null,
         stat: l.group.split(":")[1]!,
+        minutes: tonightMinutes(l.group.split(":")[0]!),
       });
     })
   ).filter(keep);
