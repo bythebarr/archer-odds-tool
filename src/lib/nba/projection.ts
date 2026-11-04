@@ -37,6 +37,7 @@ import { countCdf, rawProbOver, shrinkLogit, type StatDistribution } from "@/lib
 import { NO_LINES, type GameLines } from "@/lib/propModel/environment";
 import { seasonMix, type SeasonMix } from "@/lib/propModel/seasonMix";
 import { nbaEnvironment, type NbaEnvironment } from "./environment";
+import { projectNbaMinutes, type MinutesProjection } from "./minutes";
 
 export { countCdf };
 
@@ -88,6 +89,8 @@ export interface PropProjection {
   seasons: SeasonMix;
   /** Fewer than MIN_GAMES of his own: the rate leans on his position's, and the spread is wider. */
   thin: boolean;
+  /** The minutes projection behind `minutes` (before the blowout trim): its base and each adjustment. */
+  minutesDetail: MinutesProjection | null;
   distribution: StatDistribution;
 }
 
@@ -127,6 +130,10 @@ export interface ProjectionContext {
   season?: number;
   /** League per-minute rate of each stat for his position group (see positionRates), the prior for a thin sample. */
   positionRates?: Record<string, number>;
+  /** Tonight (ET), his team, and its recent game dates: the minutes projection's rest and return reads. */
+  date?: string;
+  team?: string;
+  teamDates?: string[];
 }
 
 /** Projects one stat for one player from his logs (most recent first). Null with fewer than THIN_MIN_GAMES. */
@@ -156,9 +163,11 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
   // A thin sample: steady his rate with his position's, worth PRIOR_MINUTES of play.
   const prior = ctx.positionRates?.[stat.key];
   if (thin && prior !== undefined) perMinute = (perMinute * totalMinutes + prior * PRIOR_MINUTES) / (totalMinutes + PRIOR_MINUTES);
-  let minutesAdj = minutes;
+  // Minutes: the dedicated model (minutes.ts): role, early exits, teammates out, rest, returns.
+  const minutesDetail = projectNbaMinutes(played, { date: ctx.date, team: ctx.team, teamDates: ctx.teamDates, absences: ctx.absences });
+  let minutesAdj = minutesDetail?.minutes ?? minutes;
 
-  // Teammates out tonight: lean on the games he's already played without them.
+  // Teammates out tonight: his per-minute rate leans on the games he's already played without them.
   let absence: PropProjection["absence"] = null;
   const without = ctx.absences?.length ? gamesWithout(played, ctx.absences) : [];
   if (without.length >= MIN_WITHOUT_GAMES) {
@@ -166,7 +175,6 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     const wMinutes = wMin / without.length;
     const wRate = wMin ? without.reduce((a, l) => a + stat.value(l), 0) / wMin : perMinute;
     const w = withoutWeight(without.length, ABSENCE_PRIOR_GAMES);
-    minutesAdj = minutes * (1 - w) + wMinutes * w;
     perMinute = perMinute * (1 - w) + wRate * w;
     absence = { names: ctx.absences!.map((a) => a.name), games: without.length, minutes: wMinutes, perMinute: wRate };
   }
@@ -211,6 +219,7 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     env,
     seasons,
     thin,
+    minutesDetail,
     distribution: { kind: "count", mean, variance },
   };
 }

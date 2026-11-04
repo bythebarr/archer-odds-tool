@@ -14,11 +14,13 @@ import { DEFAULT_FILTERS, SCREEN_WINDOWS, conservativeEdge, barsOf, propHref, sc
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { MAX_TRUSTED_RELATIVE_EDGE } from "@/lib/builder/conservative";
 
-export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>>;
+export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>>;
 
 const BARS = [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
 const MIN_GAMES = [3, 5, 8, 10];
 const ARCHR = [0, 0.5, 0.55, 0.6, 0.7, 0.8];
+/** NBA projected minutes, at least. */
+const MINUTES = [0, 15, 20, 24, 28, 30, 32, 34, 36];
 const EDGES = ["any", "0", "0.03", "0.05", "0.1"];
 const PRICES = [-1000, -500, -300, -200, -150, -110, 100, 150, 200, 300];
 const SORTS: { key: ScreenSort; label: string }[] = [
@@ -26,6 +28,7 @@ const SORTS: { key: ScreenSort; label: string }[] = [
   { key: "archr", label: "ARCHR chance" },
   { key: "edge", label: "ARCHR edge" },
   { key: "cedge", label: "Conservative edge" },
+  { key: "minutes", label: "Projected minutes (NBA)" },
   { key: "price", label: "Longest price" },
 ];
 const ROWS = 150;
@@ -51,6 +54,7 @@ function readFilters(p: ScreenerParams, fixed: ScreenerSport | null): ScreenFilt
     all: num(p.all, BARS, 0),
     minGames: num(p.games, MIN_GAMES, DEFAULT_FILTERS.minGames),
     minArchr: num(p.archr, ARCHR, 0),
+    minMinutes: num(p.mins, MINUTES, 0),
     minEdge: p.edge && EDGES.includes(p.edge) && p.edge !== "any" ? Number(p.edge) : null,
     shortest: p.pmin && PRICES.includes(Number(p.pmin)) ? Number(p.pmin) : null,
     longest: p.pmax && PRICES.includes(Number(p.pmax)) ? Number(p.pmax) : null,
@@ -135,7 +139,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
   const stats = [...new Map(inGame.map((p) => [p.stat, `${f.sport ? "" : `${SPORT_LABEL[p.sport] ?? p.league} `}${p.statLabel}`])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const results = screen(pool, f);
   const bars = barsOf(f);
-  const active = [sport ? null : f.sport, f.gameId, f.team, f.stat, f.side, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
+  const active = [sport ? null : f.sport, f.gameId, f.team, f.stat, f.side, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minMinutes || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
   const query = new URLSearchParams(keep).toString();
   const clearHref = query ? `${basePath}?${query}` : basePath;
   /** The same screen sorted by another column (the table's headers are links). */
@@ -255,6 +259,21 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
             </div>
           </div>
 
+          {(!sport || sport === "nba") && (
+            <div className="border-t border-border pt-3">
+              <Field label="NBA projected minutes">
+                <select name="mins" defaultValue={String(f.minMinutes)} className={selectClass}>
+                  {MINUTES.map((m) => (
+                    <option key={m} value={m}>
+                      {m ? `${m}+ minutes` : "Any"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <p className="mt-1 text-[10px] leading-snug text-muted-foreground">Role, teammates out, back-to-backs, returns from a miss and blowout risk, if he plays.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
             <Field label="ARCHR chance">
               <select name="archr" defaultValue={String(f.minArchr)} className={selectClass}>
@@ -328,7 +347,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
           </div>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-xl border border-border">
-            <table className="w-full min-w-[780px] text-left text-xs">
+            <table className="w-full min-w-[840px] text-left text-xs">
               <thead className="bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-semibold">Player · prop</th>
@@ -345,6 +364,9 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                   </SortHead>
                   <SortHead href={sortHref("cedge")} active={f.sort === "cedge"} className="px-2 text-center">
                     <span title="The lower of ARCHR's chance and the low end of the L10 record, over the price's implied chance">Cons. edge</span>
+                  </SortHead>
+                  <SortHead href={sortHref("minutes")} active={f.sort === "minutes"} className="px-2 text-center">
+                    <span title="NBA: ARCHR's projected minutes tonight, if he plays">Proj min</span>
                   </SortHead>
                 </tr>
               </thead>
@@ -378,6 +400,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                       )}
                     </td>
                     <ConsEdgeCell p={p} />
+                    <td className="px-2 py-2 text-center font-mono text-[11px] text-foreground">{p.minutes !== undefined ? p.minutes.toFixed(1) : <span className="text-muted-foreground">—</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -387,7 +410,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. The conservative edge reads the prop cautiously: the lower of ARCHR&apos;s chance and the low end of its L10 record&apos;s range (one standard error), against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Past +50% it reads &quot;?&quot; and isn&apos;t sorted as edge: a gap that wide is a price that doesn&apos;t belong to the line, not value. Click a column to sort by it. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. The conservative edge reads the prop cautiously: the lower of ARCHR&apos;s chance and the low end of its L10 record&apos;s range (one standard error), against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Past +50% it reads &quot;?&quot; and isn&apos;t sorted as edge: a gap that wide is a price that doesn&apos;t belong to the line, not value. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

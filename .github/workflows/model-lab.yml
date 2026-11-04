@@ -25,6 +25,7 @@ on:
           - fit:ufc-prior
           - fit:ufc-props
           - backtest:nba-props
+          - backtest:nba-minutes
           - backtest:nfl-props
           - backtest:props-market
           - backtest:games

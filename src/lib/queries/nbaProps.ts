@@ -67,6 +67,8 @@ export interface NbaPropsSlate {
   calibrationFactors: Record<string, number>;
   /** Position group → stat → league per-minute rate: the prior for players with only a few games (rookies). */
   positionRates: Record<string, Record<string, number>>;
+  /** Team abbreviation → the ET dates it played in the last few weeks (back-to-backs, the games a player missed). */
+  teamDates: Record<string, string[]>;
   lastPolledAt: string | null;
 }
 
@@ -115,6 +117,20 @@ async function nbaAbsences(games: SlateGame[], season: number, before: Date): Pr
     const usage = withTeam.reduce((a, l) => a + l.minutes, 0) / withTeam.length;
     if (usage < ROTATION_MINUTES) continue;
     (out[abbr] ??= []).push({ name: p.fullName, status: i.status, playedDates: withTeam.map((l) => etDateOf(l.gameDate)), usage });
+  }
+  return out;
+}
+
+/** Every NBA team's game dates (ET) in the three weeks before tonight: back-to-backs and the games a player missed. */
+async function nbaTeamDates(before: Date): Promise<Record<string, string[]>> {
+  const games = await prisma.game.findMany({
+    where: { sport: "nba", status: "final", scheduledStartUtc: { lt: before, gte: new Date(before.getTime() - 21 * 86_400_000) } },
+    select: { scheduledStartUtc: true, homeTeam: { select: { abbreviation: true } }, awayTeam: { select: { abbreviation: true } } },
+  });
+  const out: Record<string, string[]> = {};
+  for (const g of games) {
+    const date = etDateOf(g.scheduledStartUtc);
+    for (const t of [g.homeTeam?.abbreviation, g.awayTeam?.abbreviation]) if (t) (out[t] ??= []).push(date);
   }
   return out;
 }
@@ -226,6 +242,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     modelWeights: {},
     calibrationFactors: {},
     positionRates: {},
+    teamDates: {},
     lastPolledAt: null,
   };
 
@@ -336,14 +353,16 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
       steals: h.steals,
       blocks: h.blocks,
       turnovers: h.turnovers,
+      starter: h.starter,
     });
   }
 
-  const [absences, gameLines, modelWeights, calibrationFactors] = await Promise.all([
+  const [absences, gameLines, modelWeights, calibrationFactors, teamDates] = await Promise.all([
     nbaAbsences(slateGames, season, gte),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     getModelWeights("nba"),
     getCalibrationFactors("nba-props"),
+    nbaTeamDates(gte),
   ]);
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
@@ -355,7 +374,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
 
   // ARCHR's line for every core stat a book hasn't posted (out / doubtful players sit out).
   const rates = positionRates(Object.values(players), logs, NBA_PROP_STATS.filter((s) => !s.milestone));
-  const inputs = { defense, absences, lines: gameLines, positionRates: rates };
+  const inputs = { defense, absences, lines: gameLines, positionRates: rates, teamDates, date: dateEt };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful") continue;
@@ -380,6 +399,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     modelWeights,
     calibrationFactors,
     positionRates: rates,
+    teamDates,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
 });
