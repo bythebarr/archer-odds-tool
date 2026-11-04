@@ -9,8 +9,9 @@ import type { GameLogPoint } from "./propsMath";
 import { NO_LINES } from "@/lib/propModel/environment";
 import { projectNbaMinutes } from "./minutes";
 import { nbaEnvironment } from "./environment";
+import { starterTonight } from "./lineups";
 
-type SlateInputs = Pick<NbaPropsSlate, "defense" | "absences" | "lines"> & Partial<Pick<NbaPropsSlate, "positionRates" | "teamDates" | "date">>;
+type SlateInputs = Pick<NbaPropsSlate, "defense" | "absences" | "lines"> & Partial<Pick<NbaPropsSlate, "positionRates" | "teamDates" | "date" | "lineups">>;
 
 export function nbaProjectionContext(slate: SlateInputs, player: SlatePlayer): ProjectionContext {
   const team = player.team?.abbreviation;
@@ -26,13 +27,14 @@ export function nbaProjectionContext(slate: SlateInputs, player: SlatePlayer): P
     date: slate.date,
     team,
     teamDates: team ? slate.teamDates?.[team] : undefined,
+    starterTonight: starterTonight(slate.lineups, team, player.name),
   };
 }
 
 /** His projected minutes tonight, the same figure the props projection uses (blowout trim included); null without a game played. */
 export function nbaTonightMinutes(slate: SlateInputs, player: SlatePlayer, logs: GameLogPoint[]): number | null {
   const ctx = nbaProjectionContext(slate, player);
-  const m = projectNbaMinutes(logs, { date: ctx.date, team: ctx.team, teamDates: ctx.teamDates, absences: ctx.absences });
+  const m = projectNbaMinutes(logs, { date: ctx.date, team: ctx.team, teamDates: ctx.teamDates, absences: ctx.absences, starterTonight: ctx.starterTonight });
   if (!m) return null;
   return m.minutes * nbaEnvironment(ctx.lines ?? NO_LINES, ctx.isHome ?? null, "points", m.minutes, null).minutesFactor;
 }
