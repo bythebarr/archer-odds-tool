@@ -157,10 +157,23 @@ export async function getNbaDefenseTable(season: number): Promise<DefenseTable> 
     (await prisma.team.findMany({ where: { id: { in: [...new Set(sums.map((r) => r.teamId))] } }, select: { id: true, abbreviation: true } }))
       .map((t) => [t.id, t.abbreviation])
   );
+  return defenseTableFromSums(sums, abbr, season);
+}
 
+/** One game, team and position group's box-score sums (null columns count as 0). */
+export interface DefenseSumRow {
+  season: number;
+  gameId: string;
+  teamId: string;
+  positionGroup: string | null;
+  _sum: Partial<Record<keyof TeamDefenseRow["allowed"], number | null>>;
+}
+
+/** The defense table from per-game sums (getNbaDefenseTable's grouping); pure, so backtests can build it as of any date. */
+export function defenseTableFromSums(sums: DefenseSumRow[], abbr: Map<string, string>, season: number): DefenseTable {
   type Line = TeamDefenseRow["allowed"];
   const zero = (): Line => ({ points: 0, rebounds: 0, assists: 0, threesMade: 0, steals: 0, blocks: 0, turnovers: 0 });
-  const addInto = (into: Line, from: (typeof sums)[number]["_sum"]) => {
+  const addInto = (into: Line, from: DefenseSumRow["_sum"]) => {
     for (const k of Object.keys(into) as (keyof Line)[]) into[k] += from[k] ?? 0;
   };
   const divide = (line: Line, n: number) => {

@@ -84,6 +84,7 @@ function Card({ s, rank }: { s: Standout; rank: number }) {
             {gap >= 0 ? "+" : "−"}
             {Math.abs(gap).toFixed(1)} vs line
           </p>
+          {s.minutes !== null && <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{s.minutes.toFixed(1)} min</p>}
         </div>
       </div>
 
@@ -94,7 +95,7 @@ function Card({ s, rank }: { s: Standout; rank: number }) {
           ["L10", rec(s.hit.l10)],
           ["Season", rec(s.hit.season)],
           [`vs ${s.opponent}`, rec(s.hit.h2h)],
-          ["Proj min", s.minutes !== null ? s.minutes.toFixed(1) : "—"],
+          [`Like ${s.opponent}`, s.style ? rec([s.style.hits, s.style.games]) : "—"],
         ].map(([label, value]) => (
           <div key={label} className="bg-card px-2 py-2">
             <p className="font-mono text-sm font-bold text-foreground">{value}</p>
@@ -208,7 +209,8 @@ export default async function NbaHotPage({ searchParams }: { searchParams: Promi
         3-point gap counts for more on a 12-point scorer than on a 30-point one. Each call needs ARCHR&apos;s chance on that side of at least{" "}
         {pct(MIN_CHANCE)} and a last-10 record that doesn&apos;t flatly disagree. The reasons are the projection&apos;s own inputs: his minutes
         (teammates out, rest, a return, tonight&apos;s lineup, blowout risk), what the opponent allows to his position, the game total, his recent
-        form and his record against this opponent. The alternate line is the rung beyond the main line with the best value at ARCHR&apos;s chance.
+        form, his record against this opponent, and his record against teams that play like it (&ldquo;Like&rdquo;: the five teams closest to
+        the opponent in pace and in what they allow, his position included). The alternate line is the rung beyond the main line with the best value at ARCHR&apos;s chance.
         Research only.
       </p>
     </div>
