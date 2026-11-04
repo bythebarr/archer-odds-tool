@@ -24,6 +24,7 @@
     "fit:ufc-props": "tsx scripts/fit-ufc-props.ts",
     "backtest:nba-props": "tsx scripts/backtest-nba-props.ts",
     "backtest:nba-minutes": "tsx scripts/backtest-nba-minutes.ts",
+    "diagnose:hot": "tsx scripts/diagnose-hot.ts",
     "backtest:nfl-props": "tsx scripts/backtest-nfl-props.ts",
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
     "backtest:games": "tsx scripts/backtest-games.ts",

@@ -49,6 +49,7 @@ export default async function PlayerPropsHubPage({ searchParams }: { searchParam
         ))}
       </ScrollRow>
       <p className="mt-3 text-xs text-muted-foreground">
+        <Link href="/nba/hot" className="font-semibold text-foreground underline-offset-2 hover:underline">NBA hottest tonight</Link> ·{" "}
         <Link href="/parlay-builder" className="font-semibold text-foreground underline-offset-2 hover:underline">Parlay Builder</Link> ·{" "}
         <Link href="/nba/parlays" className="font-semibold text-foreground underline-offset-2 hover:underline">NBA</Link> and{" "}
         <Link href="/nfl/parlays" className="font-semibold text-foreground underline-offset-2 hover:underline">NFL</Link> Parlay Finders ·{" "}
