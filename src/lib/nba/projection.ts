@@ -134,6 +134,8 @@ export interface ProjectionContext {
   date?: string;
   team?: string;
   teamDates?: string[];
+  /** In tonight's confirmed starting five (true), confirmed out of it (false), or not known yet. */
+  starterTonight?: boolean;
 }
 
 /** Projects one stat for one player from his logs (most recent first). Null with fewer than THIN_MIN_GAMES. */
@@ -164,7 +166,7 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
   const prior = ctx.positionRates?.[stat.key];
   if (thin && prior !== undefined) perMinute = (perMinute * totalMinutes + prior * PRIOR_MINUTES) / (totalMinutes + PRIOR_MINUTES);
   // Minutes: the dedicated model (minutes.ts): role, early exits, teammates out, rest, returns.
-  const minutesDetail = projectNbaMinutes(played, { date: ctx.date, team: ctx.team, teamDates: ctx.teamDates, absences: ctx.absences });
+  const minutesDetail = projectNbaMinutes(played, { date: ctx.date, team: ctx.team, teamDates: ctx.teamDates, absences: ctx.absences, starterTonight: ctx.starterTonight });
   let minutesAdj = minutesDetail?.minutes ?? minutes;
 
   // Teammates out tonight: his per-minute rate leans on the games he's already played without them.

@@ -16,6 +16,7 @@ import type { NbaPropStat } from "@/generated/prisma/client";
 import type { GameLines } from "@/lib/propModel/environment";
 import { getConsensusGameLines } from "./gameLines";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
+import { fetchNbaLineups, type TeamLineup } from "@/lib/nba/lineups";
 
 export interface SlateTeam {
   abbreviation: string;
@@ -69,6 +70,8 @@ export interface NbaPropsSlate {
   positionRates: Record<string, Record<string, number>>;
   /** Team abbreviation → the ET dates it played in the last few weeks (back-to-backs, the games a player missed). */
   teamDates: Record<string, string[]>;
+  /** Team abbreviation → tonight's starting five (NBA.com), expected or confirmed. */
+  lineups: Record<string, TeamLineup>;
   lastPolledAt: string | null;
 }
 
@@ -243,6 +246,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     calibrationFactors: {},
     positionRates: {},
     teamDates: {},
+    lineups: {},
     lastPolledAt: null,
   };
 
@@ -357,12 +361,13 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     });
   }
 
-  const [absences, gameLines, modelWeights, calibrationFactors, teamDates] = await Promise.all([
+  const [absences, gameLines, modelWeights, calibrationFactors, teamDates, lineups] = await Promise.all([
     nbaAbsences(slateGames, season, gte),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     getModelWeights("nba"),
     getCalibrationFactors("nba-props"),
     nbaTeamDates(gte),
+    fetchNbaLineups(dateEt),
   ]);
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
@@ -374,7 +379,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
 
   // ARCHR's line for every core stat a book hasn't posted (out / doubtful players sit out).
   const rates = positionRates(Object.values(players), logs, NBA_PROP_STATS.filter((s) => !s.milestone));
-  const inputs = { defense, absences, lines: gameLines, positionRates: rates, teamDates, date: dateEt };
+  const inputs = { defense, absences, lines: gameLines, positionRates: rates, teamDates, date: dateEt, lineups };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful") continue;
@@ -400,6 +405,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     calibrationFactors,
     positionRates: rates,
     teamDates,
+    lineups,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
 });
