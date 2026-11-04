@@ -4,6 +4,8 @@ import { collectPlays } from "@/lib/discord/postCard";
 import { getSelection, splitBySelection } from "@/lib/card/selection";
 import { SPORTS, stakeable, trustVerdict } from "@/lib/engine";
 import { getReportedVerdicts } from "@/lib/queries/modelTrust";
+import { playIsUnproven } from "@/lib/engine/provenance";
+import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
 import { todayEt } from "@/lib/dateEt";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { pickAction, clearAction, unitsAction, fireAction } from "./actions";
@@ -188,6 +190,7 @@ export default async function DeckPage({
             const staked = pick?.units ?? p.suggestedUnits;
             const accent = SPORT_ACCENT.get(p.sportKey) ?? "#06996b";
             const lockedOut = !canStake(p);
+            const unproven = playIsUnproven(p, verdicts);
             return (
               <li
                 key={p.playKey}
@@ -201,6 +204,7 @@ export default async function DeckPage({
                   >
                     {SPORT_LABEL.get(p.sportKey) ?? p.sportKey}
                   </span>
+                  {unproven && <UnprovenModelBadge verdict={trustVerdict(p.sportKey, verdicts)} />}
                   <span className="font-semibold text-foreground">{p.selection.label}</span>
                   <span className="text-sm text-muted-foreground">
                     {american(p.bestPrice)} · {p.bestBookName}
