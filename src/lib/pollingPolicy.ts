@@ -1,4 +1,12 @@
 import { prisma } from "@/lib/prisma";
+import { fetchScores } from "@/lib/odds/oddsApiClient";
+import {
+  CREDITS_GUARDRAIL_JOB,
+  CREDITS_PROBE_JOB,
+  CREDITS_PROBE_SPORT_KEY,
+  blockedCreditsStatus,
+  shouldProbeCredits,
+} from "./creditsRecovery";
 
 export type PollTier = "imminent" | "approaching" | "far";
 
@@ -81,6 +89,101 @@ export async function getLatestCreditsRemaining(): Promise<number | null> {
   return latest?.creditsRemaining ?? null;
 }
 
+interface CreditsSnapshot {
+  remaining: number;
+  recordedAt: Date;
+}
+
+/** The latest recorded balance AND when it was recorded — the "when" is what tells a stale deadlock from a live one. */
+async function getLatestCreditsSnapshot(): Promise<CreditsSnapshot | null> {
+  const latest = await prisma.pollLog.findFirst({
+    where: { creditsRemaining: { not: null } },
+    orderBy: { lastPolledAt: "desc" },
+  });
+  if (!latest || latest.creditsRemaining === null) return null;
+  return { remaining: latest.creditsRemaining, recordedAt: latest.lastPolledAt };
+}
+
+/**
+ * The probe's cost, for the record: the scores endpoint with no `daysFrom`
+ * (live and upcoming only) is the cheapest keyed call the provider bills —
+ * 1 credit, once a day at most, and only on days the guardrail is blocking
+ * at all. In normal operation the probe never runs. The pure constants and
+ * helpers (job names, cadence gate, status text) live in creditsRecovery.ts
+ * so they stay unit-testable; they are re-exported here next to the
+ * guardrail they serve.
+ */
+export {
+  CREDITS_GUARDRAIL_JOB,
+  CREDITS_PROBE_JOB,
+  CREDITS_PROBE_INTERVAL_MINUTES,
+  CREDITS_PROBE_SPORT_KEY,
+  shouldProbeCredits,
+  blockedCreditsStatus,
+} from "./creditsRecovery";
+
+/**
+ * Updates ONLY a job's lastStatus, leaving lastPolledAt (cadence + freshness)
+ * and its credit figures untouched — stamping lastPolledAt for a poll that
+ * never ran would make a stale board read as fresh, which is the exact lie
+ * this branch exists to stop. No-op if the job has never recorded a row.
+ */
+async function recordPollStatus(jobName: string, lastStatus: string): Promise<void> {
+  await prisma.pollLog.updateMany({ where: { jobName }, data: { lastStatus } });
+}
+
+/**
+ * Makes a credits block observable and gives it a way out, in one call:
+ *
+ * 1. Visibility. The blocked job's own row is stamped (status-only) and the
+ *    guardrail's row is refreshed, so /api/status shows the block, the stale
+ *    balance it rests on, and when that balance was recorded. Before this,
+ *    a blocked poll returned HTTP 200 and recorded nothing — the tick looked
+ *    healthy while every keyed board froze (Oct 27 – Nov 4, 2026).
+ * 2. Recovery. Once a day at most, a 1-credit probe (see
+ *    CREDITS_PROBE_SPORT_KEY) asks the provider for the real balance and
+ *    records it, so a quota reset is DISCOVERED by the gated path itself.
+ *    The deadlock this breaks: the only writers that could refresh the
+ *    recorded balance were the very polls the guardrail blocks, and error
+ *    records write null — so a stale low balance blocked polling forever.
+ *
+ * Returns true when the caller should still treat the poll as blocked
+ * (probe not due, probe failed, or the refreshed balance is still low).
+ */
+export async function resolveCreditsBlock(jobName: string, now: Date = new Date()): Promise<boolean> {
+  if (await hasCreditsHeadroom()) return false;
+
+  const snapshot = await getLatestCreditsSnapshot();
+  const status = blockedCreditsStatus(snapshot, MIN_CREDITS_REMAINING_GUARDRAIL);
+  await recordPollStatus(jobName, status);
+  await recordPollLog(CREDITS_GUARDRAIL_JOB, `${status}; latest blocked job: ${jobName}`);
+
+  const probeLog = await prisma.pollLog.findUnique({ where: { jobName: CREDITS_PROBE_JOB } });
+  if (!shouldProbeCredits(probeLog?.lastPolledAt ?? null, now)) return true;
+
+  try {
+    const { creditsUsed, creditsRemaining } = await fetchScores(CREDITS_PROBE_SPORT_KEY);
+    await recordPollLog(
+      CREDITS_PROBE_JOB,
+      `ok (recovery probe: ${creditsRemaining ?? "unknown"} credits remaining)`,
+      creditsUsed,
+      creditsRemaining
+    );
+  } catch (error) {
+    // Still dry (401 OUT_OF_USAGE_CREDITS is the expected shape): record the
+    // attempt so the failure is visible and the next probe is a day out, but
+    // write NO credit figures — an error must never pose as a balance.
+    const message = error instanceof Error ? error.message : String(error);
+    await recordPollLog(CREDITS_PROBE_JOB, `error: ${message.slice(0, 300)}`);
+    return true;
+  }
+
+  // The probe just refreshed the account-wide recorded balance; re-read the
+  // guardrail against it so polling resumes in this same tick when the
+  // quota has reset, instead of a tick (or a day) later.
+  return !(await hasCreditsHeadroom());
+}
+
 /** Account-wide credits guardrail — shared by every sport's poll decision, not just MLB's. */
 export async function hasCreditsHeadroom(): Promise<boolean> {
   const latestCreditsRemaining = await getLatestCreditsRemaining();
@@ -100,7 +203,7 @@ export async function decidePollOdds(jobName: string, now: Date = new Date()): P
   const minutesToNearestFirstPitch = await getMinutesToNearestFirstPitch(now);
   const { tier, intervalMinutes } = determineTier(minutesToNearestFirstPitch);
 
-  if (!(await hasCreditsHeadroom())) {
+  if (await resolveCreditsBlock(jobName, now)) {
     return { shouldPoll: false, blockedReason: "low-credits", tier, intervalMinutes, minutesToNearestFirstPitch };
   }
 
@@ -133,7 +236,7 @@ export async function decideFixedCadencePoll(
   minIntervalMinutes: number,
   now: Date = new Date()
 ): Promise<SimplePollDecision> {
-  if (!(await hasCreditsHeadroom())) {
+  if (await resolveCreditsBlock(jobName, now)) {
     return { shouldPoll: false, blockedReason: "low-credits" };
   }
   const log = await prisma.pollLog.findUnique({ where: { jobName } });
