@@ -7,7 +7,7 @@ import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { positionRates } from "@/lib/nba/projection";
 import { positionGroup } from "@/lib/nba/positionGroups";
 import type { GameLogPoint, PropQuote, SlateProp } from "@/lib/nba/propsMath";
-import { isStandout, nbaStandouts } from "@/lib/nba/standouts";
+import { STANDOUT_EDGE_SHRINK, calibrateStandout, isStandout, nbaStandouts } from "@/lib/nba/standouts";
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import type { GameLines } from "@/lib/propModel/environment";
 import { closingGameLines } from "./props/history";
@@ -23,6 +23,8 @@ import { closingGameLines } from "./props/history";
  * Reports, for every call and for the standouts the page shows:
  *   - hit rate, ARCHR's average chance (calibration), and ROI
  *   - the same by the size of the gap (|z|), by side, and night by night's top 10
+ *   - the edge shrink (STANDOUT_EDGE_SHRINK) that best calibrates the standouts'
+ *     chance, by log loss: copy it into standouts.ts
  *   - whether the opponent look-alike record (styleMatch) and the head-to-head
  *     record add anything when they agree with the call or disagree
  *
@@ -39,7 +41,10 @@ interface Graded {
   standout: boolean;
   side: "over" | "under";
   absZ: number;
+  /** Calibrated (what the page shows), and the inputs to refit the calibration. */
   chance: number;
+  rawChance: number;
+  marketChance: number | null;
   won: boolean;
   profit: number | null;
   style: "agrees" | "disagrees" | "none";
@@ -235,10 +240,12 @@ async function main() {
       }
       graded.push({
         date,
-        standout: isStandout(s.z, s.chance, s.hit.l10),
+        standout: isStandout(s.z, s.rawChance, s.hit.l10),
         side: s.side,
         absZ: Math.abs(s.z),
         chance: s.chance,
+        rawChance: s.rawChance,
+        marketChance: s.marketChance,
         won,
         profit: profitAt(s.priceAmerican, won),
         style: agreement(s.style ? [s.style.hits, s.style.games] : null, 4),
@@ -277,10 +284,32 @@ async function main() {
     line(`|z| ${lo}–${hi === Infinity ? "" : hi}`, graded.filter((g) => g.absZ >= lo && g.absZ < hi));
   }
 
-  console.log("\nBy ARCHR's chance (standouts):");
-  for (const [lo, hi] of [[0.58, 0.62], [0.62, 0.66], [0.66, 0.7], [0.7, 1.01]]) line(`${lo}–${hi > 1 ? "" : hi}`, standouts.filter((g) => g.chance >= lo && g.chance < hi));
+  console.log(`\nBy ARCHR's calibrated chance (standouts; edge shrink ${STANDOUT_EDGE_SHRINK}):`);
+  for (const [lo, hi] of [[0, 0.54], [0.54, 0.56], [0.56, 0.58], [0.58, 0.6], [0.6, 1.01]]) line(`${lo}–${hi > 1 ? "" : hi}`, standouts.filter((g) => g.chance >= lo && g.chance < hi));
+  console.log("\nBy ARCHR's raw chance (standouts):");
+  for (const [lo, hi] of [[0.58, 0.62], [0.62, 0.66], [0.66, 0.7], [0.7, 1.01]])
+    line(`${lo}–${hi > 1 ? "" : hi}`, standouts.filter((g) => g.rawChance >= lo && g.rawChance < hi).map((g) => ({ ...g, chance: g.rawChance })));
 
-  console.log("\nNight by night's top 10 standouts by |z|:");
+  // The edge shrink that calibrates the standouts best.
+  const logLoss = (k: number) =>
+    standouts.reduce((a, g) => {
+      const p = Math.min(0.99, Math.max(0.01, calibrateStandout(g.rawChance, g.marketChance, k)));
+      return a - Math.log(g.won ? p : 1 - p);
+    }, 0) / standouts.length;
+  let bestK = 1;
+  for (let k = 0; k <= 1.0001; k += 0.05) if (logLoss(k) < logLoss(bestK)) bestK = k;
+  console.log(
+    `\nEdge shrink by log loss on the standouts: best ${bestK.toFixed(2)} (${logLoss(bestK).toFixed(4)}), in use ${STANDOUT_EDGE_SHRINK} (${logLoss(STANDOUT_EDGE_SHRINK).toFixed(4)}), none 1 (${logLoss(1).toFixed(4)}), market alone 0 (${logLoss(0).toFixed(4)}) · ${standouts.filter((g) => g.marketChance !== null).length}/${standouts.length} with a market read`
+  );
+
+  console.log("\nNight by night's top standouts, as the page ranks them (calibrated chance):");
+  const byChance = (a: Graded, b: Graded) => b.chance - a.chance || b.absZ - a.absZ;
+  const byNightRanked = new Map<string, Graded[]>();
+  for (const g of standouts) byNightRanked.set(g.date, [...(byNightRanked.get(g.date) ?? []), g]);
+  line("top 10 a night", [...byNightRanked.values()].flatMap((l) => [...l].sort(byChance).slice(0, 10)));
+  line("top 3 a night", [...byNightRanked.values()].flatMap((l) => [...l].sort(byChance).slice(0, 3)));
+
+  console.log("\nNight by night's top 10 standouts by |z| (the old ranking):");
   const byNight = new Map<string, Graded[]>();
   for (const g of standouts) byNight.set(g.date, [...(byNight.get(g.date) ?? []), g]);
   const top = [...byNight.values()].flatMap((l) => [...l].sort((a, b) => b.absZ - a.absZ).slice(0, 10));

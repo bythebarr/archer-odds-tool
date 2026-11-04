@@ -108,10 +108,15 @@ function Card({ s, rank }: { s: Standout; rank: number }) {
         <ul className="space-y-1 px-3 pt-2.5 text-xs">
           {s.reasons.slice(0, 6).map((r) => (
             <li key={r.text} className="flex gap-2">
-              <span aria-hidden className={`mt-0.5 shrink-0 font-bold ${r.supports ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
-                {r.supports ? "▲" : "▼"}
+              <span
+                aria-hidden
+                className={`mt-0.5 w-3 shrink-0 text-center font-bold ${
+                  r.supports === null ? "text-muted-foreground" : r.supports ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                {r.supports === null ? "•" : r.supports ? "▲" : "▼"}
               </span>
-              <span className="text-foreground">{r.text}</span>
+              <span className={r.supports === null ? "text-muted-foreground" : "text-foreground"}>{r.text}</span>
             </li>
           ))}
         </ul>
@@ -205,13 +210,15 @@ export default async function NbaHotPage({ searchParams }: { searchParams: Promi
       )}
 
       <p className="mt-5 text-[11px] leading-relaxed text-muted-foreground">
-        Ranked by how far ARCHR&apos;s projection sits from the main line, measured in the player&apos;s own game-to-game spread for that stat, so a
-        3-point gap counts for more on a 12-point scorer than on a 30-point one. Each call needs ARCHR&apos;s chance on that side of at least{" "}
-        {pct(MIN_CHANCE)} and a last-10 record that doesn&apos;t flatly disagree. The reasons are the projection&apos;s own inputs: his minutes
-        (teammates out, rest, a return, tonight&apos;s lineup, blowout risk), what the opponent allows to his position, the game total, his recent
-        form, his record against this opponent, and his record against teams that play like it (&ldquo;Like&rdquo;: the five teams closest to
-        the opponent in pace and in what they allow, his position included). The alternate line is the rung beyond the main line with the best value at ARCHR&apos;s chance.
-        Research only.
+        A call makes the page when ARCHR&apos;s projection sits well clear of the main line, measured in the player&apos;s own game-to-game spread
+        for that stat (a 3-point gap counts for more on a 12-point scorer than on a 30-point one), its chance on that side is at least{" "}
+        {pct(MIN_CHANCE)}, and his last-10 record doesn&apos;t flatly disagree. Calls are ranked by ARCHR&apos;s chance, calibrated: the biggest
+        disagreements with the book are also where a projection is most often wrong, so the chance shown keeps only part of ARCHR&apos;s edge
+        over the book&apos;s own, the part that held up when past nights were replayed. The reasons (▲ for the call, ▼ against) are the
+        projection&apos;s own inputs: his minutes (teammates out, rest, a return, tonight&apos;s lineup, blowout risk), what the opponent allows to
+        his position, the game total and his recent form. Records (•) are context: against this opponent, at this venue, and against teams that
+        play like it (&ldquo;Like&rdquo;: the five teams closest to the opponent in pace and in what they allow, his position included). The
+        alternate line is the rung beyond the main line with the best value at ARCHR&apos;s chance. Research only.
       </p>
     </div>
   );
