@@ -45,6 +45,7 @@ on:
           - diagnose:parlays
           - diagnose:builder
           - diagnose:screener
+          - diagnose:hot
           - poll:espn-props
           - fix:ufc-duplicates
           - fix:ufc-duplicates:apply
