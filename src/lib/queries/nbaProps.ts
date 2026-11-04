@@ -17,6 +17,8 @@ import type { GameLines } from "@/lib/propModel/environment";
 import { getConsensusGameLines } from "./gameLines";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
 import { fetchNbaLineups, type TeamLineup } from "@/lib/nba/lineups";
+import { getReportedBlendVerdicts } from "./modelTrust";
+import { blendVerdictsByStat } from "@/lib/props/provenance";
 
 export interface SlateTeam {
   abbreviation: string;
@@ -66,6 +68,8 @@ export interface NbaPropsSlate {
   modelWeights: Record<string, number>;
   /** Stat → the props backtest's fitted calibration factor (stats without a fit keep the baked shrink). */
   calibrationFactors: Record<string, number>;
+  /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
+  blendVerdicts: Record<string, string>;
   /** Position group → stat → league per-minute rate: the prior for players with only a few games (rookies). */
   positionRates: Record<string, Record<string, number>>;
   /** Team abbreviation → the ET dates it played in the last few weeks (back-to-backs, the games a player missed). */
@@ -257,6 +261,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     lines: {},
     modelWeights: {},
     calibrationFactors: {},
+    blendVerdicts: {},
     positionRates: {},
     teamDates: {},
     lineups: {},
@@ -374,13 +379,14 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     });
   }
 
-  const [absences, gameLines, modelWeights, calibrationFactors, teamDates, lineups] = await Promise.all([
+  const [absences, gameLines, modelWeights, calibrationFactors, teamDates, lineups, blendReports] = await Promise.all([
     nbaAbsences(slateGames, season, gte),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     getModelWeights("nba"),
     getCalibrationFactors("nba-props"),
     nbaTeamDates(gte),
     fetchNbaLineups(dateEt),
+    getReportedBlendVerdicts(),
   ]);
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
@@ -416,6 +422,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     lines: gameLines,
     modelWeights,
     calibrationFactors,
+    blendVerdicts: blendVerdictsByStat("nba", blendReports),
     positionRates: rates,
     teamDates,
     lineups,

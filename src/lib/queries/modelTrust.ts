@@ -18,3 +18,22 @@ export async function getReportedVerdicts(): Promise<ReportedVerdicts> {
   });
   return new Map(rows.map((r) => [r.model, r.verdict]));
 }
+
+/**
+ * Each blend card's verdict from its latest /models report, keyed by the full
+ * card key (`market-blend:<sport>:<stat>`, saved by
+ * `npm run backtest:props-market`) — the card that grades the exact blend a
+ * prop is priced with. Game-market blend cards (e.g. `market-blend:ufc:ml`)
+ * ride along in the map; props resolution only ever reads prop-stat keys
+ * (see lib/props/provenance). A stat with no saved card is absent from the
+ * map, and absence reads as unproven there.
+ */
+export async function getReportedBlendVerdicts(): Promise<ReportedVerdicts> {
+  const rows = await prisma.modelReport.findMany({
+    where: { model: { startsWith: "market-blend:" } },
+    orderBy: { createdAt: "desc" },
+    distinct: ["model"],
+    select: { model: true, verdict: true },
+  });
+  return new Map(rows.map((r) => [r.model, r.verdict]));
+}

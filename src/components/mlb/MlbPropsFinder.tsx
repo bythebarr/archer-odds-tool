@@ -26,6 +26,7 @@ import { EvTag } from "@/components/EvTag";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { BlendLine } from "@/components/props/ModelPieces";
+import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import {
   ArchrLineChip,
@@ -110,7 +111,7 @@ function rowFor(prop: MlbSlateProp, stat: MlbPropStatDef, side: PropDirection, p
   };
 }
 
-function MlbCard({ row, stat, side, logs, season, startUtc, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; logs: MlbChartLog[]; season: number; startUtc?: string; onOpen: () => void }) {
+function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; logs: MlbChartLog[]; season: number; startUtc?: string; blendVerdict?: string | null; onOpen: () => void }) {
   const { player, priced } = row;
   const chance = side === "over" ? priced.probOver : priced.probUnder;
   const ev = side === "over" ? priced.evOver : priced.evUnder;
@@ -123,6 +124,7 @@ function MlbCard({ row, stat, side, logs, season, startUtc, onOpen }: { row: Row
       onOpen={onOpen}
       headshot={[player.headshotUrl]}
       name={player.name}
+      badges={<UnprovenModelBadge verdict={blendVerdict} />}
       tag={player.role === "pitcher" ? "SP" : player.battingOrder ? `#${player.battingOrder}` : undefined}
       teamLogo={player.team.logoUrl}
       teamAbbr={player.team.abbreviation}
@@ -177,7 +179,7 @@ function MlbCard({ row, stat, side, logs, season, startUtc, onOpen }: { row: Row
   );
 }
 
-function Sheet({ player, props, logs, season, initialStat, side: initialSide, startLabel, onClose }: { player: MlbPropsPlayer; props: MlbSlateProp[]; logs: MlbChartLog[]; season: number; initialStat: MlbPropStat; side: PropDirection; startLabel: string; onClose: () => void }) {
+function Sheet({ player, props, logs, season, initialStat, side: initialSide, startLabel, blendVerdicts, onClose }: { player: MlbPropsPlayer; props: MlbSlateProp[]; logs: MlbChartLog[]; season: number; initialStat: MlbPropStat; side: PropDirection; startLabel: string; blendVerdicts: Record<string, string>; onClose: () => void }) {
   const offered = MLB_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
   const [statKey, setStatKey] = useState<MlbPropStat>(props.some((p) => p.stat === initialStat) ? initialStat : offered[0]!.key);
   const [side, setSide] = useState(initialSide);
@@ -280,6 +282,7 @@ function Sheet({ player, props, logs, season, initialStat, side: initialSide, st
           </>
         }
       >
+        <UnprovenModelBadge verdict={blendVerdicts[statKey]} className="mt-3" />
         <BlendLine model={priced} side={side} />
       </ProjectionCard>
 
@@ -396,7 +399,7 @@ export function MlbPropsFinder({ slate }: { slate: MlbPropsSlate }) {
           {rows.map((r, i) => (
             <Fragment key={r.player.id}>
               {r.projected && posted > 0 && (i === 0 || !rows[i - 1]!.projected) && <ProjectedDivider />}
-              <MlbCard row={r} stat={stat} side={side} logs={logs[r.player.id] ?? []} season={slate.season} startUtc={gameById.get(r.player.gameId)?.startUtc} onOpen={() => setOpen(r.player.id)} />
+              <MlbCard row={r} stat={stat} side={side} logs={logs[r.player.id] ?? []} season={slate.season} startUtc={gameById.get(r.player.gameId)?.startUtc} blendVerdict={slate.blendVerdicts[statKey]} onOpen={() => setOpen(r.player.id)} />
             </Fragment>
           ))}
         </ul>
@@ -411,6 +414,7 @@ export function MlbPropsFinder({ slate }: { slate: MlbPropsSlate }) {
           season={slate.season}
           initialStat={statKey}
           side={side}
+          blendVerdicts={slate.blendVerdicts}
           startLabel={(() => {
             const g = gameById.get(openPlayer.gameId);
             return g ? `${firstPitch(g.startUtc)} ET` : "";
