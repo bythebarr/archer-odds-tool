@@ -23,6 +23,7 @@
     "fit:ufc-prior": "tsx scripts/fit-ufc-prior.ts",
     "fit:ufc-props": "tsx scripts/fit-ufc-props.ts",
     "backtest:nba-props": "tsx scripts/backtest-nba-props.ts",
+    "backtest:nba-minutes": "tsx scripts/backtest-nba-minutes.ts",
     "backtest:nfl-props": "tsx scripts/backtest-nfl-props.ts",
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
     "backtest:games": "tsx scripts/backtest-games.ts",
