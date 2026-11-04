@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
-import { MINUTES_PARAMS, projectNbaMinutes, type MinutesContext, type MinutesLog, type MinutesParams } from "@/lib/nba/minutes";
+import { LINEUP_MINUTES_PARAMS, MINUTES_PARAMS, projectNbaMinutes, type MinutesContext, type MinutesLog, type MinutesParams } from "@/lib/nba/minutes";
 import { nbaEnvironment } from "@/lib/nba/environment";
 import { NO_LINES, type GameLines } from "@/lib/propModel/environment";
 import type { Absence } from "@/lib/injuries/absence";
@@ -23,6 +23,8 @@ import { closingGameLines } from "./props/history";
  * Run: `npm run backtest:nba-minutes`.
  */
 const ROTATION_MINUTES = 18;
+/** The settings before this model (recent minutes, half-life 5 over 20 games, nothing else): the comparison. */
+const BASELINE: MinutesParams = { window: 20, halfLife: 5, roleWeight: 1, exitRatio: 0.5, exitWeight: 1, absenceAlpha: 0, b2bStarter: 1, b2bBench: 1, returnShort: 1, returnLong: 1, promoted: 1, demoted: 1, starterAdd: 0, benchAdd: 0 };
 const HISTORY = 120;
 
 interface Sample {
@@ -35,14 +37,28 @@ interface Sample {
   starter: boolean;
 }
 
-async function load(): Promise<Sample[]> {
+type Row = { player: string; gameId: string; date: string; team: string; isHome: boolean; starter: boolean; minutes: number };
+
+/** Box scores from the database, or from a JSON file of the same rows (MINUTES_DATA: { rows, lines }), e.g. pulled from ESPN. */
+async function rowsAndLines(): Promise<{ all: Row[]; closing: Map<string, GameLines> }> {
+  if (process.env.MINUTES_DATA) {
+    const { readFileSync } = await import("node:fs");
+    const data = JSON.parse(readFileSync(process.env.MINUTES_DATA, "utf8")) as { rows: Row[]; lines: Record<string, GameLines> };
+    return { all: data.rows.sort((a, b) => a.date.localeCompare(b.date)), closing: new Map(Object.entries(data.lines)) };
+  }
   const rows = await prisma.nbaPlayerGameLog.findMany({
     orderBy: { gameDate: "asc" },
     select: { nbaPlayerId: true, gameId: true, gameDate: true, teamId: true, isHome: true, starter: true, minutes: true },
   });
   const closing = await closingGameLines("nba");
-  type Row = { player: string; gameId: string; date: string; team: string; isHome: boolean; starter: boolean; minutes: number };
-  const all: Row[] = rows.map((r) => ({ player: r.nbaPlayerId, gameId: r.gameId, date: etDateOf(r.gameDate), team: r.teamId, isHome: r.isHome, starter: r.starter, minutes: r.minutes }));
+  return {
+    all: rows.map((r) => ({ player: r.nbaPlayerId, gameId: r.gameId, date: etDateOf(r.gameDate), team: r.teamId, isHome: r.isHome, starter: r.starter, minutes: r.minutes })),
+    closing,
+  };
+}
+
+async function load(): Promise<Sample[]> {
+  const { all, closing } = await rowsAndLines();
   console.log(`${all.length} player-game rows, ${closing.size} games with closing lines.`);
 
   const teamDates = new Map<string, string[]>();
@@ -134,6 +150,10 @@ const GRID: { [K in keyof MinutesParams]: number[] } = {
   b2bBench: [0.94, 0.96, 0.98, 1, 1.02, 1.04],
   returnShort: [0.8, 0.85, 0.9, 0.93, 0.96, 1, 1.03],
   returnLong: [0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1],
+  promoted: [1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7],
+  demoted: [0.5, 0.6, 0.7, 0.8, 0.9, 1],
+  starterAdd: [0, 0.5, 1, 1.5, 2, 2.5],
+  benchAdd: [0, -0.5, -1, -1.5, -2, -2.5],
 };
 
 const fmt = (r: ReturnType<typeof score>) => `MAE ${r.mae.toFixed(3)}, RMSE ${r.rmse.toFixed(3)}, bias ${r.bias >= 0 ? "+" : ""}${r.bias.toFixed(2)} (n ${r.n})`;
@@ -145,18 +165,33 @@ async function main() {
   const test = samples.filter((s) => s.date >= cut);
   console.log(`${samples.length} player-games projected · train before ${cut}: ${train.length} · test: ${test.length}\n`);
 
-  let fitted: MinutesParams = { ...MINUTES_PARAMS };
-  for (let pass = 1; pass <= 2; pass++) {
-    for (const key of Object.keys(GRID) as (keyof MinutesParams)[]) {
-      let best = { v: fitted[key], mae: score(train, fitted).mae };
-      for (const v of GRID[key]) {
-        const mae = score(train, { ...fitted, [key]: v }).mae;
-        if (mae < best.mae - 1e-4) best = { v, mae };
+  const fit = (train: Sample[], keys: (keyof MinutesParams)[]) => {
+    let fitted: MinutesParams = { ...BASELINE };
+    for (let pass = 1; pass <= 2; pass++) {
+      for (const key of keys) {
+        let best = { v: fitted[key], mae: score(train, fitted).mae };
+        for (const v of GRID[key]) {
+          const mae = score(train, { ...fitted, [key]: v }).mae;
+          if (mae < best.mae - 1e-4) best = { v, mae };
+        }
+        fitted = { ...fitted, [key]: best.v };
+        console.log(`pass ${pass} · ${key} = ${best.v} (train MAE ${best.mae.toFixed(3)})`);
       }
-      fitted = { ...fitted, [key]: best.v };
-      console.log(`pass ${pass} · ${key} = ${best.v} (train MAE ${best.mae.toFixed(3)})`);
     }
-  }
+    return fitted;
+  };
+  // Before lineups: the role-change and role-offset settings need tonight's lineup.
+  const preKeys = (Object.keys(GRID) as (keyof MinutesParams)[]).filter((k) => !["promoted", "demoted", "starterAdd", "benchAdd"].includes(k));
+  const fitted = fit(train, preKeys);
+  // Once lineups are out: the same games with tonight's starters known.
+  const withLineup = (list: Sample[]) => list.map((s) => ({ ...s, ctx: { ...s.ctx, starterTonight: s.starter } }));
+  console.log("\nWith tonight's starting lineup known:");
+  const fittedLineup = fit(withLineup(train), Object.keys(GRID) as (keyof MinutesParams)[]);
+  const testLineup = withLineup(test);
+  console.log(`  lineup known, fitted:   ${fmt(score(testLineup, fittedLineup))}`);
+  console.log(`  lineup known, by role:  started ${fmt(score(testLineup.filter((s) => s.starter), fittedLineup))}`);
+  console.log(`                          bench   ${fmt(score(testLineup.filter((s) => !s.starter), fittedLineup))}`);
+  console.log(`  lineup params: ${JSON.stringify(fittedLineup)}`);
 
   const segments: [string, (s: Sample) => boolean][] = [
     ["all", () => true],
@@ -167,12 +202,14 @@ async function main() {
     ["rotation teammates out", (s) => (s.ctx.absences?.length ?? 0) > 0],
     ["closing spread 10+", (s) => s.lines.homeSpread !== null && Math.abs(s.lines.homeSpread) >= 10],
   ];
-  console.log(`\nTest (newest 30%), current settings vs fitted:`);
+  console.log(`\nShipped settings (MINUTES_PARAMS) on the test games: ${fmt(score(test, MINUTES_PARAMS))}`);
+  console.log(`Shipped lineup settings (LINEUP_MINUTES_PARAMS), lineup known: ${fmt(score(withLineup(test), LINEUP_MINUTES_PARAMS))}`);
+  console.log(`\nTest (newest 30%), previous settings vs fitted now:`);
   for (const [label, f] of segments) {
     const sub = test.filter(f);
     if (!sub.length) continue;
-    console.log(`  ${label.padEnd(24)} current ${fmt(score(sub, MINUTES_PARAMS))}`);
-    console.log(`  ${"".padEnd(24)} fitted  ${fmt(score(sub, fitted))}`);
+    console.log(`  ${label.padEnd(24)} previous ${fmt(score(sub, BASELINE))}`);
+    console.log(`  ${"".padEnd(24)} shipped  ${fmt(score(sub, MINUTES_PARAMS))}`);
   }
   // The naive baseline people use: his last-10 average.
   const l10 = test.reduce((a, s) => {
