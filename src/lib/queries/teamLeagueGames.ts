@@ -2,6 +2,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { toLineRow, type GameLineRow } from "./games";
+import { etDateOf } from "@/lib/dateEt";
 
 export interface TeamSummary {
   id: string;
@@ -89,8 +90,20 @@ export async function listTeamLeagueGamesWithLines(sport: TeamLeagueSport): Prom
     },
   });
 
-  return games.map((g) => ({
-    game: toGameSummary(g),
-    lines: g.currentLines.map(toLineRow),
-  }));
+  // One card per matchup: when the schedule holds a game twice, keep the copy with the freshest prices.
+  const fresh = (g: (typeof games)[number]) => Math.max(0, ...g.currentLines.map((l) => l.polledAt.getTime()));
+  const byKey = new Map<string, (typeof games)[number]>();
+  for (const g of games) {
+    const key = `${g.homeTeamId}|${g.awayTeamId}|${etDateOf(g.scheduledStartUtc)}`;
+    const prev = byKey.get(key);
+    if (!prev || fresh(g) > fresh(prev)) byKey.set(key, g);
+  }
+  const keep = new Set([...byKey.values()].map((g) => g.id));
+
+  return games
+    .filter((g) => keep.has(g.id))
+    .map((g) => ({
+      game: toGameSummary(g),
+      lines: g.currentLines.map(toLineRow),
+    }));
 }
