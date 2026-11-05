@@ -49,6 +49,7 @@ on:
           - diagnose:hot
           - diagnose:nfl
           - poll:espn-props
+          - poll:espn-odds
           - fix:ufc-duplicates
           - fix:ufc-duplicates:apply
       n:
