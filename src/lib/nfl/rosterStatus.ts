@@ -100,10 +100,11 @@ const MAX_DEPTH: Record<string, number> = { QB: 1, RB: 3, WR: 5, TE: 3 };
  * Whether ARCHR should post its own line on a player this week: why not, or
  * null when he's a play.
  *
- *   - Once a book has posted props on his game, only the players it lists: the
- *     book knows who's active, and its list is the betting menu.
- *   - Before that, the roster and depth chart: off the active 53 (IR, practice
- *     squad, released) or too deep on the chart, he's out of the pool.
+ *   - Off the active 53 (IR, suspended, practice squad, released): out, even
+ *     when a book still lists him (its anytime-TD board lists everyone).
+ *   - Once a book has posted props on his game, only the players it lists: its
+ *     list is the betting menu.
+ *   - Before that, the depth chart: the starting QB only, and nobody off it.
  */
 export function nflPoolExclusion(opts: {
   espnId: string;
@@ -114,12 +115,11 @@ export function nflPoolExclusion(opts: {
   status: NflTeamStatus | null;
 }): string | null {
   const { espnId, position, bookListed, status } = opts;
-  if (bookListed) return bookListed.has(espnId) ? null : "Not on the book's board for this game";
-  if (!status) return null;
-  const off = status.off.get(espnId);
+  const off = status?.off.get(espnId);
   if (off) return off;
-  if (!status.active.has(espnId)) return "Not on the active roster";
-  if (status.depth.size > 0 && position) {
+  if (status && !status.active.has(espnId)) return "Not on the active roster";
+  if (bookListed) return bookListed.has(espnId) ? null : "Not on the book's board for this game";
+  if (status && status.depth.size > 0 && position) {
     const spots = status.depth.get(espnId);
     if (!spots) return "Not on the depth chart";
     const rank = spots[position.toLowerCase()];

@@ -49,6 +49,8 @@ describe("nflPoolExclusion", () => {
   it("keeps only the book's players once it has posted the game", () => {
     expect(check("2", "QB", new Set(["2"]))).toBeNull();
     expect(check("3", "WR", new Set(["2"]))).toMatch(/book/);
+    // Listed by the book but on IR: still out.
+    expect(check("5", "WR", new Set(["5"]))).toBe("Injured reserve");
   });
 
   it("drops IR, the practice squad and players off the roster", () => {

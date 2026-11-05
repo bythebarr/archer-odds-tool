@@ -73,7 +73,7 @@ export const MIN_CREDITS_REMAINING_GUARDRAIL = 20;
  * tennis polling as a second job. lastPolledAt-based cadence timing stays
  * correctly per-jobName; only the credits check is account-wide.
  */
-async function getLatestCreditsRemaining(): Promise<number | null> {
+export async function getLatestCreditsRemaining(): Promise<number | null> {
   const latest = await prisma.pollLog.findFirst({
     where: { creditsRemaining: { not: null } },
     orderBy: { lastPolledAt: "desc" },
