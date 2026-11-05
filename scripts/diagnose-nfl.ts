@@ -52,6 +52,14 @@ async function main() {
         ` · odds ${JSON.stringify(count(o, (x) => x.bookKey))} ${JSON.stringify(count(o, (x) => x.marketType))} · extra ${m.length} ${JSON.stringify(count(m, (x) => x.bookKey))}`
     );
   }
+  // Main game lines per book, with when each was polled: the spread the board shows.
+  console.log("\nMain lines by book (spread home / total / when polled):");
+  for (const g of games.slice(0, 4)) {
+    const rows = await prisma.currentOddsLine.findMany({ where: { gameId: g.id, isAlternate: false, OR: [{ marketType: "spreads", side: "home" }, { marketType: "totals", side: "over" }] } });
+    const byBook = new Map<string, string[]>();
+    for (const r of rows) byBook.set(r.bookKey, [...(byBook.get(r.bookKey) ?? []), `${r.marketType} ${r.point} @${r.polledAt.toISOString().slice(5, 16)}`]);
+    console.log(`  ${g.awayTeam?.abbreviation}@${g.homeTeam?.abbreviation} ${g.id}: ${[...byBook].map(([b, v]) => `${b}: ${v.join(", ")}`).join(" | ")}`);
+  }
   const orphan = raw.filter((x) => !x.eventRef);
   console.log(`\nRaw ESPN NFL prop rows with no matched game: ${orphan.length} (${[...new Set(orphan.map((x) => x.eventName))].slice(0, 8).join("; ")})`);
   console.log("Raw markets (game period) by stat key, priced:", JSON.stringify(count(raw.filter((x) => x.period === "game" && x.priceAmerican !== null), (x) => `${x.statKey}`)));

@@ -208,10 +208,10 @@ export function BestPriceChip({ sideLabel, price, bookKey, bookName, edge = fals
   );
 }
 
-/** Before books post: ARCHR's own line, with its chance and fair price when the sport prices it. */
-export function ArchrLineChip({ label, price }: { label?: string; price?: string }) {
+/** Before books post: ARCHR's own line, with its chance and fair price when the sport prices it. A book's number without its price passes `note`. */
+export function ArchrLineChip({ label, price, note }: { label?: string; price?: string; note?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2 py-1 ring-1 ring-brand/40" title="No book has posted this prop yet">
+    <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2 py-1 ring-1 ring-brand/40" title={note ? "The book's real number; its price isn't in our free feed" : "No book has posted this prop yet"}>
       <span className="text-[10px] font-bold uppercase text-foreground">{label ?? "ARCHR line"}</span>
       {price ? (
         <>
@@ -219,7 +219,7 @@ export function ArchrLineChip({ label, price }: { label?: string; price?: string
           <span className="text-[9px] font-semibold uppercase text-muted-foreground">fair</span>
         </>
       ) : (
-        <span className="text-[10px] text-muted-foreground">· books soon</span>
+        <span className="text-[10px] text-muted-foreground">· {note ?? "books soon"}</span>
       )}
     </span>
   );

@@ -122,7 +122,7 @@ function NflCard({ s, player, game, side, stat, defense, onOpen }: { s: NflPropS
       meter={<HitMeter recent={s.recent.slice(0, 5)} rate={s.l5} window="L5" slots={5} />}
       price={
         <>
-          {s.postedBook ? <ArchrLineChip label={`${bookShort(s.postedBook)} line`} /> : s.projected ? <ArchrLineChip /> : <EvTag value={value} />}
+          {s.postedBook ? <ArchrLineChip label={`${bookShort(s.postedBook)} line`} note="no price yet" /> : s.projected ? <ArchrLineChip /> : <EvTag value={value} />}
           {s.projected ? null : best ? (
             <BestPriceChip sideLabel={short(stat, side)} price={best.priceAmerican} bookKey={best.bookKey} bookName={best.bookName} />
           ) : (

@@ -78,13 +78,28 @@ export async function pollEspnOddsTeamLeague(league: TeamLeague, days: number, n
         continue;
       }
       const { gte, lt } = etDayBoundsUtc(etDateOf(new Date(e.date)));
-      const game = await prisma.game.findFirst({ where: { sport: league.sport, scheduledStartUtc: { gte, lt }, homeTeam: { name: home.name }, awayTeam: { name: away.name } } });
+      // Every row the schedule holds for this matchup: a feed can list a game twice, and a copy ESPN never prices keeps a dead feed's lines.
+      const games = await prisma.game.findMany({ where: { sport: league.sport, scheduledStartUtc: { gte, lt }, homeTeam: { name: home.name }, awayTeam: { name: away.name } }, select: { id: true } });
       const bm = scoreboardOddsToBookmaker(odds, home.name, away.name);
-      if (!game || !bm) continue;
-      if ((await storeForGame(game.id, home.name, away.name, bm)) > 0) out.priced++;
+      if (!games.length || !bm) continue;
+      let stored = 0;
+      for (const game of games) stored += await storeForGame(game.id, home.name, away.name, bm);
+      if (stored > 0) out.priced++;
     }
   }
+  await retireStaleLines(league.sport, now, days);
   return out;
+}
+
+/**
+ * Every upcoming game in the sport, not only the ones ESPN priced this run: a
+ * stopped feed's lines older than STALE_OTHER_FEED_MS come off the board.
+ */
+async function retireStaleLines(sport: Sport, now: Date, days: number) {
+  const cutoff = new Date(now.getTime() - STALE_OTHER_FEED_MS);
+  const game = { sport, status: { not: "final" as const }, scheduledStartUtc: { gte: now, lte: new Date(now.getTime() + days * 86_400_000) } };
+  await prisma.currentOddsLine.deleteMany({ where: { polledAt: { lt: cutoff }, game } });
+  await prisma.gameMarketLine.deleteMany({ where: { polledAt: { lt: cutoff }, game } });
 }
 
 /** MLB: same, matching on the full team names the schedule sync stores. */
@@ -110,6 +125,7 @@ export async function pollEspnOddsMlb(days: number, now = new Date()): Promise<E
       if (bm && (await storeForGame(game.id, home, away, bm)) > 0) out.priced++;
     }
   }
+  await retireStaleLines("mlb", now, days);
   return out;
 }
 

@@ -384,8 +384,12 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                       </span>
                     </td>
                     <td className="px-2 py-2 text-right font-mono">
-                      {p.priceAmerican !== null ? formatAmerican(p.priceAmerican) : "—"}
-                      {p.bookName && <span className="block font-sans text-[10px] text-muted-foreground">{p.bookName}</span>}
+                      {p.priceAmerican !== null ? formatAmerican(p.priceAmerican) : <span className="font-sans text-[11px] text-muted-foreground">line only</span>}
+                      {p.bookName ? (
+                        <span className="block font-sans text-[10px] text-muted-foreground">{p.bookName}</span>
+                      ) : (
+                        p.priceAmerican === null && <span className="block font-sans text-[10px] text-muted-foreground">no price yet</span>
+                      )}
                     </td>
                     {SCREEN_WINDOWS.map((w) => (
                       <RateCell key={w.key} rate={p.rates[w.key]} bar={bars[w.key]} />
