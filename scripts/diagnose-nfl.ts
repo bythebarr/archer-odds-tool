@@ -27,6 +27,11 @@ async function main() {
     console.log(`  ${p.jobName.padEnd(18)} ${p.lastPolledAt.toISOString()} credits ${p.creditsRemaining ?? "—"} · ${p.lastStatus.slice(0, 700)}`);
   }
 
+  console.log("\nOdds API credits, latest runs:");
+  for (const c of await prisma.pollCreditLog.findMany({ orderBy: { polledAt: "desc" }, take: 12 })) {
+    console.log(`  ${c.polledAt.toISOString()} ${c.jobName.padEnd(18)} used ${c.creditsUsed ?? "—"} left ${c.creditsRemaining ?? "—"}`);
+  }
+
   const ids = games.map((g) => g.id);
   const [typed, raw, odds, markets] = await Promise.all([
     prisma.currentNflPropLine.findMany({ where: { gameId: { in: ids } }, select: { gameId: true, bookKey: true, nflPlayerId: true, stat: true } }),
@@ -57,7 +62,11 @@ async function main() {
   const slate = await getNflPropsSlate(now);
   const players = Object.values(slate.players);
   const withBook = new Set(slate.props.filter((p) => p.quotes.length > 0).map((p) => p.playerId));
-  console.log(`\nSlate: ${players.length} players, ${slate.props.length} props (${slate.props.filter((p) => p.quotes.length > 0).length} with book prices, ${slate.props.filter((p) => !p.quotes.length).length} ARCHR-only) · ${Date.now() - t0} ms`);
+  console.log(
+    `\nSlate: ${slate.games.length} games, ${players.length} players, ${slate.props.length} props (${slate.props.filter((p) => p.quotes.length > 0).length} with book prices, ${slate.props.filter((p) => !p.quotes.length && p.postedBook).length} at a book's number awaiting prices, ${slate.props.filter((p) => !p.quotes.length && !p.postedBook).length} ARCHR-only) · ${Date.now() - t0} ms`
+  );
+  console.log("  props by stat (book number / ARCHR):", JSON.stringify(count(slate.props, (p) => `${p.stat}:${p.quotes.length ? "priced" : p.postedBook ? "book" : "archr"}`)));
+  console.log("  players by position:", JSON.stringify(count(players, (p) => p.position ?? "?")));
   console.log("  injury levels:", JSON.stringify(count(players, (p) => p.injury?.level ?? "none")));
 
   // Who's on each team's ESPN roster right now.

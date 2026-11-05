@@ -58,3 +58,37 @@ export async function eventPropPostedLines(eventRefs: string[], statByKey: Recor
   }
   return out;
 }
+
+/** One posted number on an event, with its book and whether it's priced yet. */
+export interface PostedBookLine {
+  eventRef: string;
+  athleteId: string;
+  stat: string;
+  side: "over" | "under";
+  point: number;
+  bookKey: string;
+  bookName: string;
+  priced: boolean;
+}
+
+/**
+ * Every full-game number posted on these events, per book: the athletes a book
+ * lists (its betting menu) and the numbers it hangs before its prices land.
+ */
+export async function eventPropBoard(eventRefs: string[], statByKey: Record<string, string>): Promise<PostedBookLine[]> {
+  if (!eventRefs.length) return [];
+  const rows = await prisma.eventPropLine.findMany({
+    where: { eventRef: { in: eventRefs }, period: "game" },
+    select: { eventRef: true, athleteId: true, statKey: true, side: true, point: true, bookKey: true, priceAmerican: true },
+  });
+  return rows.map((r) => ({
+    eventRef: r.eventRef!,
+    athleteId: r.athleteId,
+    stat: statByKey[r.statKey] ?? "",
+    side: r.side === "under" ? ("under" as const) : ("over" as const),
+    point: r.side === "yes" ? 0.5 : r.point,
+    bookKey: r.bookKey,
+    bookName: BOOK_NAMES[r.bookKey] ?? r.bookKey,
+    priced: r.priceAmerican !== null,
+  }));
+}

@@ -70,8 +70,10 @@ export interface NflSlateProp {
   playerId: string;
   stat: NflPropStat;
   quotes: PropQuote[];
-  /** ARCHR's own line for a prop no book has posted yet (see nba/propsMath projectedLine). */
+  /** ARCHR's own line for a prop no book has posted yet (see nba/propsMath projectedLine), or a book's number posted without prices (see postedBook). */
   projectedPoint?: number;
+  /** The book whose number `projectedPoint` is, when it has hung the number but not its prices yet. */
+  postedBook?: string;
 }
 
 export type NflPropSort = "hitRate" | "value" | "model" | "price";
@@ -84,8 +86,10 @@ export interface NflPropModel extends PricedProp {
 export interface NflPropSummary {
   playerId: string;
   stat: NflPropStat;
-  /** No book has posted it: `point` is ARCHR's projected line. */
+  /** No book prices it: `point` is ARCHR's projected line, or a book's number posted without prices (postedBook). */
   projected: boolean;
+  /** The book that posted `point` without prices yet; null for ARCHR's own line or a priced prop. */
+  postedBook: string | null;
   point: number;
   points: number[];
   over: PropQuote | null;
@@ -150,6 +154,7 @@ export function summarizeNflProp(
     playerId: prop.playerId,
     stat: prop.stat,
     projected: prop.quotes.length === 0,
+    postedBook: prop.quotes.length === 0 ? (prop.postedBook ?? null) : null,
     point,
     points: [...new Set(prop.quotes.map((q) => q.point))].sort((a, b) => a - b),
     over,
@@ -185,13 +190,18 @@ export function sortNflSummaries(list: NflPropSummary[], sort: NflPropSort, side
   const key: Record<NflPropSort, (s: NflPropSummary) => number> = {
     hitRate: (s) => (s.l5.hitRate ?? -1) + Math.min(s.l5.sampleSize, 5) / 1000,
     value: (s) => (side === "over" ? s.value.over : s.value.under)?.ev ?? -Infinity,
-    model: (s) => (side === "over" ? s.model?.evOver : s.model?.evUnder) ?? -Infinity,
+    // A book's number with no price yet reads at the standard −110 until its price lands.
+    model: (s) =>
+      (side === "over" ? s.model?.evOver : s.model?.evUnder) ??
+      (s.postedBook && s.model ? (side === "over" ? s.model.probOver : s.model.probUnder) * (1 + 100 / 110) - 1 : -Infinity),
     price: (s) => {
       const b = side === "over" ? s.over : s.under;
       return b ? (b.priceAmerican > 0 ? b.priceAmerican / 100 + 1 : 100 / -b.priceAmerican + 1) : -Infinity;
     },
   };
-  return list.sort((a, b) => Number(a.projected) - Number(b.projected) || key[sort](b) - key[sort](a));
+  // Priced props first, then books' numbers awaiting prices, then ARCHR's own lines.
+  const tier = (s: NflPropSummary) => (!s.projected ? 0 : s.postedBook ? 1 : 2);
+  return list.sort((a, b) => tier(a) - tier(b) || key[sort](b) - key[sort](a));
 }
 
 /**

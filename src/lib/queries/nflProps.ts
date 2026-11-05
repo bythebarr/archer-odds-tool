@@ -24,8 +24,11 @@ import { projectedLine } from "@/lib/nba/propsMath";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { getConsensusGameLines } from "./gameLines";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
-import { eventPropPostedLines, type PostedLine } from "./eventPropLines";
+import { eventPropBoard, eventPropPostedLines, type PostedLine } from "./eventPropLines";
 import { NFL_STAT_BY_KEY } from "@/lib/odds/espnProps";
+import { espnTeamCode } from "@/lib/logos";
+import { mainPoint } from "@/lib/screener/types";
+import { fetchNflTeamStatus, nflPoolExclusion, type NflTeamStatus } from "@/lib/nfl/rosterStatus";
 
 export interface NflSlatePlayer {
   id: string;
@@ -229,10 +232,25 @@ async function nflAbsences(
   return out;
 }
 
+/**
+ * One row per matchup: a schedule feed can list the same game twice (two ids,
+ * same teams and day). Keeps the one the prop feed matched, else the first.
+ */
+function dedupeGames<G extends { id: string; homeTeamId: string | null; awayTeamId: string | null; scheduledStartUtc: Date }>(games: G[], withProps: Set<string>): G[] {
+  const byKey = new Map<string, G>();
+  for (const g of games) {
+    const key = `${g.homeTeamId}|${g.awayTeamId}|${etDateOf(g.scheduledStartUtc)}`;
+    const prev = byKey.get(key);
+    if (!prev || (!withProps.has(prev.id) && withProps.has(g.id))) byKey.set(key, g);
+  }
+  const keep = new Set([...byKey.values()].map((g) => g.id));
+  return games.filter((g) => keep.has(g.id));
+}
+
 /** The coming week's NFL props (games starting from three hours ago through seven days out). */
 export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<NflPropsSlate> => {
   const season = NFL_LEAGUE.seasonOf(now);
-  const games = await prisma.game.findMany({
+  const listed = await prisma.game.findMany({
     where: {
       sport: "nfl",
       scheduledStartUtc: { gte: new Date(now.getTime() - 3 * 3_600_000), lte: new Date(now.getTime() + 7 * 86_400_000) },
@@ -241,6 +259,9 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     orderBy: { scheduledStartUtc: "asc" },
     include: { homeTeam: true, awayTeam: true },
   });
+  // Every number the books have hung on these games (ESPN's DraftKings feed carries NFL numbers, rarely their prices).
+  const board = (await eventPropBoard(listed.map((g) => g.id), NFL_STAT_BY_KEY)).filter((r) => r.athleteId);
+  const games = dedupeGames(listed, new Set(board.map((r) => r.eventRef)));
   const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
@@ -282,8 +303,19 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     props.set(key, prop);
   }
 
-  // Every skill player in the week's games, posted or not: books post most of the
-  // week's props midweek, and until then each row reads against ARCHR's own line.
+  // Who can play: each team's active roster and depth chart, and the players a book lists on each game.
+  const statuses = new Map<string, NflTeamStatus | null>();
+  await Promise.all(
+    games.flatMap((g) => [g.homeTeam, g.awayTeam]).flatMap((t) => (t ? [t] : [])).map(async (t) => {
+      statuses.set(t.id, await fetchNflTeamStatus(espnTeamCode("nfl", t.abbreviation), season));
+    })
+  );
+  const bookListed = new Map<string, Set<string>>();
+  for (const r of board) (bookListed.get(r.eventRef) ?? bookListed.set(r.eventRef, new Set()).get(r.eventRef)!).add(r.athleteId);
+
+  // Every skill player in the week's games who can play, posted or not: books post
+  // most of the week's props midweek, and until then each row reads against
+  // ARCHR's own line.
   const roster = await prisma.nflPlayer.findMany({
     // Position too: most players' isn't on file until a roster sync, so it's read off their logs when missing.
     where: { teamId: { in: games.flatMap((g) => [g.homeTeamId, g.awayTeamId]).filter((id): id is string => id !== null) }, OR: [{ position: null }, { position: { in: ["QB", "RB", "WR", "TE"] } }] },
@@ -300,8 +332,13 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   for (const p of roster) {
     espnIdOf.set(p.id, p.espnAthleteId);
     const position = p.position ?? inferNflPosition(p.gameLogs);
-    if (players[p.id] || !position || !nflUsageCounts(position, p.gameLogs)) continue;
-    const g = games.find((x) => x.homeTeamId === p.teamId || x.awayTeamId === p.teamId)!;
+    const g = games.find((x) => x.homeTeamId === p.teamId || x.awayTeamId === p.teamId);
+    if (!g || players[p.id] || !position) continue;
+    const listedHere = bookListed.get(g.id)?.has(p.espnAthleteId) ?? false;
+    // A player the book lists is in, whatever his recent usage (a new starter); anyone else needs a role lately.
+    if (!listedHere && !nflUsageCounts(position, p.gameLogs)) continue;
+    const excluded = nflPoolExclusion({ espnId: p.espnAthleteId, position: nflPositionGroup(position), bookListed: bookListed.get(g.id) ?? null, status: statuses.get(p.teamId!) ?? null });
+    if (excluded) continue;
     const venue = p.teamId === g.homeTeamId ? "home" : "away";
     players[p.id] = {
       id: p.id,
@@ -348,6 +385,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   }
 
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nfl" } });
+  const idByEspn = new Map([...espnIdOf].map(([id, espn]) => [espn, id]));
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
   for (const l of lines) espnIdOf.set(l.nflPlayer.id, l.nflPlayer.espnAthleteId);
   for (const player of Object.values(players)) {
@@ -362,11 +400,30 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     getCalibrationFactors("nfl-props"),
   ]);
 
-  // ARCHR's line for each position's core stats a book hasn't posted (out / doubtful players sit out).
+  // The numbers a book has hung without prices yet: the row reads against the book's number, not ARCHR's.
+  const postedBy = new Map<string, { book: string; lines: { side: "over" | "under"; point: number }[] }>();
+  for (const r of board) {
+    const pid = idByEspn.get(r.athleteId);
+    if (!r.stat || !pid || !players[pid] || r.priced) continue;
+    const key = `${pid}:${r.stat}`;
+    const e = postedBy.get(key) ?? postedBy.set(key, { book: r.bookName, lines: [] }).get(key)!;
+    e.lines.push({ side: r.side, point: r.point });
+  }
+  for (const [key, { book, lines: posted }] of postedBy) {
+    if (props.get(key)?.quotes.length) continue;
+    const [playerId, stat] = key.split(":") as [string, NflPropStat];
+    if (!NFL_PROP_STAT_BY_KEY.has(stat)) continue;
+    const point = stat === "anytimeTd" ? 0.5 : mainPoint(posted);
+    if (point === null) continue;
+    props.set(key, { playerId, stat, quotes: [], projectedPoint: point, postedBook: book });
+  }
+
+  // ARCHR's line for each position's core stats, on games no book has posted props for yet (out / doubtful players sit out).
   const inputs = { defense, absences, lines: gameLines, teamPoints };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful" || !player.position) continue;
+    if (bookListed.has(player.gameId)) continue;
     const unpacked = (logs[player.id] ?? []).map(unpackNflLog);
     for (const key of NFL_PROJECTED_STATS[player.position] ?? []) {
       if (props.has(`${player.id}:${key}`)) continue;
