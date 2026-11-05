@@ -4,8 +4,13 @@
  * every ESPN league in the all-sports engine into SportEventLine — so boards
  * carry a real price with no odds key, and a paid feed only adds books.
  *
- * Only the ESPN book's own rows are retired when its line moves; another
- * feed's prices on the same game are never touched.
+ * The ESPN book's own rows are retired when its line moves. Another feed's
+ * prices on the same game stay while they're current, and are retired once
+ * they're STALE_OTHER_FEED_MS old: a paid feed that has stopped (out of
+ * credits) would otherwise leave days-old numbers on the board, and two stale
+ * books outvote the live one in every consensus (on 2026-11-05 JAX @ BAL read
+ * a 3-point spread from FanDuel and BetRivers rows four days old, with
+ * DraftKings at JAX −10). Their history stays in OddsSnapshot.
  */
 import { prisma } from "@/lib/prisma";
 import { etDayBoundsUtc, etDateOf } from "@/lib/dateEt";
@@ -42,11 +47,16 @@ export interface EspnOddsSummary {
   unmatched: string[];
 }
 
-/** One book's prices onto one game, retiring only that book's older rows. */
+/** Longer than the gap between a paid feed's runs (twice a day), so a working feed's rows are never caught. */
+export const STALE_OTHER_FEED_MS = 18 * 3_600_000;
+
+/** One book's prices onto one game, retiring that book's older rows and any other feed's stale ones. */
 async function storeForGame(gameId: string, home: string, away: string, bm: NonNullable<ReturnType<typeof scoreboardOddsToBookmaker>>) {
   const startedAt = new Date();
   const n = await storeBookmakerOdds(gameId, home, away, [bm], { retireStale: false });
   await prisma.currentOddsLine.deleteMany({ where: { gameId, bookKey: bm.key, isAlternate: false, polledAt: { lt: startedAt } } });
+  await prisma.currentOddsLine.deleteMany({ where: { gameId, bookKey: { not: bm.key }, polledAt: { lt: new Date(startedAt.getTime() - STALE_OTHER_FEED_MS) } } });
+  await prisma.gameMarketLine.deleteMany({ where: { gameId, polledAt: { lt: new Date(startedAt.getTime() - STALE_OTHER_FEED_MS) } } });
   return n;
 }
 
