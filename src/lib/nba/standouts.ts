@@ -19,6 +19,12 @@
  * The alternate line: of the rungs a book hangs beyond the main line on that
  * side, the one with the best expected value at ARCHR's chance (a chance of at
  * least MIN_ALT_CHANCE, so it isn't a lottery ticket).
+ *
+ * The chance shown is calibrated (see STANDOUT_EDGE_SHRINK): picking the props
+ * where ARCHR disagrees with the book most also picks the ones where its
+ * projection is most often wrong, so the raw chance runs high on exactly these
+ * calls. The page ranks by the calibrated chance, which the backtest finds
+ * tracks hits; the size of the gap alone doesn't.
  */
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STAT_BY_KEY, type NbaPropStatDef } from "./propStats";
@@ -44,11 +50,28 @@ const MIN_GAMES = 8;
  * out rather than shouted.
  */
 const LINE_RANGE = [0.55, 1.8] as const;
+/**
+ * How much of ARCHR's edge over the book's no-vig chance a standout keeps:
+ * calibrated = market + k × (ARCHR − market), or around 50% with no two-sided
+ * market. Fitted (log loss) by backtest:nba-standouts on the standouts it
+ * replays; refit as nights of stored lines build up.
+ */
+export const STANDOUT_EDGE_SHRINK = 0.4;
+
+/** ARCHR's chance on the side, shrunk toward the market's by STANDOUT_EDGE_SHRINK. */
+export function calibrateStandout(raw: number, market: number | null, k = STANDOUT_EDGE_SHRINK): number {
+  const anchor = market ?? 0.5;
+  return anchor + k * (raw - anchor);
+}
 
 export interface Reason {
   text: string;
-  /** True when it points the same way as the call. */
-  supports: boolean;
+  /**
+   * True when it points the same way as the call, false when against; null for
+   * context only: past records (head-to-head, look-alike opponents, venue),
+   * which the backtest finds don't predict whether the call hits.
+   */
+  supports: boolean | null;
 }
 
 export interface Standout {
@@ -70,8 +93,11 @@ export interface Standout {
   projection: number;
   /** Projection minus line, in his game-to-game spread. */
   z: number;
-  /** ARCHR's chance on that side at the main line (with the market blended in). */
+  /** ARCHR's calibrated chance on that side at the main line (see STANDOUT_EDGE_SHRINK): what the page shows and ranks by. */
   chance: number;
+  /** Before calibration: the props model's chance (market blend included), and the market's no-vig chance alone. */
+  rawChance: number;
+  marketChance: number | null;
   /** Expected value of the best price at that chance. */
   ev: number | null;
   minutes: number | null;
@@ -104,8 +130,8 @@ function reasonsFor(
   const out: Reason[] = [];
   /** A reason that pushes the stat up (or down): it supports an over (or an under). */
   const add = (text: string, pushesUp: boolean) => out.push({ text, supports: pushesUp === up });
-  /** A record already on the call's side: it supports the call when it mostly cashed. */
-  const record = (text: string, cashed: number, games: number) => out.push({ text, supports: cashed / games >= 0.5 });
+  /** A record already on the call's side: context, not a reason the call is stronger. */
+  const record = (text: string) => out.push({ text, supports: null });
   const opp = player.opponent?.abbreviation ?? "the opponent";
 
   // Minutes and why they moved.
@@ -135,33 +161,30 @@ function reasonsFor(
     if (b > 0 && Math.abs(a / b - 1) >= 0.15) add(`${a > b ? "Hot" : "Cold"}: ${a.toFixed(1)} over his last 5 against ${b.toFixed(1)} this season`, a > b);
   }
   const h2h = s.hitRates.h2h;
-  if (h2h.sampleSize >= 3) record(`${h2h.hits}/${h2h.sampleSize} ${up ? "over" : "under"} ${s.point} against ${opp}`, h2h.hits, h2h.sampleSize);
+  if (h2h.sampleSize >= 3) record(`${h2h.hits}/${h2h.sampleSize} ${up ? "over" : "under"} ${s.point} against ${opp}`);
   if (style) {
     const diff = style.avg - style.overall;
     const vsUsual = Math.abs(diff) >= 0.5 ? ` (${diff > 0 ? "+" : ""}${diff.toFixed(1)} on his usual)` : "";
-    record(
-      `vs teams like ${opp} (${style.teams.slice(0, 3).join(", ")}): ${style.hits}/${style.games} ${up ? "over" : "under"}, ${style.avg.toFixed(1)} a game${vsUsual}`,
-      style.hits,
-      style.games
-    );
+    record(`vs teams like ${opp} (${style.teams.slice(0, 3).join(", ")}): ${style.hits}/${style.games} ${up ? "over" : "under"}, ${style.avg.toFixed(1)} a game${vsUsual}`);
   }
   // Home or away, only when the split leans hard one way.
   const venue = s.splits.find((x) => x.key === "venue");
   if (venue && venue.rate.sampleSize >= 6 && venue.avg !== null) {
     const r = venue.rate.hits / venue.rate.sampleSize;
-    if (r >= 0.7 || r <= 0.3) record(`${venue.label}: ${venue.rate.hits}/${venue.rate.sampleSize} ${up ? "over" : "under"}, ${venue.avg.toFixed(1)} a game`, venue.rate.hits, venue.rate.sampleSize);
+    if (r >= 0.7 || r <= 0.3) record(`${venue.label}: ${venue.rate.hits}/${venue.rate.sampleSize} ${up ? "over" : "under"}, ${venue.avg.toFixed(1)} a game`);
   }
-  // Supporting reasons first.
-  return out.sort((a, b) => Number(b.supports) - Number(a.supports));
+  // Supporting reasons first, then the ones against, then context.
+  const order = (r: Reason) => (r.supports === true ? 0 : r.supports === false ? 1 : 2);
+  return out.sort((a, b) => order(a) - order(b));
 }
 
-/** Whether a call clears the page's bar: the gap, ARCHR's chance, and a last-ten record that doesn't flatly disagree. */
+/** Whether a call clears the page's bar: the gap, ARCHR's raw chance, and a last-ten record that doesn't flatly disagree. */
 export function isStandout(z: number, chance: number, [hits, games]: [number, number]): boolean {
   return Math.abs(z) >= MIN_Z && chance >= MIN_CHANCE && !(games >= 5 && hits / games < MIN_L10);
 }
 
 /**
- * Every standout prop on the slate, the biggest gaps first. `all` keeps every
+ * Every standout prop on the slate, the best calibrated chance first. `all` keeps every
  * call, standout or not (the backtest compares the two).
  */
 export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, GameLogPoint[]>, opts: { all?: boolean } = {}): Standout[] {
@@ -197,9 +220,11 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
     const z = (proj.mean - main) / proj.sd;
     const side: PropDirection = z >= 0 ? "over" : "under";
     const s = side === "over" ? base : summarizeProp(prop, playerLogs, stat, "under", context, main)!;
-    const chance = side === "over" ? base.model.probOver : base.model.probUnder;
+    const rawChance = side === "over" ? base.model.probOver : base.model.probUnder;
+    const market = base.model.market ? (side === "over" ? base.model.market.probOver : 1 - base.model.market.probOver) : null;
+    const chance = calibrateStandout(rawChance, market);
     const l10 = rate(s, "l10");
-    if (!opts.all && !isStandout(z, chance, l10)) continue;
+    if (!opts.all && !isStandout(z, rawChance, l10)) continue;
     const quote = side === "over" ? s.over : s.under;
     const style = styleRecord(playerLogs, slate.defense, player.opponent?.abbreviation, stat, player.positionGroup, side, main);
 
@@ -209,7 +234,9 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       if (side === "over" ? point <= main : point >= main) continue;
       const at = summarizeProp(prop, playerLogs, stat, side, context, point);
       const q = side === "over" ? at?.over : at?.under;
-      const c = at?.model ? (side === "over" ? at.model.probOver : at.model.probUnder) : null;
+      const rawAt = at?.model ? (side === "over" ? at.model.probOver : at.model.probUnder) : null;
+      // Alt rungs are one-sided (no market to shrink toward): take off the same overstatement as at the main line.
+      const c = rawAt === null ? null : Math.max(0, rawAt - (rawChance - chance));
       if (!at || !q || c === null || c < MIN_ALT_CHANCE) continue;
       // A price far longer than the chance says isn't value, it's a price that doesn't belong to the rung.
       if ((relativeEdge(c, q.priceAmerican) ?? 0) > MAX_TRUSTED_RELATIVE_EDGE) continue;
@@ -235,6 +262,8 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       projection: proj.mean,
       z,
       chance,
+      rawChance,
+      marketChance: market,
       ev: quote ? chance * americanToDecimal(quote.priceAmerican) - 1 : null,
       minutes: proj.minutes,
       hit: { l5: rate(s, "l5"), l10, season: rate(s, "season"), h2h: rate(s, "h2h") },
@@ -243,5 +272,5 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       reasons: reasonsFor(s, side, stat, player, playerLogs, slate.season, style),
     });
   }
-  return out.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+  return out.sort((a, b) => b.chance - a.chance || Math.abs(b.z) - Math.abs(a.z));
 }

@@ -3,7 +3,7 @@
  * the results sync, props on the odds poll — the NBA arrangement. Each records
  * its own PollLog row, so freshness and failures show on their own.
  */
-import { recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
+import { getLatestCreditsRemaining, recordPollLog, writeOutcomeStatus } from "@/lib/pollingPolicy";
 import { sanitizeErrorMessage } from "@/lib/engine/ingestResult";
 import { lookbackDatesEt } from "@/lib/teamLeague/results";
 import { syncNflGameLogs, syncNflPositions } from "./gameLogs";
@@ -18,8 +18,20 @@ import { NFL_LEAGUE } from "./league";
  */
 const NFL_MARKETS_JOB = "poll-markets-nfl";
 const NFL_MARKETS_LOOKAHEAD_HOURS = 30;
+/**
+ * One pass over a Sunday slate costs ~320 credits, more than half a small
+ * plan's month (on 2026-11-01 it left 17 for everything else). Below this the
+ * credits go to player-prop prices, which the props board can't get anywhere
+ * else; ESPN's free board already carries every game's main lines.
+ */
+export const NFL_MARKETS_MIN_CREDITS = 2000;
 export async function runNflExtraMarketsPoll() {
   try {
+    const credits = await getLatestCreditsRemaining();
+    if (credits !== null && credits < NFL_MARKETS_MIN_CREDITS) {
+      await recordPollLog(NFL_MARKETS_JOB, `skipped: ${credits} credits left (needs ${NFL_MARKETS_MIN_CREDITS}; props come first)`);
+      return { skipped: true, creditsRemaining: credits };
+    }
     const summary = await pollExtraMarkets(NFL_LEAGUE, NFL_MARKETS_LOOKAHEAD_HOURS);
     if (summary.rejectedKeys.length) console.log(`${NFL_MARKETS_JOB}: provider rejected`, summary.rejectedKeys);
     await recordPollLog(

@@ -95,3 +95,13 @@ describe("nbaStandouts", () => {
     expect(nbaStandouts(sl, logs)).toEqual([]);
   });
 });
+
+describe("calibrateStandout", () => {
+  it("keeps only part of ARCHR's edge over the market", async () => {
+    const { calibrateStandout } = await import("./standouts");
+    expect(calibrateStandout(0.7, 0.5, 0.4)).toBeCloseTo(0.58);
+    expect(calibrateStandout(0.7, 0.6, 0.4)).toBeCloseTo(0.64);
+    expect(calibrateStandout(0.7, null, 0.4)).toBeCloseTo(0.58);
+    expect(calibrateStandout(0.7, 0.55, 1)).toBeCloseTo(0.7);
+  });
+});

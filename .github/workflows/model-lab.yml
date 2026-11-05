@@ -47,6 +47,7 @@ on:
           - diagnose:builder
           - diagnose:screener
           - diagnose:hot
+          - diagnose:nfl
           - poll:espn-props
           - fix:ufc-duplicates
           - fix:ufc-duplicates:apply

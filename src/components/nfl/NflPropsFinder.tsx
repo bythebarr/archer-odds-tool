@@ -56,6 +56,9 @@ const SORTS: { key: NflPropSort; label: string }[] = [
 ];
 const MODEL_EV_FLAG = 0.03;
 
+/** "DraftKings" → "DK" for the chips. */
+const bookShort = (name: string) => (name === "DraftKings" ? "DK" : name === "FanDuel" ? "FD" : name);
+
 function kickoff(iso: string): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(iso));
 }
@@ -119,7 +122,7 @@ function NflCard({ s, player, game, side, stat, defense, onOpen }: { s: NflPropS
       meter={<HitMeter recent={s.recent.slice(0, 5)} rate={s.l5} window="L5" slots={5} />}
       price={
         <>
-          {s.projected ? <ArchrLineChip /> : <EvTag value={value} />}
+          {s.postedBook ? <ArchrLineChip label={`${bookShort(s.postedBook)} line`} /> : s.projected ? <ArchrLineChip /> : <EvTag value={value} />}
           {s.projected ? null : best ? (
             <BestPriceChip sideLabel={short(stat, side)} price={best.priceAmerican} bookKey={best.bookKey} bookName={best.bookName} />
           ) : (
@@ -139,7 +142,7 @@ function NflCard({ s, player, game, side, stat, defense, onOpen }: { s: NflPropS
       ))}
       stripRight={
         <>
-          {!s.projected && m && <ModelChip prob={side === "over" ? m.probOver : m.probUnder} edge={ev !== null && ev >= MODEL_EV_FLAG} />}
+          {(!s.projected || s.postedBook) && m && <ModelChip prob={side === "over" ? m.probOver : m.probUnder} edge={ev !== null && ev >= MODEL_EV_FLAG} />}
           <DefChip defense={defense} player={player} stat={stat} side={side} />
           <span className={s.projected ? "hidden" : "hidden sm:inline"}>
             {s.booksAtLine} book{s.booksAtLine === 1 ? "" : "s"}
@@ -432,7 +435,15 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
 
       <ParlayButton leg={leg} legs={parlay} onAdd={onAddLeg} />
 
-      {s?.projected && (
+      {s?.postedBook && (
+        <ProjectedNote>
+          <span className="font-semibold">
+            {s.postedBook} has posted {stat.shape === "anytime" ? "this touchdown prop" : point} but not its prices yet.
+          </span>{" "}
+          ARCHR&apos;s chance is read at the book&apos;s number; every book&apos;s price lands here when it&apos;s posted.
+        </ProjectedNote>
+      )}
+      {s?.projected && !s.postedBook && (
         <ProjectedNote>
           <span className="font-semibold">No book has posted this yet.</span>{" "}
           {stat.shape === "anytime" ? "This is ARCHR's own read on a touchdown." : <>{point}{" "}is ARCHR&apos;s line — the projection to the nearest half-point.</>} Books post most of
@@ -452,7 +463,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
           opponent={player.opponent?.abbreviation}
           venue={player.venue}
           volumeLabel={volLabel.toLowerCase()}
-          lineLabel={s?.projected ? "ARCHR line" : "Line"}
+          lineLabel={s?.postedBook ? `${bookShort(s.postedBook)} line` : s?.projected ? "ARCHR line" : "Line"}
         />
       </SheetSection>
 
@@ -616,7 +627,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
     }
     return sortNflSummaries(out, sort, side);
   }, [slate, logs, statKey, stat, side, sort, gameId, query]);
-  const posted = summaries.filter((s) => !s.projected).length;
+  const posted = summaries.filter((s) => !s.projected || s.postedBook).length;
   const openPlayer = open ? slate.players[open] : null;
 
   return (
@@ -652,7 +663,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
         <ul className="mt-3 flex flex-col gap-2.5">
           {summaries.map((s, i) => (
             <Fragment key={s.playerId}>
-              {s.projected && posted > 0 && (i === 0 || !summaries[i - 1]!.projected) && <ProjectedDivider />}
+              {s.projected && !s.postedBook && posted > 0 && (i === 0 || !summaries[i - 1]!.projected || !!summaries[i - 1]!.postedBook) && <ProjectedDivider />}
               <NflCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} onOpen={() => setOpen(s.playerId)} />
             </Fragment>
           ))}
