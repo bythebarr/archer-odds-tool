@@ -215,6 +215,8 @@ against what now exists:
   price with its 95% range, closing-line value, and Brier skill against the
   market, with a verdict (working / not working / beating or losing to the
   close / unproven / too early).
+  Owner-only, like `/deck`: `/models/edges?token=<CRON_SECRET>`; a 404 without
+  it, and kept out of search indexes.
 
 `npm run diagnose:leans` (Model Lab) dry-runs a capture for the next 36 hours
 and prints the report so far.
