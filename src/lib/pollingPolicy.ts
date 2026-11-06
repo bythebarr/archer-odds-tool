@@ -307,8 +307,14 @@ export async function recordPollLog(
     update: {
       lastPolledAt: now,
       lastStatus,
-      creditsUsed: creditsUsed ?? null,
-      creditsRemaining: creditsRemaining ?? null,
+      // A write that didn't observe credit figures must not erase the last
+      // ones: the guardrail reads the freshest non-null balance across jobs,
+      // so nulling this row resurrects an older, higher balance — or, if
+      // every row is wiped, reads as "no data = open" on a dry account
+      // (full-repo audit 2026-11-06, Lane 1 S3). Undefined = not observed,
+      // keep; an explicit number (or null) still overwrites.
+      ...(creditsUsed !== undefined ? { creditsUsed } : {}),
+      ...(creditsRemaining !== undefined ? { creditsRemaining } : {}),
     },
   });
 

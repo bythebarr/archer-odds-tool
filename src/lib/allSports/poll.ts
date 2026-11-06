@@ -27,8 +27,18 @@ async function lastRun(job: string): Promise<Date | null> {
   return (await prisma.pollLog.findUnique({ where: { jobName: job } }))?.lastPolledAt ?? null;
 }
 async function markRun(job: string, status: string, creditsUsed?: number, creditsRemaining?: number | null) {
-  const data = { lastPolledAt: new Date(), lastStatus: status.slice(0, 500), creditsUsed: creditsUsed ?? null, creditsRemaining: creditsRemaining ?? null };
-  await prisma.pollLog.upsert({ where: { jobName: job }, create: { jobName: job, ...data }, update: data });
+  const base = { lastPolledAt: new Date(), lastStatus: status.slice(0, 500) };
+  // Same rule as recordPollLog: a status-only stamp must not erase the last
+  // observed credit figures (full-repo audit 2026-11-06, Lane 1 S3).
+  const observed = {
+    ...(creditsUsed !== undefined ? { creditsUsed } : {}),
+    ...(creditsRemaining !== undefined ? { creditsRemaining } : {}),
+  };
+  await prisma.pollLog.upsert({
+    where: { jobName: job },
+    create: { jobName: job, ...base, creditsUsed: creditsUsed ?? null, creditsRemaining: creditsRemaining ?? null },
+    update: { ...base, ...observed },
+  });
 }
 const minutesSince = (d: Date | null, now: Date) => (d ? (now.getTime() - d.getTime()) / 60_000 : Infinity);
 
@@ -229,8 +239,15 @@ export async function pollAllSports({ now = new Date(), maxMs = 50_000, feeds = 
     }
 
     s.spent[feed.id] = spent;
-    await markRun(spendJob, "month spend", spentBefore + spent, remaining);
-    await markRun(tag("odds"), `ok: ${s.leaguesPolled.length} leagues, ${s.linesStored} lines`, spent, remaining);
+    // Only the TOA/Parlay account's balance belongs in PollLog.creditsRemaining:
+    // the credits guardrail reads the freshest non-null value across ALL jobs,
+    // and odds-api.io's "remaining" is an hourly rate-limit counter from a
+    // different account — writing it here poisons the guardrail's gauge in
+    // both directions (full-repo audit 2026-11-06, Lane 1 S2). Other feeds
+    // pass undefined, which leaves any prior figure untouched.
+    const accountRemaining = feed.id === "toa" ? remaining : undefined;
+    await markRun(spendJob, "month spend", spentBefore + spent, accountRemaining);
+    await markRun(tag("odds"), `ok: ${s.leaguesPolled.length} leagues, ${s.linesStored} lines`, spent, accountRemaining);
   }
   return s;
 }
