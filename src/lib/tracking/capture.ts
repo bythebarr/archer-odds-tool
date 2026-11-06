@@ -34,7 +34,7 @@ export interface Lean {
   startsAt: Date;
   marketKey: string;
   selectionKey: string;
-  /** ARCHR's market-blended chance on the lean. */
+  /** The chance the product displays for this lean (NBA props: the calibrated chance). */
   prob: number;
   features: LeanFeatures;
 }
@@ -72,7 +72,10 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
       startsAt: new Date(s.startsAt),
       marketKey: `prop:${s.stat}`,
       selectionKey: `${s.playerId}|${s.side}|${s.point}`,
-      prob: s.rawChance,
+      // The tracked probability is the chance the product DISPLAYS (calibrated),
+      // not the pre-shrink rawChance — grading the raw number made every NBA
+      // calibration/edge read systematically wrong (audit 2026-11-06, Lane 2 S1).
+      prob: s.chance,
       features: {
         sport: "nba",
         kind: "prop",
@@ -81,6 +84,12 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
         side: s.side,
         point: s.point,
         modelProb: s.modelChance,
+        rawProb: s.rawChance,
+        // Freeze the projection itself (Lane 2 S2): without mean/sd, settled
+        // leans can never be decomposed into projection bias vs variance.
+        // sd is recovered from z = (projection − point) / sd.
+        projMean: s.projection,
+        projSd: s.z !== 0 ? Math.abs((s.projection - s.point) / s.z) : null,
         marketProb: marketChance,
         price: s.priceAmerican,
         book: s.bookName,
@@ -141,6 +150,8 @@ export function nflPropLeans(slate: NflPropsSlate, gameIds: Set<string>): Lean[]
         side,
         point: s.point,
         modelProb: side === "over" ? m.modelProbOver : 1 - m.modelProbOver,
+        projMean: m.projection.mean,
+        projSd: m.projection.sd,
         marketProb: marketOver === null ? null : side === "over" ? marketOver : 1 - marketOver,
         price: quote?.priceAmerican ?? null,
         book: quote?.bookName ?? s.postedBook ?? null,
@@ -226,7 +237,21 @@ async function due(sport: "nba" | "nfl", modelKey: string, now: Date, hours: num
 
 async function write(sport: "nba" | "nfl", modelKey: string, leans: Lean[], now: Date): Promise<number> {
   // A run only holds leans for games that haven't started (the storage boundary insists).
-  const kept = leans.filter((l) => l.startsAt > now && Number.isFinite(l.prob));
+  const fresh = leans.filter((l) => l.startsAt > now && Number.isFinite(l.prob));
+  if (!fresh.length) return 0;
+  // Capture-once is due()'s check plus this write, with a slow slate build in
+  // between: a concurrent run can freeze the same game inside that window and
+  // every metric would silently double-count it. Re-check at the write
+  // boundary (audit 2026-11-06, Lane 2 S4) — the permanent fix is a per-game
+  // capture-claim row written in the same transaction as the run.
+  const ids = [...new Set(fresh.map((l) => l.eventRef))];
+  const done = await prisma.modelPrediction.findMany({
+    where: { eventRef: { in: ids }, run: { modelKey } },
+    select: { eventRef: true },
+    distinct: ["eventRef"],
+  });
+  const captured = new Set(done.map((d) => d.eventRef));
+  const kept = fresh.filter((l) => !captured.has(l.eventRef));
   if (!kept.length) return 0;
   await createPredictionRunBulk({
     sportKey: sport,
