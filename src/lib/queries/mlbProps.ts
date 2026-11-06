@@ -14,6 +14,8 @@ import { projectMlbProp, type MlbProjection, type MlbPropStat } from "@/lib/mlb/
 import { MLB_PROP_STATS, packMlbLog, type MlbChartLog, type MlbRole, type PackedMlbLog } from "@/lib/mlb/propsSlate";
 import type { PropQuote } from "@/lib/nba/propsMath";
 import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
+import { getReportedBlendVerdicts } from "./modelTrust";
+import { blendVerdictsByStat } from "@/lib/props/provenance";
 import type { StatDistribution } from "@/lib/propModel/distribution";
 
 /** Batters with at least this many of the team's last ten games are listed when no lineup is posted. */
@@ -70,6 +72,8 @@ export interface MlbPropsSlate {
   players: Record<string, MlbPropsPlayer>;
   props: MlbSlateProp[];
   logs: Record<string, PackedMlbLog[]>;
+  /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
+  blendVerdicts: Record<string, string>;
 }
 
 const hand = (h: string | null | undefined): "L" | "R" | null => (h === "L" || h === "R" ? h : null);
@@ -115,7 +119,7 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
       lineupSlots: true,
     },
   });
-  const empty: MlbPropsSlate = { date, season, games: [], players: {}, props: [], logs: {} };
+  const empty: MlbPropsSlate = { date, season, games: [], players: {}, props: [], logs: {}, blendVerdicts: {} };
   if (!games.length) return empty;
 
   // Who plays: the posted lineup, else every batter with a regular role over the team's last ten games.
@@ -266,6 +270,8 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
     outLogs[e.playerId] = logs.map(packMlbLog);
   }
 
+  const blendReports = await getReportedBlendVerdicts();
+
   return {
     date,
     season,
@@ -273,6 +279,7 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
     players: outPlayers,
     props: outProps,
     logs: outLogs,
+    blendVerdicts: blendVerdictsByStat("mlb", blendReports),
   };
 });
 

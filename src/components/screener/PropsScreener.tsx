@@ -13,6 +13,9 @@ import { getScreenerPool, SCREENER_SPORTS, type ScreenerSport } from "@/lib/scre
 import { DEFAULT_FILTERS, SCREEN_WINDOWS, conservativeEdge, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { MAX_TRUSTED_RELATIVE_EDGE } from "@/lib/builder/conservative";
+import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
+import { getReportedBlendVerdicts } from "@/lib/queries/modelTrust";
+import { propBlendVerdict, propIsUnproven } from "@/lib/props/provenance";
 
 export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>>;
 
@@ -124,7 +127,7 @@ function sideText(p: ScreenerProp): string {
 
 export async function PropsScreener({ params, basePath, sport = null, keep = {} }: { params: ScreenerParams; basePath: string; sport?: ScreenerSport | null; keep?: Record<string, string> }) {
   const read = readFilters(params, sport);
-  const pool = await getScreenerPool(read.sport, !read.mainOnly);
+  const [pool, blendVerdicts] = await Promise.all([getScreenerPool(read.sport, !read.mainOnly), getReportedBlendVerdicts()]);
   // A game, team or stat left over from another sport would screen everything out: drop it.
   const f: ScreenFilters = {
     ...read,
@@ -379,6 +382,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                       </Link>
                       <span className="ml-1.5 text-muted-foreground">{sideText(p)}</span>
                       {!p.main && <span className="ml-1.5 rounded bg-muted px-1 text-[10px] text-muted-foreground">alt</span>}
+                      {propIsUnproven(p, blendVerdicts) && <UnprovenModelBadge verdict={propBlendVerdict(p.sport, p.stat, blendVerdicts)} className="ml-1.5" />}
                       <span className="block text-[11px] text-muted-foreground">
                         {p.league} · {p.team ? `${p.team} vs ${p.opponent}` : `vs ${p.opponent}`} · {p.game}
                       </span>
@@ -414,7 +418,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. The conservative edge reads the prop cautiously: the lower of ARCHR&apos;s chance and the low end of its L10 record&apos;s range (one standard error), against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Past +50% it reads &quot;?&quot; and isn&apos;t sorted as edge: a gap that wide is a price that doesn&apos;t belong to the line, not value. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Click a column to sort by it. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR&apos;s edge is its chance against that price. The conservative edge reads the prop cautiously: the lower of ARCHR&apos;s chance and the low end of its L10 record&apos;s range (one standard error), against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Past +50% it reads &quot;?&quot; and isn&apos;t sorted as edge: a gap that wide is a price that doesn&apos;t belong to the line, not value. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, an &quot;Unproven model&quot; badge rides on the row until that blend earns a passing grade on /models. Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

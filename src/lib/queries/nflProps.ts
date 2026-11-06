@@ -24,6 +24,8 @@ import { projectedLine } from "@/lib/nba/propsMath";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { getConsensusGameLines } from "./gameLines";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
+import { getReportedBlendVerdicts } from "./modelTrust";
+import { blendVerdictsByStat } from "@/lib/props/provenance";
 import { eventPropBoard, eventPropPostedLines, type PostedLine } from "./eventPropLines";
 import { NFL_STAT_BY_KEY } from "@/lib/odds/espnProps";
 import { espnTeamCode } from "@/lib/logos";
@@ -61,6 +63,8 @@ export interface NflPropsSlate {
   modelWeights: Record<string, number>;
   /** Each stat's calibration refit from the latest props backtest (missing = baked value). */
   calibrationFactors: Record<string, number>;
+  /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
+  blendVerdicts: Record<string, string>;
   /** Team abbreviation → its offense and defense this season from the play-by-play, with league ranks. */
   teams: Record<string, NflTeamContext>;
   lastPolledAt: string | null;
@@ -262,7 +266,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   // Every number the books have hung on these games (ESPN's DraftKings feed carries NFL numbers, rarely their prices).
   const board = (await eventPropBoard(listed.map((g) => g.id), NFL_STAT_BY_KEY)).filter((r) => r.athleteId);
   const games = dedupeGames(listed, new Set(board.map((r) => r.eventRef)));
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, teams: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -392,12 +396,13 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     const i = injuryById.get(espnIdOf.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
   }
-  const [absences, gameLines, teamPoints, modelWeights, calibrationFactors] = await Promise.all([
+  const [absences, gameLines, teamPoints, modelWeights, calibrationFactors, blendReports] = await Promise.all([
     nflAbsences(slateGames, injuries, season, now),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     nflTeamPoints(games.flatMap((g) => [g.homeTeam, g.awayTeam].filter((t) => t !== null)), now),
     getModelWeights("nfl"),
     getCalibrationFactors("nfl-props"),
+    getReportedBlendVerdicts(),
   ]);
 
   // The numbers a book has hung without prices yet: the row reads against the book's number, not ARCHR's.
@@ -448,6 +453,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     teamPoints,
     modelWeights,
     calibrationFactors,
+    blendVerdicts: blendVerdictsByStat("nfl", blendReports),
     teams,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };
