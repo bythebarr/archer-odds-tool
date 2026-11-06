@@ -65,8 +65,21 @@ export async function allSportsLegs(now = new Date()): Promise<BuilderLeg[]> {
         startsAt: e.startsAt.toISOString(),
         href: `/sports/${league.sport}/event/${encodeURIComponent(e.id)}`,
       };
+      const teamKey = (t: string) => `${league.sport}:${t}`;
       const add = (id: string, kind: BuilderLeg["kind"], label: string, group: string, prob: number | null, price: number | null, book: string | null, bet: TeamBet) =>
-        out.push({ ...base, id: `as:${e.id}:${id}`, kind, label, group: `as:${e.id}:${group}`, priceAmerican: price, bookName: book, archr: prob, edge: edgeOf(prob, price), rates: ratesOf(teamBetOutcomes(history, bet), 1) });
+        out.push({
+          ...base,
+          id: `as:${e.id}:${id}`,
+          teams: bet.kind === "ml" || bet.kind === "spread" ? [teamKey(bet.team)] : [teamKey(e.home), teamKey(e.away!)],
+          kind,
+          label,
+          group: `as:${e.id}:${group}`,
+          priceAmerican: price,
+          bookName: book,
+          archr: prob,
+          edge: edgeOf(prob, price),
+          rates: ratesOf(teamBetOutcomes(history, bet), 1),
+        });
 
       const { offers } = priceEvent(e.lines, ratings, e.home, e.away, league.sport);
       const game = offers.filter((o) => o.period === "game");

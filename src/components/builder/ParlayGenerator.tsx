@@ -11,6 +11,7 @@ import { ScrollRow } from "@/components/ScrollRow";
 import { chip } from "@/components/props/kit";
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
+const selectClass = "w-full rounded-lg border border-border bg-background px-2.5 py-2 text-sm text-foreground";
 
 const KINDS: { key: BuilderKind; label: string }[] = [
   { key: "prop", label: "Player props" },
@@ -37,6 +38,9 @@ const SHORTEST: { key: string; label: string; value: number | null }[] = [
 interface Filters {
   legs: number;
   sports: string[];
+  /** One game (a leg's eventId) / one team ("nba:BOS"); "" = any. */
+  game: string;
+  team: string;
   kinds: BuilderKind[];
   window: BuilderWindow;
   minRate: number;
@@ -46,7 +50,7 @@ interface Filters {
   pricedOnly: boolean;
 }
 
-const DEFAULTS: Filters = { legs: 4, sports: [], kinds: [], window: "l10", minRate: 0.7, minArchr: 0, shortest: "-500", sameGame: false, pricedOnly: false };
+const DEFAULTS: Filters = { legs: 4, sports: [], game: "", team: "", kinds: [], window: "l10", minRate: 0.7, minArchr: 0, shortest: "-500", sameGame: false, pricedOnly: false };
 
 const SLIP_SPORTS = new Set<SlipSport>(["mlb", "nfl", "nba", "ufc", "tennis", "soccer"]);
 const MARKET: Record<BuilderKind, MarketType | "prop"> = { prop: "prop", ml: "h2h", spread: "spreads", total: "totals" };
@@ -92,7 +96,17 @@ function SwapIcon() {
  * that clear the filters; when too few games are left, it says so rather than
  * padding the parlay with legs that don't.
  */
-export function ParlayGenerator({ sports }: { sports: { key: string; label: string; count: number }[] }) {
+export function ParlayGenerator({
+  sports,
+  games,
+  teams,
+  sportLabels,
+}: {
+  sports: { key: string; label: string; count: number }[];
+  games: { id: string; sport: string; label: string; teams: string[] }[];
+  teams: { key: string; sport: string; label: string }[];
+  sportLabels: Record<string, string>;
+}) {
   const [f, setF] = useState<Filters>(DEFAULTS);
   const [legs, setLegs] = useState<GeneratedLeg[]>([]);
   const [locked, setLocked] = useState<Set<string>>(new Set());
@@ -104,6 +118,10 @@ export function ParlayGenerator({ sports }: { sports: { key: string; label: stri
   const slip = useSlip();
 
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setF((x) => ({ ...x, [k]: v }));
+  // The Game and Team menus follow the sports picked, and the team menu the game.
+  const gameOptions = games.filter((g) => !f.sports.length || f.sports.includes(g.sport));
+  const inGame = f.game ? new Set(games.find((g) => g.id === f.game)?.teams ?? []) : null;
+  const teamOptions = teams.filter((t) => (!f.sports.length || f.sports.includes(t.sport)) && (!inGame || inGame.has(t.key)));
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   async function call(lockedIds: string[], exclude: string[], legCount = f.legs): Promise<GenerateResult | null> {
@@ -207,15 +225,46 @@ export function ParlayGenerator({ sports }: { sports: { key: string; label: stri
         </div>
 
         <Row title="Sports">
-          <button type="button" onClick={() => set("sports", [])} className={chip(f.sports.length === 0)}>
+          <button type="button" onClick={() => setF((x) => ({ ...x, sports: [], game: "", team: "" }))} className={chip(f.sports.length === 0)}>
             All sports
           </button>
           {sports.map((s) => (
-            <button key={s.key} type="button" onClick={() => set("sports", toggle(f.sports, s.key))} className={chip(f.sports.includes(s.key))}>
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setF((x) => ({ ...x, sports: toggle(x.sports, s.key), game: "", team: "" }))}
+              className={chip(f.sports.includes(s.key))}
+            >
               {s.label} <span className="opacity-60">{s.count}</span>
             </button>
           ))}
         </Row>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Game</span>
+            <select value={f.game} onChange={(e) => setF((x) => ({ ...x, game: e.target.value, team: "" }))} className={selectClass}>
+              <option value="">All games</option>
+              {gameOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {f.sports.length === 1 ? "" : `${sportLabels[g.sport] ?? g.sport} · `}
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Team</span>
+            <select value={f.team} onChange={(e) => set("team", e.target.value)} className={selectClass}>
+              <option value="">All teams</option>
+              {teamOptions.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {f.sports.length === 1 ? "" : `${sportLabels[t.sport] ?? t.sport} · `}
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <Row title="Bet types">
           <button type="button" onClick={() => set("kinds", [])} className={chip(f.kinds.length === 0)}>
             Everything
@@ -254,9 +303,15 @@ export function ParlayGenerator({ sports }: { sports: { key: string; label: stri
           ))}
         </Row>
         <Row title="Options">
-          <button type="button" onClick={() => set("sameGame", !f.sameGame)} className={chip(f.sameGame)} aria-pressed={f.sameGame}>
-            Same-game legs
-          </button>
+          {f.game || f.team ? (
+            <span className={chip(true)} title="One game or team picked: its legs share a game">
+              Same-game legs (on)
+            </span>
+          ) : (
+            <button type="button" onClick={() => set("sameGame", !f.sameGame)} className={chip(f.sameGame)} aria-pressed={f.sameGame}>
+              Same-game legs
+            </button>
+          )}
           <button type="button" onClick={() => set("pricedOnly", !f.pricedOnly)} className={chip(f.pricedOnly)} aria-pressed={f.pricedOnly}>
             Book-priced legs only
           </button>

@@ -16,12 +16,15 @@
  */
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
 import { MAX_TRUSTED_RELATIVE_EDGE, conservativeProb, relativeEdge } from "./conservative";
-import { MAX_TRUSTED_EDGE } from "./build";
+import { MAX_TRUSTED_EDGE, inScope } from "./build";
 import type { BuilderLeg, BuilderWindow } from "./types";
 
 export interface OptimizeOptions {
   /** Sports to draw from; empty = every sport. */
   sports: string[];
+  /** One game / one team to draw from (see build.inScope); empty = any. */
+  game?: string;
+  team?: string;
   /** The payout wanted, American (+500). The parlay pays at least this. */
   target: number;
   /** Exact leg count, or null for any count from 2 to `maxLegs`. */
@@ -75,7 +78,7 @@ function candidates(pool: BuilderLeg[], o: OptimizeOptions): Map<string, Cand[]>
   const groups = new Map<string, Cand[]>();
   for (const leg of pool) {
     if (leg.priceAmerican === null || leg.priceAmerican < o.shortest) continue;
-    if (o.sports.length && !o.sports.includes(leg.sport)) continue;
+    if (!inScope(leg, o)) continue;
     const prob = conservativeProb(leg.archr, leg.rates[o.window]);
     if (prob === null || prob < o.minProb || prob >= 1) continue;
     // A price far longer than the leg's cautious read is a price that doesn't belong to it: the optimizer would chase it.

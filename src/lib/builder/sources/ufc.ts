@@ -44,6 +44,7 @@ export async function ufcLegs(now = new Date()): Promise<BuilderLeg[]> {
         league: "UFC",
         eventId: `ufc:${bout.id}`,
         eventLabel: `${bout.red.name} vs ${bout.blue.name}`,
+        teams: [`ufc:${f.name}`],
         startsAt: event.eventDate.toISOString(),
         href: `/ufc/${bout.id}`,
         kind: "ml",

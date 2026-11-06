@@ -46,6 +46,7 @@ function propLeg(sport: TeamLeagueSport, l: FinderLeg, season: number, event: { 
     league: LABEL[sport],
     eventId: `${sport}:${l.gameId}`,
     eventLabel: event.label,
+    teams: [`${sport}:${l.team}`],
     startsAt: event.startsAt,
     href: `/${sport}/props?game=${l.gameId}`,
     kind: "prop",
@@ -132,6 +133,7 @@ async function gameLines(sport: TeamLeagueSport, now: Date): Promise<BuilderLeg[
         out.push({
           ...base,
           id: `${sport}:${game.id}:${m.market}:${s.key}`,
+          teams: s.key === "home" ? [`${sport}:${home.abbreviation}`] : s.key === "away" ? [`${sport}:${away.abbreviation}`] : [`${sport}:${home.abbreviation}`, `${sport}:${away.abbreviation}`],
           kind: m.market,
           label: s.label,
           group: `${sport}:${game.id}:${m.market}`,
