@@ -23,7 +23,12 @@ export const TRACKED_MODELS = {
 } as const;
 
 /** Bumped when the featureSnapshot shape changes. */
-export const LEAN_FEATURE_SCHEMA = "lean-v1";
+export const LEAN_FEATURE_SCHEMA = "lean-v2";
+
+/** Every schema version evaluation knows how to read. Rows stamped with
+ * anything else are skipped by readers (edgeReport) instead of being cast
+ * blind — a future shape bump must add itself here deliberately. */
+export const KNOWN_LEAN_SCHEMAS: readonly string[] = ["lean-v1", "lean-v2"];
 
 export type LeanKind = "prop" | "ml" | "spread" | "total";
 
@@ -40,6 +45,15 @@ export interface LeanFeatures {
   point: number | null;
   /** ARCHR's chance before the market blend. */
   modelProb: number | null;
+  /** NBA props (lean-v2): the blended chance BEFORE the display calibration
+   * shrink. `probability` on the row is the calibrated chance Sam sees; this
+   * keeps the raw number gradable as its own dimension. */
+  rawProb?: number | null;
+  /** The frozen projection itself (lean-v2): the projected stat mean and its
+   * spread, so settlement can decompose error into bias vs variance instead
+   * of only hit/miss. Null where the model exposes no projection. */
+  projMean?: number | null;
+  projSd?: number | null;
   /** The market's no-vig chance at this number; null with no two-sided market. */
   marketProb: number | null;
   /** Best price on this side; null when the book posted the number without a price. */
@@ -62,7 +76,7 @@ export type SettleResult = "hit" | "miss" | "push" | "void";
 /** One settled lean, as evaluation reads it. */
 export interface GradedLean {
   features: LeanFeatures;
-  /** ARCHR's chance (market-blended) on this side when captured. */
+  /** The displayed chance on this side when captured (NBA props: calibrated; the pre-calibration blend is kept in features.rawProb). */
   prob: number;
   result: SettleResult;
   closingProb: number | null;

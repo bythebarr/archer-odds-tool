@@ -5,7 +5,7 @@
  */
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { TRACKED_MODELS, type GradedLean, type LeanFeatures, type SettleResult } from "@/lib/tracking/types";
+import { KNOWN_LEAN_SCHEMAS, TRACKED_MODELS, type GradedLean, type LeanFeatures, type SettleResult } from "@/lib/tracking/types";
 import { evaluateLeans } from "@/lib/tracking/evaluate";
 
 export const EDGE_WINDOWS = { "30": 30, "90": 90, season: 240 } as const;
@@ -14,10 +14,16 @@ export type EdgeWindow = keyof typeof EDGE_WINDOWS;
 export async function loadGradedLeans(days: number, now = new Date()): Promise<GradedLean[]> {
   const rows = await prisma.predictionSettlement.findMany({
     where: { prediction: { scheduledStartUtc: { gte: new Date(now.getTime() - days * 86_400_000) }, run: { modelKey: { in: Object.values(TRACKED_MODELS) } } } },
-    select: { result: true, closingProb: true, prediction: { select: { probability: true, featureSnapshot: true, scheduledStartUtc: true } } },
+    select: {
+      result: true,
+      closingProb: true,
+      prediction: { select: { probability: true, featureSnapshot: true, scheduledStartUtc: true, run: { select: { featureSchemaVersion: true } } } },
+    },
   });
   return rows.flatMap((r) =>
-    r.prediction.probability === null
+    // Never cast a snapshot whose stamped schema version isn't one evaluation
+    // knows how to read (audit 2026-11-06, Lane 4 S6).
+    r.prediction.probability === null || !KNOWN_LEAN_SCHEMAS.includes(r.prediction.run.featureSchemaVersion)
       ? []
       : [
           {
