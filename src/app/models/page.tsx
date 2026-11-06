@@ -167,6 +167,14 @@ export default async function ModelsPage() {
       )}
 
       <p className="mt-6 text-[11px] leading-relaxed text-muted-foreground">
+        On the Slate and the deck, a play priced by a model without a passing grade carries an{" "}
+        <span className="font-semibold text-foreground">&ldquo;Unproven model — small sample&rdquo;</span>{" "}
+        badge: it hasn&apos;t graded enough outcomes yet to trust its calibration. The plays stay visible
+        for transparency while the sample builds — the badge is the reminder to lean on the market&apos;s
+        price until the grade is earned.
+      </p>
+
+      <p className="mt-6 text-[11px] leading-relaxed text-muted-foreground">
         Skill is the Brier score improvement over predicting the base rate, ×1000 (higher is better). For props, &ldquo;vs
         average&rdquo; is how much smaller the projection&apos;s error is than the player&apos;s recent average. A model that
         isn&apos;t trusted still shows its numbers, but the market&apos;s fair price is the safer guide until it is.

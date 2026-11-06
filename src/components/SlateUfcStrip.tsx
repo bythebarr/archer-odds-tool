@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { SlateItem } from "@/lib/queries/slate";
 import type { FinishMethod } from "@/lib/ufc/finishMath";
 import { FighterBadge } from "./FighterBadge";
+import { UnprovenModelBadge } from "./UnprovenModelBadge";
 
 /** Compact "how it ends" label + accent, matching the bout page's finish card and the old Lines board. */
 const METHOD_LEAN_META: Record<FinishMethod, { label: string; color: string }> = {
@@ -66,7 +67,14 @@ function UfcRow({ item }: { item: SlateItem }) {
  * rides alongside the pool as its own strip: the model's favored fighter + the
  * finish-method lean per bout, each linking to the full bout projection.
  */
-export function SlateUfcStrip({ items }: { items: SlateItem[] }) {
+export function SlateUfcStrip({
+  items,
+  modelVerdict,
+}: {
+  items: SlateItem[];
+  /** The UFC model's calibration verdict — the whole strip is one model's output, so the badge rides the section. */
+  modelVerdict?: string | null;
+}) {
   if (items.length === 0) return null;
 
   const eventTitle = items.find((i) => i.title)?.title ?? null;
@@ -84,6 +92,11 @@ export function SlateUfcStrip({ items }: { items: SlateItem[] }) {
       <p className="px-2 pt-0.5 text-[11px] text-muted-foreground/70">
         Model favorite + finish lean — no book prices yet. Tap a bout for the full projection.
       </p>
+      {modelVerdict !== undefined && (
+        <div className="px-2 pt-1.5">
+          <UnprovenModelBadge verdict={modelVerdict} />
+        </div>
+      )}
       <div className="mt-2 divide-y divide-border/50">
         {items.map((item) => (
           <UfcRow key={item.key} item={item} />
