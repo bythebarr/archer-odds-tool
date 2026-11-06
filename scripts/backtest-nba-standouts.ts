@@ -185,6 +185,7 @@ async function main() {
       lines: {},
       modelWeights,
       calibrationFactors,
+      blendVerdicts: {},
       positionRates: {},
       teamDates: Object.fromEntries([...teamDates].map(([t, ds]) => [t, ds.filter((d) => d < date)])),
       lineups: {},
