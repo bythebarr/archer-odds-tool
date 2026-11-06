@@ -138,6 +138,9 @@ export default async function ModelsPage() {
           Each model is replayed on past games using only what was known before them, then checked: when it said 60%, did it
           hit 60%? And is it better than a coin flip or a simple average?
         </p>
+        <a href="/models/edges" className="mt-3 inline-block text-xs font-semibold text-[#c8f53a] underline-offset-2 hover:underline">
+          Edge tracker: every live lean, graded →
+        </a>
         {cards.length > 0 && (
           <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
             {Object.entries(VERDICT).map(([k, v]) => (counts[k] ? <span key={k}>{counts[k]} {v.label.toLowerCase()}</span> : null))}

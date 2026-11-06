@@ -98,6 +98,8 @@ export interface Standout {
   /** Before calibration: the props model's chance (market blend included), and the market's no-vig chance alone. */
   rawChance: number;
   marketChance: number | null;
+  /** The projection alone, before the market blend. */
+  modelChance: number;
   /** Expected value of the best price at that chance. */
   ev: number | null;
   minutes: number | null;
@@ -264,6 +266,7 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       chance,
       rawChance,
       marketChance: market,
+      modelChance: side === "over" ? base.model.modelProbOver : 1 - base.model.modelProbOver,
       ev: quote ? chance * americanToDecimal(quote.priceAmerican) - 1 : null,
       minutes: proj.minutes,
       hit: { l5: rate(s, "l5"), l10, season: rate(s, "season"), h2h: rate(s, "h2h") },
