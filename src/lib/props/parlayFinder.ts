@@ -79,9 +79,9 @@ export interface FoundParlay {
 /** Candidate legs searched, the strongest on their own first. */
 const MAX_LEGS = 200;
 
-type Bits = Uint32Array;
-const words = (n: number) => Math.ceil(n / 32);
-function popcount(b: Bits): number {
+export type Bits = Uint32Array;
+export const words = (n: number) => Math.ceil(n / 32);
+export function popcount(b: Bits): number {
   let c = 0;
   for (let i = 0; i < b.length; i++) {
     let v = b[i];
@@ -91,7 +91,7 @@ function popcount(b: Bits): number {
   }
   return c;
 }
-function and(a: Bits, b: Bits): Bits {
+export function and(a: Bits, b: Bits): Bits {
   const out = new Uint32Array(a.length);
   for (let i = 0; i < a.length; i++) out[i] = a[i] & b[i];
   return out;

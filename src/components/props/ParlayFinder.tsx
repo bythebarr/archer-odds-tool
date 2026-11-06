@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { findParlays, findTwoTeamParlays, type FinderLeg, type FoundParlay, type TwoTeamParlay } from "@/lib/props/parlayFinder";
+import { findStacks, type StackRank } from "@/lib/props/stackFinder";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { ParlayTray } from "@/components/props/Parlay";
 import type { ParlayLeg } from "@/lib/props/parlay";
@@ -15,7 +16,9 @@ type SeasonsKey = "both" | "this";
 type ShortestKey = "-300" | "-500" | "-1000" | "any";
 type LegRateKey = "0.6" | "0.7" | "0.8";
 type PerPlayerKey = "1" | "2" | "any";
-type TeamsKey = "one" | "both";
+type TeamsKey = "one" | "both" | "pick";
+/** Players a stack can hold. */
+const MAX_PICKED = 8;
 type SidesKey = "all" | "over" | "under";
 
 export interface FinderGame {
@@ -126,6 +129,82 @@ function TwoTeamCard({ p, span, onOpen }: { p: TwoTeamParlay; span: string; onOp
   );
 }
 
+/**
+ * Pick players: tap 2–8 players, and the finder returns the line for each that
+ * cashed together most often in the games they all played (or, ranked by
+ * payout, the longest-priced stacks that cashed 70%+ of the time).
+ */
+function PickPlayers({
+  roster,
+  picked,
+  onToggle,
+  onClear,
+  stack,
+  span,
+  rank,
+  onOpen,
+}: {
+  roster: { team: string; players: { id: string; name: string; lines: number }[] }[];
+  picked: string[];
+  onToggle: (id: string) => void;
+  onClear: () => void;
+  stack: ReturnType<typeof findStacks> | null;
+  span: string;
+  rank: StackRank;
+  onOpen: (legs: FinderLeg[]) => void;
+}) {
+  const teamsPicked = new Set(roster.filter((t) => t.players.some((p) => picked.includes(p.id))).map((t) => t.team));
+  return (
+    <>
+      <ListNote>
+        Tap {picked.length ? "more players" : "2 to 8 players"} ({picked.length}/{MAX_PICKED} picked). The finder looks for the line on each of them that cashed together most
+        often in the games they all played {span}.
+        {picked.length > 0 && (
+          <>
+            {" "}
+            <button type="button" onClick={onClear} className="font-semibold text-foreground underline-offset-2 hover:underline">
+              Clear
+            </button>
+          </>
+        )}
+      </ListNote>
+      {roster.map(({ team, players }) => (
+        <div key={team} className="mt-2.5">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{team}</p>
+          <div className="flex flex-wrap gap-2">
+            {players.map((p) => (
+              <button key={p.id} type="button" onClick={() => onToggle(p.id)} className={chip(picked.includes(p.id))} aria-pressed={picked.includes(p.id)}>
+                {p.name} <span className="opacity-60">{p.lines}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      {teamsPicked.size > 1 && (
+        <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Players from both teams only share the games these teams played each other, so the record will be short.</p>
+      )}
+      {stack && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          They played <span className="font-mono text-foreground">{stack.together}</span> games together {span}
+          {stack.stacks.length > 0 && (rank === "payout" ? " · the longest-priced stacks that cashed 70%+ of them" : " · the stacks that cashed together most often")}
+        </p>
+      )}
+      {stack && stack.stacks.length > 0 ? (
+        <ul className="mt-3 flex flex-col gap-2.5">
+          {stack.stacks.map((p) => (
+            <ParlayCard key={p.legs.map((l) => l.key).join("|")} p={p} span={span} onOpen={() => onOpen(p.legs)} />
+          ))}
+        </ul>
+      ) : stack ? (
+        <EmptyList
+          title={stack.together < 5 ? `Only ${stack.together} games together ${span}` : rank === "payout" ? "No stack of these players cashed 70%+ together" : "No stack of lines on these players cashed together"}
+          hint={stack.together < 5 ? "Pick players who've shared the floor more, or include last season." : "Try ranking by hit rate, allow shorter-priced legs, or include unders."}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function HowToRead({ both }: { both: boolean }) {
   return (
     <details className="mt-3 rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground [&_summary::-webkit-details-marker]:hidden">
@@ -186,6 +265,8 @@ export function ParlayFinder({
   const [sides, setSides] = useState<SidesKey>("all");
   const [size, setSize] = useState<number | null>(null);
   const [lab, setLab] = useState<ParlayLeg[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [rank, setRank] = useState<StackRank>("rate");
 
   const allLegs = useMemo(() => (gameId ? legsFor(gameId, shortest === "any" ? -Infinity : Number(shortest)) : []), [legsFor, gameId, shortest]);
   // Overs only, unders only, or both (a Yes leg, like an anytime TD, counts as an over).
@@ -201,6 +282,24 @@ export function ParlayFinder({
   );
   const oneTeam = useMemo(() => (teams === "one" ? findParlays(legs, options) : []), [teams, legs, options]);
   const twoTeam = useMemo(() => (teams === "both" ? findTwoTeamParlays(legs, options) : []), [teams, legs, options]);
+  // Pick players: every player with a line on this game, by team.
+  const roster = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; team: string; lines: number }>();
+    for (const l of allLegs) {
+      const p = byId.get(l.player) ?? byId.set(l.player, { id: l.player, name: l.playerName, team: l.team, lines: 0 }).get(l.player)!;
+      p.lines++;
+    }
+    const players = [...byId.values()].sort((a, b) => a.team.localeCompare(b.team) || b.lines - a.lines || a.name.localeCompare(b.name));
+    return [...new Set(players.map((p) => p.team))].map((team) => ({ team, players: players.filter((p) => p.team === team) }));
+  }, [allLegs]);
+  const stack = useMemo(
+    () =>
+      teams === "pick" && picked.length >= 2
+        ? findStacks(legs, picked, { seasons: options.seasons, minShared: Math.min(options.minShared, 5), rank })
+        : null,
+    [teams, picked, legs, options, rank]
+  );
+  const togglePick = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= MAX_PICKED ? p : [...p, id]));
   const results: { size: number }[] = teams === "one" ? oneTeam : twoTeam;
   const span = seasons === "this" ? "this season" : "this season and last";
   const sizes = results.map((r) => r.size);
@@ -211,12 +310,22 @@ export function ParlayFinder({
 
   return (
     <>
-      <GameChips games={games} active={gameId} onSelect={(id) => id && setGameId(id)} allLabel="Pick a game" />
+      <GameChips
+        games={games}
+        active={gameId}
+        onSelect={(id) => {
+          if (!id) return;
+          setGameId(id);
+          setPicked([]);
+        }}
+        allLabel="Pick a game"
+      />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Segmented<TeamsKey>
           options={[
             { key: "one", label: "One team" },
             { key: "both", label: "Both teams" },
+            { key: "pick", label: "Pick players" },
           ]}
           value={teams}
           onChange={setTeams}
@@ -230,6 +339,16 @@ export function ParlayFinder({
           value={sides}
           onChange={setSides}
         />
+        {teams === "pick" ? (
+          <Segmented<StackRank>
+            options={[
+              { key: "rate", label: "Hit most often" },
+              { key: "payout", label: "Best payout (70%+)" },
+            ]}
+            value={rank}
+            onChange={setRank}
+          />
+        ) : (
         <Segmented<PerPlayerKey>
           options={[
             { key: "1", label: "1 leg per player" },
@@ -239,6 +358,7 @@ export function ParlayFinder({
           value={perPlayer}
           onChange={setPerPlayer}
         />
+        )}
         <Segmented<SeasonsKey>
           options={[
             { key: "both", label: "This + last season" },
@@ -247,6 +367,7 @@ export function ParlayFinder({
           value={seasons}
           onChange={setSeasons}
         />
+        {teams !== "pick" && (
         <Segmented<LegRateKey>
           options={[
             { key: "0.6", label: "Legs 60%+" },
@@ -256,6 +377,7 @@ export function ParlayFinder({
           value={legRate}
           onChange={setLegRate}
         />
+        )}
         <Segmented<ShortestKey>
           options={[
             { key: "-300", label: "No legs under −300" },
@@ -268,6 +390,19 @@ export function ParlayFinder({
         />
       </div>
 
+      {teams === "pick" ? (
+        <PickPlayers
+          roster={roster}
+          picked={picked}
+          onToggle={togglePick}
+          onClear={() => setPicked([])}
+          stack={stack}
+          span={span}
+          rank={rank}
+          onOpen={(legs) => setLab(legs)}
+        />
+      ) : (
+      <>
       {sizes.length > 0 && (
         <ScrollRow className="-mx-4 mt-3 flex gap-2 px-4 pb-1">
           {sizes.map((n) => (
@@ -305,6 +440,8 @@ export function ParlayFinder({
           title={teams === "both" ? "No two-team parlay clears these bars" : "No combination has cashed together often enough"}
           hint="Try a lower leg hit rate, allow shorter-priced legs, more legs per player, or include last season."
         />
+      )}
+      </>
       )}
 
       <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
