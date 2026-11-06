@@ -27,13 +27,16 @@ export async function POST(request: Request) {
   const pool = await getBuilderPool();
   const result = generateParlay(pool, {
     sports: strings(body.sports),
+    game: typeof body.game === "string" && body.game.length < 200 ? body.game : undefined,
+    team: typeof body.team === "string" && body.team.length < 200 ? body.team : undefined,
     legs: Math.round(num(body.legs, 1, 15, 4)),
     window: WINDOWS.includes(body.window as BuilderWindow) ? (body.window as BuilderWindow) : "l10",
     minRate: num(body.minRate, 0, 1, 0.7),
     minArchr: num(body.minArchr, 0, 1, 0),
     minEdge: typeof body.minEdge === "number" ? num(body.minEdge, -1, 1, 0) : null,
     shortest: typeof body.shortest === "number" ? num(body.shortest, -100000, -100, -500) : -Infinity,
-    sameGame: body.sameGame === true,
+    // One game (or one team's game) can only make a same-game parlay.
+    sameGame: body.sameGame === true || (typeof body.game === "string" && body.game !== "") || (typeof body.team === "string" && body.team !== ""),
     sort: SORTS.includes(body.sort as BuilderSort) ? (body.sort as BuilderSort) : "archr",
     kinds: strings(body.kinds).filter((k): k is BuilderKind => KINDS.includes(k as BuilderKind)),
     pricedOnly: body.pricedOnly === true,

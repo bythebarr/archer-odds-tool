@@ -26,6 +26,13 @@ export interface BuilderLeg {
   eventId: string;
   /** "BOS @ NYK". */
   eventLabel: string;
+  /**
+   * The teams the leg is about, sport-scoped ("nba:BOS"), for the team filter:
+   * a prop's player's team, a moneyline or spread's team, both teams for a
+   * total (and a draw), the fighter for UFC. Missing on legs cached before the
+   * field existed.
+   */
+  teams?: string[];
   /** ISO start. */
   startsAt: string;
   href: string;

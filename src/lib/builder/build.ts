@@ -21,6 +21,10 @@ export type BuilderSort = "archr" | "edge" | "cedge" | "hit";
 export interface BuilderOptions {
   /** Sports to draw from; empty = every sport. */
   sports: string[];
+  /** One game (a leg's eventId) to draw from; empty = any. */
+  game?: string;
+  /** One team (a sport-scoped key, "nba:BOS") the legs must be about; empty = any. */
+  team?: string;
   legs: number;
   window: BuilderWindow;
   /** Each leg's record over the window must be at least this (0–1). */
@@ -74,8 +78,16 @@ function floor(hits: number, n: number): number {
   return (p + 1 / (2 * n) - Math.sqrt((p * (1 - p)) / n + 1 / (4 * n * n))) / d;
 }
 
-export function qualifies(l: BuilderLeg, o: BuilderOptions): boolean {
+/** The sport, game and team filters: where a leg comes from, before its numbers are read. */
+export function inScope(l: BuilderLeg, o: Pick<BuilderOptions, "sports" | "game" | "team">): boolean {
   if (o.sports.length && !o.sports.includes(l.sport)) return false;
+  if (o.game && l.eventId !== o.game) return false;
+  if (o.team && !(l.teams ?? []).includes(o.team)) return false;
+  return true;
+}
+
+export function qualifies(l: BuilderLeg, o: BuilderOptions): boolean {
+  if (!inScope(l, o)) return false;
   const [, n] = l.rates[o.window];
   if (n < MIN_GAMES[o.window] || rateOf(l, o.window) < o.minRate) return false;
   if (o.minArchr > 0 && (l.archr === null || l.archr < o.minArchr)) return false;

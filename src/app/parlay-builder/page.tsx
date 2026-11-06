@@ -9,6 +9,8 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
 import { ScrollRow } from "@/components/ScrollRow";
 import { ParlayGenerator } from "@/components/builder/ParlayGenerator";
+import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
+import { scopeOptions } from "@/lib/builder/scope";
 
 export const metadata: Metadata = {
   title: "Parlay Builder — legs that clear your hit rate and ARCHR's bar, every sport",
@@ -17,7 +19,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-type Params = { mode?: string; pay?: string; n?: string; sports?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; short?: string; sgp?: string; sort?: string };
+type Params = { mode?: string; pay?: string; n?: string; sports?: string; game?: string; team?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; short?: string; sgp?: string; sort?: string };
 
 /** Payouts the optimizer aims for (American), and its leg counts. */
 const PAYOUTS = [100, 200, 300, 500, 750, 1000, 2000, 5000];
@@ -63,6 +65,8 @@ function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: s
   const shortKey = SHORTEST.some((e) => e.key === p.short) ? p.short! : DEFAULTS.short;
   return {
     sports: (p.sports ?? "").split(",").filter(Boolean),
+    game: p.game || undefined,
+    team: p.team || undefined,
     legs: num(p.legs, LEG_COUNTS, DEFAULTS.legs),
     window: WINDOWS.some((w) => w.key === p.window) ? (p.window as BuilderWindow) : DEFAULTS.window,
     minRate: num(p.rate, RATES, DEFAULTS.rate),
@@ -209,6 +213,14 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
   await refreshOnView([["sync-injuries", 20], ["espn-props", 30], ["espn-odds", 30]]);
   const o = readOptions(params);
   const pool = await getBuilderPool();
+  // The Game and Team menus; a pick that's no longer on the board (or outside the sports chosen) is dropped.
+  const scope = scopeOptions(pool, o.sports, o.game);
+  if (o.game && !scope.games.some((g) => g.id === o.game)) o.game = undefined;
+  if (o.team && !scope.teams.some((t) => t.key === o.team)) o.team = undefined;
+  // One game (or one team's game) can only make a same-game parlay.
+  const narrowed = Boolean(o.game || o.team);
+  if (narrowed) o.sameGame = true;
+  const allScope = scopeOptions(pool, []);
   const payout = o.mode === "payout";
   const gen = o.mode === "gen";
   const { qualifying, parlays } = payout || gen ? { qualifying: 0, parlays: [] } : buildParlays(pool, o);
@@ -217,6 +229,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         target: o.pay,
         legs: o.n === "any" ? null : Number(o.n),
         sports: o.sports,
+        game: o.game,
+        team: o.team,
         window: o.window,
         sameGame: o.sameGame,
         shortest: o.shortest,
@@ -230,6 +244,8 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
   const href = (change: Partial<Params>) => {
     const next: Params = {
       sports: o.sports.join(","),
+      game: o.game ?? "",
+      team: o.team ?? "",
       legs: String(o.legs),
       window: o.window,
       rate: String(o.minRate),
@@ -246,6 +262,11 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
     const qs = new URLSearchParams(Object.entries(next).filter(([, v]) => v !== undefined && v !== "") as [string, string][]);
     return `/parlay-builder?${qs.toString()}`;
   };
+  // Every other setting, carried through the Game / Team form.
+  const keep = Object.fromEntries(new URLSearchParams(href({ game: undefined, team: undefined }).split("?")[1]).entries());
+  delete keep.game;
+  delete keep.team;
+  const selectClass = "w-full rounded-lg border border-border bg-background px-2.5 py-2 text-sm text-foreground";
   const toggleSport = (s: string) => (o.sports.includes(s) ? o.sports.filter((x) => x !== s) : [...o.sports, s]).join(",");
 
   return (
@@ -270,19 +291,60 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         </Link>
       </div>
 
-      {gen && <ParlayGenerator sports={sports.map((s) => ({ key: s, label: SPORT_LABEL[s] ?? s, count: counts.get(s) ?? 0 }))} />}
+      {gen && (
+        <ParlayGenerator
+          sports={sports.map((s) => ({ key: s, label: SPORT_LABEL[s] ?? s, count: counts.get(s) ?? 0 }))}
+          games={allScope.games.map((g) => ({ id: g.id, sport: g.sport, label: `${g.label} · ${startLabel(g.startsAt)}`, teams: g.teams }))}
+          teams={allScope.teams.map((t) => ({ key: t.key, sport: t.sport, label: t.label }))}
+          sportLabels={SPORT_LABEL}
+        />
+      )}
       {!gen && (
         <>
       <Row title="Sports">
-        <Link scroll={false} href={href({ sports: "" })} className={chip(o.sports.length === 0)}>
+        <Link scroll={false} href={href({ sports: "", game: "", team: "" })} className={chip(o.sports.length === 0)}>
           All sports
         </Link>
         {sports.map((s) => (
-          <Link key={s} scroll={false} href={href({ sports: toggleSport(s) })} className={chip(o.sports.includes(s))}>
+          <Link key={s} scroll={false} href={href({ sports: toggleSport(s), game: "", team: "" })} className={chip(o.sports.includes(s))}>
             {SPORT_LABEL[s] ?? s} <span className="opacity-60">{counts.get(s) ?? 0}</span>
           </Link>
         ))}
       </Row>
+      <AutoSubmitForm action="/parlay-builder" className="mt-3 grid grid-cols-2 gap-2">
+        {Object.entries(keep).map(([k, v]) => (
+          <input key={k} type="hidden" name={k} value={v} />
+        ))}
+        <label className="block">
+          <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Game</span>
+          <select key={`g:${o.game ?? ""}`} name="game" defaultValue={o.game ?? ""} className={selectClass}>
+            <option value="">All games</option>
+            {scope.games.map((g) => (
+              <option key={g.id} value={g.id}>
+                {o.sports.length === 1 ? "" : `${SPORT_LABEL[g.sport] ?? g.sport} · `}
+                {g.label} · {startLabel(g.startsAt)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Team</span>
+          <select key={`t:${o.team ?? ""}:${o.game ?? ""}`} name="team" defaultValue={o.team ?? ""} className={selectClass}>
+            <option value="">All teams</option>
+            {scope.teams.map((t) => (
+              <option key={t.key} value={t.key}>
+                {o.sports.length === 1 ? "" : `${SPORT_LABEL[t.sport] ?? t.sport} · `}
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <noscript>
+          <button type="submit" className="col-span-2 rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background">
+            Apply
+          </button>
+        </noscript>
+      </AutoSubmitForm>
       {payout && (
         <>
           <Row title="Payout you want (at least)">
@@ -360,7 +422,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         ))}
       </Row>
       )}
-      <Row title="Same game">
+      <Row title={narrowed ? "Same game (on: one game or team picked)" : "Same game"}>
         <Link scroll={false} href={href({ sgp: "" })} className={chip(!o.sameGame)}>
           One leg per game
         </Link>
