@@ -117,20 +117,21 @@ export const TOA_NFL_PROP_MARKETS = [
   "player_tackles_assists",
   "player_solo_tackles",
   "player_sacks",
-  // Alternate ladders: the same stats at every number the books hang.
-  "player_pass_yds_alternate",
-  "player_pass_tds_alternate",
-  "player_pass_completions_alternate",
-  "player_pass_attempts_alternate",
-  "player_rush_yds_alternate",
-  "player_rush_attempts_alternate",
-  "player_receptions_alternate",
-  "player_reception_yds_alternate",
-  "player_rush_reception_yds_alternate",
+  // Alternate ladders (player_*_alternate) are deliberately NOT requested
+  // here — same call as the NBA list (see nba/props.ts): at markets ×
+  // regions billing they were 9 of this list's 28 markets, and ESPN's free
+  // props poll already writes DraftKings' ladder into the same table.
 ];
-const TOA_PROP_REGIONS = ["us", "us2"];
-/** Props post a day or two ahead; 30 hours covers a Sunday slate from Saturday's evening poll. */
-const LOOKAHEAD_HOURS = 30;
+/** us only — see the NBA list's note; us2 doubled the per-game bill. */
+const TOA_PROP_REGIONS = ["us"];
+/**
+ * Props post a day or two ahead. This was 30 hours — Saturday's evening
+ * poll pre-bought the entire Sunday slate a day early, then Sunday's poll
+ * bought it again. 18 hours still covers the whole Sunday slate (incl.
+ * the late game) from Sunday's own morning poll, and Monday night from
+ * Monday's — each game is simply bought once instead of twice.
+ */
+const LOOKAHEAD_HOURS = 18;
 const ALLOWED = new Set<string>(ALLOWED_BOOK_KEYS);
 
 export interface PollNflPropsSummary {

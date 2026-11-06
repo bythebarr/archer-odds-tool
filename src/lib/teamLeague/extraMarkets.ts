@@ -92,7 +92,14 @@ export function eventToMarketRows(event: OddsApiEvent): MarketLineRow[] {
   return out;
 }
 
-const REGIONS = ["us", "us2"];
+/**
+ * us only. This poll is the most expensive routine job in the codebase —
+ * every key × region × game, per event (NFL's run on 2026-11-01 cost 319
+ * credits for 11 games) — and us2 doubled it for books the us set already
+ * carries. The market keys themselves are unchanged: what the product
+ * displays when this poll runs is exactly what it displayed before.
+ */
+const REGIONS = ["us"];
 
 export interface ExtraMarketsSummary {
   gamesConsidered: number;

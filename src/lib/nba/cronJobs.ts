@@ -18,7 +18,14 @@ import { NBA_LEAGUE } from "./league";
  * same tick as props, logged on their own so a market-key change shows up there.
  */
 const NBA_MARKETS_JOB = "poll-markets-nba";
-const NBA_MARKETS_LOOKAHEAD_HOURS = 14;
+/**
+ * Was 14 hours: at five odds ticks a day, a game inside a 14h window was
+ * re-bought up to five times before tip — for lines (alternates, periods)
+ * that move far less than the main board the 55-minute free ESPN poll
+ * carries. 6 hours still buys a typical game two to three refreshes,
+ * including the one closest to tip.
+ */
+const NBA_MARKETS_LOOKAHEAD_HOURS = 6;
 export async function runNbaExtraMarketsPoll() {
   try {
     const summary = await pollExtraMarkets(NBA_LEAGUE, NBA_MARKETS_LOOKAHEAD_HOURS);

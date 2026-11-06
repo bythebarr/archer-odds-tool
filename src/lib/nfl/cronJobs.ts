@@ -17,7 +17,13 @@ import { NFL_LEAGUE } from "./league";
  * same tick as props, logged on their own so a market-key change shows up there.
  */
 const NFL_MARKETS_JOB = "poll-markets-nfl";
-const NFL_MARKETS_LOOKAHEAD_HOURS = 30;
+/**
+ * Was 30 hours: Saturday's poll bought Sunday's extra markets a day
+ * early and Sunday's bought them again — the 2026-11-01 instance of this
+ * job cost 319 credits for 11 games. 18 hours covers the full Sunday
+ * slate (incl. the late game) from Sunday's own polls, once per game.
+ */
+const NFL_MARKETS_LOOKAHEAD_HOURS = 18;
 /**
  * One pass over a Sunday slate costs ~320 credits, more than half a small
  * plan's month (on 2026-11-01 it left 17 for everything else). Below this the

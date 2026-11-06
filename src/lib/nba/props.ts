@@ -158,20 +158,20 @@ export const TOA_NBA_PROP_MARKETS = [
   "player_turnovers",
   "player_double_double",
   "player_triple_double",
-  // Alternate ladders: the same stats at every number the books hang.
-  "player_points_alternate",
-  "player_rebounds_alternate",
-  "player_assists_alternate",
-  "player_threes_alternate",
-  "player_points_rebounds_assists_alternate",
-  "player_points_rebounds_alternate",
-  "player_points_assists_alternate",
-  "player_rebounds_assists_alternate",
-  "player_steals_alternate",
-  "player_blocks_alternate",
-  "player_turnovers_alternate",
+  // Alternate ladders (player_*_alternate) are deliberately NOT requested
+  // here: at markets × regions billing they were 11 of this list's 25
+  // markets — nearly half the per-game cost of every TOA props poll — and
+  // the board loses nothing, because ESPN's free props poll already writes
+  // DraftKings' full alternate ladder into the same table. If the ESPN feed
+  // ever stops carrying the ladder, re-adding these keys is the whole fix.
 ];
-const TOA_PROP_REGIONS = ["us", "us2"];
+/**
+ * us only. us2 doubled the per-game bill for books whose props the us set
+ * already carries; on a ~500-credit month there is no room for it (the
+ * account died in late Oct 2026 at the old settings — see the step-1
+ * takeover report). Parlay's bulk path ignores this list entirely.
+ */
+const TOA_PROP_REGIONS = ["us"];
 /**
  * TOA bills per game, so its props poll only covers games tipping within this
  * window — books post props the morning of, and tomorrow's games are picked up
