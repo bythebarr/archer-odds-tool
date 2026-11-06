@@ -5,4 +5,4 @@
  */
 export type { JsonValue, ModelLifecycle, PredictionInput, PredictionRunInput, CreatedPredictionRun } from "./types";
 export { validatePredictionRunInput, assertValidPredictionRunInput, isJsonSerializable, PredictionValidationError } from "./validate";
-export { createPredictionRun } from "./store";
+export { createPredictionRun, createPredictionRunBulk } from "./store";

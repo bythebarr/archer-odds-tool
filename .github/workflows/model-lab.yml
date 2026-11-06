@@ -48,6 +48,7 @@ on:
           - diagnose:screener
           - diagnose:hot
           - diagnose:nfl
+          - diagnose:leans
           - poll:espn-props
           - poll:espn-odds
           - fix:ufc-duplicates

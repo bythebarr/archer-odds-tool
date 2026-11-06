@@ -43,6 +43,9 @@ export const JOBS: Job[] = [
   { path: "ufc-history", every: 175 },
   { path: "nfl-advanced", every: 355 },
   { path: "sync-results", every: 355 },
+  // Pick tracking: freeze ARCHR's leans before each game, grade them after (lib/tracking).
+  { path: "capture-leans", every: 55 },
+  { path: "settle-leans", every: 175, phase: 2 },
   // Odds feeds that spend credits: the hours they always ran.
   { path: "poll-odds-nba", hours: [0, 14, 18, 21, 23] },
   { path: "poll-odds-nfl", hours: [10, 21] },

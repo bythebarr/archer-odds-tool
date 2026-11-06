@@ -1250,6 +1250,31 @@ model ModelPrediction {
   /// the third expected axis (alongside sport/model on PredictionRun and
   /// event/market/selection above) once a reader is built.
   @@index([scheduledStartUtc])
+
+  settlement PredictionSettlement?
+}
+
+/// How a ModelPrediction turned out, written after the event by the settle
+/// job (src/lib/tracking/settle.ts) — a separate row, so the prediction itself
+/// stays exactly as frozen (see MODEL-PREDICTION-LIFECYCLE.md, "Future
+/// settlement record direction"). One per prediction.
+model PredictionSettlement {
+  id           String          @id @default(cuid())
+  predictionId String          @unique
+  prediction   ModelPrediction @relation(fields: [predictionId], references: [id], onDelete: Restrict)
+  /// "hit" | "miss" | "push" | "void" (didn't play, game not completed).
+  result       String
+  /// The stat or margin that settled it (points scored, home margin, total).
+  actual       Float?
+  /// The market's no-vig chance of this selection at its last quote before
+  /// the start, at the same number: what the prediction is judged against
+  /// for closing-line value. Null when no closing quote was found.
+  closingProb  Float?
+  /// The best price on this selection at that last quote.
+  closingPrice Int?
+  settledAt    DateTime        @default(now())
+
+  @@index([settledAt])
 }
 
 // ── NBA player props ─────────────────────────────────────────────────────────

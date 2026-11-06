@@ -191,6 +191,34 @@ against what now exists:
   is a plain `"cfb"` string, same posture as every other open identity field
   in this module.
 
+## Pick tracking (implemented): the live leans, settled
+
+`src/lib/tracking/` is the third writer, and the first with settlement:
+
+- **Capture** (`capture.ts`, cron `capture-leans` every ~hour): for every NBA
+  and NFL game starting within 3 hours that hasn't been captured, ARCHR's lean
+  on each prop at its main line and each game line (the side it favors
+  against the market) is frozen into one `PredictionRun` per tracked model
+  (`track:nba-props`, `track:nfl-props`, `track:nba-games`,
+  `track:nfl-games`, lifecycle `experimental`), with the market's chance and
+  the best price in the feature snapshot (`lean-v1`). Written in bulk
+  (`createPredictionRunBulk`), same validation, same append-only rule.
+- **Settle** (`settle.ts`, cron `settle-leans` every ~3 hours): once a game is
+  final, each lean is graded off the box score (no box score or no minutes:
+  void) or the final score, with the closing line (each book's last quote
+  before the start at the same number, de-vigged), into
+  **`PredictionSettlement`**: the separate settlement table described below,
+  one row per prediction, never touching the prediction itself.
+- **Evaluate** (`evaluate.ts`, pure; page `/models/edges`): the settled leans
+  cut by sport and market, stat, side, edge size, ARCHR's chance, price and
+  line source, each scored on hit rate vs ARCHR's chance, ROI at the captured
+  price with its 95% range, closing-line value, and Brier skill against the
+  market, with a verdict (working / not working / beating or losing to the
+  close / unproven / too early).
+
+`npm run diagnose:leans` (Model Lab) dry-runs a capture for the next 36 hours
+and prints the report so far.
+
 ## Future settlement record direction
 
 Deliberately not built here (see "Revision behavior" constraints in the task

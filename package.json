@@ -27,6 +27,7 @@
     "backtest:nba-standouts": "tsx scripts/backtest-nba-standouts.ts",
     "diagnose:hot": "tsx scripts/diagnose-hot.ts",
     "diagnose:nfl": "tsx scripts/diagnose-nfl.ts",
+    "diagnose:leans": "tsx scripts/diagnose-leans.ts",
     "backtest:nfl-props": "tsx scripts/backtest-nfl-props.ts",
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
     "backtest:games": "tsx scripts/backtest-games.ts",

@@ -100,3 +100,52 @@ export async function createPredictionRun(input: PredictionRunInput): Promise<Cr
     return { runId: run.id, predictionIds };
   });
 }
+
+/** Rows per createMany call in the bulk writer. */
+const BULK_CHUNK = 500;
+
+/**
+ * The same append-only write as createPredictionRun, for runs with hundreds or
+ * thousands of predictions (a night's prop slate): one run row, then the
+ * predictions in createMany chunks, all in one transaction. Same validation;
+ * the only difference is it doesn't return the prediction ids (nothing that
+ * writes in bulk reads them back: settlement finds predictions by query).
+ */
+export async function createPredictionRunBulk(input: PredictionRunInput): Promise<{ runId: string; predictions: number }> {
+  assertValidPredictionRunInput(input);
+  return prisma.$transaction(
+    async (tx) => {
+      const run = await tx.predictionRun.create({
+        data: {
+          sportKey: input.sportKey,
+          modelKey: input.modelKey,
+          modelVersion: input.modelVersion,
+          lifecycle: input.lifecycle,
+          generatedAt: input.generatedAt,
+          dataAsOfUtc: input.dataAsOfUtc,
+          featureSchemaVersion: input.featureSchemaVersion,
+          ...(input.calibrationSnapshot != null ? { calibrationSnapshot: toPrismaJson(input.calibrationSnapshot) } : {}),
+          ...(input.runMetadata != null ? { runMetadata: toPrismaJson(input.runMetadata) } : {}),
+        },
+      });
+      for (let i = 0; i < input.predictions.length; i += BULK_CHUNK) {
+        await tx.modelPrediction.createMany({
+          data: input.predictions.slice(i, i + BULK_CHUNK).map((p) => ({
+            runId: run.id,
+            eventRef: p.eventRef,
+            scheduledStartUtc: p.scheduledStartUtc,
+            marketKey: p.marketKey,
+            selectionKey: p.selectionKey,
+            probability: p.probability ?? null,
+            featureSnapshot: toPrismaJson(p.featureSnapshot),
+            ...(p.projection != null ? { projection: toPrismaJson(p.projection) } : {}),
+            ...(p.missingInputs != null ? { missingInputs: toPrismaJson(p.missingInputs) } : {}),
+            ...(p.marketSnapshot != null ? { marketSnapshot: toPrismaJson(p.marketSnapshot) } : {}),
+          })),
+        });
+      }
+      return { runId: run.id, predictions: input.predictions.length };
+    },
+    { timeout: 30_000 }
+  );
+}
