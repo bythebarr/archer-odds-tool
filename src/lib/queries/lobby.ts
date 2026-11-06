@@ -10,6 +10,7 @@ import { bestLinesBySide } from "@/lib/odds/bestPrice";
 import { espnTeamLogoUrl } from "@/lib/logos";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { toLineRow, type GameLineRow } from "./games";
+import { matchupKeepIds } from "./matchupDedupe";
 import { valueOf, type PriceValue, type TwoSidedQuote } from "@/lib/odds/marketValue";
 
 export interface EventTeam {
@@ -86,7 +87,23 @@ export const getLeagueEvents = cache(async (sport: TeamLeagueSport, dateEt: stri
     include: { homeTeam: true, awayTeam: true, currentLines: { include: { book: true } } },
   });
 
-  return games.flatMap((g) => {
+  // One card per matchup: the schedule can hold a game twice (two Game rows
+  // from different writers), and this board renders one card per row — the
+  // builder's query has collapsed duplicates since #101, this one hadn't
+  // (full-repo audit 2026-11-06, Lane 1 S1: CIN @ ATL rendered twice).
+  const keep = matchupKeepIds(
+    games.map((g) => ({
+      id: g.id,
+      homeTeamId: g.homeTeamId,
+      awayTeamId: g.awayTeamId,
+      scheduledStartUtc: g.scheduledStartUtc,
+      freshestLineAt: Math.max(0, ...g.currentLines.map((l) => l.polledAt.getTime())),
+    }))
+  );
+
+  return games
+    .filter((g) => keep.has(g.id))
+    .flatMap((g) => {
     if (!g.homeTeam || !g.awayTeam) return [];
     const lines = g.currentLines.map(toLineRow);
     const team = (t: { abbreviation: string; name: string }): EventTeam => ({
