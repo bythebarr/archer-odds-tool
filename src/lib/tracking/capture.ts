@@ -40,13 +40,34 @@ export interface Lean {
 }
 
 const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
+
+/**
+ * The market's no-vig chance of the over at a number, from each book that hangs
+ * both sides there, de-vigged and averaged: one book is enough (the live market
+ * read wants several, and DraftKings is often the only book on the feed).
+ */
+export function fairOver(quotes: { bookKey: string; side: string; point: number; priceAmerican: number }[], point: number): number | null {
+  const books = new Map<string, { over?: number; under?: number }>();
+  for (const q of quotes) if (q.point === point) (books.get(q.bookKey) ?? books.set(q.bookKey, {}).get(q.bookKey)!)[q.side === "under" ? "under" : "over"] = q.priceAmerican;
+  const fair = [...books.values()].flatMap((b) => (b.over !== undefined && b.under !== undefined ? [implied(b.over) / (implied(b.over) + implied(b.under))] : []));
+  return fair.length ? fair.reduce((a, b) => a + b, 0) / fair.length : null;
+}
+
+/** De-vigs one pair of prices (the best on each side). */
+const fairPair = (a: number | null | undefined, b: number | null | undefined) => (a == null || b == null ? null : implied(a) / (implied(a) + implied(b)));
 const signed = (x: number) => (x === 0 ? "PK" : x > 0 ? `+${x}` : `−${Math.abs(x)}`);
 
 /** NBA props: every main line the standout read prices, on its side (Hottest Tonight's call, cut or not). */
 export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, GameLogPoint[]>, gameIds: Set<string>): Lean[] {
+  const quotes = new Map(slate.props.map((p) => [`${p.playerId}|${p.stat}`, p.quotes]));
   return nbaStandouts(slate, logs, { all: true })
     .filter((s) => gameIds.has(s.gameId))
-    .map((s) => ({
+    .map((s) => {
+      const over = s.marketChance === null ? fairOver(quotes.get(`${s.playerId}|${s.stat}`) ?? [], s.point) : null;
+      const marketChance = s.marketChance ?? (over === null ? null : s.side === "over" ? over : 1 - over);
+      return { s, marketChance };
+    })
+    .map(({ s, marketChance }) => ({
       eventRef: s.gameId,
       startsAt: new Date(s.startsAt),
       marketKey: `prop:${s.stat}`,
@@ -60,7 +81,7 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
         side: s.side,
         point: s.point,
         modelProb: s.modelChance,
-        marketProb: s.marketChance,
+        marketProb: marketChance,
         price: s.priceAmerican,
         book: s.bookName,
         priced: s.priceAmerican !== null,
@@ -99,7 +120,7 @@ export function nflPropLeans(slate: NflPropsSlate, gameIds: Set<string>): Lean[]
     const under = stat.shape === "anytime" ? null : summarizeNflProp(prop, logs, stat, "under", ctx);
     const m = over?.model;
     if (!over || !m) continue;
-    const marketOver = m.market?.probOver ?? (over.over && over.under ? null : over.over ? implied(over.over.priceAmerican) : null);
+    const marketOver = m.market?.probOver ?? fairOver(prop.quotes, over.point) ?? (over.over ? implied(over.over.priceAmerican) : null);
     const base = marketOver ?? 0.5;
     const side = stat.shape === "anytime" || m.probOver >= base ? "over" : "under";
     if (side === "over" && stat.shape === "anytime" && marketOver === null && !over.over) continue; // a Yes with no price or market: nothing to judge
@@ -144,7 +165,7 @@ async function gameLeans(sport: "nba" | "nfl", gameIds: Set<string>): Promise<Le
     const away = game.awayTeam;
     for (const m of view.markets) {
       if (m.market !== "ml" && m.point === null) continue;
-      const marketA = m.marketRead?.probOver ?? null;
+      const marketA = m.marketRead?.probOver ?? fairPair(m.bestA?.priceAmerican, m.bestB?.priceAmerican);
       const a = m.probA >= (marketA ?? 0.5);
       const side = m.market === "total" ? (a ? "over" : "under") : a ? "home" : "away";
       const best = a ? m.bestA : m.bestB;
