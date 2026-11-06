@@ -7,13 +7,23 @@ import { findStacks, type StackRank } from "@/lib/props/stackFinder";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { ParlayTray } from "@/components/props/Parlay";
 import type { ParlayLeg } from "@/lib/props/parlay";
-import { EmptyList, GameChips, ListNote, Segmented, chip, type ChipTeam } from "@/components/props/kit";
+import { EmptyList, GameChips, ListNote, PRICE_STEPS, PriceRange, Segmented, chip, type ChipTeam } from "@/components/props/kit";
 import { ScrollRow } from "@/components/ScrollRow";
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 
+/** A leg's price for the odds range: the book's, or ARCHR's fair price for a line posted before its price; null with neither. */
+function legPrice(l: FinderLeg): number | null {
+  if (l.priceAmerican !== null) return l.priceAmerican;
+  const p = l.modelProb;
+  if (p === null || p <= 0 || p >= 1) return null;
+  return p >= 0.5 ? (-100 * p) / (1 - p) : (100 * (1 - p)) / p;
+}
+
+/** Default odds range: −500 to +200. */
+const DEFAULT_RANGE: [number, number] = [PRICE_STEPS.indexOf(-500), PRICE_STEPS.indexOf(200)];
+
 type SeasonsKey = "both" | "this";
-type ShortestKey = "-300" | "-500" | "-1000" | "any";
 type LegRateKey = "0.6" | "0.7" | "0.8";
 type PerPlayerKey = "1" | "2" | "any";
 type TeamsKey = "one" | "both" | "pick";
@@ -198,7 +208,7 @@ function PickPlayers({
       ) : stack ? (
         <EmptyList
           title={stack.together < 5 ? `Only ${stack.together} games together ${span}` : rank === "payout" ? "No stack of these players cashed 70%+ together" : "No stack of lines on these players cashed together"}
-          hint={stack.together < 5 ? "Pick players who've shared the floor more, or include last season." : "Try ranking by hit rate, allow shorter-priced legs, or include unders."}
+          hint={stack.together < 5 ? "Pick players who've shared the floor more, or include last season." : "Try ranking by hit rate, widen the odds range, or include unders."}
         />
       ) : null}
     </>
@@ -258,7 +268,7 @@ export function ParlayFinder({
 }) {
   const [gameId, setGameId] = useState<string | null>(games[0]?.id ?? null);
   const [seasons, setSeasons] = useState<SeasonsKey>("both");
-  const [shortest, setShortest] = useState<ShortestKey>("-500");
+  const [range, setRange] = useState<[number, number]>(DEFAULT_RANGE);
   const [legRate, setLegRate] = useState<LegRateKey>("0.6");
   const [perPlayer, setPerPlayer] = useState<PerPlayerKey>("1");
   const [teams, setTeams] = useState<TeamsKey>("one");
@@ -268,7 +278,17 @@ export function ParlayFinder({
   const [picked, setPicked] = useState<string[]>([]);
   const [rank, setRank] = useState<StackRank>("rate");
 
-  const allLegs = useMemo(() => (gameId ? legsFor(gameId, shortest === "any" ? -Infinity : Number(shortest)) : []), [legsFor, gameId, shortest]);
+  const gameLegs = useMemo(() => (gameId ? legsFor(gameId, -Infinity) : []), [legsFor, gameId]);
+  // Inside the odds range (the ends of the slider mean no limit that way); a leg with no price and no read stays in.
+  const allLegs = useMemo(() => {
+    const lo = range[0] === 0 ? -Infinity : PRICE_STEPS[range[0]];
+    const hi = range[1] === PRICE_STEPS.length - 1 ? Infinity : PRICE_STEPS[range[1]];
+    const ladder = (v: number) => (v < 0 ? v : v - 200); // −110 < +100 on one scale: +100 sits next to −100
+    return gameLegs.filter((l) => {
+      const v = legPrice(l);
+      return v === null || (ladder(v) >= ladder(lo) && ladder(v) <= ladder(hi));
+    });
+  }, [gameLegs, range]);
   // Overs only, unders only, or both (a Yes leg, like an anytime TD, counts as an over).
   const legs = useMemo(() => (sides === "all" ? allLegs : allLegs.filter((l) => l.side === sides)), [allLegs, sides]);
   const options = useMemo(
@@ -378,16 +398,9 @@ export function ParlayFinder({
           onChange={setLegRate}
         />
         )}
-        <Segmented<ShortestKey>
-          options={[
-            { key: "-300", label: "No legs under −300" },
-            { key: "-500", label: "−500" },
-            { key: "-1000", label: "−1000" },
-            { key: "any", label: "Any" },
-          ]}
-          value={shortest}
-          onChange={setShortest}
-        />
+      </div>
+      <div className="mt-3">
+        <PriceRange lo={range[0]} hi={range[1]} onChange={(lo, hi) => setRange([lo, hi])} label="Each leg's odds" />
       </div>
 
       {teams === "pick" ? (
@@ -438,7 +451,7 @@ export function ParlayFinder({
       ) : (
         <EmptyList
           title={teams === "both" ? "No two-team parlay clears these bars" : "No combination has cashed together often enough"}
-          hint="Try a lower leg hit rate, allow shorter-priced legs, more legs per player, or include last season."
+          hint="Try a lower leg hit rate, widen the odds range, more legs per player, or include last season."
         />
       )}
       </>

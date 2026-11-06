@@ -718,3 +718,59 @@ export function MatchupFacts({ rows }: { rows: { label: string; value: string; n
     </div>
   );
 }
+
+/** American prices a leg-price slider steps through; the ends read "any". */
+export const PRICE_STEPS = [-1000, -700, -500, -400, -300, -250, -200, -175, -150, -130, -115, 100, 115, 130, 150, 175, 200, 250, 300, 400, 500, 700, 1000];
+
+const priceText = (v: number) => (v > 0 ? `+${v}` : `−${Math.abs(v)}`);
+
+/**
+ * A two-handle slider over PRICE_STEPS: the shortest and longest price a leg may
+ * have. `lo`/`hi` are indexes; the first and last steps mean no limit that way.
+ */
+export function PriceRange({ lo, hi, onChange, label = "Leg odds" }: { lo: number; hi: number; onChange: (lo: number, hi: number) => void; label?: string }) {
+  const last = PRICE_STEPS.length - 1;
+  const left = (lo / last) * 100;
+  const right = 100 - (hi / last) * 100;
+  const thumb =
+    "pointer-events-none absolute inset-x-0 top-1/2 h-0 w-full -translate-y-1/2 appearance-none bg-transparent [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-background [&::-moz-range-thumb]:bg-foreground [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-foreground";
+  return (
+    <div className="w-full max-w-sm">
+      <div className="flex items-baseline justify-between text-[11px]">
+        <span className="font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="font-mono font-semibold text-foreground">
+          {lo === 0 ? "Any" : priceText(PRICE_STEPS[lo])} to {hi === last ? "any" : priceText(PRICE_STEPS[hi])}
+        </span>
+      </div>
+      <div className="relative mt-2 h-5">
+        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted" />
+        <div className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-foreground" style={{ left: `${left}%`, right: `${right}%` }} />
+        <input
+          type="range"
+          aria-label={`${label}: shortest`}
+          min={0}
+          max={last}
+          step={1}
+          value={lo}
+          onChange={(e) => onChange(Math.min(Number(e.target.value), hi - 1), hi)}
+          className={thumb}
+        />
+        <input
+          type="range"
+          aria-label={`${label}: longest`}
+          min={0}
+          max={last}
+          step={1}
+          value={hi}
+          onChange={(e) => onChange(lo, Math.max(Number(e.target.value), lo + 1))}
+          className={thumb}
+        />
+      </div>
+      <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground">
+        <span>favorites</span>
+        <span>even</span>
+        <span>underdogs</span>
+      </div>
+    </div>
+  );
+}
