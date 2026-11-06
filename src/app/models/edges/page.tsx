@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getEdgeReport, EDGE_WINDOWS, type EdgeWindow } from "@/lib/queries/edgeReport";
 import type { SegmentStats, Verdict } from "@/lib/tracking/evaluate";
 import { MIN_LEANS } from "@/lib/tracking/evaluate";
@@ -7,6 +8,7 @@ import { MIN_LEANS } from "@/lib/tracking/evaluate";
 export const metadata: Metadata = {
   title: "Edge tracker — which of ARCHR's edges hold up",
   description: "Every lean ARCHR makes before a game, graded after it: hit rate, profit, closing-line value and accuracy against the market, by sport, stat, side, edge size and price.",
+  robots: { index: false, follow: false },
 };
 
 export const dynamic = "force-dynamic";
@@ -89,9 +91,15 @@ function Table({ title, segments }: { title: string; segments: SegmentStats[] })
  * The edge tracker: every lean ARCHR made before a game (lib/tracking), graded
  * after it and cut every way, so the edges that hold up stand apart from the
  * ones that don't.
+ *
+ * Owner-only, like /deck: gated by CRON_SECRET in `?token=`, and a 404
+ * without it, so the page doesn't even show it exists.
  */
-export default async function EdgesPage({ searchParams }: { searchParams: Promise<{ window?: string }> }) {
+export default async function EdgesPage({ searchParams }: { searchParams: Promise<{ window?: string; token?: string }> }) {
   const params = await searchParams;
+  const expected = process.env.CRON_SECRET;
+  if (!expected || params.token !== expected) notFound();
+  const token = params.token;
   const window: EdgeWindow = params.window && params.window in EDGE_WINDOWS ? (params.window as EdgeWindow) : "90";
   const report = await getEdgeReport(window);
   return (
@@ -109,7 +117,7 @@ export default async function EdgesPage({ searchParams }: { searchParams: Promis
         {(Object.keys(EDGE_WINDOWS) as EdgeWindow[]).map((w) => (
           <Link
             key={w}
-            href={`/models/edges?window=${w}`}
+            href={`/models/edges?window=${w}&token=${encodeURIComponent(token)}`}
             className={`rounded-full px-3 py-1.5 font-semibold ${w === window ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"}`}
           >
             {w === "season" ? "Season" : `Last ${w} days`}
