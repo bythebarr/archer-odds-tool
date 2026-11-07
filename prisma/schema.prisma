@@ -1252,6 +1252,7 @@ model ModelPrediction {
   @@index([scheduledStartUtc])
 
   settlement PredictionSettlement?
+  settlementCorrections SettlementCorrection[]
 }
 
 /// How a ModelPrediction turned out, written after the event by the settle
@@ -1275,6 +1276,33 @@ model PredictionSettlement {
   settledAt    DateTime        @default(now())
 
   @@index([settledAt])
+}
+
+/// An append-only correction to a PredictionSettlement (Phase 2 A2, audit
+/// S-7). Settlements are write-once history; when a grade turns out wrong
+/// (a stat-key change, an upstream box-score fix), a correction row records
+/// the previous effective values, the corrected values, and why — readers
+/// (queries/edgeReport) resolve the effective grade by applying the newest
+/// correction. The settlement row itself is never updated or deleted.
+model SettlementCorrection {
+  id           String          @id @default(cuid())
+  predictionId String
+  prediction   ModelPrediction @relation(fields: [predictionId], references: [id], onDelete: Restrict)
+  /// The effective grade just before this correction.
+  previousResult       String
+  previousActual       Float?
+  previousClosingProb  Float?
+  previousClosingPrice Int?
+  /// The corrected grade this row installs.
+  result       String
+  actual       Float?
+  closingProb  Float?
+  closingPrice Int?
+  /// Why the grade was wrong, in human words. Required.
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@index([predictionId, createdAt])
 }
 
 // ── NBA player props ─────────────────────────────────────────────────────────

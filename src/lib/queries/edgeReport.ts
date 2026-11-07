@@ -7,6 +7,7 @@ import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { KNOWN_LEAN_SCHEMAS, TRACKED_MODELS, type GradedLean, type LeanFeatures, type SettleResult } from "@/lib/tracking/types";
 import { evaluateLeans } from "@/lib/tracking/evaluate";
+import { applyCorrections } from "@/lib/tracking/corrections";
 
 export const EDGE_WINDOWS = { "30": 30, "90": 90, season: 240 } as const;
 export type EdgeWindow = keyof typeof EDGE_WINDOWS;
@@ -15,11 +16,26 @@ export async function loadGradedLeans(days: number, now = new Date()): Promise<G
   const rows = await prisma.predictionSettlement.findMany({
     where: { prediction: { scheduledStartUtc: { gte: new Date(now.getTime() - days * 86_400_000) }, run: { modelKey: { in: Object.values(TRACKED_MODELS) } } } },
     select: {
+      predictionId: true,
       result: true,
+      actual: true,
       closingProb: true,
+      closingPrice: true,
       prediction: { select: { probability: true, featureSnapshot: true, scheduledStartUtc: true, run: { select: { featureSchemaVersion: true } } } },
     },
   });
+  // Grades are write-once history; corrections (append-only, lib/tracking/
+  // corrections) supersede them. Resolve the effective grade per lean so a
+  // corrected grade is what evaluation reads — the base row never changes.
+  const corrections = rows.length
+    ? await prisma.settlementCorrection.findMany({ where: { predictionId: { in: rows.map((r) => r.predictionId) } }, orderBy: { createdAt: "asc" } })
+    : [];
+  const effective = new Map(
+    applyCorrections(
+      rows.map((r) => ({ predictionId: r.predictionId, result: r.result as SettleResult, actual: r.actual, closingProb: r.closingProb, closingPrice: r.closingPrice })),
+      corrections.map((c) => ({ predictionId: c.predictionId, result: c.result as SettleResult, actual: c.actual, closingProb: c.closingProb, closingPrice: c.closingPrice, createdAt: c.createdAt })),
+    ).map((e) => [e.predictionId, e]),
+  );
   return rows.flatMap((r) =>
     // Never cast a snapshot whose stamped schema version isn't one evaluation
     // knows how to read (audit 2026-11-06, Lane 4 S6).
@@ -29,8 +45,8 @@ export async function loadGradedLeans(days: number, now = new Date()): Promise<G
           {
             features: r.prediction.featureSnapshot as unknown as LeanFeatures,
             prob: r.prediction.probability,
-            result: r.result as SettleResult,
-            closingProb: r.closingProb,
+            result: effective.get(r.predictionId)!.result,
+            closingProb: effective.get(r.predictionId)!.closingProb,
             startsAt: r.prediction.scheduledStartUtc,
           },
         ]
