@@ -1,6 +1,6 @@
 /**
- * The parlay builder's leg pool, one cached slice per source (NBA, NFL, UFC,
- * every other league). Building a slice reads a whole slate and replays its
+ * The parlay builder's leg pool, one cached slice per source (NBA, NFL, MLB,
+ * UFC, every other league). Building a slice reads a whole slate and replays its
  * models, so each is kept for a few minutes across requests and rebuilt in the
  * background after that; a source that fails leaves its slice empty rather
  * than taking the page down.
@@ -10,13 +10,15 @@ import type { BuilderLeg } from "./types";
 import { teamLeagueLegs } from "./sources/teamLeague";
 import { allSportsLegs } from "./sources/allSports";
 import { ufcLegs } from "./sources/ufc";
+import { mlbLegs } from "./sources/mlb";
 
-export type PoolSource = "nba" | "nfl" | "ufc" | "all";
-export const POOL_SOURCES: PoolSource[] = ["nba", "nfl", "ufc", "all"];
+export type PoolSource = "nba" | "nfl" | "mlb" | "ufc" | "all";
+export const POOL_SOURCES: PoolSource[] = ["nba", "nfl", "mlb", "ufc", "all"];
 
 const BUILD: Record<PoolSource, () => Promise<BuilderLeg[]>> = {
   nba: () => teamLeagueLegs("nba"),
   nfl: () => teamLeagueLegs("nfl"),
+  mlb: () => mlbLegs(),
   ufc: () => ufcLegs(),
   all: () => allSportsLegs(),
 };

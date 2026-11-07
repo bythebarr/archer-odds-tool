@@ -56,8 +56,8 @@ const SORTS: { key: BuilderSort; label: string }[] = [
 ];
 const DEFAULTS = { legs: 4, window: "l10" as BuilderWindow, rate: 0.7, archr: 0, edge: "any", short: "-500", sgp: false, sort: "archr" as BuilderSort };
 
-const SPORT_LABEL: Record<string, string> = { nba: "NBA", nfl: "NFL", ufc: "UFC", ...Object.fromEntries(ALL_SPORTS.map((s) => [s.key, s.label])) };
-const SPORT_ORDER = ["nba", "nfl", "ufc", ...ALL_SPORTS.map((s) => s.key)];
+const SPORT_LABEL: Record<string, string> = { nba: "NBA", nfl: "NFL", mlb: "MLB", ufc: "UFC", ...Object.fromEntries(ALL_SPORTS.map((s) => [s.key, s.label])) };
+const SPORT_ORDER = ["nba", "nfl", "mlb", "ufc", ...ALL_SPORTS.map((s) => s.key)];
 
 function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: string; mode: "gen" | "bars" | "payout"; pay: number; n: string } {
   const num = (v: string | undefined, allowed: number[], d: number) => (v !== undefined && allowed.includes(Number(v)) ? Number(v) : d);
