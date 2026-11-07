@@ -46,6 +46,8 @@ export const JOBS: Job[] = [
   // Pick tracking: freeze ARCHR's leans before each game, grade them after (lib/tracking).
   { path: "capture-leans", every: 55 },
   { path: "settle-leans", every: 175, phase: 2 },
+  // Self-diagnosis (stage 1): a daily read over settled leans + feed/gauge state, flags to /models/edges.
+  { path: "diagnose-leans", hours: [12], phase: 2 },
   // Odds feeds that spend credits: the hours they always ran.
   { path: "poll-odds-nba", hours: [0, 14, 18, 21, 23] },
   { path: "poll-odds-nfl", hours: [10, 21] },
