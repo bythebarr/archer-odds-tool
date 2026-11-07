@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getEdgeReport, EDGE_WINDOWS, type EdgeWindow } from "@/lib/queries/edgeReport";
+import { readTokenOk } from "@/lib/tokenAuth";
 import type { SegmentStats, Verdict } from "@/lib/tracking/evaluate";
 import { MIN_LEANS } from "@/lib/tracking/evaluate";
 
@@ -97,9 +98,8 @@ function Table({ title, segments }: { title: string; segments: SegmentStats[] })
  */
 export default async function EdgesPage({ searchParams }: { searchParams: Promise<{ window?: string; token?: string }> }) {
   const params = await searchParams;
-  const expected = process.env.CRON_SECRET;
-  if (!expected || params.token !== expected) notFound();
-  const token = params.token;
+  if (!params.token || !readTokenOk(params.token)) notFound();
+  const token = params.token as string;
   const window: EdgeWindow = params.window && params.window in EDGE_WINDOWS ? (params.window as EdgeWindow) : "90";
   const report = await getEdgeReport(window);
   return (

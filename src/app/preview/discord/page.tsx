@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { previewDailyCard } from "@/lib/discord/postCard";
+import { readTokenOk } from "@/lib/tokenAuth";
 import { PageShell } from "@/components/PageShell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
@@ -145,8 +146,7 @@ function Post({
  */
 export default async function DiscordPreviewPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   const { token } = await searchParams;
-  const expected = process.env.CRON_SECRET;
-  if (!expected || !token || token !== expected) notFound();
+  if (!token || !readTokenOk(token)) notFound();
 
   const card = await previewDailyCard();
 

@@ -1,4 +1,6 @@
 /** Returns a 401 Response if the request's bearer token doesn't match CRON_SECRET, else null. */
+import { tokenMatches } from "./tokenAuth";
+
 export function checkCronAuth(request: Request): Response | null {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -6,7 +8,8 @@ export function checkCronAuth(request: Request): Response | null {
   }
 
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${secret}`) {
+  const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
+  if (!tokenMatches(bearer, secret)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

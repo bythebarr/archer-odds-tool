@@ -15,18 +15,20 @@
  * owner-only trust level, nothing extra to configure. Fails closed — if
  * CRON_SECRET isn't set the routes 500 rather than run open.
  */
+import { adminTokenOk, scopeConfigured } from "./tokenAuth";
+
 export function checkAdminAuth(request: Request): Response | null {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return new Response("Admin auth is not configured (CRON_SECRET unset).", { status: 500 });
+  if (!scopeConfigured("admin")) {
+    return new Response("Admin auth is not configured (no ADMIN_TOKEN or CRON_SECRET set).", { status: 500 });
   }
 
   const token = new URL(request.url).searchParams.get("token");
   const header = request.headers.get("authorization");
-  if (token === secret || header === `Bearer ${secret}`) return null;
+  const bearer = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
+  if (adminTokenOk(token, "query") || adminTokenOk(bearer, "bearer")) return null;
 
   return new Response(
-    "Unauthorized. Append ?token=<CRON_SECRET> to the URL (or send an Authorization: Bearer header).",
+    "Unauthorized. Append ?token=<ADMIN_TOKEN> to the URL (or send an Authorization: Bearer header).",
     { status: 401 }
   );
 }

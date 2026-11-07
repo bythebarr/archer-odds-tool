@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { collectPlays } from "@/lib/discord/postCard";
+import { readTokenOk } from "@/lib/tokenAuth";
 import { getSelection, splitBySelection } from "@/lib/card/selection";
 import { SPORTS, stakeable, trustVerdict } from "@/lib/engine";
 import { getReportedVerdicts } from "@/lib/queries/modelTrust";
@@ -65,8 +66,7 @@ export default async function DeckPage({
   searchParams: Promise<{ token?: string; date?: string }>;
 }) {
   const { token, date } = await searchParams;
-  const expected = process.env.CRON_SECRET;
-  if (!expected || !token || token !== expected) notFound();
+  if (!token || !readTokenOk(token)) notFound();
 
   const dateEt = date ?? todayEt();
   const [plays, selection, firedAt, verdicts] = await Promise.all([
