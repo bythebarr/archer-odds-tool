@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getEdgeReport, EDGE_WINDOWS, type EdgeWindow } from "@/lib/queries/edgeReport";
 import { readTokenOk } from "@/lib/tokenAuth";
+import { getLatestDiagnosis } from "@/lib/queries/diagnosis";
 import type { SegmentStats, Verdict } from "@/lib/tracking/evaluate";
 import { MIN_LEANS } from "@/lib/tracking/evaluate";
 
@@ -102,6 +103,7 @@ export default async function EdgesPage({ searchParams }: { searchParams: Promis
   const token = params.token as string;
   const window: EdgeWindow = params.window && params.window in EDGE_WINDOWS ? (params.window as EdgeWindow) : "90";
   const report = await getEdgeReport(window);
+  const diagnosis = await getLatestDiagnosis().catch(() => null);
   return (
     <div className="mx-auto min-h-screen w-full max-w-3xl px-4 pb-10 pt-5 font-sans">
       <Link href="/models" className="text-xs font-semibold text-muted-foreground hover:text-foreground">
@@ -113,6 +115,40 @@ export default async function EdgesPage({ searchParams }: { searchParams: Promis
         market&apos;s own chance. After the game each is graded, with the closing line beside it. Cut by sport, stat, side, edge size, confidence and
         price, the edges that hold up separate from the ones that don&apos;t.
       </p>
+      {diagnosis ? (
+        <section className="mt-4 rounded-xl border border-border bg-card p-3">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Self-diagnosis · {new Date(diagnosis.ranAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {diagnosis.gradedTotal} graded leans in the window
+          </h2>
+          {diagnosis.flags.length ? (
+            <ul className="mt-2 space-y-1.5">
+              {diagnosis.flags.map((f, i) => (
+                <li key={i} className={`text-sm ${f.severity === "warn" ? "text-foreground" : "text-muted-foreground"}`}>
+                  {f.severity === "warn" ? "⚠ " : "· "}
+                  {f.message}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">No flags — nothing crossed its sample-gated threshold in the latest run.</p>
+          )}
+          {diagnosis.progress.length ? (
+            <div className="mt-3 space-y-1">
+              {diagnosis.progress.slice(0, 6).map((s) => (
+                <div key={s.key} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="w-36 shrink-0 truncate">{s.label}</span>
+                  <span className="h-1.5 flex-1 overflow-hidden rounded bg-muted">
+                    <span className="block h-full bg-foreground" style={{ width: `${Math.round(s.pct * 100)}%` }} />
+                  </span>
+                  <span className="shrink-0 tabular-nums">
+                    {s.n} / {s.target} graded
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <div className="mt-3 flex gap-2 text-xs">
         {(Object.keys(EDGE_WINDOWS) as EdgeWindow[]).map((w) => (
           <Link

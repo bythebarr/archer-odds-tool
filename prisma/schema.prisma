@@ -1305,6 +1305,26 @@ model SettlementCorrection {
   @@index([predictionId, createdAt])
 }
 
+/// One row per flag from a daily self-diagnosis run (Phase 2 C), plus one
+/// "summary" row per run carrying the run's sample-progress data. Written by
+/// the diagnose-leans job (lib/queries/diagnosis), read by /models/edges.
+/// Append-only: runs are never edited, the page reads the newest runId.
+model DiagnosisFlag {
+  id        String   @id @default(cuid())
+  runId     String
+  /// Flag kind ("calibration" | "bias" | "feed" | ...) or "summary".
+  kind      String
+  flagKey   String?
+  severity  String?
+  message   String?
+  n         Int?
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([runId])
+  @@index([createdAt])
+}
+
 // ── NBA player props ─────────────────────────────────────────────────────────
 // Separate from the MLB prop tables (keyed by MlbPlayer) rather than bolted on:
 // the identity source differs (ESPN athlete ids, not MLB person ids) and so do
