@@ -25,6 +25,7 @@ import { listTeamLeagueGamesWithLines } from "@/lib/queries/teamLeagueGames";
 import { getGameModelView } from "@/lib/queries/gameModel";
 import { createPredictionRunBulk, type PredictionInput } from "@/lib/predictions";
 import { LEAN_FEATURE_SCHEMA, TRACKED_MODELS, type LeanFeatures } from "./types";
+import { regimeSnapshot, type RegimeSnapshot } from "./modelStamp";
 
 /** A game is captured once it starts within this many hours. */
 export const CAPTURE_HOURS = 3;
@@ -67,7 +68,8 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
       const marketChance = s.marketChance ?? (over === null ? null : s.side === "over" ? over : 1 - over);
       return { s, marketChance };
     })
-    .map(({ s, marketChance }) => ({
+    .flatMap(({ s, marketChance }) => {
+      const main: Lean = {
       eventRef: s.gameId,
       startsAt: new Date(s.startsAt),
       marketKey: `prop:${s.stat}`,
@@ -99,8 +101,47 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
         z: s.z,
         minutes: s.minutes,
         standout: isStandout(s.z, s.rawChance, s.hit.l10),
+        alt: false,
       },
-    }));
+      };
+      if (!s.alt) return [main];
+      // The alternate line IS the Hottest Tonight recommendation (standouts'
+      // best-value rung beyond the main line, same side) — until now it was
+      // the one lean the product actually pushes that tracking never froze
+      // (audit S-5 in Lane 2 / Phase 2 A3). It settles through the same box
+      // score; settle.ts strips the ":alt" suffix for the stat lookup. Alt
+      // rungs are one-sided, so there is no two-sided market read to freeze.
+      const alt: Lean = {
+        eventRef: s.gameId,
+        startsAt: new Date(s.startsAt),
+        marketKey: `prop:${s.stat}:alt`,
+        selectionKey: `${s.playerId}|${s.side}|${s.alt.point}`,
+        prob: s.alt.chance,
+        features: {
+          sport: "nba",
+          kind: "prop",
+          label: `${s.name} ${s.side === "over" ? "Over" : "Under"} ${s.alt.point} ${s.statLabel} (alt)`,
+          stat: s.stat,
+          side: s.side,
+          point: s.alt.point,
+          modelProb: null,
+          rawProb: null,
+          projMean: s.projection,
+          projSd: s.z !== 0 ? Math.abs((s.projection - s.point) / s.z) : null,
+          marketProb: null,
+          price: s.alt.priceAmerican,
+          book: s.alt.bookName,
+          priced: true,
+          playerId: s.playerId,
+          team: s.team,
+          z: s.z,
+          minutes: s.minutes,
+          standout: isStandout(s.z, s.rawChance, s.hit.l10),
+          alt: true,
+        },
+      };
+      return [main, alt];
+    });
 }
 
 /** NFL props: every prop a book has a number on, on the side the props model favors against the market (or even, with none). */
@@ -235,7 +276,7 @@ async function due(sport: "nba" | "nfl", modelKey: string, now: Date, hours: num
   return new Set(games.map((g) => g.id).filter((id) => !captured.has(id)));
 }
 
-async function write(sport: "nba" | "nfl", modelKey: string, leans: Lean[], now: Date): Promise<number> {
+async function write(sport: "nba" | "nfl", modelKey: string, leans: Lean[], now: Date, snapshot?: RegimeSnapshot): Promise<number> {
   // A run only holds leans for games that haven't started (the storage boundary insists).
   const fresh = leans.filter((l) => l.startsAt > now && Number.isFinite(l.prob));
   if (!fresh.length) return 0;
@@ -261,6 +302,11 @@ async function write(sport: "nba" | "nfl", modelKey: string, leans: Lean[], now:
     generatedAt: now,
     dataAsOfUtc: now,
     featureSchemaVersion: LEAN_FEATURE_SCHEMA,
+    // Freeze the fitted state (blend weights / calibration factors / verdicts
+    // + their hash) on the run, so settled leans can later be cut by the
+    // regime that produced them — "the model changed" vs "the model drifted"
+    // (Phase 2 A3). Props models carry fitted state; game-line runs pass none.
+    ...(snapshot ? { calibrationSnapshot: JSON.parse(JSON.stringify(snapshot)) } : {}),
     runMetadata: { games: new Set(kept.map((l) => l.eventRef)).size },
     predictions: kept.map(toPrediction),
   });
@@ -274,16 +320,16 @@ export interface CaptureSummary {
 /** `dryRun` builds the leans without writing them (diagnose:leans); `hours` widens the window to look further ahead. */
 export async function captureLeans(now = new Date(), opts: { dryRun?: boolean; hours?: number } = {}): Promise<CaptureSummary> {
   const out: CaptureSummary = {};
-  const run = async (key: string, sport: "nba" | "nfl", build: (ids: Set<string>) => Promise<Lean[]>) => {
+  const run = async (key: string, sport: "nba" | "nfl", build: (ids: Set<string>) => Promise<{ leans: Lean[]; snapshot?: RegimeSnapshot }>) => {
     try {
       const ids = await due(sport, key, now, opts.hours ?? CAPTURE_HOURS);
       if (!ids.size) return void (out[key] = { games: 0, leans: 0 });
-      const leans = await build(ids);
+      const { leans, snapshot } = await build(ids);
       if (opts.dryRun) {
         const kept = leans.filter((l) => l.startsAt > now && Number.isFinite(l.prob));
         return void (out[key] = { games: ids.size, leans: kept.length, sample: kept.slice(0, 4) });
       }
-      out[key] = { games: ids.size, leans: await write(sport, key, leans, now) };
+      out[key] = { games: ids.size, leans: await write(sport, key, leans, now, snapshot) };
     } catch (error) {
       out[key] = { error: error instanceof Error ? error.message.slice(0, 200) : String(error) };
     }
@@ -292,10 +338,16 @@ export async function captureLeans(now = new Date(), opts: { dryRun?: boolean; h
     const days = await getLeagueDays("nba", todayEt());
     const slate = toWireSlate(await getNbaPropsSlate(days[0] ?? todayEt()));
     const logs = Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackLog)])) as Record<string, GameLogPoint[]>;
-    return nbaPropLeans(slate, logs, ids);
+    return { leans: nbaPropLeans(slate, logs, ids), snapshot: regimeSnapshot({ blendVerdicts: slate.blendVerdicts }) };
   });
-  await run(TRACKED_MODELS.nflProps, "nfl", async (ids) => nflPropLeans(await getNflPropsSlate(now), ids));
-  await run(TRACKED_MODELS.nbaGames, "nba", (ids) => gameLeans("nba", ids));
-  await run(TRACKED_MODELS.nflGames, "nfl", (ids) => gameLeans("nfl", ids));
+  await run(TRACKED_MODELS.nflProps, "nfl", async (ids) => {
+    const slate = await getNflPropsSlate(now);
+    return {
+      leans: nflPropLeans(slate, ids),
+      snapshot: regimeSnapshot({ modelWeights: slate.modelWeights, calibrationFactors: slate.calibrationFactors, blendVerdicts: slate.blendVerdicts }),
+    };
+  });
+  await run(TRACKED_MODELS.nbaGames, "nba", async (ids) => ({ leans: await gameLeans("nba", ids) }));
+  await run(TRACKED_MODELS.nflGames, "nfl", async (ids) => ({ leans: await gameLeans("nfl", ids) }));
   return out;
 }

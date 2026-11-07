@@ -68,6 +68,10 @@ export interface LeanFeatures {
   minutes?: number | null;
   /** The NBA Hottest Tonight bar. */
   standout?: boolean;
+  /** NBA props (Phase 2 A3): true for the alternate-line lean (marketKey
+   * "prop:<stat>:alt") — the rung Hottest Tonight actually recommends —
+   * false for the main line. Absent on leans captured before alt tracking. */
+  alt?: boolean;
   injury?: string | null;
 }
 
@@ -81,4 +85,9 @@ export interface GradedLean {
   result: SettleResult;
   closingProb: number | null;
   startsAt: Date;
+  /** The producing run's code version (git SHA), when the reader joined it. */
+  modelVersion?: string | null;
+  /** Code version + fitted-state hash (lib/tracking/modelStamp): the regime
+   * segment this lean belongs to, for "model changed vs model drifted" cuts. */
+  versionSegment?: string | null;
 }

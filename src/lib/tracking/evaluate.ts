@@ -175,6 +175,16 @@ export function evaluateLeans(leans: GradedLean[]): { overall: SegmentStats; dim
         segments: groupBy((l) => (l.features.priced ? "Book-priced" : "Book's number, no price (read at −110)"), (k) => k),
       },
       {
+        key: "version",
+        label: "Model version (code · fitted state)",
+        segments: groupBy((l) => l.versionSegment ?? null, (k) => k),
+      },
+      {
+        key: "line",
+        label: "Line (main vs alternate)",
+        segments: groupBy((l) => (l.features.alt === undefined ? null : l.features.alt ? "Alternate line" : "Main line"), (k) => k),
+      },
+      {
         key: "standout",
         label: "NBA Hottest Tonight",
         segments: groupBy((l) => (l.features.standout === undefined ? null : l.features.standout ? "Made the page" : "Didn't make the page"), (k) => k),

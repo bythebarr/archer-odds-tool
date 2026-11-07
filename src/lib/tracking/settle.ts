@@ -121,7 +121,9 @@ async function settleProps(sport: "nba" | "nfl", game: { id: string; scheduledSt
     (byPlayerStat.get(k) ?? byPlayerStat.set(k, []).get(k)!).push(s);
   }
   return preds.map((p) => {
-    const stat = p.marketKey.slice("prop:".length);
+    // Alt-line leans carry "prop:<stat>:alt" (Phase 2 A3): the box-score stat
+    // is the base stat; the suffix only marks which line the lean took.
+    const stat = p.marketKey.slice("prop:".length).replace(/:alt$/, "");
     const { player, side, point } = parseSelection(p.selectionKey);
     const log = player ? logs.get(player) : undefined;
     const def = sport === "nba" ? NBA_PROP_STAT_BY_KEY.get(stat as NbaPropStat) : NFL_PROP_STAT_BY_KEY.get(stat as NflPropStat);
