@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { KNOWN_LEAN_SCHEMAS, TRACKED_MODELS, type GradedLean, type LeanFeatures, type SettleResult } from "@/lib/tracking/types";
 import { evaluateLeans } from "@/lib/tracking/evaluate";
 import { applyCorrections } from "@/lib/tracking/corrections";
+import { versionSegment } from "@/lib/tracking/modelStamp";
 
 export const EDGE_WINDOWS = { "30": 30, "90": 90, season: 240 } as const;
 export type EdgeWindow = keyof typeof EDGE_WINDOWS;
@@ -21,7 +22,7 @@ export async function loadGradedLeans(days: number, now = new Date()): Promise<G
       actual: true,
       closingProb: true,
       closingPrice: true,
-      prediction: { select: { probability: true, featureSnapshot: true, scheduledStartUtc: true, run: { select: { featureSchemaVersion: true } } } },
+      prediction: { select: { probability: true, featureSnapshot: true, scheduledStartUtc: true, run: { select: { featureSchemaVersion: true, modelVersion: true, calibrationSnapshot: true } } } },
     },
   });
   // Grades are write-once history; corrections (append-only, lib/tracking/
@@ -48,6 +49,11 @@ export async function loadGradedLeans(days: number, now = new Date()): Promise<G
             result: effective.get(r.predictionId)!.result,
             closingProb: effective.get(r.predictionId)!.closingProb,
             startsAt: r.prediction.scheduledStartUtc,
+            // Regime segmentation (Phase 2 A3): join the producing run's code
+            // version + fitted-state hash so evaluation can cut "the model
+            // changed" apart from "the model drifted".
+            modelVersion: r.prediction.run.modelVersion,
+            versionSegment: versionSegment(r.prediction.run.modelVersion, r.prediction.run.calibrationSnapshot),
           },
         ]
   );
