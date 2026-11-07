@@ -35,18 +35,18 @@ export interface Settled {
   closingPrice: number | null;
 }
 
-const graded = (value: number, side: string, point: number): SettleResult =>
+export const graded = (value: number, side: string, point: number): SettleResult =>
   value === point ? "push" : (side === "over" ? value > point : value < point) ? "hit" : "miss";
 
 /** A selection key "player|side|point" (props) or "side|point" (game lines). */
-function parseSelection(key: string): { player: string | null; side: string; point: number | null } {
+export function parseSelection(key: string): { player: string | null; side: string; point: number | null } {
   const parts = key.split("|");
   if (parts.length === 3) return { player: parts[0], side: parts[1], point: Number(parts[2]) };
   return { player: null, side: parts[0], point: parts[1] === "" ? null : Number(parts[1]) };
 }
 
 /** Each book's last quote before `start`, at every number, from a game's snapshots. */
-function closingQuotes<T extends { bookKey: string; side: string; point: number; priceAmerican: number; polledAt: Date }>(snaps: T[], start: Date): PropQuote[] {
+export function closingQuotes<T extends { bookKey: string; side: string; point: number; priceAmerican: number; polledAt: Date }>(snaps: T[], start: Date): PropQuote[] {
   const latest = new Map<string, T>();
   for (const s of snaps) {
     if (s.polledAt >= start) continue;
@@ -64,7 +64,7 @@ const implied = (american: number) => (american < 0 ? -american / (100 - america
  * de-vigged and averaged (one book is enough for closing-line value, unlike the
  * live market read, which wants several).
  */
-function closeOf(quotes: PropQuote[], side: string, point: number): { prob: number | null; price: number | null } {
+export function closeOf(quotes: PropQuote[], side: string, point: number): { prob: number | null; price: number | null } {
   const at = quotes.filter((q) => q.point === point);
   const books = new Map<string, { over?: number; under?: number }>();
   for (const q of at) (books.get(q.bookKey) ?? books.set(q.bookKey, {}).get(q.bookKey)!)[q.side] = q.priceAmerican;
@@ -73,6 +73,36 @@ function closeOf(quotes: PropQuote[], side: string, point: number): { prob: numb
   const mine = at.filter((q) => q.side === (side === "under" ? "under" : "over"));
   const price = mine.length ? Math.max(...mine.map((q) => q.priceAmerican)) : null;
   return { prob: probOver === null ? null : side === "under" ? 1 - probOver : probOver, price };
+}
+
+
+/** Inputs to grading one prop lean, resolved from the box score by settleProps. Pure. */
+export interface PropOutcomeInput {
+  /** The player has a box-score row for the game. */
+  hasLog: boolean;
+  /** The stat key resolves to a known prop-stat definition. */
+  statKnown: boolean;
+  point: number | null;
+  /** Minutes from the box score; null when there is no log. */
+  minutes: number | null;
+  sport: "nba" | "nfl";
+  /** The stat def's availability check (NFL), when it has one; null otherwise. */
+  available: boolean | null;
+  /** The realized stat value; null when it cannot be read. */
+  value: number | null;
+  side: string;
+}
+
+/**
+ * One prop lean's grade: a player who didn't play (no box score, no minutes —
+ * NFL box scores carry no minutes, so the check is NBA-only), an unknown stat,
+ * or a stat the def marks unavailable settles void, the way a book refunds it.
+ */
+export function gradePropOutcome(i: PropOutcomeInput): { result: SettleResult; actual: number | null } {
+  if (!i.hasLog || !i.statKnown || i.point === null || !((i.minutes ?? 0) > 0 || i.sport === "nfl")) return { result: "void", actual: null };
+  if (i.available === false) return { result: "void", actual: null };
+  if (i.value === null) return { result: "void", actual: null };
+  return { result: graded(i.value, i.side, i.point), actual: i.value };
 }
 
 async function settleProps(sport: "nba" | "nfl", game: { id: string; scheduledStartUtc: Date }, preds: Pending[]): Promise<Settled[]> {
@@ -96,48 +126,68 @@ async function settleProps(sport: "nba" | "nfl", game: { id: string; scheduledSt
     const log = player ? logs.get(player) : undefined;
     const def = sport === "nba" ? NBA_PROP_STAT_BY_KEY.get(stat as NbaPropStat) : NFL_PROP_STAT_BY_KEY.get(stat as NflPropStat);
     const close = player && point !== null ? closeOf(closingQuotes(byPlayerStat.get(`${player}|${stat}`) ?? [], game.scheduledStartUtc), side, point) : { prob: null, price: null };
-    const base = { predictionId: p.id, closingProb: close.prob, closingPrice: close.price };
-    // Didn't play (or the stat isn't in his box score): the book voids it.
-    if (!log || !def || point === null || !(log.minutes > 0 || sport === "nfl")) return { ...base, result: "void" as const, actual: null };
-    const nflDef = def as { available?: (l: never) => boolean };
-    if (nflDef.available && !nflDef.available(log as never)) return { ...base, result: "void" as const, actual: null };
-    const value = (def.value as (l: never) => number)(log as never);
-    return { ...base, result: graded(value, side, point), actual: value };
+    const nflDef = def as unknown as { available?: (l: never) => boolean; value: (l: never) => number } | undefined;
+    const outcome = gradePropOutcome({
+      hasLog: !!log,
+      statKnown: !!def,
+      point,
+      minutes: log ? (log.minutes as number | undefined) ?? null : null,
+      sport,
+      available: log && nflDef?.available ? nflDef.available(log as never) : null,
+      value: log && nflDef ? nflDef.value(log as never) : null,
+      side,
+    });
+    return { predictionId: p.id, closingProb: close.prob, closingPrice: close.price, result: outcome.result, actual: outcome.actual };
   });
+}
+
+/** A GameClosingLine row, as gradeGameLine reads it (structural subset). */
+export interface ClosingLineLike {
+  marketType: string;
+  side: string;
+  point: number | null;
+  priceAmerican: number;
+}
+
+/**
+ * One game-line lean's grade off the final score (pure): totals grade the
+ * combined score against the number; moneyline grades the picked side's
+ * margin; a spread adds the lean's own number to its side's margin, so
+ * margin + point == 0 is the push. The closing chance de-vigs both sides at
+ * the lean's number (spread opponents carry the mirrored number).
+ */
+export function gradeGameLine(p: Pending, home: number, away: number, closing: ClosingLineLike[]): Settled {
+  const { side, point } = parseSelection(p.selectionKey);
+  let result: SettleResult;
+  let actual: number;
+  if (p.marketKey === "total") {
+    actual = home + away;
+    result = graded(actual, side, point!);
+  } else {
+    // Home's margin, from the lean's side: a spread adds its own number.
+    const margin = side === "home" ? home - away : away - home;
+    actual = margin;
+    const covered = margin + (p.marketKey === "spread" ? point! : 0);
+    result = covered === 0 ? "push" : covered > 0 ? "hit" : "miss";
+  }
+  // The closing line: both sides at the lean's number, de-vigged.
+  const MT = { ml: "h2h", spread: "spreads", total: "totals" } as const;
+  const mt = MT[p.marketKey as keyof typeof MT];
+  const mine = closing.find((c) => c.marketType === mt && c.side === side);
+  const other = closing.find((c) => c.marketType === mt && c.side !== side && c.side !== "draw");
+  const samePoint = (c: typeof mine) => (p.marketKey === "ml" ? true : p.marketKey === "total" ? c?.point === point : c?.point !== null && c?.point === (c?.side === side ? point : -point!));
+  let closingProb: number | null = null;
+  if (mine && other && samePoint(mine) && samePoint(other)) {
+    const a = mine.priceAmerican < 0 ? -mine.priceAmerican / (100 - mine.priceAmerican) : 100 / (mine.priceAmerican + 100);
+    const b = other.priceAmerican < 0 ? -other.priceAmerican / (100 - other.priceAmerican) : 100 / (other.priceAmerican + 100);
+    closingProb = a / (a + b);
+  }
+  return { predictionId: p.id, result, actual, closingProb, closingPrice: mine && samePoint(mine) ? mine.priceAmerican : null };
 }
 
 async function settleGameLines(game: { id: string; scheduledStartUtc: Date; homeScore: number | null; awayScore: number | null }, preds: Pending[]): Promise<Settled[]> {
   const closing = await prisma.gameClosingLine.findMany({ where: { gameId: game.id } });
-  const MT = { ml: "h2h", spread: "spreads", total: "totals" } as const;
-  return preds.map((p) => {
-    const { side, point } = parseSelection(p.selectionKey);
-    const home = game.homeScore!;
-    const away = game.awayScore!;
-    let result: SettleResult;
-    let actual: number;
-    if (p.marketKey === "total") {
-      actual = home + away;
-      result = graded(actual, side, point!);
-    } else {
-      // Home's margin, from the lean's side: a spread adds its own number.
-      const margin = side === "home" ? home - away : away - home;
-      actual = margin;
-      const covered = margin + (p.marketKey === "spread" ? point! : 0);
-      result = covered === 0 ? "push" : covered > 0 ? "hit" : "miss";
-    }
-    // The closing line: both sides at the lean's number, de-vigged.
-    const mt = MT[p.marketKey as keyof typeof MT];
-    const mine = closing.find((c) => c.marketType === mt && c.side === side);
-    const other = closing.find((c) => c.marketType === mt && c.side !== side && c.side !== "draw");
-    const samePoint = (c: typeof mine) => (p.marketKey === "ml" ? true : p.marketKey === "total" ? c?.point === point : c?.point !== null && c?.point === (c?.side === side ? point : -point!));
-    let closingProb: number | null = null;
-    if (mine && other && samePoint(mine) && samePoint(other)) {
-      const a = mine.priceAmerican < 0 ? -mine.priceAmerican / (100 - mine.priceAmerican) : 100 / (mine.priceAmerican + 100);
-      const b = other.priceAmerican < 0 ? -other.priceAmerican / (100 - other.priceAmerican) : 100 / (other.priceAmerican + 100);
-      closingProb = a / (a + b);
-    }
-    return { predictionId: p.id, result, actual, closingProb, closingPrice: mine && samePoint(mine) ? mine.priceAmerican : null };
-  });
+  return preds.map((p) => gradeGameLine(p, game.homeScore!, game.awayScore!, closing));
 }
 
 export async function settleLeans(now = new Date()): Promise<{ considered: number; settled: number; waiting: number }> {
