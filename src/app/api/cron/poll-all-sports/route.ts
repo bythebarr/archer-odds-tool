@@ -2,7 +2,7 @@ import { checkCronAuth } from "@/lib/cronAuth";
 import { pollAllSports } from "@/lib/allSports/poll";
 import { activeFeeds } from "@/lib/allSports/feeds";
 
-/** Each call does whatever is due (catalog, schedules, odds by cadence, results) — safe to call as often as every few minutes. */
+/** Each call does whatever is due (catalog, schedules, odds by cadence, results) - safe to call as often as every few minutes. */
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   }
   try {
     const summary = await pollAllSports({ feeds, maxMs: 50_000 });
-    return Response.json({ polled: true, ...summary }, { status: summary.failures.length && !summary.leaguesPolled.length ? 502 : 200 });
+    return Response.json({ polled: true, ...summary }, { status: summary.failures.length && (!summary.leaguesPolled.length || summary.linesStored === 0) ? 502 : 200 });
   } catch (error) {
     return Response.json({ polled: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

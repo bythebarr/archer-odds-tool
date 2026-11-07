@@ -1,10 +1,10 @@
 /**
  * The all-sports poller. One call does what's due, in this order:
  *
- *   1. catalog   — which leagues are in season (every 6 hours; free on TOA)
- *   2. schedules — each league's upcoming events (every 30 minutes; free on TOA)
- *   3. odds      — leagues whose cadence says they're due (cadence.ts), soonest first
- *   4. results   — leagues with games that should have finished (every 2 hours)
+ *   1. catalog   - which leagues are in season (every 6 hours; free on TOA)
+ *   2. schedules - each league's upcoming events (every 30 minutes; free on TOA)
+ *   3. odds      - leagues whose cadence says they're due (cadence.ts), soonest first
+ *   4. results   - leagues with games that should have finished (every 2 hours)
  *
  * It stops starting new work past `maxMs`, so a cron invocation never times
  * out; whatever's left is due again on the next call.
@@ -175,7 +175,7 @@ export async function pollAllSports({ now = new Date(), maxMs = 50_000, feeds = 
       const latest = await prisma.pollLog.findFirst({ where: { creditsRemaining: { not: null } }, orderBy: { lastPolledAt: "desc" } });
       const reserve = Number(process.env.ALL_SPORTS_RESERVE ?? 20_000);
       if (latest?.creditsRemaining !== null && latest?.creditsRemaining !== undefined && latest.creditsRemaining < reserve) {
-        s.failures.push(`toa: ${latest.creditsRemaining} credits left, under the ${reserve} reserve — other sports paused`);
+        s.failures.push(`toa: ${latest.creditsRemaining} credits left, under the ${reserve} reserve - other sports paused`);
         continue;
       }
     }
@@ -185,7 +185,7 @@ export async function pollAllSports({ now = new Date(), maxMs = 50_000, feeds = 
     for (const l of leagues) {
       if (timeLeft() < 5_000) break;
       // A league with no known schedule (the feed's free events list was empty or unavailable) is
-      // still checked every few hours — the odds call itself says what's on.
+      // still checked every few hours - the odds call itself says what's on.
       const discovery = !l.outright && !l.nextEventAt && minutesSince(l.lastPolledAt, now) >= DISCOVERY_EVERY_MIN * stretch;
       if (!discovery && !isDue({ nextEventAt: l.nextEventAt, lastPolledAt: l.lastPolledAt, outright: l.outright }, now, stretch)) continue;
       try {
@@ -242,12 +242,20 @@ export async function pollAllSports({ now = new Date(), maxMs = 50_000, feeds = 
     // Only the TOA/Parlay account's balance belongs in PollLog.creditsRemaining:
     // the credits guardrail reads the freshest non-null value across ALL jobs,
     // and odds-api.io's "remaining" is an hourly rate-limit counter from a
-    // different account — writing it here poisons the guardrail's gauge in
+    // different account - writing it here poisons the guardrail's gauge in
     // both directions (full-repo audit 2026-11-06, Lane 1 S2). Other feeds
     // pass undefined, which leaves any prior figure untouched.
     const accountRemaining = feed.id === "toa" ? remaining : undefined;
     await markRun(spendJob, "month spend", spentBefore + spent, accountRemaining);
-    await markRun(tag("odds"), `ok: ${s.leaguesPolled.length} leagues, ${s.linesStored} lines`, spent, accountRemaining);
+    // Classify, don't cheerlead: a feed whose leagues failed - partially or
+    // wholly - must not stamp "ok" (poll-all-sports once read as success
+    // while half its leagues failed every hour; audit 2026-11-06 Lane 1 S4).
+    const oddsStatus = s.failures.length
+      ? s.linesStored > 0
+        ? `error: partial failure (${s.failures.length} failure(s) this run) - ${s.leaguesPolled.length} leagues, ${s.linesStored} lines`
+        : `error: ${s.failures.length} failure(s) this run, 0 lines stored`
+      : `ok: ${s.leaguesPolled.length} leagues, ${s.linesStored} lines`;
+    await markRun(tag("odds"), oddsStatus, spent, accountRemaining);
   }
   return s;
 }
