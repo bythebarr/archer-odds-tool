@@ -23,7 +23,7 @@ function flipForUnder(result: OutcomeResult): OutcomeResult {
  * of a totals market, since GameOutcome.result is stored from the Over's
  * perspective (see gradeOutcomes.ts).
  */
-function reduceHitRate(
+export function reduceHitRate(
   outcomes: { result: OutcomeResult }[],
   window: number,
   flip: boolean
@@ -115,7 +115,7 @@ export async function getPlayerHitRate(playerId: string, window = DEFAULT_WINDOW
 // teamId, so a null one is unreachable in practice — skipped rather than
 // asserted, since that costs nothing and keeps this correct even if a caller
 // ever changes.
-function groupByTeam<T extends { teamId: string | null }>(rows: T[]): Map<string, T[]> {
+export function groupByTeam<T extends { teamId: string | null }>(rows: T[]): Map<string, T[]> {
   const byTeam = new Map<string, T[]>();
   for (const row of rows) {
     if (row.teamId === null) continue;
@@ -131,6 +131,38 @@ function groupByTeam<T extends { teamId: string | null }>(rows: T[]): Map<string
  * total (one per market type; totals is fetched once and reduced twice, for
  * over and under) instead of 4 queries per team.
  */
+/**
+ * One market's rows for the batch, newest first, bounded (Phase 2 E P-1):
+ * the batch used to fetch the ENTIRE GameOutcome history per market and
+ * slice in memory. The cap (window × teams) is a safe upper bound in the
+ * common case; if the fetch comes back exactly full, any team holding fewer
+ * than `window` rows may have been truncated by busier teams, so those
+ * teams — and only those — are re-fetched per-team to keep the result exact.
+ */
+async function fetchMarketRows(uniqueIds: string[], marketType: MarketType, window: number) {
+  const cap = Math.max(window * uniqueIds.length, window);
+  const rows = await prisma.gameOutcome.findMany({
+    where: { teamId: { in: uniqueIds }, marketType },
+    orderBy: { game: { scheduledStartUtc: "desc" } },
+    take: cap,
+  });
+  if (rows.length < cap) return rows;
+  const byTeam = groupByTeam(rows);
+  const short = uniqueIds.filter((id) => (byTeam.get(id)?.length ?? 0) < window);
+  if (!short.length) return rows;
+  const refetched = await Promise.all(
+    short.map((id) =>
+      prisma.gameOutcome.findMany({
+        where: { teamId: id, marketType },
+        orderBy: { game: { scheduledStartUtc: "desc" } },
+        take: window,
+      })
+    )
+  );
+  const shortSet = new Set(short);
+  return [...rows.filter((r) => r.teamId === null || !shortSet.has(r.teamId)), ...refetched.flat()];
+}
+
 export async function getTeamHitRatesBatch(
   teamIds: string[],
   window = DEFAULT_WINDOW
@@ -138,18 +170,9 @@ export async function getTeamHitRatesBatch(
   const uniqueIds = [...new Set(teamIds)];
 
   const [h2hRows, spreadRows, totalsRows] = await Promise.all([
-    prisma.gameOutcome.findMany({
-      where: { teamId: { in: uniqueIds }, marketType: "h2h" },
-      orderBy: { game: { scheduledStartUtc: "desc" } },
-    }),
-    prisma.gameOutcome.findMany({
-      where: { teamId: { in: uniqueIds }, marketType: "spreads" },
-      orderBy: { game: { scheduledStartUtc: "desc" } },
-    }),
-    prisma.gameOutcome.findMany({
-      where: { teamId: { in: uniqueIds }, marketType: "totals" },
-      orderBy: { game: { scheduledStartUtc: "desc" } },
-    }),
+    fetchMarketRows(uniqueIds, "h2h", window),
+    fetchMarketRows(uniqueIds, "spreads", window),
+    fetchMarketRows(uniqueIds, "totals", window),
   ]);
 
   const h2hByTeam = groupByTeam(h2hRows);
