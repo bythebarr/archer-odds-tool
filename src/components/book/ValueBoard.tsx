@@ -92,7 +92,7 @@ async function ufcPlays(): Promise<ValuePlay[]> {
  * read, not a model pick: it says a price is better than where the books
  * collectively put it.
  */
-export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: number }) {
+async function collectValuePlays(today: string, limit: number): Promise<ValuePlay[]> {
   const [nbaDay] = await getLeagueDays("nba", today);
   const [nba, nfl, ufc, props, nflProps] = await Promise.all([
     linePlays("nba", today),
@@ -123,6 +123,18 @@ export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: 
   ]
     .sort((a, b) => b.ev - a.ev)
     .slice(0, limit);
+  return plays;
+}
+
+export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: number }) {
+  // Incident 2026-11-08: this board aggregates the heaviest reads on the
+  // site (both prop slates). A failure here renders nothing and logs —
+  // the same pattern as the all-sports section — instead of blanking
+  // the whole lobby behind the root error screen.
+  const plays = await collectValuePlays(today, limit).catch((err) => {
+    console.error("[home] value board failed", err);
+    return [] as ValuePlay[];
+  });
 
   if (plays.length === 0) return null;
   return (

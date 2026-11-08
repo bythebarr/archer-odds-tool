@@ -165,7 +165,14 @@ export async function getSportBoard(sport: string, leagueSlug: string | null, no
   );
   const logos = await cachedLogos(sport, events.flatMap((e) => [e.home, e.away]));
   const ratingsBy = new Map<string, LeagueRatings>();
-  for (const id of new Set(events.map((e) => e.leagueId))) ratingsBy.set(id, await leagueRatings(id, sport, now));
+  // Parallel: independent per-league reads. The serial loop made a
+  // multi-league board cost the sum of every league's history rebuild —
+  // /sports boards timed out past 120s in the 2026-11-08 incident.
+  await Promise.all(
+    [...new Set(events.map((e) => e.leagueId))].map(async (id) => {
+      ratingsBy.set(id, await leagueRatings(id, sport, now));
+    })
+  );
 
   const boards: LeagueBoard[] = target
     .map((league) => ({
@@ -361,12 +368,15 @@ export async function getHomeAllSports(now = new Date(), leagues = 4, perLeague 
   const picked: typeof soon = [];
   for (const l of soon) if (!picked.some((p) => p.sport === l.sport)) picked.push(l);
   for (const l of soon) if (picked.length < leagues && !picked.includes(l)) picked.push(l);
-  const out: (LeagueBoard & { sport: AllSport; threeWay: boolean })[] = [];
-  for (const l of picked.slice(0, leagues)) {
-    const board = await getSportBoard(l.sport, l.id.slice(l.sport.length + 1), now);
-    const b = board.boards[0];
-    if (!b || b.events.length === 0) continue;
-    out.push({ league: b.league, events: b.events.slice(0, perLeague), sport: board.sport, threeWay: board.sport.family === "goals" && l.sport !== "hockey" });
-  }
-  return out;
+  // Parallel, same reason as the ratings loop in getSportBoard: the lobby
+  // used to wait on these boards strictly one after another.
+  const boards = await Promise.all(
+    picked.slice(0, leagues).map(async (l) => {
+      const board = await getSportBoard(l.sport, l.id.slice(l.sport.length + 1), now);
+      const b = board.boards[0];
+      if (!b || b.events.length === 0) return null;
+      return { league: b.league, events: b.events.slice(0, perLeague), sport: board.sport, threeWay: board.sport.family === "goals" && l.sport !== "hockey" };
+    })
+  );
+  return boards.filter((b): b is NonNullable<typeof b> => b !== null);
 }

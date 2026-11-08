@@ -71,15 +71,23 @@ export async function syncInjuries(sport: Sport): Promise<{ sport: Sport; player
   const parsed = parseEspnInjuries(await res.json());
   // An empty report from a healthy feed is real (preseason); an unparseable one isn't, so keep the old report.
   if (parsed.length === 0) return { sport, players: 0 };
-  await prisma.$transaction([
-    prisma.playerInjury.deleteMany({ where: { sport, espnAthleteId: { notIn: parsed.map((p) => p.espnAthleteId) } } }),
-    ...parsed.map((p) =>
-      prisma.playerInjury.upsert({
-        where: { sport_espnAthleteId: { sport, espnAthleteId: p.espnAthleteId } },
-        create: { sport, ...p },
-        update: { playerName: p.playerName, teamName: p.teamName, status: p.status, detail: p.detail },
-      })
-    ),
-  ]);
+  // One transaction for the whole replace, with headroom: a full NFL
+  // report is 200+ upserts, and under load that outran Prisma's default
+  // 5s transaction timeout — the entire replace rolled back (production
+  // error stamp 2026-11-08 17:25 UTC). Timeout only; same writes, same
+  // atomicity.
+  await prisma.$transaction(
+    [
+      prisma.playerInjury.deleteMany({ where: { sport, espnAthleteId: { notIn: parsed.map((p) => p.espnAthleteId) } } }),
+      ...parsed.map((p) =>
+        prisma.playerInjury.upsert({
+          where: { sport_espnAthleteId: { sport, espnAthleteId: p.espnAthleteId } },
+          create: { sport, ...p },
+          update: { playerName: p.playerName, teamName: p.teamName, status: p.status, detail: p.detail },
+        })
+      ),
+    ],
+    { timeout: 30_000, maxWait: 15_000 }
+  );
   return { sport, players: parsed.length };
 }

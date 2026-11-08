@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { getLeagueDays, getLeagueEvents } from "@/lib/queries/lobby";
 import { getTopNbaProps } from "@/lib/queries/nbaProps";
 import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
@@ -52,9 +53,18 @@ function dayName(dateEt: string, today: string): string {
 
 /** A league's next game day in the lobby: its first few games, then See all. */
 async function LeagueSection({ sport, today }: { sport: TeamLeagueSport; today: string }) {
-  const [day] = await getLeagueDays(sport, today);
+  // Incident 2026-11-08: a failing league read degrades this section alone
+  // (logged, rendered as nothing) instead of tripping the root error
+  // boundary and blanking the whole lobby.
+  const [day] = await getLeagueDays(sport, today).catch((err) => {
+    console.error(`[home] league days failed for ${sport}`, err);
+    return [] as string[];
+  });
   if (!day) return null;
-  const events = await getLeagueEvents(sport, day);
+  const events = await getLeagueEvents(sport, day).catch((err) => {
+    console.error(`[home] league events failed for ${sport}`, err);
+    return [];
+  });
   if (events.length === 0) return null;
   const meta = sportMetaByKey[sport];
   return (
@@ -118,8 +128,13 @@ async function AllSportsSection() {
 }
 
 async function NbaPropsSection({ today }: { today: string }) {
-  const [day] = await getLeagueDays("nba", today);
-  const props = day ? await getTopNbaProps(day) : [];
+  const [day] = await getLeagueDays("nba", today).catch(() => [] as string[]);
+  const props = day
+    ? await getTopNbaProps(day).catch((err) => {
+        console.error("[home] top NBA props failed", err);
+        return [];
+      })
+    : [];
   if (props.length === 0) return null;
   return (
     <section>
@@ -130,7 +145,10 @@ async function NbaPropsSection({ today }: { today: string }) {
 }
 
 async function UfcSection() {
-  const [event] = await listUpcomingUfcEvents(1);
+  const [event] = await listUpcomingUfcEvents(1).catch((err) => {
+    console.error("[home] upcoming UFC events failed", err);
+    return [] as Awaited<ReturnType<typeof listUpcomingUfcEvents>>;
+  });
   if (!event || event.bouts.length === 0) return null;
   return (
     <section>
@@ -184,13 +202,31 @@ export default async function Home() {
       <SportCarousel />
       <LobbyHero dateLabel={formatEtDateLabel(today)} />
 
+      {/* Incident 2026-11-08: each section streams behind its own Suspense
+          boundary. These sections aggregate the heaviest reads on the site;
+          un-suspended, one stalled section held the entire lobby hostage —
+          the page showed the global loading skeleton, then the root error
+          screen. Now the shell and hero render at once and every section
+          lands (or degrades) on its own. */}
       <div className="mt-6 flex flex-col gap-8">
-        <ValueBoard today={today} />
-        <LeagueSection sport="nba" today={today} />
-        <NbaPropsSection today={today} />
-        <LeagueSection sport="nfl" today={today} />
-        <UfcSection />
-        <AllSportsSection />
+        <Suspense fallback={null}>
+          <ValueBoard today={today} />
+        </Suspense>
+        <Suspense fallback={null}>
+          <LeagueSection sport="nba" today={today} />
+        </Suspense>
+        <Suspense fallback={null}>
+          <NbaPropsSection today={today} />
+        </Suspense>
+        <Suspense fallback={null}>
+          <LeagueSection sport="nfl" today={today} />
+        </Suspense>
+        <Suspense fallback={null}>
+          <UfcSection />
+        </Suspense>
+        <Suspense fallback={null}>
+          <AllSportsSection />
+        </Suspense>
       </div>
 
       <div className="mt-8">
