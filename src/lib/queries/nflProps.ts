@@ -309,8 +309,11 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
 
   // Who can play: each team's active roster and depth chart, and the players a book lists on each game.
   const statuses = new Map<string, NflTeamStatus | null>();
+  // One status fetch per team, not one per game appearance: a team listed
+  // in several games was fetched (and awaited) repeatedly.
+  const uniqueTeams = [...new Map(games.flatMap((g) => [g.homeTeam, g.awayTeam]).flatMap((t) => (t ? [t] : [])).map((t) => [t.id, t] as const)).values()];
   await Promise.all(
-    games.flatMap((g) => [g.homeTeam, g.awayTeam]).flatMap((t) => (t ? [t] : [])).map(async (t) => {
+    uniqueTeams.map(async (t) => {
       statuses.set(t.id, await fetchNflTeamStatus(espnTeamCode("nfl", t.abbreviation), season));
     })
   );
