@@ -134,3 +134,20 @@ describe("projectNflProp opponent absences", () => {
     expect(qbOut.env.spread).toBeCloseTo(6, 6);
   });
 });
+
+describe("projectNflProp multi-absence fallback", () => {
+  it("adds each absentee's own split when the joint sample is empty", () => {
+    const games = [110, 105, 100, 108, 70, 70, 70, 70].map((y, i) => log({ receptions: 7, recYards: y }, i));
+    const dates = games.map((g) => g.date);
+    const absences = [
+      { name: "A", status: "out", playedDates: dates.slice(2), usage: 8 },
+      { name: "B", status: "out", playedDates: [dates[0], dates[1], ...dates.slice(4)], usage: 8 },
+    ];
+    const whole = projectNflProp(games, stat("recYards"), ctx("MID"))!;
+    const lifted = projectNflProp(games, stat("recYards"), { ...ctx("MID"), absences })!;
+    expect(whole.absence).toBeNull();
+    expect(lifted.absence?.additive).toBe(true);
+    expect(lifted.absence?.names).toEqual(["A", "B"]);
+    expect(lifted.mean).toBeGreaterThan(whole.mean);
+  });
+});

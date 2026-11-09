@@ -191,3 +191,24 @@ describe("opponentAbsenceFactor", () => {
     expect(lifted.mean / base.mean).toBeCloseTo(lifted.opponentFactor, 6);
   });
 });
+
+describe("projectProp multi-absence fallback", () => {
+  it("adds each absentee's own rate split when the joint sample is empty", () => {
+    // 30 points in the two games without A and the two without B, 20 otherwise;
+    // A and B were never out together.
+    const games = Array.from({ length: 12 }, (_, i) => log(i < 4 ? 30 : 20, 34, i));
+    const dates = games.map((g) => g.date);
+    const absences = [
+      { name: "A", status: "out", playedDates: dates.slice(2), usage: 30 },
+      { name: "B", status: "out", playedDates: [dates[0], dates[1], ...dates.slice(4)], usage: 30 },
+    ];
+    const ctx = { defense, opponent: "MID", positionGroup: null };
+    const whole = projectProp(games, PTS, ctx)!;
+    const lifted = projectProp(games, PTS, { ...ctx, absences })!;
+    expect(whole.absence).toBeNull();
+    expect(lifted.absence?.additive).toBe(true);
+    expect(lifted.absence?.names).toEqual(["A", "B"]);
+    expect(lifted.absence?.games).toBe(4);
+    expect(lifted.mean).toBeGreaterThan(whole.mean);
+  });
+});

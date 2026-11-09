@@ -9,10 +9,13 @@
  *    (starting or off the bench, as in his last game) count more, and games he
  *    left early (well under his usual minutes: an injury exit, foul trouble, an
  *    ejection) count less, so one cut-short night doesn't drag the number down.
- * 2. Teammates out: the games he's already played without them, blended in by
- *    how many there are; where there are too few, the absent players' usual
- *    minutes are shared out across the rest of the rotation in proportion to
- *    each player's share, at the rate the backtest finds.
+ * 2. Teammates out: the games he's already played without ALL of them,
+ *    blended in by how many there are; where that exact configuration has
+ *    no precedent, each absentee's own without-games are added one at a
+ *    time; where no split exists at all, the absent players' usual minutes
+ *    are shared out across the rest of the rotation in proportion to each
+ *    player's share, at a prior rate (ABSENCE_ALPHA_PRIOR) until that
+ *    corner gets fitted directly.
  * 3. Rest: the second night of a back-to-back, separately for starters' and
  *    bench minutes.
  * 4. Returning: his first game after missing his team's last one (or several),
@@ -20,7 +23,7 @@
  * Then tonight's spread (environment.ts) trims starters' minutes in likely
  * blowouts and adds to the bench's, on top of this.
  */
-import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
+import { additiveWithoutBlend, gamesWithout, gamesWithoutEach, withoutWeight, type Absence } from "@/lib/injuries/absence";
 
 export interface MinutesLog {
   /** ET date, YYYY-MM-DD. */
@@ -107,6 +110,16 @@ export const STARTER_MINUTES = 28;
 const ABSENCE_PRIOR_GAMES = 5;
 const MIN_WITHOUT_GAMES = 2;
 const TEAM_MINUTES = 240;
+/**
+ * The redistribution rate when NO without-split exists at all — neither the
+ * joint configuration nor any single absentee's games. The walk-forward fit
+ * drove its alpha to 0, but that fit reads a population where splits usually
+ * exist; in the true no-precedent corner (a new rotation, absentees who
+ * arrived together) zero means "unmeasured", not "measured none", so a
+ * conservative prior stands here until a multi-absence backtest slice fits
+ * this corner directly. A fitted positive alpha still wins over the prior.
+ */
+export const ABSENCE_ALPHA_PRIOR = 0.3;
 
 export interface MinutesContext {
   /** Tonight, ET (YYYY-MM-DD). */
@@ -171,7 +184,9 @@ export function projectNbaMinutes(
   const base = sum / w;
   let minutes = base;
 
-  // Teammates out.
+  // Teammates out: joint without-games first; then each absentee's own
+  // without-split added one at a time; then, with no precedent of any kind,
+  // the absent minutes shared out across the rotation.
   let absenceFactor = 1;
   let withoutGames = 0;
   if (ctx.absences?.length) {
@@ -182,8 +197,18 @@ export function projectNbaMinutes(
       const ww = withoutWeight(without.length, ABSENCE_PRIOR_GAMES);
       minutes = base * (1 - ww) + wMinutes * ww;
     } else {
-      const lost = ctx.absences.reduce((a, x) => a + x.usage, 0);
-      minutes = base + p.absenceAlpha * lost * (base / Math.max(TEAM_MINUTES - lost, 120));
+      const splits = gamesWithoutEach(played, ctx.absences).map((games) => ({
+        value: games.length ? games.reduce((a, l) => a + l.minutes, 0) / games.length : 0,
+        games: games.length,
+      }));
+      const blended = additiveWithoutBlend(base, splits, ABSENCE_PRIOR_GAMES, MIN_WITHOUT_GAMES);
+      if (blended.terms > 0) {
+        minutes = blended.value;
+      } else {
+        const lost = ctx.absences.reduce((a, x) => a + x.usage, 0);
+        const alpha = p.absenceAlpha > 0 ? p.absenceAlpha : ABSENCE_ALPHA_PRIOR;
+        minutes = base + alpha * lost * (base / Math.max(TEAM_MINUTES - lost, 120));
+      }
     }
     absenceFactor = minutes / base;
   }

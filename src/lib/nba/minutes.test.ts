@@ -63,3 +63,31 @@ describe("projectNbaMinutes", () => {
     expect(projectNbaMinutes(logs([0, 0]), {}, flat)).toBeNull();
   });
 });
+
+describe("projectNbaMinutes multi-absence fallback", () => {
+  // A missed the two newest games, B missed the two before those; the player
+  // never played with both out, but his minutes jumped in each split.
+  const dates = logs([34, 34, 34, 34, 24, 24, 24, 24, 24, 24]).map((l) => l.date);
+  const twoOut = [
+    { name: "A", status: "out", playedDates: dates.slice(2), usage: 30 },
+    { name: "B", status: "out", playedDates: [dates[0], dates[1], ...dates.slice(4)], usage: 30 },
+  ];
+
+  it("adds each absentee's own split when the joint sample is empty", () => {
+    const l = logs([34, 34, 34, 34, 24, 24, 24, 24, 24, 24]);
+    const whole = projectNbaMinutes(l, {}, flat)!;
+    const m = projectNbaMinutes(l, { absences: twoOut }, flat)!;
+    expect(m.withoutGames).toBe(0); // never played with both out
+    expect(m.absence).toBeGreaterThan(1); // but each split alone still lifts him
+    expect(m.minutes).toBeGreaterThan(whole.minutes);
+  });
+
+  it("shares minutes out at the prior rate when no split of any kind exists", () => {
+    const l = logs([24, 24, 24, 24, 24]);
+    const absences = [{ name: "Star", status: "out", playedDates: l.map((x) => x.date), usage: 36 }];
+    // flat carries the fitted absenceAlpha of 0: the prior stands in for it.
+    const m = projectNbaMinutes(l, { absences }, flat)!;
+    expect(m.withoutGames).toBe(0);
+    expect(m.minutes).toBeCloseTo(24 + 0.3 * 36 * (24 / 204), 4);
+  });
+});
