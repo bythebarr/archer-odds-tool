@@ -28,6 +28,13 @@ import { closingGameLines, teamBaselinesByGame, type TeamBaseline } from "./prop
  * implies? Pure scoring lives in lib/propModel/cautiousGrade (unit-tested
  * on synthetic data); this script is the DB collection + print.
  *
+ * Both sides are graded: the Over (won = actual > line, best Over price)
+ * and the Under (won = actual < line, ARCHR Chance = 1 - blend, record =
+ * the L10 Under record at the line, best Under price). The haircut
+ * governs Under rows identically, so grading only Overs would leave
+ * half its surface unexamined. Per-stat prints pool both sides; the
+ * by-side prints separate them.
+ *
  * Known reconstruction limits, same family as backtest:props-market: no
  * injury adjustment (not stored historically), and the record is the L10
  * window the screener uses.
@@ -60,6 +67,7 @@ function closingQuotes<T extends { playerId: string; stat: string; bookKey: stri
 
 interface GradedCautious extends CautiousGradeSample {
   stat: string;
+  side: "over" | "under";
 }
 
 async function gradedNba(closing: Map<string, GameLines>, baselines: Map<string, { home: TeamBaseline | null; away: TeamBaseline | null }>): Promise<GradedCautious[]> {
@@ -110,7 +118,16 @@ async function gradedNba(closing: Map<string, GameLines>, baselines: Map<string,
       // The best closing price on the Over at this line — the price the cautious edge reads against.
       const overPrices = qs.filter((q) => q.point === point && q.side === "over").map((q) => q.priceAmerican);
       const best = overPrices.length ? Math.max(...overPrices) : null;
-      out.push({ stat: statKey, pBlend, rate: [hits, l10.length], priceAmerican: best, won: actual > point ? 1 : 0 });
+      out.push({ stat: statKey, side: "over", pBlend, rate: [hits, l10.length], priceAmerican: best, won: actual > point ? 1 : 0 });
+      // The Under, graded identically — the haircut governs Under rows across
+      // the screener and the optimizer, so its grading covers both sides.
+      // ARCHR Chance for the Under is 1 − the Over blend (the logit blend is
+      // symmetric), the record is the L10 Under record at the line, and the
+      // price is the best closing Under price.
+      const underHits = l10.filter((l) => stat.value(l) < point).length;
+      const underPrices = qs.filter((q) => q.point === point && q.side === "under").map((q) => q.priceAmerican);
+      const bestUnder = underPrices.length ? Math.max(...underPrices) : null;
+      out.push({ stat: statKey, side: "under", pBlend: 1 - pBlend, rate: [underHits, l10.length], priceAmerican: bestUnder, won: actual < point ? 1 : 0 });
     }
   }
   return out;
@@ -142,6 +159,8 @@ async function main() {
     return;
   }
   printGrade("NBA — all stats", graded);
+  printGrade("NBA \u2014 Overs", graded.filter((g) => g.side === "over"));
+  printGrade("NBA \u2014 Unders", graded.filter((g) => g.side === "under"));
   for (const stat of [...new Set(graded.map((g) => g.stat))]) {
     printGrade(`NBA — ${stat}`, graded.filter((g) => g.stat === stat));
   }
