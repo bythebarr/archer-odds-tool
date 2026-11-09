@@ -73,6 +73,30 @@ function Card({ c }: { c: ModelCard }) {
           {v.label}
         </span>
       </div>
+      {c.source === "forward-tracking" && (
+        <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
+          <span className="font-semibold text-foreground">Live tracking:</span> leans frozen before each game and graded
+          after — forward evidence, a separate sample from the backtest cards, never pooled with them.
+          {c.tracking && (
+            <>
+              {" "}
+              At the captured prices the record is ROI{" "}
+              <span className="font-mono text-foreground">
+                {c.tracking.roi >= 0 ? "+" : ""}
+                {(c.tracking.roi * 100).toFixed(1)}%
+              </span>
+              {c.tracking.clv !== null && c.tracking.beatClose !== null && (
+                <>
+                  {" "}
+                  and it beat the close {Math.round(c.tracking.beatClose * 100)}% of the time (CLV{" "}
+                  {c.tracking.clv >= 0 ? "+" : ""}
+                  {(c.tracking.clv * 100).toFixed(1)} pts).
+                </>
+              )}
+            </>
+          )}
+        </p>
+      )}
       <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
         <div className="rounded-lg bg-muted/60 px-1 py-1.5">
           <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Skill vs coin flip</p>
@@ -177,8 +201,15 @@ export default async function ModelsPage() {
           <section key={sport} className="mt-6">
             <h2 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold uppercase italic tracking-wide text-foreground">
               <span className="brand-slash" aria-hidden />
-              {sport.toUpperCase()}
+              {sport === "tracking" ? "Live tracking" : sport.toUpperCase()}
             </h2>
+            {sport === "tracking" && (
+              <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">
+                Not a replay: every lean in this section was frozen before its game and graded after it, so the sample
+                only ever grows forward. Same calibration bar as the backtest cards, separate population — the two are
+                never pooled, and each card names the evidence its verdict rests on.
+              </p>
+            )}
             <div className="flex flex-col gap-2.5">
               {bySport.get(sport)!.map((c) => (
                 <Card key={c.model} c={c} />
