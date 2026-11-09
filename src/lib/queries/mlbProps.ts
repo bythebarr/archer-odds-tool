@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { etDayBoundsUtc, etDateOf, shiftEtDate, todayEt } from "@/lib/dateEt";
 import { mlbHeadshotUrl, mlbTeamLogoUrl } from "@/lib/logos";
 import { projectMlbProp, type MlbProjection, type MlbPropStat } from "@/lib/mlb/propProjection";
+import { parkFactors, parkRatesFromSums } from "@/lib/mlb/parkFactors";
 import { MLB_PROP_STATS, packMlbLog, type MlbChartLog, type MlbRole, type PackedMlbLog } from "@/lib/mlb/propsSlate";
 import type { PropQuote } from "@/lib/nba/propsMath";
 import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
@@ -223,6 +224,25 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
   });
   const teamKRate = new Map(lineupK.map((t) => [t.teamId, (t._sum.plateAppearances ?? 0) >= 200 ? (t._sum.strikeoutsBatting ?? 0) / t._sum.plateAppearances! : null]));
 
+  // Park factors: season-to-date batter K and hit rates at each park on the
+  // slate (a park is its home team), strictly before today, against the
+  // league's — the projection priced every park neutral until now, while the
+  // board model (props/mlbBoard.ts) already carried a park K term. One light
+  // aggregate per park, the board's own pattern (parkKRatesAsOf).
+  const seasonStart = new Date(`${season}-01-01T00:00:00Z`);
+  const parkIds = [...new Set(games.map((g) => g.homeTeamId).filter((x): x is string => !!x))];
+  const parkSums = { _sum: { strikeoutsBatting: true, hits: true, plateAppearances: true } } as const;
+  const [leagueAgg, ...parkAggs] = await Promise.all([
+    prisma.playerGameLog.aggregate({ where: { plateAppearances: { not: null }, gameDate: { gte: seasonStart, lt: gte } }, ...parkSums }),
+    ...parkIds.map((id) =>
+      prisma.playerGameLog.aggregate({ where: { plateAppearances: { not: null }, gameDate: { gte: seasonStart, lt: gte }, game: { homeTeamId: id } }, ...parkSums })
+    ),
+  ]);
+  const ratesOf = (agg: (typeof parkAggs)[number]) =>
+    parkRatesFromSums({ strikeouts: agg._sum.strikeoutsBatting, hits: agg._sum.hits, plateAppearances: agg._sum.plateAppearances });
+  const leagueRates = ratesOf(leagueAgg);
+  const parkFactorByTeam = new Map(parkIds.map((id, i) => [id, parkFactors(ratesOf(parkAggs[i]!), leagueRates)] as const));
+
   const outPlayers: Record<string, MlbPropsPlayer> = {};
   const outProps: MlbSlateProp[] = [];
   const outLogs: Record<string, PackedMlbLog[]> = {};
@@ -234,11 +254,14 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
     const theirs = e.venue === "home" ? g.awayTeam : g.homeTeam;
     const oppStarter = e.venue === "home" ? g.awayProbablePitcher : g.homeProbablePitcher;
     const logs = logsBy.get(e.playerId) ?? [];
+    const park = g.homeTeamId ? parkFactorByTeam.get(g.homeTeamId) : undefined;
     const ctx = {
       season,
       opposingHand: hand(oppStarter?.pitchHand),
       starterKRate: e.role === "batter" ? starterKRate(oppStarter ? personToPlayer.get(oppStarter.mlbPersonId)?.id : undefined) : null,
       opponentKRate: e.role === "pitcher" ? (teamKRate.get(theirs.id) ?? null) : null,
+      parkK: park?.parkK,
+      parkHits: park?.parkHits,
     };
     let any = false;
     for (const stat of MLB_PROP_STATS) {
