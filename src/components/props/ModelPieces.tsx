@@ -10,7 +10,7 @@ import type { PropDirection } from "@/lib/props/tally";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
-/** Model alone → market → the blend we price with, for the chosen side. */
+/** Model alone → market → ARCHR chance (the canonical blend we price with), for the chosen side. */
 export function BlendLine({ model, side }: { model: PricedProp; side: PropDirection }) {
   const flip = (p: number) => (side === "over" ? p : 1 - p);
   const label = side === "over" ? "Over" : "Under";
@@ -25,7 +25,7 @@ export function BlendLine({ model, side }: { model: PricedProp; side: PropDirect
         <p className="font-mono text-sm font-semibold text-foreground">{model.market ? pct(flip(model.market.probOver)) : "—"}</p>
       </div>
       <div className="rounded-lg bg-brand/15 px-2 py-1.5 ring-1 ring-brand/40">
-        <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">ARCHR {label}</p>
+        <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">ARCHR chance · {label}</p>
         <p className="font-mono text-sm font-bold text-foreground">{pct(flip(model.probOver))}</p>
       </div>
       <p className="col-span-3 text-left text-[10px] leading-relaxed text-muted-foreground">

@@ -1,6 +1,8 @@
 /**
- * A leg's conservative chance and conservative relative edge: the numbers the
- * Props screener sorts by and the payout optimizer maximizes. Pure.
+ * A leg's cautious chance and cautious relative edge (the canonical CAUTIOUS
+ * EDGE — see lib/propModel/canonical for the naming: a ranking/filter
+ * signal, NOT a probability estimate): the numbers the Props screener sorts
+ * by and the payout optimizer maximizes. Pure.
  *
  * A record of 9 for 10 and a model reading of 80% are both estimates; the
  * conservative chance takes the more cautious of the two: the low end of the

@@ -52,7 +52,7 @@ const SORTS: { key: BuilderSort; label: string }[] = [
   { key: "archr", label: "ARCHR chance" },
   { key: "hit", label: "Hit rate" },
   { key: "edge", label: "ARCHR edge" },
-  { key: "cedge", label: "Conservative edge" },
+  { key: "cedge", label: "Cautious edge" },
 ];
 const DEFAULTS = { legs: 4, window: "l10" as BuilderWindow, rate: 0.7, archr: 0, edge: "any", short: "-500", sgp: false, sort: "archr" as BuilderSort };
 
@@ -475,11 +475,11 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         spread or total at tonight&apos;s number in the teams&apos; games (for UFC, the fighter&apos;s fights). An edge above 50% is left out of the
         edge filter and ranking: ARCHR disagreeing with the book that much is the model&apos;s weak spot (alt lines, mostly), not a bet. Legs from different games are treated as
         independent, so the parlay&apos;s ARCHR chance and record are the legs&apos; multiplied. Prices are the best one posted; &quot;—&quot; is a line posted
-        before its price. Hit a payout: each leg&apos;s estimate is its conservative chance, the lower of ARCHR&apos;s chance and the low end of its
+        before its price. ARCHR chance is the one probability for every leg — the model blended with the books&apos; no-vig consensus — and ARCHR&apos;s edge is that chance against the best price. Hit a payout: each leg&apos;s estimate is its cautious chance, the lower of ARCHR&apos;s chance and the low end of its
         record&apos;s range over the window (one standard error); the optimizer searches every combination (one leg per game) for the likeliest
         whose price pays at least what you picked, and the alternatives below it each leave one of its legs out. Legs whose price is far
-        longer than their cautious read (more than +50% conservative edge) are left out: that gap is a price that doesn&apos;t belong to the line. The conservative edge
-        compares a leg&apos;s conservative chance with the chance its price implies. Research only.
+        longer than their cautious read (more than +50% cautious edge) are left out: that gap is a price that doesn&apos;t belong to the line. The cautious edge
+        compares a leg&apos;s cautious chance with the chance its price implies — it is a ranking signal for sorting and building, not a probability. Research only.
       </p>
         </>
       )}

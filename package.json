@@ -31,6 +31,7 @@
     "diagnose:leans": "tsx scripts/diagnose-leans.ts",
     "backtest:nfl-props": "tsx scripts/backtest-nfl-props.ts",
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
+    "backtest:cautious-edge": "tsx scripts/backtest-cautious-edge.ts",
     "backtest:games": "tsx scripts/backtest-games.ts",
     "backtest:all-sports": "tsx scripts/backtest-all-sports.ts",
     "backtest:soccer-props": "tsx scripts/backtest-soccer-props.ts",
