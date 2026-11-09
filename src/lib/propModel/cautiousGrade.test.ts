@@ -89,6 +89,21 @@ describe("gradeCautiousSamples", () => {
   });
 });
 
+describe("cautiousVerdict wash band (audit F6)", () => {
+  /** Every sample: blend 0.60, record 5/10 (legacy read ≈ 0.349); outcomes in a fixed 60%-win pattern, so the legacy−blend gap is the same at any n. */
+  function patterned(n: number): CautiousGradeSample[] {
+    return Array.from({ length: n }, (_, i) => ({ pBlend: 0.6, rate: [5, 10] as [number, number], priceAmerican: -110, won: (i % 5 < 3 ? 1 : 0) as 0 | 1 }));
+  }
+
+  it("the same gap is a wash at small n and decisive at large n; deltaSe shrinks as n grows", () => {
+    const small = gradeCautiousSamples(patterned(10));
+    const big = gradeCautiousSamples(patterned(2000));
+    expect(cautiousVerdict(small)).toContain("a wash");
+    expect(cautiousVerdict(big)).toContain("blend predicted BETTER");
+    expect(big.deltaSe).toBeLessThan(small.deltaSe);
+  });
+});
+
 describe("evidenceGate", () => {
   it("won't decide below the sample floor", () => {
     const g = gradeCautiousSamples(synthetic(MIN_GATE_SAMPLES - 1, 0));

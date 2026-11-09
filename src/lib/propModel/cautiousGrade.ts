@@ -17,6 +17,12 @@
  * evidenceGate() turns a grade into the one decision the canonical module's
  * CAUTIOUS_READ_MODE waits on. Pure and DB-free: scripts/backtest-cautious-edge
  * supplies the graded samples, the unit tests synthetic ones.
+ *
+ * Audit reconciliation (Nov 9, F1/F6): every read is scored on the SAME sample
+ * set — never one read on all samples and another on a subset — and the
+ * one-line verdict's wash band is ±2 paired standard errors of the per-sample
+ * log-loss difference (deltaSe), so it widens as the sample shrinks instead
+ * of pretending a fixed 0.002 means the same thing at n=50 and n=5,000.
  */
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import { MAX_TRUSTED_RELATIVE_EDGE, relativeEdge } from "@/lib/builder/conservative";
@@ -78,6 +84,12 @@ export interface CautiousGrade {
   evidence: ProbScore;
   /** The evidence read on the plain record (no role weighting): isolates what the role weighting adds. */
   evidencePlain: ProbScore;
+  /**
+   * Standard error of the paired per-sample log-loss difference (legacy −
+   * blend) across the scored samples; NaN below 2 samples. The verdict's wash
+   * band is ±2× this (audit F6), so it is sample-size aware by construction.
+   */
+  deltaSe: number;
   /** Buckets by each cautious read's own edge, priced samples only. */
   buckets: Record<CautiousReadMode, CautiousBucket[]>;
   /** Diagnostics only — the evidence read's log loss at other prior strengths. Never applied automatically. */
@@ -153,6 +165,14 @@ function bucketsFor(samples: CautiousGradeSample[], mode: CautiousReadMode): Cau
 export function gradeCautiousSamples(samples: CautiousGradeSample[]): CautiousGrade {
   const pairs = (p: (s: CautiousGradeSample) => number) => samples.map((s) => ({ p: p(s), won: s.won }));
   const evidenceAt = (k: number) => (s: CautiousGradeSample) => evidenceCautiousChance(s.pBlend, s.roleRate ?? s.rate, k)!;
+  // Paired log-loss differences (legacy − blend) per sample → SE of the mean (audit F6).
+  const llOf = (p: number, won: 0 | 1) => -(won ? Math.log(clampP(p)) : Math.log(1 - clampP(p)));
+  const diffs = samples.map((s) => llOf(readOf(s, "legacy-min"), s.won) - llOf(s.pBlend, s.won));
+  let deltaSe = NaN;
+  if (diffs.length >= 2) {
+    const m = mean(diffs);
+    deltaSe = Math.sqrt(diffs.reduce((a, v) => a + (v - m) ** 2, 0) / (diffs.length - 1) / diffs.length);
+  }
   return {
     n: samples.length,
     pricedN: samples.filter((s) => s.priceAmerican !== null).length,
@@ -161,6 +181,7 @@ export function gradeCautiousSamples(samples: CautiousGradeSample[]): CautiousGr
     legacy: score(pairs((s) => readOf(s, "legacy-min"))),
     evidence: score(pairs((s) => readOf(s, "evidence"))),
     evidencePlain: score(pairs((s) => cautiousChance(s.pBlend, s.rate, null, "evidence")!)),
+    deltaSe,
     buckets: { "legacy-min": bucketsFor(samples, "legacy-min"), evidence: bucketsFor(samples, "evidence") },
     priorSweep: PRIOR_SWEEP.map((k) => {
       const sc = score(pairs(evidenceAt(k)));
@@ -193,11 +214,18 @@ export function evidenceGate(g: CautiousGrade): { decision: GateDecision; reason
   return { decision: "keep-legacy", reason: `fails: ${why} (${detail})` };
 }
 
-/** One-line verdict for the lab output: how the legacy haircut compares with the blend, by log loss. */
+/**
+ * One-line verdict for the lab output: how the legacy haircut compares with
+ * the blend, by log loss. The wash band is ±2 paired standard errors of the
+ * per-sample difference (audit F6): sample-size aware, and with too few
+ * samples to estimate it, nothing is decisive.
+ */
 export function cautiousVerdict(g: CautiousGrade): string {
   if (!g.n) return "no graded samples — nothing to grade";
   const d = g.legacy.logLoss - g.blend.logLoss;
-  if (Math.abs(d) < 0.002) return `a wash on log loss (Δ ${d >= 0 ? "+" : ""}${d.toFixed(4)}) — the min() haircut neither earns nor costs accuracy at this sample`;
+  const band = Number.isFinite(g.deltaSe) ? 2 * g.deltaSe : Infinity;
+  if (Math.abs(d) <= band)
+    return `a wash on log loss (Δ ${d >= 0 ? "+" : ""}${d.toFixed(4)}, inside the ±${Number.isFinite(band) ? band.toFixed(4) : "∞"} noise band at n=${g.n}) — the min() haircut neither earns nor costs accuracy at this sample`;
   return d < 0
     ? `the min() haircut predicted BETTER than the blend (log loss ${g.legacy.logLoss.toFixed(4)} vs ${g.blend.logLoss.toFixed(4)}, Δ ${d.toFixed(4)})`
     : `the blend predicted BETTER than its min() haircut (log loss ${g.blend.logLoss.toFixed(4)} vs ${g.legacy.logLoss.toFixed(4)}, Δ +${d.toFixed(4)}) — the haircut costs accuracy as a probability, whatever it earns as a filter`;

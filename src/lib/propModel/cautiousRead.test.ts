@@ -26,6 +26,14 @@ describe("legacy read", () => {
 });
 
 describe("evidence read", () => {
+  it("pins the shipped prior strength at 20 pseudo-games (audit amendment 4)", () => {
+    // In the audited 15–25 band: a 20-game record moves the read halfway, no
+    // further — a hot record cannot silently become the veto again. Changing
+    // this value is a reviewed decision (the backtest sweep informs it; it is
+    // never refit automatically), so the pin fails on purpose.
+    expect(EVIDENCE_PRIOR_GAMES).toBe(20);
+  });
+
   it("no record: the read is ARCHR Chance itself", () => {
     expect(evidenceCautiousChance(0.62, [0, 0])).toBe(0.62);
   });
