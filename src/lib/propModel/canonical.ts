@@ -15,22 +15,40 @@
  *     derived from it and nothing else.
  *   EDGE — the expected value of the best posted price at ARCHR Chance.
  *     A derived readout of ARCHR Chance vs a price — not a second opinion.
- *   CAUTIOUS EDGE — the conservative relative edge (lib/builder/conservative):
- *     min(ARCHR Chance, Wilson floor of the recent hit record) vs the best
- *     price's vig-included implied chance. A RANKING AND FILTER SIGNAL for
- *     the screener sort and the parlay optimizer — explicitly NOT a
- *     probability estimate, and never a headline chance. It has not been
- *     graded yet; scripts/backtest-cautious-edge.ts is the head-to-head
- *     grading that will decide whether the haircut earns its keep.
+ *   CAUTIOUS EDGE — the cautious read (lib/propModel/cautiousRead) vs the
+ *     best price's vig-included implied chance, minus one. A RANKING AND
+ *     FILTER SIGNAL for the screener sort and the parlay optimizer —
+ *     explicitly NOT a probability estimate, and never a headline chance.
+ *     Two reads exist behind one interface, picked by CAUTIOUS_READ_MODE:
+ *       - "legacy-min": min(ARCHR Chance, Wilson floor of the recent hit
+ *         record) — the live read until the evidence gate says otherwise;
+ *       - "evidence": the record as a Beta update on ARCHR Chance (worth
+ *         EVIDENCE_PRIOR_GAMES pseudo-games), each record game weighted by
+ *         how closely its minutes and role match tonight's (NBA).
+ *     scripts/backtest-cautious-edge.ts grades both against the blend; the
+ *     flag flips to "evidence" only on its say-so (evidenceGate).
  *   HIT-RATE PROJECTION — PropBoard's separate empirical-Bayes engine
  *     (lib/props/projection): a next-game hit probability regressed from the
  *     player's season record toward the field. It is NOT ARCHR Chance (no
  *     market blend, no book price) and must never be presented as the same
  *     kind of number.
  */
-import { conservativeProb, relativeEdge } from "@/lib/builder/conservative";
+import { relativeEdge } from "@/lib/builder/conservative";
 import { edgeOf, type Rate } from "@/lib/builder/types";
 import type { PricedProp } from "./price";
+import { evidenceCautiousChance, legacyCautiousChance } from "./cautiousRead";
+
+export type CautiousReadMode = "legacy-min" | "evidence";
+
+/**
+ * Which cautious read the screener sort and the parlay optimizer use. Stays
+ * "legacy-min" until scripts/backtest-cautious-edge.ts shows the evidence read
+ * calibrating at least as well as ARCHR Chance alone and better than the old
+ * min() (lib/propModel/cautiousGrade evidenceGate). Flipping it is a one-line,
+ * reviewed change, deliberately not an environment toggle: every surface and
+ * every server render must read the same number.
+ */
+export const CAUTIOUS_READ_MODE: CautiousReadMode = "legacy-min";
 
 export type CanonicalNumberKey = "projection" | "archrChance" | "edge" | "cautiousEdge" | "hitRateProjection";
 
@@ -73,7 +91,7 @@ export const CANONICAL_NUMBERS: Record<CanonicalNumberKey, CanonicalNumber> = {
     label: "Cautious edge",
     shortLabel: "Caut. edge",
     kind: "ranking signal",
-    blurb: "Cautious edge is a ranking signal, not a probability: it re-reads ARCHR chance cautiously (the lower of ARCHR chance and the low end of the recent record's range) against the price, to sort and filter — never to quote as a chance.",
+    blurb: "Cautious edge — ranking only, not a probability: ARCHR chance re-read against the player's recent record at this line (today, the lower of ARCHR chance and the low end of the record's range), compared with the chance the price implies. It sorts and filters; it is never quoted as a chance.",
   },
   hitRateProjection: {
     key: "hitRateProjection",
@@ -99,12 +117,23 @@ export function edgeFromChance(archrChance: number | null, priceAmerican: number
   return edgeOf(archrChance, priceAmerican);
 }
 
-/** The cautious chance behind the cautious edge: min(ARCHR Chance, record floor). NOT a probability estimate. */
-export function cautiousChance(archrChance: number | null, rate: Rate): number | null {
-  return conservativeProb(archrChance, rate);
+/**
+ * The cautious read behind the cautious edge. NOT a probability estimate.
+ * `rate` is the plain record; `roleRate` the same window weighted by role
+ * resemblance (NBA), read only by the evidence mode. The legacy mode ignores
+ * it, so its numbers are exactly the old ones.
+ */
+export function cautiousChance(archrChance: number | null, rate: Rate, roleRate?: Rate | null, mode: CautiousReadMode = CAUTIOUS_READ_MODE): number | null {
+  return mode === "evidence" ? evidenceCautiousChance(archrChance, roleRate ?? rate) : legacyCautiousChance(archrChance, rate);
 }
 
-/** CAUTIOUS EDGE: the cautious chance vs the best price's vig-included implied chance, minus one. A ranking/filter signal. */
-export function cautiousEdge(archrChance: number | null, rate: Rate, priceAmerican: number | null): number | null {
-  return relativeEdge(conservativeProb(archrChance, rate), priceAmerican);
+/** CAUTIOUS EDGE: the cautious read vs the best price's vig-included implied chance, minus one. A ranking/filter signal. */
+export function cautiousEdge(
+  archrChance: number | null,
+  rate: Rate,
+  priceAmerican: number | null,
+  roleRate?: Rate | null,
+  mode: CautiousReadMode = CAUTIOUS_READ_MODE
+): number | null {
+  return relativeEdge(cautiousChance(archrChance, rate, roleRate, mode), priceAmerican);
 }
