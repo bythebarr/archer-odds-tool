@@ -22,8 +22,10 @@ import { etDateOf } from "@/lib/dateEt";
  *       an Elo-only fit, and the closing moneyline where we have it.
  * The final coefficients are refit on everything with the chosen strength and
  * saved (ufc-fights:ml), with `beatsV1` — the live page promotes v2 to the
- * headline only when it beat v1 out of sample. The model's weight against the
- * market is fitted on the test bouts with odds (market-blend:ufc:ml).
+ * headline only when it beat v1 out of sample, and since Decision 7 the same
+ * flag flips posted-play pricing to v2 and writes the "ufc" sport card from
+ * this grade (see the saveReport calls at the end). The model's weight against
+ * the market is fitted on the test bouts with odds (market-blend:ufc:ml).
  *
  * Run: `npm run backtest:ufc-fights` (V1_LIMIT caps the v1 rebuilds, default 1500).
  */
@@ -171,6 +173,21 @@ async function main() {
     v1LogLoss: n1 ? v1Sum / n1 : null,
     beatsV1,
   });
+  // Decision 7: the "ufc" sport card — the verdict the posting gate reads —
+  // must grade the model that PRICES. While beatsV1 holds, v2 prices the
+  // posted plays, so this run (which report:all schedules after
+  // backtest:all) also writes the sport card from v2's out-of-sample
+  // grade. When v1 holds, nothing is written here and backtest:all's
+  // fighter-math collect remains the sport card. One writer at a time,
+  // chosen by the same flag that chooses the pricing model.
+  if (beatsV1) {
+    await saveReport("ufc", "UFC — fight model v2 win probability (pricing)", "priceable bout", report, {
+      pricingModel: "v2",
+      testLogLoss: v2Test,
+      v1LogLoss: n1 ? v1Sum / n1 : null,
+    });
+    console.log("beatsV1 holds → the ufc sport card above also grades v2 (it prices the posted plays).");
+  }
 }
 
 main()

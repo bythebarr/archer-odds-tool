@@ -1,14 +1,24 @@
 import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { getUfcMatchup } from "@/lib/queries/ufcMatchup";
 import { getBestLinesForBouts, type UfcCornerBestLine } from "@/lib/queries/ufcOdds";
+import { getUfcV2Pricing, ufcV2ProbRed } from "@/lib/queries/ufcFightModel";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { computeFinishProjection, scheduledRoundsForBout, type FinishMethod, type FinishProjection } from "@/lib/ufc/finishMath";
 import { calculateEv } from "@/lib/odds/devig";
 
 /**
- * "Fight-night" best plays for the Discord card — the fighter-math model's
- * edges on the next UFC event, now priced as real **Archer EV** plays (the same
+ * "Fight-night" best plays for the Discord card — the UFC model's edges on
+ * the next UFC event, now priced as real **Archer EV** plays (the same
  * model-vs-market lens as the MLB card), thanks to the UFC moneyline feed.
+ *
+ * Which model prices is governed by ONE flag (Decision 7): when the fight
+ * model's fresh fit says v2 beat fighter math v1 out of sample
+ * (queries/ufcFightModel's getUfcV2Pricing — the same evidence the bout
+ * page headlines with), v2 prices every play and the finish projection is
+ * conditioned on v2's probability; otherwise fighter math v1 prices, as
+ * before. The /models "ufc" verdict follows the same flag (see
+ * backtest-ufc-fights), so the grade always belongs to the model that
+ * priced.
  *
  * The play is the VALUE side: for each bout we compute Archer EV on BOTH
  * corners (our model probability vs the best book price) and back whichever has
@@ -45,8 +55,10 @@ export interface UfcBestPlay {
   pickFighterId: string;
   pickName: string;
   opponentName: string;
-  /** Model win probability for the backed fighter (fighter-math, capped [0.2,0.8]). */
+  /** Model win probability for the backed fighter (capped [0.2,0.8] under v1; v2's logistic output when v2 prices). */
   prob: number;
+  /** Which model priced this play (Decision 7): "v2" only while a fresh fit's beatsV1 holds. */
+  modelVersion?: "v1" | "v2";
   /** Best moneyline (American) for the backed fighter across allowlisted books. */
   bestPrice: number;
   bestBookName: string;
@@ -156,8 +168,8 @@ export function pickFromBout(
 }
 
 /**
- * The fighter-math Archer EV plays for the next upcoming UFC event, if it's
- * within the lookahead window and priced. Returns null when there's no imminent
+ * The Archer EV plays for the next upcoming UFC event, if it's within the
+ * lookahead window and priced. Returns null when there's no imminent
  * card or no bout has a positive edge — the poster then omits the UFC section.
  * Assumes odds are already fresh (the poster calls ensureUfcOddsFresh first).
  */
@@ -169,15 +181,35 @@ export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard |
   if (event.eventDate.getTime() > now.getTime() + LOOKAHEAD_DAYS * DAY_MS) return null;
 
   const lines = await getBestLinesForBouts(event.bouts.map((b) => b.id));
+  // The Decision-7 gate, read once per card: v2 prices the whole card or
+  // none of it, so a card never mixes models.
+  const v2 = await getUfcV2Pricing();
 
   const candidates = await Promise.all(
     event.bouts.map(async (bout) => {
       const matchup = await getUfcMatchup(bout.id);
       if (!matchup) return null;
-      const proj = computeUfcWinProbability(matchup, now);
-      // A debut's number rests on a pro-record prior: shown on the bout page as
-      // a starting point, never posted as a play.
-      if (proj.confidence === "low") return null;
+
+      // The pricing probability for this bout, from whichever model the
+      // flag puts in charge. The finish projection below is conditioned on
+      // THIS probability, never on the other model's.
+      let fighterAProb: number | null;
+      let fighterBProb: number | null;
+      let modelVersion: "v1" | "v2" = "v1";
+      if (v2) {
+        const pRed = await ufcV2ProbRed(v2, bout.red.id, bout.blue.id, event.eventDate, bout.weightClass);
+        if (pRed === null) return null; // a debut prices under neither model (v1's low-confidence fence, kept)
+        fighterAProb = pRed;
+        fighterBProb = 1 - pRed;
+        modelVersion = "v2";
+      } else {
+        const proj = computeUfcWinProbability(matchup, now);
+        // A debut's number rests on a pro-record prior: shown on the bout page as
+        // a starting point, never posted as a play.
+        if (proj.confidence === "low") return null;
+        fighterAProb = proj.fighterAProb;
+        fighterBProb = proj.fighterBProb;
+      }
       const line = lines.get(bout.id);
       // fighterA = red corner, fighterB = blue corner (see getUfcMatchup).
       const play = pickFromBout(
@@ -190,12 +222,13 @@ export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard |
           blueId: bout.blue.id,
           blueName: bout.blue.name,
         },
-        proj.fighterAProb,
-        proj.fighterBProb,
+        fighterAProb,
+        fighterBProb,
         line?.red ?? null,
         line?.blue ?? null
       );
       if (!play) return null;
+      play.modelVersion = modelVersion;
 
       // Attach the finish/round lean for the backed corner. Scheduled rounds
       // honor the main-event/title 5-round rule (upcoming bout: no resultRound).
@@ -204,7 +237,7 @@ export async function getUfcBestPlays(now: Date = new Date()): Promise<UfcCard |
         isMainEvent: bout.isMainEvent,
         resultRound: null,
       });
-      const finish = computeFinishProjection(matchup, proj.fighterAProb, scheduledRounds, now);
+      const finish = computeFinishProjection(matchup, fighterAProb, scheduledRounds, now);
       play.finishLean = deriveFinishLean(finish, play.side);
       return play;
     })
