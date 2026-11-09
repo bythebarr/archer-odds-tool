@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
+import { unlockExitCode } from "./migrateUnlock";
 
 /**
  * Releases a leaked Prisma migrate lock (advisory lock 72707369). A migrate
@@ -42,7 +43,14 @@ async function main() {
   }
   const left = await prisma.$queryRawUnsafe<{ n: bigint }[]>(`
     SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND granted AND objid::text = '${PRISMA_MIGRATE_LOCK}'`);
-  console.log(`holders left: ${left[0]?.n}`);
+  const holdersLeft = Number(left[0]?.n ?? 0);
+  console.log(`holders left: ${holdersLeft}`);
+  if (holdersLeft > 0) {
+    // Still locked after waiting: fail, so the workflow cannot report
+    // success on a state in which the next deploy will time out again.
+    console.log("lock still held: exiting 1.");
+  }
+  process.exitCode = unlockExitCode(holdersLeft);
 }
 
 main()
