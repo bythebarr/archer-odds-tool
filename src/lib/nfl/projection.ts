@@ -86,11 +86,11 @@ export interface NflProjectionContext {
   position: NflPosition | null;
   /** Key teammates out this week (see injuries/absence). */
   absences?: Absence[];
-  /** His own team's missing-player impact, in gameModel points (QB 3, skill ≤ 2). */
+  /** His own team's missing-player impact, in gameModel points (QB 3, skill ≤ 2). Re-reads MARKET lines only — model totals arrive pre-adjusted. */
   ownAbsenceImpact?: number;
   /** The opponent's missing-player impact, same scale. */
   opponentAbsenceImpact?: number;
-  /** This week's consensus spread and total. */
+  /** The spread and total the environment reads: the game model's own where the slate has them, else the books' consensus. */
   lines?: GameLines;
   isHome?: boolean | null;
   /** What his team usually scores — the environment his logs were played in. */
@@ -101,7 +101,9 @@ export interface NflProjectionContext {
 }
 
 /**
- * Tonight's lines re-read through the absence report. The books' spread and
+ * Tonight's lines re-read through the absence report — for MARKET lines.
+ * (Model totals never pass through here: the game model already applied
+ * the same split inside adjustExpected.) The books' spread and
  * total express the market's view; the model's own absence read — gameModel
  * impacts, split between the sides exactly as adjustExpected splits an
  * expected score (60% off the missing player's own scoring, 40% added to the

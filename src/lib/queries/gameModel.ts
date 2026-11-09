@@ -188,6 +188,49 @@ async function nflMissing(teamId: string, teamName: string): Promise<MissingPlay
   return out.sort((a, b) => b.impact - a.impact);
 }
 
+export interface ModelTotalsGame {
+  id: string;
+  season: number;
+  scheduledStartUtc: Date;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeName: string;
+  awayName: string;
+}
+
+/**
+ * The game model's expected score for a batch of NFL games — for callers
+ * that price off the model rather than the market. The NFL props
+ * environment reads its spread and total from here (Phase 4, Decision 6):
+ * deriving them from the books' lines and then blending the projection
+ * back against those same books counted the market twice. These totals
+ * already carry rest and both teams' missing players (adjustExpected), so
+ * a consumer must NOT apply an absence adjustment on top of them. Games
+ * whose teams are under the ratings' minimum games are absent from the
+ * map — the caller falls back to the market for those.
+ */
+export async function getNflModelTotals(games: ModelTotalsGame[]): Promise<Map<string, ExpectedScore>> {
+  const league = GAME_MODEL_BY_SPORT.nfl;
+  const ratings = await replay("nfl");
+  const out = new Map<string, ExpectedScore>();
+  await Promise.all(
+    games.map(async (g) => {
+      if (ratings.games(g.homeTeamId) < league.minGames || ratings.games(g.awayTeamId) < league.minGames) return;
+      ratings.touch(g.homeTeamId, g.season);
+      ratings.touch(g.awayTeamId, g.season);
+      const [homeDays, awayDays, homeMissing, awayMissing] = await Promise.all([
+        daysSincePrevious("nfl", g.homeTeamId, g.scheduledStartUtc),
+        daysSincePrevious("nfl", g.awayTeamId, g.scheduledStartUtc),
+        nflMissing(g.homeTeamId, g.homeName),
+        nflMissing(g.awayTeamId, g.awayName),
+      ]);
+      const base = ratings.expected(g.homeTeamId, g.awayTeamId);
+      out.set(g.id, adjustExpected(base, restEdge("nfl", { homeDays, awayDays }), { home: homeMissing, away: awayMissing }));
+    })
+  );
+  return out;
+}
+
 export async function getGameModelView(sport: Sport, gameId: string, lines: GameLineRow[]): Promise<GameModelView | null> {
   const league = GAME_MODEL_BY_SPORT[sport];
   const game = await prisma.game.findUnique({ where: { id: gameId }, include: { homeTeam: true, awayTeam: true } });

@@ -24,6 +24,7 @@ import { projectNflProp } from "@/lib/nfl/projection";
 import { projectedLine } from "@/lib/nba/propsMath";
 import type { NflPropStat } from "@/generated/prisma/client";
 import { getConsensusGameLines } from "./gameLines";
+import { getNflModelTotals } from "./gameModel";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
 import { getReportedBlendVerdicts } from "./modelTrust";
 import { blendVerdictsByStat } from "@/lib/props/provenance";
@@ -65,6 +66,15 @@ export interface NflPropsSlate {
   absenceImpacts: Record<string, MissingPlayer[]>;
   /** Game id → this week's consensus spread and total (the projection's game environment). */
   lines: Record<string, GameLines>;
+  /**
+   * Game id → the game model's OWN spread and total for the game (ratings +
+   * rest + both teams' absences). The projection's environment reads these
+   * first: an environment derived from the books' lines, blended back
+   * against those same books, counted the market twice. Games the ratings
+   * can't price yet (a team under the minimum games) are absent, and the
+   * market lines stand in for those.
+   */
+  modelLines: Record<string, GameLines>;
   /** Team abbreviation → points per game over its recent games, the baseline for implied points. */
   teamPoints: Record<string, number>;
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
@@ -380,7 +390,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   // Every number the books have hung on these games (ESPN's DraftKings feed carries NFL numbers, rarely their prices).
   const board = (await eventPropBoard(listed.map((g) => g.id), NFL_STAT_BY_KEY)).filter((r) => r.athleteId);
   const games = dedupeGames(listed, new Set(board.map((r) => r.eventRef)));
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, absenceImpacts: {}, lines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, absenceImpacts: {}, lines: {}, modelLines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -513,15 +523,25 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     const i = injuryById.get(espnIdOf.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
   }
-  const [absences, absenceImpacts, gameLines, teamPoints, modelWeights, calibrationFactors, blendReports] = await Promise.all([
+  const [absences, absenceImpacts, gameLines, modelTotals, teamPoints, modelWeights, calibrationFactors, blendReports] = await Promise.all([
     nflAbsences(slateGames, injuries, season, now),
     nflAbsenceImpacts(games, injuries, now),
     getConsensusGameLines(slateGames.map((g) => g.id)),
+    getNflModelTotals(
+      games.flatMap((g) =>
+        g.homeTeamId && g.awayTeamId && g.homeTeam && g.awayTeam
+          ? [{ id: g.id, season: g.season, scheduledStartUtc: g.scheduledStartUtc, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, homeName: g.homeTeam.name, awayName: g.awayTeam.name }]
+          : []
+      )
+    ),
     nflTeamPoints(games.flatMap((g) => [g.homeTeam, g.awayTeam].filter((t) => t !== null)), now),
     getModelWeights("nfl"),
     getCalibrationFactors("nfl-props"),
     getReportedBlendVerdicts(),
   ]);
+  // The model's own lines for the environment, in GameLines form.
+  const modelLines: Record<string, GameLines> = {};
+  for (const [gameId, e] of modelTotals) modelLines[gameId] = { total: e.home + e.away, homeSpread: e.away - e.home };
 
   // The numbers a book has hung without prices yet: the row reads against the book's number, not ARCHR's.
   const postedBy = new Map<string, { book: string; lines: { side: "over" | "under"; point: number }[] }>();
@@ -542,7 +562,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   }
 
   // ARCHR's line for each position's core stats, on games no book has posted props for yet (out / doubtful players sit out).
-  const inputs = { defense, absences, absenceImpacts, lines: gameLines, teamPoints };
+  const inputs = { defense, absences, absenceImpacts, lines: gameLines, modelLines, teamPoints };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful" || !player.position) continue;
@@ -569,6 +589,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     absences,
     absenceImpacts,
     lines: gameLines,
+    modelLines,
     teamPoints,
     modelWeights,
     calibrationFactors,
