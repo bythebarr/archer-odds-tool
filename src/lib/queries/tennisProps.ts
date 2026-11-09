@@ -8,7 +8,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { normalizeName } from "@/lib/tennis/archive";
-import { canonicalSurface, winProbFromRatings, type StoredRating } from "@/lib/tennis/elo";
+import { canonicalSurface, decayStoredRating, winProbFromRatings, type StoredRating } from "@/lib/tennis/elo";
 import { surfaceForSportKey } from "@/lib/tennis/surface";
 import { packTennisLog, toTennisLog, type PackedTennisLog, type TennisLog } from "@/lib/tennis/matchLog";
 import { TENNIS_PROP_STATS, projectTennisProp, serveRecord, type TennisProjection, type TennisPropStat, type TourRates } from "@/lib/tennis/propModel";
@@ -140,7 +140,9 @@ export const getTennisPropsSlate = cache(async (now: Date = new Date()): Promise
     ] as const) {
       const r = ratingOf.get(normalizeName(me));
       const o = ratingOf.get(normalizeName(them));
-      const stored = (x: typeof r): StoredRating | null => (x ? { overall: x.overall, hard: x.hard, clay: x.clay, grass: x.grass, carpet: x.carpet } as StoredRating : null);
+      // Ratings priced as of the match, layoff-decayed (Decision 13).
+      const stored = (x: typeof r): StoredRating | null =>
+        x ? decayStoredRating({ overall: x.overall, hard: x.hard, clay: x.clay, grass: x.grass, carpet: x.carpet } as StoredRating, x.lastPlayedAt, e.startsAt) : null;
       const sr = stored(r);
       const so = stored(o);
       const rated = !!(r && o && r.nOverall >= 10 && o.nOverall >= 10);

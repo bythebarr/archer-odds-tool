@@ -3,6 +3,8 @@ import {
   TennisElo,
   eloExpectation,
   canonicalSurface,
+  decayRatingTowardBase,
+  decayStoredRating,
   winProbFromRatings,
   DEFAULT_ELO,
 } from "./elo";
@@ -123,5 +125,41 @@ describe("winProbFromRatings (live-pricing path)", () => {
     // Equals the null-surface (overall-only) probability.
     expect(p).toBeCloseTo(winProbFromRatings(a, b, null), 10);
     expect(p).toBeGreaterThan(0.5);
+  });
+});
+
+describe("layoff decay (Decision 13)", () => {
+  it("pulls a rating halfway to base per half-life idle", () => {
+    expect(decayRatingTowardBase(1700, 1500, 365, 365)).toBeCloseTo(1600, 8);
+    expect(decayRatingTowardBase(1700, 1500, 730, 365)).toBeCloseTo(1550, 8);
+    expect(decayRatingTowardBase(1300, 1500, 365, 365)).toBeCloseTo(1400, 8); // below-base ratings rise
+    expect(decayRatingTowardBase(1700, 1500, 0, 365)).toBe(1700);
+    expect(decayRatingTowardBase(1700, 1500, 3650, Infinity)).toBe(1700); // disabled
+  });
+
+  it("a two-year layoff returns a dominant player near even money", () => {
+    const elo = new TennisElo();
+    const jan2025 = new Date("2025-01-15T00:00:00Z");
+    for (let i = 0; i < 30; i++) elo.update("a", "b", "hard", jan2025);
+    const fresh = elo.winProb("a", "b", "hard");
+    const afterLayoff = elo.winProbAsOf("a", "b", "hard", new Date("2027-01-15T00:00:00Z"));
+    expect(fresh).toBeGreaterThan(0.75);
+    expect(afterLayoff).toBeLessThan(fresh - 0.1);
+    expect(afterLayoff).toBeGreaterThan(0.5);
+    // 30 straight blowout wins build a ~430-point gap; two half-lives
+    // quarter it to ~108, which prices ≈ 0.65 — most of the way to even.
+    expect(afterLayoff).toBeLessThan(0.68);
+    // No layoff, no change: as of the last match date the decay is identity.
+    expect(elo.winProbAsOf("a", "b", "hard", jan2025)).toBeCloseTo(fresh, 10);
+  });
+
+  it("decays stored ratings for live pricing, and leaves unstamped rows alone", () => {
+    const stored = { overall: 1700, hard: 1750, clay: null, grass: null, carpet: null };
+    const last = new Date("2026-01-01T00:00:00Z");
+    const decayed = decayStoredRating(stored, last, new Date("2027-01-01T00:00:00Z"));
+    expect(decayed.overall).toBeCloseTo(1600, 8);
+    expect(decayed.hard).toBeCloseTo(1625, 8);
+    expect(decayed.clay).toBeNull();
+    expect(decayStoredRating(stored, null, new Date("2027-01-01T00:00:00Z"))).toBe(stored);
   });
 });

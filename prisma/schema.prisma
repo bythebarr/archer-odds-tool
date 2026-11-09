@@ -189,6 +189,10 @@ model TennisRating {
   grass    Float?
   carpet   Float?
   nOverall Int // career matches seen — confidence gate for pricing
+  /// When the player last played (Decision 13) — live pricing decays the
+  /// rating toward the base by the layoff since this date. Null on rows
+  /// stored before the ratings rebuild began stamping it (no decay then).
+  lastPlayedAt DateTime?
 
   updatedAt DateTime @default(now())
 

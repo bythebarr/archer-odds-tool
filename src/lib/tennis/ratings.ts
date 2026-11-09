@@ -25,6 +25,7 @@ export async function computeAndStoreTennisRatings(): Promise<RatingsSummary> {
       loserNorm: true,
       surface: true,
       tour: true,
+      tourneyDate: true,
     },
     orderBy: [{ tourneyDate: "asc" }, { matchNum: "asc" }],
   });
@@ -33,7 +34,7 @@ export async function computeAndStoreTennisRatings(): Promise<RatingsSummary> {
   // Last-seen display identity per player id (names/spellings can drift; take latest).
   const info = new Map<string, { name: string; norm: string; tour: string }>();
   for (const m of matches) {
-    elo.update(m.winnerSackId, m.loserSackId, canonicalSurface(m.surface));
+    elo.update(m.winnerSackId, m.loserSackId, canonicalSurface(m.surface), m.tourneyDate);
     info.set(m.winnerSackId, { name: m.winnerName, norm: m.winnerNorm, tour: m.tour });
     info.set(m.loserSackId, { name: m.loserName, norm: m.loserNorm, tour: m.tour });
   }
@@ -51,6 +52,7 @@ export async function computeAndStoreTennisRatings(): Promise<RatingsSummary> {
       grass: r.surface.grass ?? null,
       carpet: r.surface.carpet ?? null,
       nOverall: r.nOverall,
+      lastPlayedAt: r.lastPlayed,
     };
   });
 

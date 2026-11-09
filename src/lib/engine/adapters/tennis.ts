@@ -9,7 +9,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { pollAndStoreTennisOdds } from "@/lib/tennis/ingest";
-import { TennisElo, canonicalSurface, winProbFromRatings } from "@/lib/tennis/elo";
+import { TennisElo, canonicalSurface, decayStoredRating, winProbFromRatings } from "@/lib/tennis/elo";
 import { normalizeName } from "@/lib/tennis/archive";
 import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
 import { calculateEv } from "@/lib/odds/devig";
@@ -70,14 +70,16 @@ async function collectTennisSamples({ limit }: { limit: number }): Promise<Calib
       elo.matchesPlayed(m.loserSackId) >= MIN_MATCHES_FOR_SIGNAL
     ) {
       // P(actual winner beats actual loser); favorite = higher model prob.
-      const pWinner = elo.winProb(m.winnerSackId, m.loserSackId, surf);
+      // Scored AS OF the match (Decision 13): both ratings carry their
+      // layoff decay into the grade, exactly as live pricing applies it.
+      const pWinner = elo.winProbAsOf(m.winnerSackId, m.loserSackId, surf, m.tourneyDate);
       chrono.push({
         pred: pWinner >= 0.5 ? pWinner : 1 - pWinner,
         won: pWinner >= 0.5 ? 1 : 0,
         date: m.tourneyDate.toISOString().slice(0, 10),
       });
     }
-    elo.update(m.winnerSackId, m.loserSackId, surf);
+    elo.update(m.winnerSackId, m.loserSackId, surf, m.tourneyDate);
   }
   // Most-recent `limit` samples, newest-first (for the harness's time split).
   return chrono.slice(-limit).reverse();
@@ -190,9 +192,10 @@ async function listPlays(dateEt: string): Promise<Play[]> {
   const matchIds = [...new Set(tennisPlays.map((p) => p.matchId))];
   const games = await prisma.game.findMany({
     where: { id: { in: matchIds } },
-    select: { id: true, surface: true },
+    select: { id: true, surface: true, scheduledStartUtc: true },
   });
   const surfaceByMatch = new Map(games.map((g) => [g.id, canonicalSurface(g.surface)]));
+  const startByMatch = new Map(games.map((g) => [g.id, g.scheduledStartUtc]));
 
   // Ratings by normalized name; on a norm collision keep the higher-sample player.
   const norms = new Set<string>();
@@ -214,7 +217,14 @@ async function listPlays(dateEt: string): Promise<Play[]> {
     if (!backed || !opp) continue; // couldn't match a player to a rating
     if (backed.nOverall < MIN_MATCHES_FOR_SIGNAL || opp.nOverall < MIN_MATCHES_FOR_SIGNAL) continue;
 
-    const modelProb = winProbFromRatings(backed, opp, surfaceByMatch.get(p.matchId) ?? null);
+    // Layoff decay (Decision 13): each rating is priced as of the match,
+    // pulled toward the base by how long its player has been idle.
+    const asOf = startByMatch.get(p.matchId) ?? new Date(`${dateEt}T12:00:00Z`);
+    const modelProb = winProbFromRatings(
+      decayStoredRating(backed, backed.lastPlayedAt, asOf),
+      decayStoredRating(opp, opp.lastPlayedAt, asOf),
+      surfaceByMatch.get(p.matchId) ?? null
+    );
     const modelEv = calculateEv(modelProb, p.bestPrice);
     // Believability band: a plausible edge, not a coin-flip or a stale-model blowup.
     if (modelEv < MIN_MODEL_EV || modelEv > MAX_MODEL_EV) continue;

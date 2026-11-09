@@ -10,6 +10,9 @@
  *   - The K-factor DECAYS with matches played (`k / (n + offset)^exp`): a new
  *     player's rating moves fast, a veteran's is stable. Overall and surface each
  *     decay on their own match count.
+ *   - Ratings also decay with TIME (Decision 13): read as of a date, a rating
+ *     is pulled toward the base by the player's layoff since their last match,
+ *     so a two-year absence no longer returns at full weight.
  *
  * No I/O — the adapter's backtest replays `TennisArchiveMatch` through this, and
  * live pricing (T4) reads current ratings out of a replay. Unit-tested in elo.test.ts.
@@ -45,6 +48,18 @@ export interface EloParams {
    * probability is shrunk, never the ratings themselves (those stay interpretable).
    */
   calibrationShrink: number;
+  /**
+   * Layoff decay half-life, in days (Decision 13). A rating earned two
+   * years ago is not evidence about today's player — injuries, age and
+   * rust move tennis players fast — so at read time a rating is pulled
+   * toward `base` by half for every half-life the player has been idle:
+   * rating' = base + (rating − base) × 0.5^(idleDays / halfLife). One
+   * year: a 1700 plays like a 1600 after a year out, a 1550 after two.
+   * Applied when a probability is READ (winProbAsOf / decayStoredRating),
+   * never written back — the stored rating stays the earned one, and the
+   * next played match resumes updating from it. Non-finite or ≤ 0 = off.
+   */
+  layoffHalfLifeDays: number;
 }
 
 export const DEFAULT_ELO: EloParams = {
@@ -54,7 +69,14 @@ export const DEFAULT_ELO: EloParams = {
   kExp: 0.4,
   surfaceWeight: 0.5,
   calibrationShrink: 0.75,
+  layoffHalfLifeDays: 365,
 };
+
+/** Pull a rating toward the base by the layoff decay for `idleDays` idle. Pure. */
+export function decayRatingTowardBase(rating: number, base: number, idleDays: number, halfLifeDays: number): number {
+  if (!(idleDays > 0) || !Number.isFinite(halfLifeDays) || halfLifeDays <= 0) return rating;
+  return base + (rating - base) * 0.5 ** (idleDays / halfLifeDays);
+}
 
 interface Rating {
   overall: number;
@@ -109,9 +131,29 @@ export function winProbFromRatings(
   return shrinkProbability(eloExpectation(ra, rb), params.calibrationShrink);
 }
 
+/**
+ * A stored rating with the layoff decay applied as of a date (Decision 13):
+ * overall and every surface rating pulled toward the base by how long the
+ * player has been idle. Null lastPlayed (never recorded) = no decay — the
+ * pre-decay behavior for rows the ratings rebuild hasn't stamped yet.
+ */
+export function decayStoredRating(
+  r: StoredRating,
+  lastPlayedAt: Date | null | undefined,
+  asOf: Date,
+  params: EloParams = DEFAULT_ELO
+): StoredRating {
+  if (!lastPlayedAt) return r;
+  const idleDays = Math.max(0, (asOf.getTime() - lastPlayedAt.getTime()) / 86_400_000);
+  const d = (x: number | null | undefined) => (x === null || x === undefined ? x : decayRatingTowardBase(x, params.base, idleDays, params.layoffHalfLifeDays));
+  return { overall: decayRatingTowardBase(r.overall, params.base, idleDays, params.layoffHalfLifeDays), hard: d(r.hard), clay: d(r.clay), grass: d(r.grass), carpet: d(r.carpet) };
+}
+
 export class TennisElo {
   private readonly p: EloParams;
   private readonly ratings = new Map<string, Rating>();
+  /** Each player's most recent match date, when update() was given one — the layoff decay's clock. */
+  private readonly lastPlayed = new Map<string, Date>();
 
   constructor(params: Partial<EloParams> = {}) {
     this.p = { ...DEFAULT_ELO, ...params };
@@ -156,23 +198,56 @@ export class TennisElo {
     return shrinkProbability(raw, this.p.calibrationShrink);
   }
 
+  /** A player's blended rating with the layoff decay applied as of `asOf` (Decision 13). */
+  private decayedBlendedRating(id: string, surface: Surface | null, asOf: Date): number {
+    const r = this.ratingOf(id);
+    const last = this.lastPlayed.get(id);
+    const idleDays = last ? Math.max(0, (asOf.getTime() - last.getTime()) / 86_400_000) : 0;
+    const overall = decayRatingTowardBase(r.overall, this.p.base, idleDays, this.p.layoffHalfLifeDays);
+    const surf = surface ? r.surface[surface] : undefined;
+    const surfDecayed = surf === undefined ? null : decayRatingTowardBase(surf, this.p.base, idleDays, this.p.layoffHalfLifeDays);
+    return blend(overall, surfDecayed, this.p.surfaceWeight);
+  }
+
+  /**
+   * winProb as of a date: both players' ratings decayed by their idle time
+   * before the probability is taken. This is the graded form (the backtest
+   * sampler scores it) and mirrors what live pricing does to stored
+   * ratings via decayStoredRating.
+   */
+  winProbAsOf(aId: string, bId: string, surface: Surface | null, asOf: Date): number {
+    const raw = eloExpectation(this.decayedBlendedRating(aId, surface, asOf), this.decayedBlendedRating(bId, surface, asOf));
+    return shrinkProbability(raw, this.p.calibrationShrink);
+  }
+
+  /** When a player last played, when dates were supplied to update(). */
+  lastPlayedAt(id: string): Date | null {
+    return this.lastPlayed.get(id) ?? null;
+  }
+
   /** Snapshot every player's current ratings — the input to the persisted ratings store. */
   exportRatings(): Array<{
     id: string;
     overall: number;
     nOverall: number;
     surface: Partial<Record<Surface, number>>;
+    lastPlayed: Date | null;
   }> {
     return [...this.ratings.entries()].map(([id, r]) => ({
       id,
       overall: r.overall,
       nOverall: r.nOverall,
       surface: { ...r.surface },
+      lastPlayed: this.lastPlayed.get(id) ?? null,
     }));
   }
 
-  /** Apply one settled match (winner beat loser on `surface`), updating both ratings. */
-  update(winnerId: string, loserId: string, surface: Surface | null): void {
+  /** Apply one settled match (winner beat loser on `surface`), updating both ratings. `date` (the match's date) feeds the layoff decay clock when given. */
+  update(winnerId: string, loserId: string, surface: Surface | null, date?: Date): void {
+    if (date) {
+      this.lastPlayed.set(winnerId, date);
+      this.lastPlayed.set(loserId, date);
+    }
     const w = this.ratingOf(winnerId);
     const l = this.ratingOf(loserId);
 

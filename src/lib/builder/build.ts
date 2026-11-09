@@ -11,6 +11,7 @@
  */
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
 import type { BuilderLeg, BuilderWindow } from "./types";
+import { sameGameCorrelationFactor } from "./correlation";
 import { conservativeProb, relativeEdge, trustedRelativeEdge } from "./conservative";
 
 /** A leg's conservative relative edge over a window (see conservative.ts); null without a price or a read. */
@@ -110,13 +111,16 @@ export function scoreOf(l: BuilderLeg, o: BuilderOptions): number {
 function summarize(legs: BuilderLeg[], w: BuilderWindow): BuiltParlay {
   const priced = legs.every((l) => l.priceAmerican !== null);
   const dec = priced ? legs.reduce((p, l) => p * americanToDecimal(l.priceAmerican!), 1) : null;
-  const archr = legs.every((l) => l.archr !== null) ? legs.reduce((p, l) => p * l.archr!, 1) : null;
+  // Same-game legs share one game script — their joint chances carry the
+  // correlation haircut (Decision 13), on the record as on ARCHR's read.
+  const corr = sameGameCorrelationFactor(legs.map((l) => l.eventId));
+  const archr = legs.every((l) => l.archr !== null) ? legs.reduce((p, l) => p * l.archr!, 1) * corr : null;
   return {
     legs,
     priceAmerican: dec === null ? null : Math.round(decimalToAmerican(dec)),
     archr,
     edge: archr !== null && dec !== null ? archr * dec - 1 : null,
-    record: legs.reduce((p, l) => p * rateOf(l, w), 1),
+    record: legs.reduce((p, l) => p * rateOf(l, w), 1) * corr,
   };
 }
 

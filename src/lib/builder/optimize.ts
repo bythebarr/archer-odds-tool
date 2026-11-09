@@ -5,7 +5,10 @@
  * Each leg brings its conservative chance (lib/builder/conservative) and its
  * price. Legs from different games are treated as independent, so a parlay's
  * chance is the product of its legs' and its payout the product of their
- * decimal prices. In logs both are sums, which makes this a knapsack: pick at
+ * decimal prices. Same-game legs (allowed with `sameGame`) share one game
+ * script, so their combined chance carries the correlation haircut
+ * (lib/builder/correlation) in every reported number. In logs both are sums,
+ * which makes this a knapsack: pick at
  * most one leg per game (or per market, with same-game legs allowed) so the
  * log prices reach the target's and the log chances are as large as possible.
  * It is solved exactly by dynamic programming over the log price, in steps of
@@ -16,6 +19,7 @@
  */
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
 import { MAX_TRUSTED_RELATIVE_EDGE, conservativeProb, relativeEdge } from "./conservative";
+import { sameGameCorrelationFactor } from "./correlation";
 import { MAX_TRUSTED_EDGE, inScope } from "./build";
 import type { BuilderLeg, BuilderWindow } from "./types";
 
@@ -168,12 +172,17 @@ function solve(groups: Cand[][], o: OptimizeOptions, B: number, banned: Set<stri
 function summarize(cands: Cand[]): OptimizedParlay {
   const legs = cands.map((c) => ({ ...c.leg, prob: c.prob }));
   const dec = legs.reduce((p, l) => p * americanToDecimal(l.priceAmerican!), 1);
-  const prob = cands.reduce((p, c) => p * c.prob, 1);
+  // Same-game stacks are not independent (Decision 13): the reported
+  // chance — and the edge off it — carries the correlation haircut. The
+  // search above still ranks on the raw product; the final sort below
+  // and every number shown come from this adjusted figure.
+  const corr = sameGameCorrelationFactor(legs.map((l) => l.eventId));
+  const prob = cands.reduce((p, c) => p * c.prob, 1) * corr;
   return {
     legs,
     priceAmerican: Math.round(decimalToAmerican(dec)),
     prob,
-    archr: legs.every((l) => l.archr !== null) ? legs.reduce((p, l) => p * l.archr!, 1) : null,
+    archr: legs.every((l) => l.archr !== null) ? legs.reduce((p, l) => p * l.archr!, 1) * corr : null,
     edge: prob * dec - 1,
   };
 }
