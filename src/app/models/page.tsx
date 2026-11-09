@@ -16,7 +16,7 @@ const VERDICT: Record<string, { label: string; tone: string; note: string }> = {
   thin: { label: "Thin sample", tone: "bg-muted text-muted-foreground", note: "Not enough history to grade." },
 };
 
-const SPORT_ORDER = ["nba", "nfl", "ufc", "mlb", "tennis", "soccer", "f1"];
+const SPORT_ORDER = ["nba", "nfl", "nhl", "ufc", "mlb", "tennis", "soccer", "f1"];
 /** "nba-props:points" and "market-blend:nba:points" both file under NBA. */
 const sportOf = (model: string) => (model.startsWith("market-blend:") ? model.split(":")[1] : model.split(/[-:]/)[0]);
 const pct = (x: number) => `${Math.round(x * 100)}%`;

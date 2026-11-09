@@ -12,16 +12,27 @@ interface Tile {
 }
 
 /**
- * The sportsbook sport switcher: the deep sports first (NBA, NFL, UFC, MLB,
- * soccer, tennis, F1), then every other sport with a league in season — hockey,
+ * The sportsbook sport switcher: the deep sports first (NBA, NFL, NHL, UFC,
+ * MLB, soccer, tennis, F1), then every other sport with a league in season —
  * cricket, table tennis, darts, esports and the rest — then All Sports.
+ * The generic hockey tile keeps its door to the non-NHL leagues (AHL, SHL,
+ * Liiga…) but is labeled Intl. Hockey once the deep NHL tile exists, so the
+ * row never shows two doors to the same league (the M1 duplicate-door trap).
  */
+const GENERIC_LABEL_WHEN_DEEP: Record<string, { deep: string; label: string }> = {
+  hockey: { deep: "nhl", label: "Intl. Hockey" },
+};
+
 export async function SportCarousel({ active }: { active?: string }) {
   const deep: Tile[] = SPORT_METAS.map((s) => ({ key: s.sport, label: s.label, href: s.href, glyph: s.sport }));
   const taken = new Set(deep.map((d) => d.key));
   const more: Tile[] = (await activeAllSports().catch(() => []))
     .filter((s) => !taken.has(s.key))
-    .map((s) => ({ key: s.key, label: s.label, href: `/sports/${s.key}`, glyph: s.glyph as GlyphKey }));
+    .map((s) => {
+      const rename = GENERIC_LABEL_WHEN_DEEP[s.key];
+      const label = rename && taken.has(rename.deep) ? rename.label : s.label;
+      return { key: s.key, label, href: `/sports/${s.key}`, glyph: s.glyph as GlyphKey };
+    });
   const tiles = [...deep, ...more, { key: "all", label: "All", href: "/sports", glyph: "all" as GlyphKey }];
   return (
     <ScrollRow aria-label="Sports" className="-mx-4 px-4">

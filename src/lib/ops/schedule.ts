@@ -40,6 +40,7 @@ export const JOBS: Job[] = [
   { path: "sync-injuries", every: 50 },
   { path: "sync-results-nba", every: 175 },
   { path: "sync-results-nfl", every: 175 },
+  { path: "sync-results-nhl", every: 175 },
   { path: "ufc-history", every: 175 },
   { path: "nfl-advanced", every: 355 },
   { path: "sync-results", every: 355 },
@@ -51,6 +52,7 @@ export const JOBS: Job[] = [
   // Odds feeds that spend credits: the hours they always ran.
   { path: "poll-odds-nba", hours: [0, 14, 18, 21, 23] },
   { path: "poll-odds-nfl", hours: [10, 21] },
+  { path: "poll-odds-nhl", hours: [14, 18, 22, 0] },
   { path: "poll-odds", hours: [16, 22] },
   // History and catalog, a few times a day.
   { path: "crawl-history", hours: [2, 8, 12, 16] },

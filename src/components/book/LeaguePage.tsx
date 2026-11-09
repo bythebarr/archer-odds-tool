@@ -38,7 +38,7 @@ export function LeagueHeader({ sport }: { sport: TeamLeagueSport | "ufc" }) {
   );
 }
 
-const FEED: Record<TeamLeagueSport, FeedKey> = { nba: "nbaOdds", nfl: "nflOdds" };
+const FEED: Record<TeamLeagueSport, FeedKey> = { nba: "nbaOdds", nfl: "nflOdds", nhl: "nhlOdds" };
 
 /**
  * A league's sportsbook page: the sport switcher, Game Lines / Player Props

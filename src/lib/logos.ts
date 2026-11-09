@@ -87,17 +87,20 @@ export function mlbTeamLogoUrl(mlbTeamId: number): string {
  * handful of teams (NYK→ny, GSW→gs, WAS→wsh, …); everything else is our
  * abbreviation lowercased.
  */
-const ESPN_LOGO_CODE: Record<"nba" | "nfl", Record<string, string>> = {
+const ESPN_LOGO_CODE: Record<"nba" | "nfl" | "nhl", Record<string, string>> = {
   nba: { NYK: "ny", GSW: "gs", WAS: "wsh", UTA: "utah", NOP: "no", SAS: "sa" },
   nfl: { WAS: "wsh" },
+  // ESPN's NHL codes (its site API uses the same keys). A miss here is
+  // fail-safe: the Logo component falls back to the abbreviation text.
+  nhl: { LAK: "la", NJD: "nj", SJS: "sj", UTA: "utah" },
 };
 
 /** ESPN's short code for a club — its logo key and its slug in ESPN's site API. */
-export function espnTeamCode(league: "nba" | "nfl", abbreviation: string): string {
+export function espnTeamCode(league: "nba" | "nfl" | "nhl", abbreviation: string): string {
   return ESPN_LOGO_CODE[league][abbreviation] ?? abbreviation.toLowerCase();
 }
 
-export function espnTeamLogoUrl(league: "nba" | "nfl", abbreviation: string): string {
+export function espnTeamLogoUrl(league: "nba" | "nfl" | "nhl", abbreviation: string): string {
   return `https://a.espncdn.com/i/teamlogos/${league}/500/${espnTeamCode(league, abbreviation)}.png`;
 }
 

@@ -30,6 +30,7 @@ const ENV_VAR_BY_SPORT: Record<Sport, string> = {
   mlb: "MLB_ODDS_PROVIDER",
   nfl: "NFL_ODDS_PROVIDER",
   nba: "NBA_ODDS_PROVIDER",
+  nhl: "NHL_ODDS_PROVIDER",
   tennis: "TENNIS_ODDS_PROVIDER",
   soccer: "SOCCER_ODDS_PROVIDER",
   ufc: "UFC_ODDS_PROVIDER",
@@ -67,6 +68,8 @@ export function oddsBlazeLeaguesForSport(sport: Sport): string[] {
       return ["nfl"];
     case "nba":
       return ["nba"];
+    case "nhl":
+      return ["nhl"];
     case "ufc":
       return ["ufc"];
     case "tennis":

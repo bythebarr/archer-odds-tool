@@ -1,5 +1,5 @@
 /**
- * Preseason games out of the NBA and NFL. The schedule, results and player-log
+ * Preseason games out of the NBA, NFL and NHL. The schedule, results and player-log
  * syncs drop them on the way in (fetchEspnScoreboard), but rows stored before
  * that never self-heal — and a preseason final counts in a team's record, its
  * ratings and the game model, and its box score pollutes player prop history.
@@ -12,8 +12,8 @@ import type { Sport } from "@/generated/prisma/client";
 import { fetchEspnScoreboard, isExhibition } from "./espnScoreboard";
 import type { LeagueTeamInfo, TeamLeague } from "./league";
 
-/** Months preseason can fall in (0-indexed): NBA late Sep–Oct, NFL Aug–early Sep. */
-const PRESEASON_MONTHS: Partial<Record<Sport, number[]>> = { nba: [8, 9], nfl: [7, 8] };
+/** Months preseason can fall in (0-indexed): NBA and NHL late Sep–Oct, NFL Aug–early Sep. */
+const PRESEASON_MONTHS: Partial<Record<Sport, number[]>> = { nba: [8, 9], nfl: [7, 8], nhl: [8, 9] };
 
 export async function deleteGames(ids: string[]): Promise<number> {
   if (!ids.length) return 0;

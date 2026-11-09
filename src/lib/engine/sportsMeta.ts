@@ -19,9 +19,10 @@ export type { SportMeta };
 // explicitly on every entry so all three are readable on the literal union.
 export const SPORT_METAS = [
   // The lineup — what the nav, Home, the Slate and the Discord card show.
-  // NBA, NFL: odds line-shopping, graded off ESPN's free scoreboard (teamLeague/results.ts).
+  // NBA, NFL, NHL: odds line-shopping, graded off ESPN's free scoreboard (teamLeague/results.ts).
   { sport: "nba", label: "NBA", icon: "🏀", href: "/nba", accent: "#c026d3", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
   { sport: "nfl", label: "NFL", icon: "🏈", href: "/nfl", accent: "#f59e0b", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
+  { sport: "nhl", label: "NHL", icon: "🏒", href: "/nhl", accent: "#38bdf8", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
   { sport: "ufc", label: "UFC", icon: "🥊", href: "/ufc", accent: "#ef4444", carriesDate: false, resultsOnly: false, signalOnly: false, parked: false },
   // Un-parked 2026-10-27: no sport sits out. MLB, F1 and tennis are mid-season;
   // tennis and soccer now run on the all-sports engine (every tournament and

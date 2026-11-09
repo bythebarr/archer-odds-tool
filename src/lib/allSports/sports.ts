@@ -106,10 +106,10 @@ const ODDS_API_IO_SPORT: Record<string, string> = {
 };
 
 /**
- * Keys the deep pipelines own (NBA, NFL, MLB, UFC/MMA): the all-sports engine
+ * Keys the deep pipelines own (NBA, NFL, NHL, MLB, UFC/MMA): the all-sports engine
  * skips them so a league is never polled twice.
  */
-const TOA_DEDICATED = /^(basketball_nba(_preseason)?|americanfootball_nfl(_preseason)?|baseball_mlb(_preseason)?|mma_mixed_martial_arts)$/;
+const TOA_DEDICATED = /^(basketball_nba(_preseason)?|americanfootball_nfl(_preseason)?|icehockey_nhl(_preseason)?|baseball_mlb(_preseason)?|mma_mixed_martial_arts)$/;
 const TOA_SKIP = /^politics_/;
 
 export interface ProviderLeagueRef {
@@ -133,6 +133,7 @@ export function fromOddsApiIo(sportSlug: string, leagueSlug: string, leagueName:
   const dedicated =
     (sport === "basketball" && /^usa\b.*\bnba\b/i.test(leagueName) && !/summer|g league|women/i.test(leagueName)) ||
     (sport === "football" && /^usa\b.*\bnfl\b/i.test(leagueName)) ||
+    (sport === "hockey" && /^usa\b.*\bnhl\b/i.test(leagueName)) ||
     (sport === "baseball" && /^usa\b.*\bmlb\b/i.test(leagueName)) ||
     (sport === "mma" && /\bufc\b/i.test(leagueName));
   if (dedicated) return null;

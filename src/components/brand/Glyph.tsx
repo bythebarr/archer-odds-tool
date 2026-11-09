@@ -5,9 +5,18 @@ import { ArchrMark } from "./ArchrMark";
  * every sport and nav destination, in place of emoji. Home is the ARCHR mark.
  */
 export type GlyphKey =
-  | "home" | "props" | "nba" | "nfl" | "ufc" | "mlb" | "tennis" | "soccer" | "f1" | "cfb"
+  | "home" | "props" | "nba" | "nfl" | "nhl" | "ufc" | "mlb" | "tennis" | "soccer" | "f1" | "cfb"
   | "hockey" | "cricket" | "table-tennis" | "esports" | "darts" | "boxing" | "rugby" | "volleyball"
   | "handball" | "snooker" | "golf" | "lacrosse" | "badminton" | "curling" | "cycling" | "all" | "parlay";
+
+/** Crossed sticks + puck — shared by the generic "hockey" tile and the deep "nhl" board. */
+const HOCKEY_PATH = (
+  <>
+    <path d="M5 3.5 11 17c.4.9 1.2 1.5 2.2 1.5H20" />
+    <path d="M19 3.5 13.6 15.7" />
+    <ellipse cx="7" cy="19.5" rx="3" ry="1.3" />
+  </>
+);
 
 const PATHS: Record<Exclude<GlyphKey, "home">, React.ReactNode> = {
   nba: (
@@ -60,13 +69,10 @@ const PATHS: Record<Exclude<GlyphKey, "home">, React.ReactNode> = {
       <path d="M8.5 4v3H12V4M15.5 4v3H19M5 7h3.5M12 7h3.5v3H19M8.5 10H12v3M15.5 10v3M5 10h3.5" />
     </>
   ),
-  hockey: (
-    <>
-      <path d="M5 3.5 11 17c.4.9 1.2 1.5 2.2 1.5H20" />
-      <path d="M19 3.5 13.6 15.7" />
-      <ellipse cx="7" cy="19.5" rx="3" ry="1.3" />
-    </>
-  ),
+  hockey: HOCKEY_PATH,
+  // The deep NHL board draws the same sticks as the generic hockey tile — one
+  // path body, two keys (defined above PATHS so they can never drift apart).
+  nhl: HOCKEY_PATH,
   cricket: (
     <>
       <path d="m4 20 9.5-9.5 2 2L6 22" />

@@ -17,9 +17,17 @@ import { nflFinderLegs } from "@/lib/nfl/parlayLegs";
 import { listTeamLeagueGamesWithLines } from "@/lib/queries/teamLeagueGames";
 import { getGameModelView } from "@/lib/queries/gameModel";
 import type { FinderLeg } from "@/lib/props/parlayFinder";
-import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { edgeOf, ratesOf, type BuilderLeg } from "../types";
 import { teamBetOutcomes, type PastGame } from "../teamHistory";
+
+/**
+ * The leagues this source can build legs for. A builder game leg carries
+ * ARCHR's own chance, which comes from the game model — so a team league
+ * joins this source when it gets a game model, not before. NHL is on the
+ * team-league pipeline (lines parity) but has no game model yet; its legs
+ * reach the builder through the all-sports source meanwhile.
+ */
+type BuilderLeagueSport = "nba" | "nfl";
 
 /** Rungs shorter than this pad a parlay without adding anything: left out of the pool. */
 const SHORTEST = -1000;
@@ -37,7 +45,7 @@ export function worthKeeping(l: BuilderLeg): boolean {
   return best >= 0.6 || (l.archr ?? 0) >= 0.6;
 }
 
-function propLeg(sport: TeamLeagueSport, l: FinderLeg, season: number, event: { label: string; startsAt: string }): BuilderLeg {
+function propLeg(sport: BuilderLeagueSport, l: FinderLeg, season: number, event: { label: string; startsAt: string }): BuilderLeg {
   const outcomes = l.logs.flatMap((g) => (g.value === null ? [] : [{ season: g.season, hit: l.side === "over" ? g.value > l.point : g.value < l.point }]));
   const yesNo = l.sideLabel === "Yes" || l.sideLabel === "No";
   return {
@@ -83,7 +91,7 @@ async function nflProps(): Promise<BuilderLeg[]> {
 const signed = (x: number) => (x === 0 ? "PK" : x > 0 ? `+${x}` : `−${Math.abs(x)}`);
 
 /** Each upcoming game's moneyline, spread and total, priced by the game model, with each bet's record in the teams' games. */
-async function gameLines(sport: TeamLeagueSport, now: Date): Promise<BuilderLeg[]> {
+async function gameLines(sport: BuilderLeagueSport, now: Date): Promise<BuilderLeg[]> {
   const horizon = now.getTime() + LOOKAHEAD_DAYS[sport] * 86_400_000;
   const games = (await listTeamLeagueGamesWithLines(sport)).filter((g) => g.lines.length && g.game.scheduledStartUtc.getTime() <= horizon);
   if (!games.length) return [];
@@ -149,7 +157,7 @@ async function gameLines(sport: TeamLeagueSport, now: Date): Promise<BuilderLeg[
   return out;
 }
 
-export async function teamLeagueLegs(sport: TeamLeagueSport, now = new Date()): Promise<BuilderLeg[]> {
+export async function teamLeagueLegs(sport: BuilderLeagueSport, now = new Date()): Promise<BuilderLeg[]> {
   const [props, lines] = await Promise.all([sport === "nba" ? nbaProps() : nflProps(), gameLines(sport, now)]);
   return [...props.filter(worthKeeping), ...lines];
 }
