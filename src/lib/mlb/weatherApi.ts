@@ -97,3 +97,56 @@ export async function fetchHistoricalWeather(
   }
   return closestHourlyReading((await res.json()) as OpenMeteoHourlyResponse, atUtc);
 }
+
+/** A forecast reading with precipitation probability, for the NFL model. */
+export interface GameWeatherForecast extends WeatherForecast {
+  /** Probability of precipitation at the forecast hour, 0–1; null when the response carries none. */
+  precipProb: number | null;
+}
+
+interface OpenMeteoPrecipResponse {
+  hourly?: {
+    time: string[];
+    temperature_2m: number[];
+    wind_speed_10m: number[];
+    wind_direction_10m: number[];
+    precipitation_probability?: number[];
+  };
+}
+
+/**
+ * The forecast hour closest to `atUtc`, including precipitation
+ * probability (Open-Meteo reports it as a percentage). Sibling of
+ * fetchWeatherForecast rather than an extension of it: the MLB weather
+ * model's stored shape stays exactly what it is, and only the NFL sync
+ * asks for the extra field.
+ */
+export async function fetchGameWeatherForecast(
+  latitude: number,
+  longitude: number,
+  atUtc: Date
+): Promise<GameWeatherForecast | null> {
+  const url =
+    `${FORECAST_BASE_URL}?latitude=${latitude}&longitude=${longitude}` +
+    `&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,precipitation_probability` +
+    `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=UTC`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Open-Meteo forecast request failed: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as OpenMeteoPrecipResponse;
+  const base = closestHourlyReading(data, atUtc);
+  if (!base) return null;
+  const hourly = data.hourly!;
+  let closestIndex = 0;
+  let closestDiffMs = Infinity;
+  for (let i = 0; i < hourly.time.length; i++) {
+    const diff = Math.abs(new Date(`${hourly.time[i]}:00Z`).getTime() - atUtc.getTime());
+    if (diff < closestDiffMs) {
+      closestDiffMs = diff;
+      closestIndex = i;
+    }
+  }
+  const pct = hourly.precipitation_probability?.[closestIndex];
+  return { ...base, precipProb: typeof pct === "number" ? Math.min(1, Math.max(0, pct / 100)) : null };
+}

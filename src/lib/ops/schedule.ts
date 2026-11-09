@@ -58,6 +58,8 @@ export const JOBS: Job[] = [
   { path: "sync-schedule", hours: [10, 18] },
   // Trades and signings, before each day's slate.
   { path: "sync-rosters", hours: [12, 18, 22] },
+  // Game weather forecasts (MLB + NFL, Open-Meteo — free), refined as games approach.
+  { path: "poll-weather", hours: [12, 17, 22] },
   { path: "tennis-history", hours: [8] },
   { path: "backfill-f1", hours: [8] },
   { path: "backfill-ufc", hours: [10] },

@@ -1,6 +1,7 @@
 import { checkCronAuth } from "@/lib/cronAuth";
 import { recordPollLog } from "@/lib/pollingPolicy";
 import { syncGameWeather } from "@/lib/mlb/syncWeather";
+import { syncNflGameWeather } from "@/lib/nfl/syncWeather";
 import { todayEt, shiftEtDate } from "@/lib/dateEt";
 import { classifyFetchStore, ingestHttpStatus, pollLogStatus, summaryForCaughtError } from "@/lib/engine/ingestResult";
 import { skipIfOverBudget } from "@/lib/ops/computeBudget";
@@ -33,6 +34,14 @@ export async function POST(request: Request) {
 
   try {
     const summary = await syncGameWeather(today, endDate);
+    // NFL games (Decision 11) ride the same job and window; a failure there
+    // is reported in the body but never fails the MLB outcome.
+    let nfl: Awaited<ReturnType<typeof syncNflGameWeather>> | { error: string };
+    try {
+      nfl = await syncNflGameWeather(today, endDate);
+    } catch (nflError) {
+      nfl = { error: nflError instanceof Error ? nflError.message : String(nflError) };
+    }
     // Zero games considered is a legitimate empty result (e.g. off-season,
     // or every game in the window is at a non-open-roof venue); zero
     // upserted despite games considered is not (every forecast call failed
@@ -43,7 +52,7 @@ export async function POST(request: Request) {
     );
     await recordPollLog(JOB_NAME, pollLogStatus(outcome));
     return Response.json(
-      { status: outcome.status, detail: outcome.detail, startDate: today, endDate, ...summary },
+      { status: outcome.status, detail: outcome.detail, startDate: today, endDate, ...summary, nfl },
       { status: ingestHttpStatus(outcome.status) }
     );
   } catch (error) {
