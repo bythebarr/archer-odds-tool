@@ -6,26 +6,39 @@ import { prisma } from "@/lib/prisma";
  * command run through the Neon pooler takes the session-level lock on a pooled
  * server connection; the pooler then hands that connection back to the app
  * still holding it, and every later `prisma migrate deploy` times out (P1002).
- * Ends only sessions that hold that lock AND are idle (not mid-migration).
+ * Ends only pooled (pgbouncer) sessions that hold that lock, and only at a
+ * moment they're idle; never a session touching the migrations table.
  * Run from the Model lab (script: migrate:unlock).
  */
 const PRISMA_MIGRATE_LOCK = "72707369";
 
-async function main() {
-  const holders = await prisma.$queryRawUnsafe<{ pid: number; state: string | null; application_name: string | null; backend_start: string }[]>(`
-    SELECT l.pid, a.state, a.application_name, a.backend_start::text AS backend_start
+type Holder = { pid: number; state: string | null; application_name: string | null; backend_start: string; query: string | null };
+const holdersNow = () =>
+  prisma.$queryRawUnsafe<Holder[]>(`
+    SELECT l.pid, a.state, a.application_name, a.backend_start::text AS backend_start, left(a.query, 120) AS query
     FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
     WHERE l.locktype = 'advisory' AND l.granted AND l.objid::text = '${PRISMA_MIGRATE_LOCK}'`);
-  if (!holders.length) return console.log("No session holds the Prisma migrate lock: nothing to do.");
-  for (const h of holders) {
-    console.log(`holder: ${JSON.stringify(h)}`);
-    if (h.state !== "idle") {
-      console.log(`  pid ${h.pid} is ${h.state}, possibly a migration in progress: left alone.`);
-      process.exitCode = 1;
-      continue;
+
+async function main() {
+  const first = await holdersNow();
+  if (!first.length) return console.log("No session holds the Prisma migrate lock: nothing to do.");
+  for (const h of first) console.log(`holder: ${JSON.stringify(h)}`);
+  // A leaked lock sits on a pooled connection that also serves app queries: wait (up to ~60s)
+  // for a moment it's idle, so no app query is cut off. Never touch a session working on migrations.
+  for (let tries = 0; tries < 300; tries++) {
+    const holders = await holdersNow();
+    if (!holders.length) break;
+    for (const h of holders) {
+      if (/_prisma_migrations/i.test(h.query ?? "") || h.application_name !== "pgbouncer") {
+        console.log(`  pid ${h.pid} looks like a live migrate session (${h.application_name}): left alone.`);
+        process.exitCode = 1;
+        return;
+      }
+      if (h.state !== "idle") continue;
+      const [r] = await prisma.$queryRawUnsafe<{ ok: boolean }[]>(`SELECT pg_terminate_backend(${Number(h.pid)}) AS ok`);
+      console.log(`  terminated idle pooled pid ${h.pid} (try ${tries + 1}): ${r?.ok}`);
     }
-    const [r] = await prisma.$queryRawUnsafe<{ ok: boolean }[]>(`SELECT pg_terminate_backend(${Number(h.pid)}) AS ok`);
-    console.log(`  terminated idle pid ${h.pid}: ${r?.ok}`);
+    await new Promise((r) => setTimeout(r, 200));
   }
   const left = await prisma.$queryRawUnsafe<{ n: bigint }[]>(`
     SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND granted AND objid::text = '${PRISMA_MIGRATE_LOCK}'`);
