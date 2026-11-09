@@ -8,6 +8,7 @@ import type { PropBoard as PropBoardData, PropBoardRow, PropLineCells } from "@/
 import type { PropHitRateResult } from "@/lib/props/hitRate";
 import type { PropProjection } from "@/lib/props/projection";
 import type { FeedFreshness } from "@/lib/freshness";
+import { CANONICAL_NUMBERS } from "@/lib/propModel/canonical";
 import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
 
@@ -51,7 +52,7 @@ function projClass(edge: number | null): string {
   return "text-muted-foreground";
 }
 
-/** The Archer Prop Projection cell: calibrated next-game probability + edge vs the field. */
+/** The hit-rate projection cell (lib/props/projection): next-game probability regressed from the season record, + edge vs the field. NOT ARCHR chance — see canonical.ts. */
 function ProjCell({ projection }: { projection: PropProjection | null | undefined }) {
   if (!projection) {
     return <span className="tabular-nums text-muted-foreground/50">—</span>;
@@ -93,8 +94,8 @@ export function PropBoard({
   const [activeLine, setActiveLine] = useState<number>(
     board.lines[Math.floor(board.lines.length / 2)] ?? board.lines[0] ?? 0.5
   );
-  // Default to the honest number (Archer Projection), not raw L10 — the whole
-  // point of the projection is that trailing hit-rate overstates hot players.
+  // Default sort: the hit-rate projection, not raw L10 — the whole point of
+  // the projection is that trailing hit-rate overstates hot players.
   const [sortCol, setSortCol] = useState<string>(PROJ_SORT_KEY);
 
   const rows = useMemo(() => {
@@ -211,14 +212,14 @@ export function PropBoard({
                 <th className="py-2 pr-2 text-left font-medium">Player</th>
                 <th
                   className="px-2 py-2 font-semibold text-foreground"
-                  title="Archer Projection: calibrated next-game hit probability (regresses hot/cold streaks toward true form) + edge vs the field. The honest number — backtested, unlike raw recent hit-rate."
+                  title="Hit-rate projection: a separate engine — next-game hit probability regressed from the player's season record toward the field (backtested, unlike raw recent hit-rate). It is NOT ARCHR chance: no market blend and no book price go into it."
                 >
                   <button
                     type="button"
                     onClick={() => setSortCol(PROJ_SORT_KEY)}
                     className={`hover:text-foreground ${sortCol === PROJ_SORT_KEY ? "text-foreground underline decoration-dotted underline-offset-4" : ""}`}
                   >
-                    Proj
+                    {CANONICAL_NUMBERS.hitRateProjection.shortLabel}
                   </button>
                 </th>
                 {board.columns.map((c) => (

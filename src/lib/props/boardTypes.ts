@@ -43,9 +43,11 @@ export interface PropLineCells {
   /** columnKey -> hit rate (null = no sample for that window/split). */
   cells: Record<string, PropHitRateResult | null>;
   /**
-   * Archer Prop Projection: the calibrated next-game P(clears the line) for
-   * this line (see props/projection.ts), the honest counterweight to the raw
-   * trailing hit-rate cells. Null when there's no season sample to project
+   * Hit-rate projection: the calibrated next-game P(clears the line) for this
+   * line from the empirical-Bayes hit-rate engine (see props/projection.ts),
+   * the honest counterweight to the raw trailing hit-rate cells. NOT ARCHR
+   * chance (the canonical priced blend, lib/propModel/canonical) — no market
+   * or book price goes into it. Null when there's no season sample to project
    * from, or when the sport's builder doesn't compute one yet.
    */
   projection?: PropProjection | null;

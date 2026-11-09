@@ -6,7 +6,8 @@
  * alt rungs, ARCHR's chance and edge, and a price range. Pure.
  */
 
-import { conservativeProb, relativeEdge, trustedRelativeEdge } from "@/lib/builder/conservative";
+import { trustedRelativeEdge } from "@/lib/builder/conservative";
+import { cautiousEdge } from "@/lib/propModel/canonical";
 
 export type ScreenWindow = "l3" | "l5" | "l10" | "l15" | "szn" | "last";
 export const SCREEN_WINDOWS: { key: ScreenWindow; label: string }[] = [
@@ -84,13 +85,15 @@ export function screenRates(
 export type ScreenSort = ScreenWindow | "archr" | "edge" | "cedge" | "price" | "minutes";
 
 /**
- * The prop's conservative relative edge: the lower of ARCHR's chance and the
- * low end of its L10 record's range (the season's when L10 is thin), over the
- * chance the price implies, minus one. Null without a price or a read.
+ * The prop's CAUTIOUS edge — the canonical ranking signal (see
+ * lib/propModel/canonical): the lower of ARCHR's chance and the low end of
+ * its L10 record's range (the season's when L10 is thin), over the chance
+ * the price implies, minus one. A sort/filter signal, NOT a probability.
+ * Null without a price or a read. (Historical name kept for callers.)
  */
 export function conservativeEdge(p: Pick<ScreenerProp, "archr" | "priceAmerican" | "rates">): number | null {
   const rate = p.rates.l10[1] >= 5 ? p.rates.l10 : p.rates.szn;
-  return relativeEdge(conservativeProb(p.archr, rate), p.priceAmerican);
+  return cautiousEdge(p.archr, rate, p.priceAmerican);
 }
 
 export interface ScreenFilters {

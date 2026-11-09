@@ -12,10 +12,11 @@
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
 import type { BuilderLeg, BuilderWindow } from "./types";
 import { sameGameCorrelationFactor } from "./correlation";
-import { conservativeProb, relativeEdge, trustedRelativeEdge } from "./conservative";
+import { trustedRelativeEdge } from "./conservative";
+import { cautiousEdge } from "@/lib/propModel/canonical";
 
-/** A leg's conservative relative edge over a window (see conservative.ts); null without a price or a read. */
-export const legConservativeEdge = (l: BuilderLeg, w: BuilderWindow) => relativeEdge(conservativeProb(l.archr, l.rates[w]), l.priceAmerican);
+/** A leg's CAUTIOUS edge over a window — the canonical ranking signal (see lib/propModel/canonical); null without a price or a read. (Historical name kept for callers.) */
+export const legConservativeEdge = (l: BuilderLeg, w: BuilderWindow) => cautiousEdge(l.archr, l.rates[w], l.priceAmerican);
 
 export type BuilderSort = "archr" | "edge" | "cedge" | "hit";
 
