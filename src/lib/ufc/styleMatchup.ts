@@ -1,6 +1,7 @@
 import type { UfcFighterHistory } from "@/lib/queries/ufcMatchup";
 import { decayWeight } from "./fighterStrength";
 import { weightedAverage } from "@/lib/stats/weightedAverage";
+import { clamp } from "@/lib/stats/clamp";
 
 /**
  * Layer 3 of "fighter math": not a discrete "striker"/"wrestler" label
@@ -15,9 +16,6 @@ import { weightedAverage } from "@/lib/stats/weightedAverage";
 const TAKEDOWN_EDGE_SCALE = 2; // takedowns/fight
 const STRIKE_MARGIN_SCALE = 30; // significant strikes/fight
 
-function clamp(x: number, min: number, max: number): number {
-  return Math.min(Math.max(x, min), max);
-}
 
 function squash(diff: number, scale: number): number {
   return clamp(diff / scale, -1, 1);

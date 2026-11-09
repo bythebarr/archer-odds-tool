@@ -1,5 +1,6 @@
 import type { UfcFighterHistory, UfcFightRecord, UfcFightResult } from "@/lib/queries/ufcMatchup";
 import { weightedAverage, sampleConfidence, shrinkToward } from "@/lib/stats/weightedAverage";
+import { clamp } from "@/lib/stats/clamp";
 
 /**
  * Layer 1 of "fighter math": a decay-weighted [0,1] strength score per
@@ -53,9 +54,6 @@ export function decayWeight(monthsAgo: number, halfLifeMonths: number = HALF_LIF
   return Math.pow(0.5, monthsAgo / halfLifeMonths);
 }
 
-function clamp(x: number, min: number, max: number): number {
-  return Math.min(Math.max(x, min), max);
-}
 
 /** [0,1] score from a fight's stat differential (own stats minus opponent's, in the same bout) — null if either side's stats weren't captured. */
 function statDifferentialScore(fight: UfcFightRecord): number | null {

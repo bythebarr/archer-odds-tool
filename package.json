@@ -15,6 +15,7 @@
     "poll:odds": "tsx scripts/poll-odds.ts",
     "poll:odds:nfl": "tsx scripts/poll-odds-nfl.ts",
     "poll:odds:nba": "tsx scripts/poll-odds-nba.ts",
+    "poll:odds:nhl": "tsx scripts/poll-odds-nhl.ts",
     "backfill:nba:logs": "tsx scripts/nba/backfill-game-logs.ts",
     "probe:nba:props": "tsx scripts/nba/probe-prop-markets.ts",
     "poll:odds:tennis": "tsx scripts/poll-odds-tennis.ts",

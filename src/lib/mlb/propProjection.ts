@@ -22,6 +22,7 @@
  */
 import type { StatDistribution } from "@/lib/propModel/distribution";
 import { seasonMix, type SeasonMix } from "@/lib/propModel/seasonMix";
+import { clamp } from "@/lib/stats/clamp";
 
 export interface MlbLogPoint {
   date: string;
@@ -98,7 +99,6 @@ export interface MlbProjection {
   distribution: StatDistribution;
 }
 
-const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const regress = (ratio: number, cap: number) => clamp(1 + (ratio - 1) * 0.5, 1 - cap, 1 + cap);
 
 /** Recency weights for logs (most recent first). */

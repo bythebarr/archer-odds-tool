@@ -12,6 +12,7 @@
  * captured once: the latest read before tip, not a re-write every hour.
  */
 import { prisma } from "@/lib/prisma";
+import { formatSpreadPoint } from "@/lib/odds/americanOdds";
 import { todayEt } from "@/lib/dateEt";
 import { getLeagueDays } from "@/lib/queries/lobby";
 import { getNbaPropsSlate, toWireSlate, type WireNbaPropsSlate } from "@/lib/queries/nbaProps";
@@ -56,7 +57,6 @@ export function fairOver(quotes: { bookKey: string; side: string; point: number;
 
 /** De-vigs one pair of prices (the best on each side). */
 const fairPair = (a: number | null | undefined, b: number | null | undefined) => (a == null || b == null ? null : implied(a) / (implied(a) + implied(b)));
-const signed = (x: number) => (x === 0 ? "PK" : x > 0 ? `+${x}` : `−${Math.abs(x)}`);
 
 /** NBA props: every main line the standout read prices, on its side (Hottest Tonight's call, cut or not). */
 export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, GameLogPoint[]>, gameIds: Set<string>): Lean[] {
@@ -223,7 +223,7 @@ async function gameLeans(sport: "nba" | "nfl", gameIds: Set<string>): Promise<Le
       const best = a ? m.bestA : m.bestB;
       const point = m.market === "ml" ? null : m.market === "spread" && !a ? -m.point! : m.point;
       const label =
-        m.market === "ml" ? `${(a ? home : away).name} ML` : m.market === "spread" ? `${(a ? home : away).abbreviation} ${signed(point!)}` : `${a ? "Over" : "Under"} ${point}`;
+        m.market === "ml" ? `${(a ? home : away).name} ML` : m.market === "spread" ? `${(a ? home : away).abbreviation} ${formatSpreadPoint(point!)}` : `${a ? "Over" : "Under"} ${point}`;
       out.push({
         eventRef: game.id,
         startsAt: game.scheduledStartUtc,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { americanToDecimal, decimalToAmerican, formatAmerican } from "./americanOdds";
+import { americanToDecimal, decimalToAmerican, formatAmerican, formatSpreadPoint } from "./americanOdds";
 
 describe("americanToDecimal", () => {
   it("converts positive odds", () => {
@@ -38,5 +38,14 @@ describe("formatAmerican", () => {
   it("prefixes positive odds with a plus sign", () => {
     expect(formatAmerican(105)).toBe("+105");
     expect(formatAmerican(-150)).toBe("-150");
+  });
+});
+
+describe("formatSpreadPoint", () => {
+  it("reads pick'em at zero, plus on the plus side, true minus on the minus side", () => {
+    expect(formatSpreadPoint(0)).toBe("PK");
+    expect(formatSpreadPoint(5.5)).toBe("+5.5");
+    expect(formatSpreadPoint(-5.5)).toBe("−5.5");
+    expect(formatSpreadPoint(-110)).toBe("−110");
   });
 });
