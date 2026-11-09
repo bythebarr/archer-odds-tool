@@ -12,7 +12,10 @@
  *     cashes, out of priceProp() (projection → distribution → calibration →
  *     injury adjustment → logit blend with the de-vigged market consensus).
  *     Every probability a surface headlines is this one, and every edge is
- *     derived from it and nothing else.
+ *     derived from it — apart from the two deliberate,
+ *     separately-graded exceptions catalogued below (HIT-RATE PROJECTION
+ *     and STANDOUT CHANCE), each labeled as its own engine wherever it
+ *     appears.
  *   EDGE — the expected value of the best posted price at ARCHR Chance.
  *     A derived readout of ARCHR Chance vs a price — not a second opinion.
  *   CAUTIOUS EDGE — the conservative relative edge (lib/builder/conservative):
@@ -27,12 +30,21 @@
  *     player's season record toward the field. It is NOT ARCHR Chance (no
  *     market blend, no book price) and must never be presented as the same
  *     kind of number.
+ *   STANDOUT CHANCE — NBA standouts' own read (lib/nba/standouts), the
+ *     deliberate exception to the ARCHR-Chance rule. Its displayed chance
+ *     shrinks ARCHR Chance further toward the market's no-vig chance by a
+ *     fitted keep-fraction (STANDOUT_EDGE_SHRINK, fit by
+ *     backtest:nba-standouts on the standouts it replays), and the chance
+ *     tracking captures for a standout is the PRE-BLEND model chance
+ *     (modelProbOver), not the blend. It feeds Hottest Tonight and
+ *     tracking capture, is graded by its own backtest, and must never be
+ *     presented as ARCHR Chance.
  */
 import { conservativeProb, relativeEdge } from "@/lib/builder/conservative";
 import { edgeOf, type Rate } from "@/lib/builder/types";
 import type { PricedProp } from "./price";
 
-export type CanonicalNumberKey = "projection" | "archrChance" | "edge" | "cautiousEdge" | "hitRateProjection";
+export type CanonicalNumberKey = "projection" | "archrChance" | "edge" | "cautiousEdge" | "hitRateProjection" | "standoutChance";
 
 export interface CanonicalNumber {
   key: CanonicalNumberKey;
@@ -59,7 +71,7 @@ export const CANONICAL_NUMBERS: Record<CanonicalNumberKey, CanonicalNumber> = {
     label: "ARCHR chance",
     shortLabel: "ARCHR",
     kind: "probability",
-    blurb: "ARCHR chance is the one probability: the model's projection blended with the books' no-vig consensus — the number every edge on the page is derived from.",
+    blurb: "ARCHR chance is the one probability: the model's projection blended with the books' no-vig consensus — the number every props edge on the page is derived from.",
   },
   edge: {
     key: "edge",
@@ -74,6 +86,13 @@ export const CANONICAL_NUMBERS: Record<CanonicalNumberKey, CanonicalNumber> = {
     shortLabel: "Caut. edge",
     kind: "ranking signal",
     blurb: "Cautious edge is a ranking signal, not a probability: it re-reads ARCHR chance cautiously (the lower of ARCHR chance and the low end of the recent record's range) against the price, to sort and filter — never to quote as a chance.",
+  },
+  standoutChance: {
+    key: "standoutChance",
+    label: "Standout chance",
+    shortLabel: "Standout",
+    kind: "probability",
+    blurb: "The standout chance is NBA standouts' own read: ARCHR chance shrunk further toward the market by a fitted keep-fraction, and graded by the standouts backtest. It is a separate engine's number \u2014 not the ARCHR chance the props surfaces headline.",
   },
   hitRateProjection: {
     key: "hitRateProjection",

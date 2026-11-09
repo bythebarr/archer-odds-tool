@@ -17,10 +17,14 @@ const priced = (over: Partial<PricedProp> = {}): PricedProp => ({
 });
 
 describe("canonical numbers", () => {
-  it("names five distinct numbers, exactly one of them the headline probability", () => {
+  it("names six distinct numbers, exactly one of them the headline probability", () => {
     const all = Object.values(CANONICAL_NUMBERS);
-    expect(all.map((n) => n.key).sort()).toEqual(["archrChance", "cautiousEdge", "edge", "hitRateProjection", "projection"]);
-    expect(new Set(all.map((n) => n.label)).size).toBe(5);
+    expect(all.map((n) => n.key).sort()).toEqual(["archrChance", "cautiousEdge", "edge", "hitRateProjection", "projection", "standoutChance"]);
+    expect(new Set(all.map((n) => n.label)).size).toBe(6);
+    // The standout chance is catalogued as its own probability — a deliberate,
+    // separately-graded exception, NOT ARCHR chance (F3).
+    expect(CANONICAL_NUMBERS.standoutChance.kind).toBe("probability");
+    expect(CANONICAL_NUMBERS.standoutChance.blurb).toContain("not the ARCHR chance");
     expect(CANONICAL_NUMBERS.archrChance.kind).toBe("probability");
     expect(CANONICAL_NUMBERS.cautiousEdge.kind).toBe("ranking signal");
     expect(CANONICAL_NUMBERS.projection.kind).toBe("stat value");
