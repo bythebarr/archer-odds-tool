@@ -27,6 +27,15 @@ async function main() {
   console.log(`== game_sport_competitor_check ==`);
   console.log(check[0]?.def ?? "(missing)");
   console.log(`includes nhl: ${check[0]?.def.includes("'nhl'") ?? false}`);
+
+  // Rows the corrected constraint would reject: if any, applying it would fail and block deploys again.
+  const bad = await prisma.$queryRawUnsafe<{ sport: string; n: bigint }[]>(`
+    SELECT sport, count(*) AS n FROM "Game" WHERE NOT (
+      (sport IN ('mlb', 'soccer', 'nfl', 'nba', 'nhl') AND "homeTeamId" IS NOT NULL AND "awayTeamId" IS NOT NULL AND "homePlayerId" IS NULL AND "awayPlayerId" IS NULL)
+      OR (sport = 'tennis' AND "homePlayerId" IS NOT NULL AND "awayPlayerId" IS NOT NULL AND "homeTeamId" IS NULL AND "awayTeamId" IS NULL)
+    ) GROUP BY sport`);
+  console.log(`== Game rows the corrected constraint would reject (${bad.length} sports) ==`);
+  for (const b of bad) console.log(`${b.sport}: ${b.n}`);
 }
 
 main()

@@ -6,6 +6,8 @@
 # next deploy. Guarded: it touches nothing unless `migrate status` reports that
 # exact migration as failed. Run from the Model lab (script: migrate:resolve-nhl).
 set -u
+# Migrate commands take a session-level advisory lock: run them on the direct host, never the pooler.
+export DATABASE_URL_UNPOOLED="${DATABASE_URL_UNPOOLED:-${DATABASE_URL/-pooler./.}}"
 MIGRATION=20261109200100_nhl_team_pair_constraint
 echo "== prisma migrate status (before) =="
 before=$(npx prisma migrate status 2>&1); echo "$before"
