@@ -6,7 +6,8 @@ name: Model lab (backtests and fits)
 # from guesses. "report:all" runs every model. Needs a DATABASE_URL repository secret (Settings →
 # Secrets and variables → Actions). The scripts only write their own report cards (ModelReport),
 # except import:tennis (loads the free Sackmann archive + Elo ratings), diagnose:props, diagnose:parlays, diagnose:builder, diagnose:screener and backtest:cautious-edge (read-only)
-# and fix:ufc-duplicates (dry run; the :apply choice merges UFC fights stored twice). migrate:status is read-only;
+# and fix:ufc-duplicates (dry run; the :apply choice merges UFC fights stored twice). migrate:status and migrate:inspect are read-only; migrate:unlock ends idle sessions
+# holding a leaked Prisma migrate lock; migrate:deploy applies pending migrations (direct host);
 # migrate:resolve-nhl marks the failed 20261109200100 NHL migration rolled back, only if status reports it failed.
 # report:tracking is the tracking -> ModelReport bridge: it writes only its own labeled tracking:* cards.
 # Keeps the database awake for the run (a few minutes), so run it on purpose.
@@ -58,6 +59,9 @@ on:
           - fix:ufc-duplicates:apply
           - migrate:status
           - migrate:resolve-nhl
+          - migrate:inspect
+          - migrate:unlock
+          - migrate:deploy
       n:
         description: "Sample size (N), where the script takes one"
         required: false
