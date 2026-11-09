@@ -151,16 +151,21 @@ function team(t: { abbreviation: string; name: string } | null): SlateTeam | nul
 const MIN_DEFENSE_GAMES = 4;
 const STAT_SUMS = Object.fromEntries(COLUMNS.map((c) => [c, true])) as Record<(typeof COLUMNS)[number], true>;
 
-/** Per team, what each position group produces against it per game; this season once teams have 4 games, else last. */
-export const getNflDefenseTable = cache(async (season: number): Promise<NflDefenseTable> => {
-  const sums = await prisma.nflPlayerGameLog.groupBy({
-    by: ["season", "gameId", "teamId", "position"],
-    where: { season: { in: [season - 1, season] } },
-    _sum: STAT_SUMS,
-  });
-  const abbr = new Map(
-    (await prisma.team.findMany({ where: { id: { in: [...new Set(sums.map((r) => r.teamId))] } }, select: { id: true, abbreviation: true } })).map((t) => [t.id, t.abbreviation])
-  );
+/** One game, team's box-score sums by roster position — the defense table's raw material. */
+export interface NflDefenseSumRow {
+  season: number;
+  gameId: string;
+  teamId: string;
+  position: string | null;
+  _sum: Partial<Record<(typeof COLUMNS)[number], number | null>>;
+}
+
+/**
+ * The defense table from per-game sums (getNflDefenseTable's grouping); pure,
+ * so backtests can build it as of any date — the same split the NBA table
+ * makes (defenseTableFromSums).
+ */
+export function nflDefenseTableFromSums(sums: NflDefenseSumRow[], abbr: Map<string, string>, season: number): NflDefenseTable {
   const zero = (): NflStatLine => ({ ...(Object.fromEntries(COLUMNS.map((c) => [c, 0])) as unknown as NflStatLine), ...emptyNflExtras() });
 
   const build = (forSeason: number): NflDefenseTable["teams"] => {
@@ -206,6 +211,19 @@ export const getNflDefenseTable = cache(async (season: number): Promise<NflDefen
   if ((counts[Math.floor(counts.length / 2)] ?? 0) >= MIN_DEFENSE_GAMES) return { season, fromLastSeason: false, teams: current };
   const last = build(season - 1);
   return Object.keys(last).length ? { season: season - 1, fromLastSeason: true, teams: last } : { season, fromLastSeason: false, teams: current };
+}
+
+/** Per team, what each position group produces against it per game; this season once teams have 4 games, else last. */
+export const getNflDefenseTable = cache(async (season: number): Promise<NflDefenseTable> => {
+  const sums = await prisma.nflPlayerGameLog.groupBy({
+    by: ["season", "gameId", "teamId", "position"],
+    where: { season: { in: [season - 1, season] } },
+    _sum: STAT_SUMS,
+  });
+  const abbr = new Map(
+    (await prisma.team.findMany({ where: { id: { in: [...new Set(sums.map((r) => r.teamId))] } }, select: { id: true, abbreviation: true } })).map((t) => [t.id, t.abbreviation])
+  );
+  return nflDefenseTableFromSums(sums, abbr, season);
 });
 
 /** Touches + targets per game that make an absence matter to teammates (any QB counts). */

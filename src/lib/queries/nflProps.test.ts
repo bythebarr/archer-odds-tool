@@ -12,3 +12,23 @@ describe("inferNflPosition", () => {
     expect(inferNflPosition([])).toBeNull();
   });
 });
+
+describe("nflDefenseTableFromSums", () => {
+  it("credits each team's production to the opponent's allowed row", async () => {
+    const { nflDefenseTableFromSums } = await import("./nflProps");
+    const abbr = new Map([
+      ["a", "AAA"],
+      ["b", "BBB"],
+    ]);
+    const sums = [
+      { season: 2026, gameId: "g1", teamId: "a", position: "WR", _sum: { recYards: 200 } },
+      { season: 2026, gameId: "g1", teamId: "b", position: "QB", _sum: { passYards: 300 } },
+    ];
+    const table = nflDefenseTableFromSums(sums, abbr, 2026);
+    expect(table.teams["BBB"]!.games).toBe(1);
+    expect(table.teams["BBB"]!.byPosition["WR"]!.allowed.recYards).toBe(200);
+    expect(table.teams["AAA"]!.byPosition["QB"]!.allowed.passYards).toBe(300);
+    // A team's own production never lands on its own row.
+    expect(table.teams["AAA"]!.byPosition["WR"]!.allowed.recYards).toBe(0);
+  });
+});
