@@ -1,6 +1,6 @@
 # One Number — summary
 
-Branch `sam/one-number`. Not merged and not deployed: deploys are blocked on the production migration record, and merging waits for review.
+Merged via PR #109 (`64eb3eb`); deploys live in production since PR #108 (`79a80aa`), which unblocked the deploy chain. This summary records the production backtest (Model lab run #65) and the deploy fix.
 
 ## Base
 
@@ -15,14 +15,16 @@ This branch builds on that work instead of redoing it.
 
 ## Verdicts
 
-**Step 2 — grading the haircut: graded on production data.** Model lab run [#65](https://github.com/bythebarr/archer-odds-tool/actions/runs/42691547365), script `backtest:cautious-edge`, main at `4e0d465`, 2026-11-09. It graded 350 NBA props on both sides of the consensus line: 700 sides, all priced at the close, all with minutes/role weighting. Lower log loss and Brier are better.
+**Step 2 — grading the haircut: graded on production data.** Model lab run [#65](https://github.com/bythebarr/archer-odds-tool/actions/runs/42691547365), script `backtest:cautious-edge`, main at `4e0d465`, 2026-11-09. It graded 350 NBA props on both sides of the consensus line: 700 sides, all with minutes/role weighting. (Priced-at-close count for this run is unverified - see the note below.) Lower log loss and Brier are better.
 
-| Read | Log loss | Brier | Mean predicted vs actual |
-|---|---|---|---|
-| **ARCHR chance (blend)** | **0.6876** | **0.2473** | 50.0% vs 50.0% |
-| Evidence read (role-weighted, K = 20) | 0.6916 | 0.2491 | 50.0% vs 50.0% |
-| Evidence read, plain record | 0.6979 | 0.2521 | 50.0% vs 50.0% |
-| Legacy `min()` | 0.8410 | 0.2898 | 34.8% vs 50.0% |
+| Read | Log loss | Brier |
+|---|---|---|
+| **ARCHR chance (blend)** | **0.6876** | **0.2473** |
+| Evidence read (role-weighted, K = 20) | 0.6916 | 0.2491 |
+| Evidence read, plain record | 0.6979 | 0.2521 |
+| Legacy `min()` | 0.8410 | 0.2898 |
+
+Note: a pooled mean-predicted-vs-actual column is omitted on purpose. For a two-sided read it is 50.0% vs 50.0% by construction (over gets p, under gets 1 - p), so it is not calibration evidence. The per-side rows below are the real calibration evidence.
 
 - **The `min()` haircut is badly miscalibrated as a probability.** It reads about 35% on props that hit 50%.
   - Overs: log loss 0.9077, mean predicted 31.5% vs actual 51.4%.
@@ -36,6 +38,8 @@ This branch builds on that work instead of redoing it.
   - ROI doesn't rise with edge, and one positive bucket among ten is consistent with noise.
 
 The run is repeatable: Model lab, script `backtest:cautious-edge`, read-only.
+
+Note on pricing: "priced at the close" means the latest snapshot polled before tip-off. The script prints the priced count (`pricedN`) alongside n, but the run #65 log was not extractable from the repo, so `pricedN == 700` for this run is unverified - the headline should not be read as asserting all 700 sides carried a closing price until the log confirms it.
 
 **Step 3 — evidence gate: KEEP LEGACY `min()`.** The gate's verdict was "fails: worse than the blend alone" (evidence log loss 0.6916 / Brier 0.2491 vs blend 0.6876 / 0.2473). `CAUTIOUS_READ_MODE` in `canonical.ts` stays `"legacy-min"`, so every live cautious number is exactly what it was before.
 
