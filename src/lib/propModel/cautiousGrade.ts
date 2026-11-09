@@ -5,8 +5,12 @@
  * worse? Pure and DB-free; scripts/backtest-cautious-edge.ts supplies the
  * graded samples, the unit tests supply synthetic ones.
  *
- * Scores BOTH probabilities on the same samples (log loss + Brier + mean
- * predicted vs actual hit rate), and buckets samples by cautious-edge size
+ * Scores BOTH probabilities head-to-head on the SAME samples — the priced
+ * subset, the only ones a cautious read exists for (log loss + Brier + mean
+ * predicted vs actual hit rate). The blend's all-sample score is reported
+ * alongside as context (blendAll), never as the comparison: scoring the two
+ * reads on different sample sets would crown whichever subset is easier.
+ * Buckets samples by cautious-edge size
  * so the readout answers the practical question too: when the cautious edge
  * says a prop is strong, does it actually cash more than the price implies?
  */
@@ -53,9 +57,19 @@ export interface CautiousGrade {
   n: number;
   /** Samples with a price and a cautious read (the subset the cautious scores cover). */
   pricedN: number;
+  /** Blend scored on the SAME priced subset as the cautious read — the headline head-to-head. */
   blend: ProbScore;
+  /** Blend scored on every sample, priced or not. Context only; never the comparison. */
+  blendAll: ProbScore;
   /** Scored on pricedN samples only. */
   cautious: ProbScore;
+  /**
+   * Standard error of the paired per-sample log-loss difference (cautious − blend)
+   * on the priced subset; NaN below 2 priced samples. The verdict's wash band is
+   * ±2× this, so it widens as the sample shrinks instead of pretending a fixed
+   * 0.002 means the same thing at n=50 and n=5,000.
+   */
+  deltaSe: number;
   buckets: CautiousBucket[];
   /** Priced samples whose cautious edge ran past the +50% trust cap — shown, never silently dropped. */
   distrustedN: number;
@@ -90,13 +104,25 @@ const BUCKETS: { key: string; label: string; test: (e: number) => boolean }[] = 
 ];
 
 export function gradeCautiousSamples(samples: CautiousGradeSample[]): CautiousGrade {
-  const blend = score(samples.map((s) => ({ p: s.pBlend, won: s.won })));
+  const blendAll = score(samples.map((s) => ({ p: s.pBlend, won: s.won })));
 
   const priced = samples
     .map((s) => ({ s, cp: cautiousChance(s.pBlend, s.rate), ce: cautiousEdge(s.pBlend, s.rate, s.priceAmerican) }))
     .filter((x): x is { s: CautiousGradeSample; cp: number; ce: number } => x.cp !== null && x.ce !== null && x.s.priceAmerican !== null);
 
+  // Head-to-head on the priced subset only: BOTH reads scored on these samples.
+  const blend = score(priced.map((x) => ({ p: x.s.pBlend, won: x.s.won })));
   const cautious = score(priced.map((x) => ({ p: x.cp, won: x.s.won })));
+
+  // Paired log-loss differences (cautious − blend) per priced sample → SE of the mean.
+  const llOf = (p: number, won: 0 | 1) => -(won ? Math.log(clampP(p)) : Math.log(1 - clampP(p)));
+  const diffs = priced.map((x) => llOf(x.cp, x.s.won) - llOf(x.s.pBlend, x.s.won));
+  let deltaSe = NaN;
+  if (diffs.length >= 2) {
+    const mean = diffs.reduce((s, v) => s + v, 0) / diffs.length;
+    const variance = diffs.reduce((s, v) => s + (v - mean) ** 2, 0) / (diffs.length - 1);
+    deltaSe = Math.sqrt(variance / diffs.length);
+  }
 
   const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
   const buckets: CautiousBucket[] = BUCKETS.map((b) => {
@@ -117,7 +143,9 @@ export function gradeCautiousSamples(samples: CautiousGradeSample[]): CautiousGr
     n: samples.length,
     pricedN: priced.length,
     blend,
+    blendAll,
     cautious,
+    deltaSe,
     buckets,
     distrustedN: buckets.find((b) => b.key === "distrusted")?.n ?? 0,
   };
@@ -127,7 +155,10 @@ export function gradeCautiousSamples(samples: CautiousGradeSample[]): CautiousGr
 export function cautiousVerdict(g: CautiousGrade): string {
   if (!g.pricedN) return "no priced samples — nothing to grade";
   const d = g.cautious.logLoss - g.blend.logLoss;
-  if (Math.abs(d) < 0.002) return `a wash on log loss (Δ ${d >= 0 ? "+" : ""}${d.toFixed(4)}) — the haircut neither earns nor costs accuracy at this sample`;
+  // Wash band is ±2 paired standard errors: sample-size aware by construction.
+  // With too few priced samples to estimate it, nothing is decisive.
+  const band = Number.isFinite(g.deltaSe) ? 2 * g.deltaSe : Infinity;
+  if (Math.abs(d) <= band) return `a wash on log loss (Δ ${d >= 0 ? "+" : ""}${d.toFixed(4)}, inside the ±${Number.isFinite(band) ? band.toFixed(4) : "∞"} noise band at n=${g.pricedN} priced) — the haircut neither earns nor costs accuracy at this sample`;
   return d < 0
     ? `the cautious read predicted BETTER than the blend (log loss ${g.cautious.logLoss.toFixed(4)} vs ${g.blend.logLoss.toFixed(4)}, Δ ${d.toFixed(4)})`
     : `the blend predicted BETTER than its cautious read (log loss ${g.blend.logLoss.toFixed(4)} vs ${g.cautious.logLoss.toFixed(4)}, Δ +${d.toFixed(4)}) — the haircut costs accuracy as a probability, whatever it earns as a filter`;

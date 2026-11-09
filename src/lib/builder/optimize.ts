@@ -18,7 +18,8 @@
  * in turn, so the list shows real options rather than one stack reshuffled.
  */
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
-import { MAX_TRUSTED_RELATIVE_EDGE, conservativeProb, relativeEdge } from "./conservative";
+import { MAX_TRUSTED_RELATIVE_EDGE, relativeEdge } from "./conservative";
+import { cautiousChance } from "@/lib/propModel/canonical";
 import { sameGameCorrelationFactor } from "./correlation";
 import { MAX_TRUSTED_EDGE, inScope } from "./build";
 import type { BuilderLeg, BuilderWindow } from "./types";
@@ -83,7 +84,7 @@ function candidates(pool: BuilderLeg[], o: OptimizeOptions): Map<string, Cand[]>
   for (const leg of pool) {
     if (leg.priceAmerican === null || leg.priceAmerican < o.shortest) continue;
     if (!inScope(leg, o)) continue;
-    const prob = conservativeProb(leg.archr, leg.rates[o.window]);
+    const prob = cautiousChance(leg.archr, leg.rates[o.window]);
     if (prob === null || prob < o.minProb || prob >= 1) continue;
     // A price far longer than the leg's cautious read is a price that doesn't belong to it: the optimizer would chase it.
     if ((leg.edge !== null && leg.edge > MAX_TRUSTED_EDGE) || (relativeEdge(prob, leg.priceAmerican) ?? 0) > MAX_TRUSTED_RELATIVE_EDGE) continue;

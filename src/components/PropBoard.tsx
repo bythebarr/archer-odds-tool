@@ -43,27 +43,27 @@ function RateCell({ result }: { result: PropHitRateResult | null | undefined }) 
   );
 }
 
-/** Color the projection by EDGE over the field — that's the signal, not the raw %. */
-function projClass(edge: number | null): string {
-  if (edge === null) return "text-muted-foreground/50";
-  if (edge >= 0.08) return "text-emerald-600 dark:text-emerald-400 font-semibold";
-  if (edge >= 0.03) return "text-foreground font-medium";
-  if (edge <= -0.03) return "text-rose-500/80 dark:text-rose-400/80";
+/** Color the projection by its GAP over the field's rate — that's the signal, not the raw %. */
+function projClass(gap: number | null): string {
+  if (gap === null) return "text-muted-foreground/50";
+  if (gap >= 0.08) return "text-emerald-600 dark:text-emerald-400 font-semibold";
+  if (gap >= 0.03) return "text-foreground font-medium";
+  if (gap <= -0.03) return "text-rose-500/80 dark:text-rose-400/80";
   return "text-muted-foreground";
 }
 
-/** The hit-rate projection cell (lib/props/projection): next-game probability regressed from the season record, + edge vs the field. NOT ARCHR chance — see canonical.ts. */
+/** The hit-rate projection cell (lib/props/projection): next-game probability regressed from the season record, + its gap vs the field's rate (a record-vs-record difference — no price involved, so it is NOT an edge in ARCHR's sense). NOT ARCHR chance — see canonical.ts. */
 function ProjCell({ projection }: { projection: PropProjection | null | undefined }) {
   if (!projection) {
     return <span className="tabular-nums text-muted-foreground/50">—</span>;
   }
-  const edge = projection.edgeVsBase;
+  const gap = projection.edgeVsBase; // a probability gap vs the field's rate, not a priced edge
   return (
     <span className="inline-flex flex-col items-end leading-tight">
-      <span className={`tabular-nums text-sm ${projClass(edge)}`}>{Math.round(projection.probability * 100)}%</span>
+      <span className={`tabular-nums text-sm ${projClass(gap)}`}>{Math.round(projection.probability * 100)}%</span>
       <span className="tabular-nums text-[10px] text-muted-foreground/70">
-        {edge >= 0 ? "+" : ""}
-        {Math.round(edge * 100)} vs field
+        {gap >= 0 ? "+" : ""}
+        {Math.round(gap * 100)} vs field rate
       </span>
     </span>
   );
