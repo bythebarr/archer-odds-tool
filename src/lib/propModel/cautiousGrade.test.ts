@@ -18,16 +18,43 @@ function synthetic(n: number, blendBias: number, seedStart = 1): CautiousGradeSa
 }
 
 describe("gradeCautiousSamples", () => {
-  it("scores the blend on every sample and the cautious read only on priced ones", () => {
+  it("scores BOTH reads on the same priced subset for the headline comparison (blendAll keeps the full set as context)", () => {
     const samples = synthetic(50, 0);
     samples.push({ pBlend: 0.6, rate: [7, 10], priceAmerican: null, won: 1 });
     const g = gradeCautiousSamples(samples);
     expect(g.n).toBe(51);
     expect(g.pricedN).toBe(50);
-    expect(g.blend.n).toBe(51);
+    // The head-to-head: identical sample sets, or the verdict is apples-to-oranges.
+    expect(g.blend.n).toBe(50);
     expect(g.cautious.n).toBe(50);
+    expect(g.blend.n).toBe(g.cautious.n);
+    // The all-sample blend score survives only as a separate context line.
+    expect(g.blendAll.n).toBe(51);
     expect(g.blend.logLoss).toBeGreaterThan(0);
     expect(g.cautious.logLoss).toBeGreaterThan(0);
+  });
+
+  it("the wash band is sample-size aware: the same underlying gap is a wash at small n and decisive at large n", () => {
+    // Calibrated blend (0.60) on a 0.60 truth, record 6/10 (floor ≈ 0.443):
+    // the haircut really does cost accuracy here — the only question is
+    // whether the sample is big enough to say so. Deterministic win patterns
+    // at exactly the true rate, so the paired differences are fixed numbers:
+    // per-sample Δ is +0.303 on a win, −0.331 on a loss (mean +0.049).
+    const pattern = [1, 0, 1, 1, 0, 1, 1, 0, 1, 0]; // 6 wins in 10
+    const world = (reps: number): CautiousGradeSample[] =>
+      Array.from({ length: reps * pattern.length }, (_, i) => ({
+        pBlend: 0.6,
+        rate: [6, 10] as [number, number],
+        priceAmerican: -110,
+        won: pattern[i % pattern.length] as 0 | 1,
+      }));
+    const small = gradeCautiousSamples(world(1).slice(0, 8)); // 5 wins, 3 losses
+    expect(Number.isFinite(small.deltaSe)).toBe(true);
+    expect(cautiousVerdict(small)).toContain("a wash");
+    const large = gradeCautiousSamples(world(200));
+    expect(cautiousVerdict(large)).toContain("blend predicted BETTER");
+    // And the band itself shrinks as n grows.
+    expect(large.deltaSe).toBeLessThan(small.deltaSe);
   });
 
   it("head-to-head: the haircut only wins when the record floor lands between the truth and a hot blend", () => {
