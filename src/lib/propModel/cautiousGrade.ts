@@ -1,25 +1,37 @@
 /**
- * Head-to-head grading of the cautious haircut (Phase 6): on graded props,
- * does replacing ARCHR Chance (the blend) with its cautious read —
- * min(blend, Wilson floor of the L10 record) — predict outcomes better or
- * worse? Pure and DB-free; scripts/backtest-cautious-edge.ts supplies the
- * graded samples, the unit tests supply synthetic ones.
+ * Grading the haircut: on graded props, which predicts outcomes best?
  *
- * Scores BOTH probabilities on the same samples (log loss + Brier + mean
- * predicted vs actual hit rate), and buckets samples by cautious-edge size
- * so the readout answers the practical question too: when the cautious edge
- * says a prop is strong, does it actually cash more than the price implies?
+ *   BLEND    — ARCHR Chance alone (the blend out of priceProp)
+ *   LEGACY   — the old cautious read, min(blend, Wilson floor of the record)
+ *   EVIDENCE — the new cautious read, the record as a Beta update on the
+ *              blend, games weighted by role resemblance where known
+ *              (lib/propModel/cautiousRead)
+ *
+ * All three are scored on the SAME samples (log loss, Brier, mean predicted
+ * vs actual). Then, for each cautious read, samples are bucketed by its
+ * cautious edge — ≤0, 0–5%, 5–10%, 10–20%, 20%+ up to the +50% trust cap, and
+ * the distrusted tail past it — with each bucket's hit rate against the chance
+ * its price implied and its flat-stake ROI at that price. The prices are the
+ * closing quotes, so "hit rate above implied" IS "beat the closing price".
+ *
+ * evidenceGate() turns a grade into the one decision the canonical module's
+ * CAUTIOUS_READ_MODE waits on. Pure and DB-free: scripts/backtest-cautious-edge
+ * supplies the graded samples, the unit tests synthetic ones.
  */
-import { MAX_TRUSTED_RELATIVE_EDGE } from "@/lib/builder/conservative";
+import { americanToDecimal } from "@/lib/odds/americanOdds";
+import { MAX_TRUSTED_RELATIVE_EDGE, relativeEdge } from "@/lib/builder/conservative";
 import type { Rate } from "@/lib/builder/types";
-import { cautiousChance, cautiousEdge } from "./canonical";
+import { cautiousChance, type CautiousReadMode } from "./canonical";
+import { evidenceCautiousChance } from "./cautiousRead";
 
 export interface CautiousGradeSample {
   /** ARCHR Chance for the graded side (the blend out of priceProp). */
   pBlend: number;
-  /** The side's hit record going into the game — [hits, games] over the L10 window (the screener's window). */
+  /** The side's plain hit record going into the game — [hits, games] over the L10 window (the screener's window). */
   rate: Rate;
-  /** Best posted price for the side, American; null = no price, so no cautious edge exists. */
+  /** The same window weighted by role resemblance to that night (NBA); null/absent = no role context, the plain record is used. */
+  roleRate?: Rate | null;
+  /** Closing best price for the side, American; null = no price, so no cautious edge and no ROI. */
   priceAmerican: number | null;
   /** 1 if the side cashed, 0 if not (pushes are excluded by the caller). */
   won: 0 | 1;
@@ -41,28 +53,41 @@ export interface CautiousBucket {
   n: number;
   /** Mean cautious edge in the bucket. */
   meanCautiousEdge: number;
-  /** Mean price-implied chance — what the bucket's props "should" have hit at their prices. */
+  /** Mean closing-price implied chance — what the bucket's props "should" have hit at their prices. */
   meanImplied: number;
-  /** Actual hit rate. */
+  /** Actual hit rate: above meanImplied = beat the closing price. */
   hitRate: number;
+  /** Flat one-unit stake on every prop in the bucket at its closing price: mean profit per unit, with its 95% range. */
+  roi: number;
+  roiLow: number;
+  roiHigh: number;
   blendLogLoss: number;
-  cautiousLogLoss: number;
+  /** Log loss of the read that bucketed these samples. */
+  readLogLoss: number;
 }
 
 export interface CautiousGrade {
   n: number;
-  /** Samples with a price and a cautious read (the subset the cautious scores cover). */
+  /** Samples with a closing price (the subset buckets and ROI cover). */
   pricedN: number;
+  /** Samples whose record carried role weighting. */
+  roleWeightedN: number;
+  /** Every read scored on all n samples. */
   blend: ProbScore;
-  /** Scored on pricedN samples only. */
-  cautious: ProbScore;
-  buckets: CautiousBucket[];
-  /** Priced samples whose cautious edge ran past the +50% trust cap — shown, never silently dropped. */
-  distrustedN: number;
+  legacy: ProbScore;
+  evidence: ProbScore;
+  /** The evidence read on the plain record (no role weighting): isolates what the role weighting adds. */
+  evidencePlain: ProbScore;
+  /** Buckets by each cautious read's own edge, priced samples only. */
+  buckets: Record<CautiousReadMode, CautiousBucket[]>;
+  /** Diagnostics only — the evidence read's log loss at other prior strengths. Never applied automatically. */
+  priorSweep: { priorGames: number; logLoss: number; brier: number }[];
 }
 
 const EPS = 1e-6;
+const Z = 1.96;
 const clampP = (p: number) => Math.min(Math.max(p, EPS), 1 - EPS);
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 
 function logLossOf(pairs: { p: number; won: 0 | 1 }[]): number {
   if (!pairs.length) return NaN;
@@ -75,60 +100,105 @@ function score(pairs: { p: number; won: 0 | 1 }[]): ProbScore {
     n,
     logLoss: logLossOf(pairs),
     brier: n ? pairs.reduce((s, x) => s + (x.p - x.won) ** 2, 0) / n : NaN,
-    meanProb: n ? pairs.reduce((s, x) => s + x.p, 0) / n : NaN,
-    hitRate: n ? pairs.reduce((s, x) => s + x.won, 0) / n : NaN,
+    meanProb: mean(pairs.map((x) => x.p)),
+    hitRate: mean(pairs.map((x) => x.won)),
   };
 }
 
-const BUCKETS: { key: string; label: string; test: (e: number) => boolean }[] = [
-  { key: "neg", label: "cautious edge ≤ 0%", test: (e) => e <= 0 },
+const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
+
+export const CAUTIOUS_BUCKETS: { key: string; label: string; test: (e: number) => boolean }[] = [
+  { key: "le0", label: "≤ 0%", test: (e) => e <= 0 },
   { key: "0-5", label: "0–5%", test: (e) => e > 0 && e <= 0.05 },
   { key: "5-10", label: "5–10%", test: (e) => e > 0.05 && e <= 0.1 },
-  { key: "10-25", label: "10–25%", test: (e) => e > 0.1 && e <= 0.25 },
-  { key: "25-50", label: "25–50%", test: (e) => e > 0.25 && e <= MAX_TRUSTED_RELATIVE_EDGE },
-  { key: "distrusted", label: ">50% (distrusted)", test: (e) => e > MAX_TRUSTED_RELATIVE_EDGE },
+  { key: "10-20", label: "10–20%", test: (e) => e > 0.1 && e <= 0.2 },
+  { key: "20+", label: "20%+ (to the +50% cap)", test: (e) => e > 0.2 && e <= MAX_TRUSTED_RELATIVE_EDGE },
+  { key: "distrusted", label: "> 50% (distrusted)", test: (e) => e > MAX_TRUSTED_RELATIVE_EDGE },
 ];
 
-export function gradeCautiousSamples(samples: CautiousGradeSample[]): CautiousGrade {
-  const blend = score(samples.map((s) => ({ p: s.pBlend, won: s.won })));
+/** The prior strengths the sweep reports. */
+export const PRIOR_SWEEP = [5, 10, 20, 40];
 
-  const priced = samples
-    .map((s) => ({ s, cp: cautiousChance(s.pBlend, s.rate), ce: cautiousEdge(s.pBlend, s.rate, s.priceAmerican) }))
-    .filter((x): x is { s: CautiousGradeSample; cp: number; ce: number } => x.cp !== null && x.ce !== null && x.s.priceAmerican !== null);
+const readOf = (s: CautiousGradeSample, mode: CautiousReadMode) => cautiousChance(s.pBlend, s.rate, s.roleRate, mode)!;
 
-  const cautious = score(priced.map((x) => ({ p: x.cp, won: x.s.won })));
-
-  const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
-  const buckets: CautiousBucket[] = BUCKETS.map((b) => {
-    const rows = priced.filter((x) => b.test(x.ce));
+function bucketsFor(samples: CautiousGradeSample[], mode: CautiousReadMode): CautiousBucket[] {
+  const priced = samples.flatMap((s) => {
+    if (s.priceAmerican === null) return [];
+    const p = readOf(s, mode);
+    const e = relativeEdge(p, s.priceAmerican);
+    return e === null ? [] : [{ s, p, e, price: s.priceAmerican }];
+  });
+  return CAUTIOUS_BUCKETS.map((b) => {
+    const rows = priced.filter((x) => b.test(x.e));
+    const profits = rows.map((x) => (x.s.won ? americanToDecimal(x.price) - 1 : -1));
+    const roi = mean(profits);
+    const sd = profits.length > 1 ? Math.sqrt(profits.reduce((a, v) => a + (v - roi) ** 2, 0) / (profits.length - 1)) : Infinity;
+    const half = Z * (sd / Math.sqrt(profits.length));
     return {
       key: b.key,
       label: b.label,
       n: rows.length,
-      meanCautiousEdge: rows.length ? rows.reduce((s, x) => s + x.ce, 0) / rows.length : NaN,
-      meanImplied: rows.length ? rows.reduce((s, x) => s + implied(x.s.priceAmerican!), 0) / rows.length : NaN,
-      hitRate: rows.length ? rows.reduce((s, x) => s + x.s.won, 0) / rows.length : NaN,
+      meanCautiousEdge: mean(rows.map((x) => x.e)),
+      meanImplied: mean(rows.map((x) => implied(x.price))),
+      hitRate: mean(rows.map((x) => x.s.won)),
+      roi,
+      roiLow: roi - half,
+      roiHigh: roi + half,
       blendLogLoss: logLossOf(rows.map((x) => ({ p: x.s.pBlend, won: x.s.won }))),
-      cautiousLogLoss: logLossOf(rows.map((x) => ({ p: x.cp, won: x.s.won }))),
+      readLogLoss: logLossOf(rows.map((x) => ({ p: x.p, won: x.s.won }))),
     };
   });
+}
 
+export function gradeCautiousSamples(samples: CautiousGradeSample[]): CautiousGrade {
+  const pairs = (p: (s: CautiousGradeSample) => number) => samples.map((s) => ({ p: p(s), won: s.won }));
+  const evidenceAt = (k: number) => (s: CautiousGradeSample) => evidenceCautiousChance(s.pBlend, s.roleRate ?? s.rate, k)!;
   return {
     n: samples.length,
-    pricedN: priced.length,
-    blend,
-    cautious,
-    buckets,
-    distrustedN: buckets.find((b) => b.key === "distrusted")?.n ?? 0,
+    pricedN: samples.filter((s) => s.priceAmerican !== null).length,
+    roleWeightedN: samples.filter((s) => s.roleRate).length,
+    blend: score(pairs((s) => s.pBlend)),
+    legacy: score(pairs((s) => readOf(s, "legacy-min"))),
+    evidence: score(pairs((s) => readOf(s, "evidence"))),
+    evidencePlain: score(pairs((s) => cautiousChance(s.pBlend, s.rate, null, "evidence")!)),
+    buckets: { "legacy-min": bucketsFor(samples, "legacy-min"), evidence: bucketsFor(samples, "evidence") },
+    priorSweep: PRIOR_SWEEP.map((k) => {
+      const sc = score(pairs(evidenceAt(k)));
+      return { priorGames: k, logLoss: sc.logLoss, brier: sc.brier };
+    }),
   };
 }
 
-/** One-line verdict for the lab output: which probability predicted better, and by how much log loss. */
+/** Fewer graded samples than this and the gate won't decide: the log-loss gaps it compares are noise below it. */
+export const MIN_GATE_SAMPLES = 300;
+
+export type GateDecision = "adopt-evidence" | "keep-legacy" | "data-required";
+
+/**
+ * The evidence gate. The evidence read replaces the legacy min() as the
+ * screener/optimizer input only if it calibrates at least as well as the blend
+ * alone (log loss AND Brier no worse) and better than the legacy read (log
+ * loss strictly lower). Below MIN_GATE_SAMPLES graded samples: no decision.
+ */
+export function evidenceGate(g: CautiousGrade): { decision: GateDecision; reason: string } {
+  if (g.n < MIN_GATE_SAMPLES) {
+    return { decision: "data-required", reason: `${g.n} graded props; the gate needs at least ${MIN_GATE_SAMPLES}` };
+  }
+  const f = (x: number) => x.toFixed(4);
+  const vsBlend = g.evidence.logLoss <= g.blend.logLoss && g.evidence.brier <= g.blend.brier;
+  const vsLegacy = g.evidence.logLoss < g.legacy.logLoss;
+  const detail = `evidence LL ${f(g.evidence.logLoss)} / Brier ${f(g.evidence.brier)}; blend ${f(g.blend.logLoss)} / ${f(g.blend.brier)}; legacy LL ${f(g.legacy.logLoss)}`;
+  if (vsBlend && vsLegacy) return { decision: "adopt-evidence", reason: `passes: at least as calibrated as the blend and better than legacy min() (${detail})` };
+  const why = [!vsBlend && "worse than the blend alone", !vsLegacy && "no better than legacy min()"].filter(Boolean).join(" and ");
+  return { decision: "keep-legacy", reason: `fails: ${why} (${detail})` };
+}
+
+/** One-line verdict for the lab output: how the legacy haircut compares with the blend, by log loss. */
 export function cautiousVerdict(g: CautiousGrade): string {
-  if (!g.pricedN) return "no priced samples — nothing to grade";
-  const d = g.cautious.logLoss - g.blend.logLoss;
-  if (Math.abs(d) < 0.002) return `a wash on log loss (Δ ${d >= 0 ? "+" : ""}${d.toFixed(4)}) — the haircut neither earns nor costs accuracy at this sample`;
+  if (!g.n) return "no graded samples — nothing to grade";
+  const d = g.legacy.logLoss - g.blend.logLoss;
+  if (Math.abs(d) < 0.002) return `a wash on log loss (Δ ${d >= 0 ? "+" : ""}${d.toFixed(4)}) — the min() haircut neither earns nor costs accuracy at this sample`;
   return d < 0
-    ? `the cautious read predicted BETTER than the blend (log loss ${g.cautious.logLoss.toFixed(4)} vs ${g.blend.logLoss.toFixed(4)}, Δ ${d.toFixed(4)})`
-    : `the blend predicted BETTER than its cautious read (log loss ${g.blend.logLoss.toFixed(4)} vs ${g.cautious.logLoss.toFixed(4)}, Δ +${d.toFixed(4)}) — the haircut costs accuracy as a probability, whatever it earns as a filter`;
+    ? `the min() haircut predicted BETTER than the blend (log loss ${g.legacy.logLoss.toFixed(4)} vs ${g.blend.logLoss.toFixed(4)}, Δ ${d.toFixed(4)})`
+    : `the blend predicted BETTER than its min() haircut (log loss ${g.blend.logLoss.toFixed(4)} vs ${g.legacy.logLoss.toFixed(4)}, Δ +${d.toFixed(4)}) — the haircut costs accuracy as a probability, whatever it earns as a filter`;
 }
