@@ -23,6 +23,7 @@ import { fitModelWeight, type BlendSample } from "@/lib/propModel/fit";
 import { blendWithMarket } from "@/lib/propModel/market";
 import { scoreCalibration, formatCalibrationReport, type CalibrationSample } from "@/lib/engine/calibration";
 import { saveReport } from "@/lib/engine/saveReport";
+import { sportCardFor } from "./backtestGamesCards";
 
 /**
  * Backtest for the NBA/NFL game model (src/lib/gameModel). Replays every
@@ -292,18 +293,18 @@ async function run(sport: Sport) {
   const mlReport = scoreCalibration(mlSamples);
   console.log(formatCalibrationReport(`${sport.toUpperCase()} game model — moneyline favorite`, "game", mlReport));
   await saveReport(`${sport}-games:ml`, `${sport.toUpperCase()} games — moneyline`, "game", mlReport, { k: bestK });
-  if (sport === "nfl") {
-    // Decision 8: publish this grade as the NFL sport card — the verdict
-    // the trust gate reads (queries/modelTrust keys verdicts by sport).
-    // The points-ratings model is what PRICES NFL games (queries/
-    // gameModel); until now its grade lived only under nfl-games:ml,
-    // which nothing gates on, while the fenced Elo's baked "trusted"
-    // (lib/nfl/model.ts, never wired to pricing) was the only NFL
-    // verdict-shaped object in the repo. The Elo stays fenced; this card
-    // is the pricing model's own walk-forward grade, re-earned every
-    // lab run.
-    await saveReport("nfl", "NFL games — moneyline (points ratings, pricing)", "game", mlReport, { k: bestK, pricingModel: "points-ratings" });
-  }
+  // Publish this grade as the sport card too — the verdict the trust gate
+  // reads (queries/modelTrust keys verdicts by bare sport key). The
+  // points-ratings model is what PRICES these games (queries/gameModel);
+  // without the dual save its grade lives only under `<sport>-games:ml`,
+  // which nothing gates on. Decision 8 (Phase 4) wired the NFL after finding
+  // exactly that — the fenced Elo's baked "trusted" (lib/nfl/model.ts, never
+  // wired to pricing) was the only NFL verdict-shaped object in the repo; the
+  // Elo stays fenced. Phase 5 found the NBA in the identical spot and made
+  // the save uniform (scripts/backtestGamesCards.ts) so the two game-model
+  // sports publish by construction and can't drift apart again.
+  const card = sportCardFor(sport);
+  await saveReport(card.key, card.label, "game", mlReport, { k: bestK, pricingModel: card.pricingModel });
 
   // 5. Model vs the closing market, per market.
   const blendSets: Record<"ml" | "spread" | "total", (BlendSample & { date: string })[]> = { ml: [], spread: [], total: [] };
