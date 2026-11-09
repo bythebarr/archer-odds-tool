@@ -59,6 +59,11 @@ export async function collectNflSamples({ limit }: { limit: number }): Promise<C
  * probabilities), but per the CLV backtest (`npm run backtest:nfl:clv`) it does NOT
  * beat the closing line, so it stays SIGNAL-ONLY like tennis/UFC when the live
  * adapter lands. See [[models_dont_beat_the_close]] / docs/architecture/calibration.md.
+ *
+ * FENCE (Decision 8): this snapshot is a reference for the Elo's own quality,
+ * never a pricing verdict. NFL games are priced by the points-ratings model,
+ * whose published verdict is the "nfl" sport card written by backtest:games.
+ * Nothing may read the calibration below as permission to price or post.
  */
 export const NFL_MODEL: SportModel = {
   describes: "team Elo win probability (home-field + margin-of-victory, season-reverted)",
