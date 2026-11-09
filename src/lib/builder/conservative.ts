@@ -1,15 +1,17 @@
 /**
- * A leg's cautious chance and cautious relative edge (the canonical CAUTIOUS
- * EDGE — see lib/propModel/canonical for the naming: a ranking/filter
- * signal, NOT a probability estimate): the numbers the Props screener sorts
- * by and the payout optimizer maximizes. Pure.
+ * The cautious-edge primitives: the relative edge, its +50% trust cap, and the
+ * LEGACY cautious read (conservativeProb). Consumers don't call the read
+ * directly: they go through lib/propModel/canonical (cautiousChance /
+ * cautiousEdge), which picks the live read — this legacy one, or the
+ * evidence-weighted one in lib/propModel/cautiousRead — by CAUTIOUS_READ_MODE.
+ * A ranking/filter signal, NOT a probability estimate. Pure.
  *
- * A record of 9 for 10 and a model reading of 80% are both estimates; the
- * conservative chance takes the more cautious of the two: the low end of the
- * record's range (Wilson, one standard error, so 5 of 5 isn't treated as
- * certain) or ARCHR's chance, whichever is lower. The relative edge compares
- * that with the chance the book's price implies (vig included): +10% means the
- * leg looks 10% more likely than the price says, even read cautiously.
+ * The legacy read takes the more cautious of a record of 9 for 10 and a model
+ * reading of 80%: the low end of the record's range (Wilson, one standard
+ * error, so 5 of 5 isn't treated as certain) or ARCHR's chance, whichever is
+ * lower. The relative edge compares a read with the chance the book's price
+ * implies (vig included): +10% means the leg looks 10% more likely than the
+ * price says, even read cautiously.
  */
 import type { Rate } from "./types";
 
@@ -37,7 +39,7 @@ export function impliedProb(american: number): number {
   return american < 0 ? -american / (100 - american) : 100 / (american + 100);
 }
 
-/** The cautious read: min(ARCHR, record floor); either alone where only one exists; null with neither. */
+/** The LEGACY cautious read: min(ARCHR, record floor); either alone where only one exists; null with neither. Read it through lib/propModel/canonical. */
 export function conservativeProb(archr: number | null, rate: Rate): number | null {
   const [h, n] = rate;
   const floor = n >= MIN_GAMES ? recordFloor(h, n) : null;

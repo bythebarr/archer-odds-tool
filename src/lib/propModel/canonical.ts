@@ -36,7 +36,7 @@
 import { relativeEdge } from "@/lib/builder/conservative";
 import { edgeOf, type Rate } from "@/lib/builder/types";
 import type { PricedProp } from "./price";
-import { evidenceCautiousChance, legacyCautiousChance } from "./cautiousRead";
+import { EVIDENCE_PRIOR_GAMES, evidenceCautiousChance, legacyCautiousChance } from "./cautiousRead";
 
 export type CautiousReadMode = "legacy-min" | "evidence";
 
@@ -49,6 +49,15 @@ export type CautiousReadMode = "legacy-min" | "evidence";
  * every server render must read the same number.
  */
 export const CAUTIOUS_READ_MODE: CautiousReadMode = "legacy-min";
+
+/** Plain-language math of each cautious read, for explainer copy: every surface describes the read that is actually live. */
+export const CAUTIOUS_READ_MATH: Record<CautiousReadMode, string> = {
+  "legacy-min": "the lower of ARCHR chance and the low end of the player's recent record at this line (one standard error)",
+  evidence: `ARCHR chance updated by the player's recent record at this line, the record counting as evidence by its games against ${EVIDENCE_PRIOR_GAMES} for ARCHR chance (3 games barely move it, ${EVIDENCE_PRIOR_GAMES} move it halfway, up or down), each past game weighted by how closely his minutes and role then match tonight's`,
+};
+
+/** The live cautious read's math, in words. */
+export const cautiousReadMath = CAUTIOUS_READ_MATH[CAUTIOUS_READ_MODE];
 
 export type CanonicalNumberKey = "projection" | "archrChance" | "edge" | "cautiousEdge" | "hitRateProjection";
 
@@ -88,10 +97,10 @@ export const CANONICAL_NUMBERS: Record<CanonicalNumberKey, CanonicalNumber> = {
   },
   cautiousEdge: {
     key: "cautiousEdge",
-    label: "Cautious edge",
+    label: "Cautious edge — ranking only",
     shortLabel: "Caut. edge",
     kind: "ranking signal",
-    blurb: "Cautious edge — ranking only, not a probability: ARCHR chance re-read against the player's recent record at this line (today, the lower of ARCHR chance and the low end of the record's range), compared with the chance the price implies. It sorts and filters; it is never quoted as a chance.",
+    blurb: `Cautious edge — ranking only, not a probability: ${cautiousReadMath}, over the chance the price implies, minus one. It sorts and filters; it is never quoted as a chance.`,
   },
   hitRateProjection: {
     key: "hitRateProjection",

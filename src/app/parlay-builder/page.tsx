@@ -6,6 +6,10 @@ import { optimizeParlays, type OptimizedParlay } from "@/lib/builder/optimize";
 import type { BuilderLeg, BuilderWindow } from "@/lib/builder/types";
 import { ALL_SPORTS } from "@/lib/allSports/sports";
 import { formatAmerican } from "@/lib/odds/americanOdds";
+import { CANONICAL_NUMBERS, cautiousReadMath, edgeFromChance } from "@/lib/propModel/canonical";
+
+/** Hover note on every cautious number here: what it is, and that it isn't a chance. */
+const CAUTIOUS_NOTE = `${CANONICAL_NUMBERS.cautiousEdge.label}: ${cautiousReadMath}, over the window. Not a probability.`;
 import { refreshOnView } from "@/lib/ops/refreshOnView";
 import { ScrollRow } from "@/components/ScrollRow";
 import { ParlayGenerator } from "@/components/builder/ParlayGenerator";
@@ -125,11 +129,16 @@ function LegRow({ l, window, prob }: { l: BuilderLeg; window: BuilderWindow; pro
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {h}/{n}
           {l.archr !== null && <> · ARCHR {pct(l.archr)}</>}
-          {prob !== undefined && <> · est {pct(prob)}</>}
+          {prob !== undefined && (
+            <span title={CAUTIOUS_NOTE}>
+              {" "}
+              · caut. {pct(prob)}
+            </span>
+          )}
         </p>
         {cedge !== null && (
-          <p className={`text-[10px] ${cedge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-            cons. edge {cedge > 0 ? "+" : ""}
+          <p className={`text-[10px] ${cedge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} title={CAUTIOUS_NOTE}>
+            {CANONICAL_NUMBERS.cautiousEdge.shortLabel.toLowerCase()} {cedge > 0 ? "+" : ""}
             {(cedge * 100).toFixed(1)}%
           </p>
         )}
@@ -171,6 +180,8 @@ function ParlayCard({ p, window, index }: { p: BuiltParlay; window: BuilderWindo
 }
 
 function OptimizedCard({ p, window, index, target }: { p: OptimizedParlay; window: BuilderWindow; index: number; target: number }) {
+  // EDGE comes from ARCHR chance only (lib/propModel/canonical); the cautious product ranks, it isn't priced.
+  const edge = edgeFromChance(p.archr, p.priceAmerican);
   return (
     <li className="rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-3 pt-3">
@@ -179,16 +190,24 @@ function OptimizedCard({ p, window, index, target }: { p: OptimizedParlay; windo
           {p.priceAmerican > target * 1.15 && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">(over your {formatAmerican(target)})</span>}
         </p>
         <p className="text-[11px] text-muted-foreground">
-          est. chance <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{(p.prob * 100).toFixed(1)}%</span>
           {p.archr !== null && (
             <>
-              {" · "}ARCHR <span className="font-mono text-foreground">{(p.archr * 100).toFixed(1)}%</span>
+              {CANONICAL_NUMBERS.archrChance.label} <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{(p.archr * 100).toFixed(1)}%</span>
+              {" · "}
             </>
           )}
-          {" · "}cons. EV{" "}
-          <span className={`font-mono ${p.edge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
-            {p.edge >= 0 ? "+" : ""}
-            {(p.edge * 100).toFixed(1)}%
+          {edge !== null && (
+            <>
+              {CANONICAL_NUMBERS.edge.label}{" "}
+              <span className={`font-mono ${edge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+                {edge >= 0 ? "+" : ""}
+                {(edge * 100).toFixed(1)}%
+              </span>
+              {" · "}
+            </>
+          )}
+          <span title={CAUTIOUS_NOTE}>
+            cautious score <span className="font-mono text-foreground">{(p.prob * 100).toFixed(1)}%</span> — ranking only
           </span>
         </p>
       </div>
@@ -475,11 +494,12 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         spread or total at tonight&apos;s number in the teams&apos; games (for UFC, the fighter&apos;s fights). An edge above 50% is left out of the
         edge filter and ranking: ARCHR disagreeing with the book that much is the model&apos;s weak spot (alt lines, mostly), not a bet. Legs from different games are treated as
         independent, so the parlay&apos;s ARCHR chance and record are the legs&apos; multiplied. Prices are the best one posted; &quot;—&quot; is a line posted
-        before its price. ARCHR chance is the one probability for every leg — the model blended with the books&apos; no-vig consensus — and ARCHR&apos;s edge is that chance against the best price. Hit a payout: each leg&apos;s estimate is its cautious chance, the lower of ARCHR&apos;s chance and the low end of its
-        record&apos;s range over the window (one standard error); the optimizer searches every combination (one leg per game) for the likeliest
-        whose price pays at least what you picked, and the alternatives below it each leave one of its legs out. Legs whose price is far
-        longer than their cautious read (more than +50% cautious edge) are left out: that gap is a price that doesn&apos;t belong to the line. The cautious edge
-        compares a leg&apos;s cautious chance with the chance its price implies — it is a ranking signal for sorting and building, not a probability. Research only.
+        before its price. ARCHR chance is the one probability for every leg — the model blended with the books&apos; no-vig consensus — and ARCHR&apos;s edge is that chance against the best price. Hit a payout: each leg is read cautiously (&ldquo;caut.&rdquo;) — {cautiousReadMath}, over the window — and the optimizer searches every
+        combination (one leg per game) for the highest cautious score (the legs&apos; cautious reads multiplied) whose price pays at least what
+        you picked; the alternatives below it each leave one of its legs out. The cautious score ranks, it isn&apos;t a chance: the parlay&apos;s
+        chance is its ARCHR chance, and its edge is ARCHR edge. Legs whose price is far longer than their cautious read (more than +50% cautious
+        edge) are left out: that gap is a price that doesn&apos;t belong to the line. The cautious edge compares a leg&apos;s cautious read with the
+        chance its price implies — ranking only, for sorting and building, not a probability. Research only.
       </p>
         </>
       )}

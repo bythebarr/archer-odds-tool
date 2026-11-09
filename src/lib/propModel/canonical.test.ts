@@ -55,3 +55,15 @@ describe("canonical numbers", () => {
     expect(cautiousEdge(0.68, rate, null)).toBeNull();
   });
 });
+
+describe("one language for the cautious read", () => {
+  it("is labeled ranking-only, and its explainer describes the read that is actually live", async () => {
+    const { CAUTIOUS_READ_MATH, CAUTIOUS_READ_MODE, cautiousReadMath } = await import("./canonical");
+    const { EVIDENCE_PRIOR_GAMES } = await import("./cautiousRead");
+    expect(CANONICAL_NUMBERS.cautiousEdge.label).toBe("Cautious edge — ranking only");
+    expect(cautiousReadMath).toBe(CAUTIOUS_READ_MATH[CAUTIOUS_READ_MODE]);
+    expect(CANONICAL_NUMBERS.cautiousEdge.blurb).toContain(cautiousReadMath);
+    expect(CAUTIOUS_READ_MATH["legacy-min"]).toContain("lower of ARCHR chance");
+    expect(CAUTIOUS_READ_MATH.evidence).toContain(`against ${EVIDENCE_PRIOR_GAMES} for ARCHR chance`);
+  });
+});

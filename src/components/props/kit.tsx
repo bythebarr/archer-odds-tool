@@ -17,6 +17,7 @@ import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
 import { EvTag } from "@/components/EvTag";
 import { ScrollRow } from "@/components/ScrollRow";
+import { CANONICAL_NUMBERS } from "@/lib/propModel/canonical";
 
 export const initials = (name: string) =>
   name
@@ -225,11 +226,14 @@ export function ArchrLineChip({ label, price, note }: { label?: string; price?: 
   );
 }
 
-/** ARCHR's chance on the chosen side, volt when it sees an edge at the best price. */
+/** ARCHR chance on the chosen side (the blend, the one probability), volt when it sees an edge at the best price. */
 export function ModelChip({ prob, edge }: { prob: number; edge: boolean }) {
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${edge ? "bg-brand text-brand-foreground" : "bg-muted"}`}>
-      <span className={`text-[10px] font-semibold uppercase ${edge ? "" : "text-muted-foreground"}`}>Model</span>
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${edge ? "bg-brand text-brand-foreground" : "bg-muted"}`}
+      title={CANONICAL_NUMBERS.archrChance.blurb}
+    >
+      <span className={`text-[10px] font-semibold uppercase ${edge ? "" : "text-muted-foreground"}`}>{CANONICAL_NUMBERS.archrChance.shortLabel}</span>
       <span className={`font-mono font-semibold ${edge ? "" : "text-foreground"}`}>{Math.round(prob * 100)}%</span>
     </span>
   );
