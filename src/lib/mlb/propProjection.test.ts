@@ -73,3 +73,16 @@ describe("projectPitcher", () => {
     expect(projectPitcher(ace.slice(0, 2), "outsRecorded", {})).toBeNull();
   });
 });
+
+describe("park factors in the projection", () => {
+  it("a hitter-friendly park lifts hits; a K-heavy park lifts strikeouts", () => {
+    const logs = slugger(80);
+    const neutral = projectBatter(logs, "hits", {})!;
+    const coors = projectBatter(logs, "hits", { parkHits: 1.1 })!;
+    expect(neutral.parkFactor).toBe(1);
+    expect(coors.parkFactor).toBe(1.1);
+    expect(coors.mean).toBeGreaterThan(neutral.mean);
+    const kPark = projectBatter(logs, "battingStrikeouts", { parkK: 1.08 })!;
+    expect(kPark.mean).toBeGreaterThan(projectBatter(logs, "battingStrikeouts", {})!.mean);
+  });
+});
