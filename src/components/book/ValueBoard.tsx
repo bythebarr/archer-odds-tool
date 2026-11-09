@@ -32,7 +32,6 @@ type ValuePlay =
     }
   | { kind: "prop"; key: string; label: string; sub: string; href: string; price: number; bookKey: string; ev: number; fairAmerican: number; booksUsed: number };
 
-const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
 async function linePlays(sport: TeamLeagueSport, today: string): Promise<ValuePlay[]> {
   const [day] = await getLeagueDays(sport, today);
@@ -48,7 +47,7 @@ async function linePlays(sport: TeamLeagueSport, today: string): Promise<ValuePl
     for (const side of ["away", "home"] as const) {
       const team = e[side];
       const sp = e.spread[side];
-      if (sp?.point != null) add(sp, "spreads", side, `${team.name} ${signed(sp.point)}`, signed(sp.point));
+      if (sp?.point != null) add(sp, "spreads", side, `${team.name} ${formatAmerican(sp.point)}`, formatAmerican(sp.point));
       add(e.moneyline[side], "h2h", side, `${team.name} ML`);
     }
     const o = e.total.over;

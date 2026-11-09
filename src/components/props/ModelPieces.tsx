@@ -3,12 +3,12 @@
  * explains its numbers the same way: what the model says vs the market and the
  * blend, how much rests on last season, and what tonight's lines changed.
  */
+import { formatAmerican } from "@/lib/odds/americanOdds";
 import type { PricedProp } from "@/lib/propModel/price";
 import type { SeasonMix } from "@/lib/propModel/seasonMix";
 import type { PropDirection } from "@/lib/props/tally";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
-const signed = (x: number) => (x > 0 ? `+${x}` : `${x}`);
 
 /** Model alone → market → the blend we price with, for the chosen side. */
 export function BlendLine({ model, side }: { model: PricedProp; side: PropDirection }) {
@@ -72,4 +72,6 @@ export function EnvLine({ parts, effects }: { parts: string[]; effects: { label:
   );
 }
 
-export { signed };
+// Re-exported under its historical name for the prop sheets that import it;
+// the implementation is the shared odds formatter (Phase 5 consolidation).
+export { formatAmerican as signed };

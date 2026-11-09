@@ -2,14 +2,11 @@ import Link from "next/link";
 import type { LeagueEventRow, EventTeam } from "@/lib/queries/lobby";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { Logo } from "@/components/Logo";
+import { formatAmerican } from "@/lib/odds/americanOdds";
 import { PriceButton } from "./PriceButton";
 
 /** The shared grid template: team column, then Spread · Total · Moneyline. */
 export const EVENT_GRID = "grid grid-cols-[minmax(0,1fr)_4.25rem_4.25rem_4.25rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem]";
-
-function signed(n: number): string {
-  return n > 0 ? `+${n}` : `${n}`;
-}
 
 function startLabel(iso: string, status: string): string {
   if (status === "live") return "LIVE";
@@ -73,10 +70,10 @@ export function EventRow({ event, sport }: { event: LeagueEventRow; sport: TeamL
               <PriceButton
                 {...common}
                 price={spread}
-                label={spread?.point != null ? signed(spread.point) : undefined}
+                label={spread?.point != null ? formatAmerican(spread.point) : undefined}
                 marketType="spreads"
                 side={side}
-                selectionLabel={`${team.name} ${spread?.point != null ? signed(spread.point) : ""}`.trim()}
+                selectionLabel={`${team.name} ${spread?.point != null ? formatAmerican(spread.point) : ""}`.trim()}
               />
               <PriceButton
                 {...common}

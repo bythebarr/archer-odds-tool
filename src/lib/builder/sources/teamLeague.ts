@@ -15,6 +15,7 @@ import { getNflPostedLines, getNflPropsSlate } from "@/lib/queries/nflProps";
 import { unpackNflLog, type NflLogPoint } from "@/lib/nfl/propsMath";
 import { nflFinderLegs } from "@/lib/nfl/parlayLegs";
 import { listTeamLeagueGamesWithLines } from "@/lib/queries/teamLeagueGames";
+import { formatSpreadPoint } from "@/lib/odds/americanOdds";
 import { getGameModelView } from "@/lib/queries/gameModel";
 import type { FinderLeg } from "@/lib/props/parlayFinder";
 import { edgeOf, ratesOf, type BuilderLeg } from "../types";
@@ -88,7 +89,6 @@ async function nflProps(): Promise<BuilderLeg[]> {
   });
 }
 
-const signed = (x: number) => (x === 0 ? "PK" : x > 0 ? `+${x}` : `−${Math.abs(x)}`);
 
 /** Each upcoming game's moneyline, spread and total, priced by the game model, with each bet's record in the teams' games. */
 async function gameLines(sport: BuilderLeagueSport, now: Date): Promise<BuilderLeg[]> {
@@ -126,8 +126,8 @@ async function gameLines(sport: BuilderLeagueSport, now: Date): Promise<BuilderL
             ]
           : m.market === "spread" && m.point !== null
             ? [
-                { key: "home", label: `${home.abbreviation} ${signed(m.point)}`, bet: { kind: "spread" as const, team: home.id, point: m.point } },
-                { key: "away", label: `${away.abbreviation} ${signed(-m.point)}`, bet: { kind: "spread" as const, team: away.id, point: -m.point } },
+                { key: "home", label: `${home.abbreviation} ${formatSpreadPoint(m.point)}`, bet: { kind: "spread" as const, team: home.id, point: m.point } },
+                { key: "away", label: `${away.abbreviation} ${formatSpreadPoint(-m.point)}`, bet: { kind: "spread" as const, team: away.id, point: -m.point } },
               ]
             : m.market === "total" && m.point !== null
               ? [

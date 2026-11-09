@@ -5,7 +5,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { mainOffer, type Offer } from "@/lib/gameModel/offers";
-import { americanToImpliedProbability, decimalToAmerican } from "@/lib/odds/americanOdds";
+import { americanToImpliedProbability, decimalToAmerican, formatSpreadPoint } from "@/lib/odds/americanOdds";
 import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
 import { isBettableBook } from "@/lib/odds/bestPrice";
 import { ALL_SPORTS, allSportOrDefault, type AllSport } from "@/lib/allSports/sports";
@@ -117,7 +117,6 @@ function chip(l: { id: string; name: string; region: string | null; logoUrl: str
   return { id: l.id, slug: slugOf(l.id), name: l.name, region: l.region, logoUrl: l.logoUrl, upcoming: l.upcomingCount, outright: l.outright, nextAt: l.nextEventAt };
 }
 
-const signed = (x: number) => (x === 0 ? "PK" : x > 0 ? `+${x}` : `−${Math.abs(x)}`);
 
 function sideOf(o: Offer | null, side: string, label: (pt: number) => string): BoardSide | null {
   const s = o?.sides.find((x) => x.side === side);
@@ -133,7 +132,7 @@ export function boardLines(offers: PricedOffer[]) {
   const total = mainOffer(game.filter((o) => o.kind === "total"));
   const lines = {
     ml: { home: sideOf(ml, "home", () => ""), draw: sideOf(ml, "draw", () => ""), away: sideOf(ml, "away", () => "") },
-    spread: { home: sideOf(spread, "home", signed), away: sideOf(spread, "away", signed) },
+    spread: { home: sideOf(spread, "home", formatSpreadPoint), away: sideOf(spread, "away", formatSpreadPoint) },
     total: { over: sideOf(total, "over", (p) => `O ${p}`), under: sideOf(total, "under", (p) => `U ${p}`) },
   };
   const edges = [lines.ml.home, lines.ml.draw, lines.ml.away, lines.spread.home, lines.spread.away, lines.total.over, lines.total.under]

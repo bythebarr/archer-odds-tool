@@ -13,6 +13,7 @@ import { mainOffer } from "@/lib/gameModel/offers";
 import { leagueRatings } from "@/lib/allSports/model/history";
 import { priceEvent, type PricedOffer } from "@/lib/allSports/model/price";
 import { dropEspnTwins } from "@/lib/queries/allSports";
+import { formatSpreadPoint } from "@/lib/odds/americanOdds";
 import { edgeOf, ratesOf, type BuilderLeg } from "../types";
 import { teamBetOutcomes, type PastGame, type TeamBet } from "../teamHistory";
 
@@ -21,7 +22,6 @@ const HISTORY_DAYS = 400;
 /** Covered by the NBA, NFL and UFC sources. */
 const OWN_SOURCE = new Set(["basketball/nba", "football/nfl", "mma/ufc"]);
 
-const signed = (x: number) => (x === 0 ? "PK" : x > 0 ? `+${x}` : `−${Math.abs(x)}`);
 
 export async function allSportsLegs(now = new Date()): Promise<BuilderLeg[]> {
   const leagues = (await prisma.league.findMany({ where: { active: true, outright: false, upcomingCount: { gt: 0 } }, select: { id: true, sport: true, name: true, espnPath: true } })).filter(
@@ -95,7 +95,7 @@ export async function allSportsLegs(now = new Date()): Promise<BuilderLeg[]> {
       const spread = pick("spread");
       for (const s of spread?.sides ?? []) {
         const team = s.side === "home" ? e.home : e.away;
-        add(`spread:${s.side}`, "spread", `${team} ${signed(s.point)}`, "spread", s.prob, s.best?.priceAmerican ?? null, s.best?.bookName ?? null, { kind: "spread", team, point: s.point });
+        add(`spread:${s.side}`, "spread", `${team} ${formatSpreadPoint(s.point)}`, "spread", s.prob, s.best?.priceAmerican ?? null, s.best?.bookName ?? null, { kind: "spread", team, point: s.point });
       }
       const total = pick("total");
       for (const s of total?.sides ?? []) {
