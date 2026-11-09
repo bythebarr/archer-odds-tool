@@ -7,6 +7,7 @@ name: Model lab (backtests and fits)
 # Secrets and variables → Actions). The scripts only write their own report cards (ModelReport),
 # except import:tennis (loads the free Sackmann archive + Elo ratings), diagnose:props, diagnose:parlays, diagnose:builder, diagnose:screener and backtest:cautious-edge (read-only)
 # and fix:ufc-duplicates (dry run; the :apply choice merges UFC fights stored twice).
+# report:tracking is the tracking -> ModelReport bridge: it writes only its own labeled tracking:* cards.
 # Keeps the database awake for the run (a few minutes), so run it on purpose.
 on:
   # Weekly refresh of every report card (Monday morning ET). GitHub's scheduler
@@ -28,6 +29,7 @@ on:
           - backtest:nba-minutes
           - backtest:nba-standouts
           - backtest:cautious-edge
+          - report:tracking
           - backtest:nfl-props
           - backtest:props-market
           - backtest:games
@@ -83,7 +85,7 @@ jobs:
           if [ "${{ inputs.script || 'report:all' }}" = "report:all" ]; then
             # Every model's report card; one failing doesn't stop the rest.
             status=0
-            for s in backtest:all backtest:nba-props backtest:nfl-props backtest:props-market backtest:cautious-edge backtest:games backtest:ufc-fights backtest:f1 backtest:mlb-props; do
+            for s in backtest:all backtest:nba-props backtest:nfl-props backtest:props-market backtest:cautious-edge report:tracking backtest:games backtest:ufc-fights backtest:f1 backtest:mlb-props; do
               echo "::group::$s"; npm run --silent "$s" || status=1; echo "::endgroup::"
             done
             exit $status

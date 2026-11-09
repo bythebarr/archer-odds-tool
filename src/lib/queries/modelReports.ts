@@ -33,6 +33,15 @@ export interface ModelCard {
   deltaN: number | null;
   /** The previous run's Brier, for the trend. */
   previousBrier: number | null;
+  /**
+   * Evidence source from the report row's extras. "forward-tracking" marks
+   * the bridge cards (lib/tracking/bridge): forward leans frozen before each
+   * game and graded after, a population disjoint from every backtest sample.
+   * Null = a backtest card.
+   */
+  source: string | null;
+  /** Forward-tracking extras: ROI at the captured prices and CLV vs the close. Only on tracking cards. */
+  tracking: { roi: number; roiLow: number; roiHigh: number; clv: number | null; clvN: number; beatClose: number | null } | null;
 }
 
 /**
@@ -67,6 +76,13 @@ export async function getModelCards(): Promise<ModelCard[]> {
       marketLogLoss?: number;
       blendLogLoss?: number;
       sampleDataAsOf?: unknown;
+      source?: unknown;
+      roi?: number;
+      roiLow?: number;
+      roiHigh?: number;
+      clv?: number | null;
+      clvN?: number;
+      beatClose?: number | null;
     };
     return {
       model: row.model,
@@ -92,6 +108,18 @@ export async function getModelCards(): Promise<ModelCard[]> {
       dataAsOf: typeof extra.sampleDataAsOf === "string" ? extra.sampleDataAsOf : null,
       deltaN: prev ? row.n - prev.n : null,
       previousBrier: prev?.brier ?? null,
+      source: typeof extra.source === "string" ? extra.source : null,
+      tracking:
+        extra.source === "forward-tracking" && extra.roi !== undefined && extra.roiLow !== undefined && extra.roiHigh !== undefined
+          ? {
+              roi: extra.roi,
+              roiLow: extra.roiLow,
+              roiHigh: extra.roiHigh,
+              clv: extra.clv ?? null,
+              clvN: extra.clvN ?? 0,
+              beatClose: extra.beatClose ?? null,
+            }
+          : null,
     };
   });
 }
