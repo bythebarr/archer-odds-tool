@@ -32,7 +32,7 @@ import type { NbaPropStatDef } from "./propStats";
 import type { DefenseTable } from "./matchup";
 import { statMatchup, paceRank } from "./matchup";
 import type { PositionGroup } from "./positionGroups";
-import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
+import { additiveWithoutBlend, gamesWithout, gamesWithoutEach, withoutWeight, type Absence } from "@/lib/injuries/absence";
 import type { MissingPlayer } from "@/lib/gameModel/adjust";
 import { OPPONENT_SPILLOVER_SHARE } from "@/lib/gameModel/adjust";
 import { countCdf, rawProbOver, shrinkLogit, type StatDistribution } from "@/lib/propModel/distribution";
@@ -83,8 +83,8 @@ export interface PropProjection {
   matchupFactor: number;
   paceFactor: number;
   games: number;
-  /** When rotation teammates are out: the games without them that were blended in. */
-  absence: { names: string[]; games: number; minutes: number; perMinute: number } | null;
+  /** When rotation teammates are out: the games without them that were blended in. `additive` = no joint precedent, so each absentee's own split was added one at a time (games/minutes/perMinute then describe the splits, not a joint sample). */
+  absence: { names: string[]; games: number; minutes: number; perMinute: number; additive?: boolean } | null;
   /**
    * When the OPPONENT is missing rotation players: the production lift on
    * this mean from their absence (1 = nobody out). The game model prices a
@@ -215,6 +215,28 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     const w = withoutWeight(without.length, ABSENCE_PRIOR_GAMES);
     perMinute = perMinute * (1 - w) + wRate * w;
     absence = { names: ctx.absences!.map((a) => a.name), games: without.length, minutes: wMinutes, perMinute: wRate };
+  } else if (ctx.absences?.length) {
+    // No precedent for ALL of them out together — the late-star-absence
+    // case, where the joint adjustment used to vanish entirely. Add each
+    // absentee's own without-split one at a time instead.
+    const each = gamesWithoutEach(played, ctx.absences);
+    const splits = each.map((games) => {
+      const gMin = games.reduce((a, l) => a + l.minutes, 0);
+      return { value: gMin ? games.reduce((a, l) => a + stat.value(l), 0) / gMin : perMinute, games: games.length, minutes: games.length ? gMin / games.length : 0 };
+    });
+    const blended = additiveWithoutBlend(perMinute, splits, ABSENCE_PRIOR_GAMES, MIN_WITHOUT_GAMES);
+    if (blended.terms > 0) {
+      perMinute = blended.value;
+      const used = splits.filter((s) => s.games >= MIN_WITHOUT_GAMES);
+      const splitGames = used.reduce((a, s) => a + s.games, 0);
+      absence = {
+        names: ctx.absences.filter((_, i) => each[i].length >= MIN_WITHOUT_GAMES).map((a) => a.name),
+        games: splitGames,
+        minutes: splitGames ? used.reduce((a, s) => a + s.minutes * s.games, 0) / splitGames : 0,
+        perMinute,
+        additive: true,
+      };
+    }
   }
 
   const env = nbaEnvironment(ctx.lines ?? NO_LINES, ctx.isHome ?? null, stat.key, minutesAdj, ctx.baselineTotal ?? null);

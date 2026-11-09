@@ -32,3 +32,38 @@ export function gamesWithout<L extends { date: string }>(logs: L[], absences: Ab
 export function withoutWeight(games: number, k: number): number {
   return games / (games + k);
 }
+
+/**
+ * Each absentee's OWN without-games for this player, one absentee at a time
+ * (same date rule as gamesWithout). The joint sample — every absentee out at
+ * once — is the first read, but it evaporates exactly when it matters most:
+ * two or three rotation players out together rarely has a precedent, while
+ * games without each one alone usually exist.
+ */
+export function gamesWithoutEach<L extends { date: string }>(logs: L[], absences: Absence[]): L[][] {
+  return absences.map((a) => gamesWithout(logs, [a]));
+}
+
+/**
+ * The additive fallback for a missing joint sample: start from the
+ * full-history estimate and add each absentee's own split difference,
+ * weighted by that split's sample (the same withoutWeight rule). Splits
+ * under `minGames` don't count. Returns the blended value and how many
+ * splits went in — zero means no precedent of any kind, where callers fall
+ * back to sharing the absent minutes out (minutes) or nothing (rates).
+ */
+export function additiveWithoutBlend(
+  base: number,
+  splits: { value: number; games: number }[],
+  priorGames: number,
+  minGames: number
+): { value: number; terms: number } {
+  let value = base;
+  let terms = 0;
+  for (const s of splits) {
+    if (s.games < minGames) continue;
+    value += withoutWeight(s.games, priorGames) * (s.value - base);
+    terms++;
+  }
+  return { value, terms };
+}

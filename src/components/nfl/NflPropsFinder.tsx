@@ -523,8 +523,17 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
           />
           {m.projection.absence && (
             <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
-              <span className="font-semibold text-foreground">Without {m.projection.absence.names.join(" & ")}</span> (out this week): {m.projection.absence.games} games averaging{" "}
-              {m.projection.absence.perGame.toFixed(digits(stat))} — blended in.
+              <span className="font-semibold text-foreground">Without {m.projection.absence.names.join(" & ")}</span> (out this week):{" "}
+              {m.projection.absence.additive ? (
+                <>
+                  no games with all of them out, so each split counted on its own ({m.projection.absence.games} split games) for a blended{" "}
+                  {m.projection.absence.perGame.toFixed(digits(stat))} — blended in.
+                </>
+              ) : (
+                <>
+                  {m.projection.absence.games} games averaging {m.projection.absence.perGame.toFixed(digits(stat))} — blended in.
+                </>
+              )}
             </p>
           )}
         </ProjectionCard>

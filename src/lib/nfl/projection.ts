@@ -25,7 +25,7 @@ import { seasonMix, type SeasonMix } from "@/lib/propModel/seasonMix";
 import { nflEnvironment, type NflEnvironment } from "./environment";
 import { nflStatMatchup, type NflDefenseTable, type NflPosition } from "./matchup";
 import type { NflLogPoint } from "./propsMath";
-import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
+import { additiveWithoutBlend, gamesWithout, gamesWithoutEach, withoutWeight, type Absence } from "@/lib/injuries/absence";
 import { OPPONENT_SPILLOVER_SHARE, OWN_SCORE_SHARE } from "@/lib/gameModel/adjust";
 
 const HALF_LIFE = 4;
@@ -62,8 +62,8 @@ export interface NflProjection {
   sd: number;
   matchupFactor: number;
   games: number;
-  /** When key teammates are out: the games without them that were blended in. */
-  absence: { names: string[]; games: number; perGame: number } | null;
+  /** When key teammates are out: the games without them that were blended in. `additive` = no joint precedent, so each absentee's own split was added one at a time (games then counts split games). */
+  absence: { names: string[]; games: number; perGame: number; additive?: boolean } | null;
   /**
    * Both sides' missing-player impact (gameModel points) the environment was
    * re-read through — the opponent's share is what props used to miss
@@ -154,6 +154,24 @@ export function projectNflProp(allLogs: NflLogPoint[], stat: NflPropStatDef, ctx
     const w = withoutWeight(without.length, ABSENCE_PRIOR_GAMES);
     base = base * (1 - w) + perGame * w;
     absence = { names: ctx.absences!.map((a) => a.name), games: without.length, perGame };
+  } else if (ctx.absences?.length) {
+    // No precedent for all of them out together: add each absentee's own
+    // without-split one at a time rather than adjusting by nothing.
+    const each = gamesWithoutEach(logs, ctx.absences);
+    const splits = each.map((games) => ({
+      value: games.length ? games.reduce((a, l) => a + stat.value(l), 0) / games.length : base,
+      games: games.length,
+    }));
+    const blended = additiveWithoutBlend(base, splits, ABSENCE_PRIOR_GAMES, 2);
+    if (blended.terms > 0) {
+      base = blended.value;
+      absence = {
+        names: ctx.absences.filter((_, i) => each[i].length >= 2).map((a) => a.name),
+        games: splits.filter((s) => s.games >= 2).reduce((a, s) => a + s.games, 0),
+        perGame: base,
+        additive: true,
+      };
+    }
   }
 
   let matchupFactor = 1;

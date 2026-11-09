@@ -67,8 +67,18 @@ function ProjectionPanel({ model, point, side, statShort, milestone = false, ble
       />
       {p.absence && (
         <p className="mt-3 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-snug text-muted-foreground">
-          <span className="font-semibold text-foreground">Without {p.absence.names.join(" & ")}</span> (out tonight): {p.absence.games}{" "}
-          games, {p.absence.minutes.toFixed(1)} min, {p.absence.perMinute.toFixed(2)} {statShort}/min — blended into the numbers below.
+          <span className="font-semibold text-foreground">Without {p.absence.names.join(" & ")}</span> (out tonight):{" "}
+          {p.absence.additive ? (
+            <>
+              no games with all of them out, so each split counted on its own ({p.absence.games} split games, {p.absence.minutes.toFixed(1)} min) for a
+              blended {p.absence.perMinute.toFixed(2)} {statShort}/min.
+            </>
+          ) : (
+            <>
+              {p.absence.games} games, {p.absence.minutes.toFixed(1)} min, {p.absence.perMinute.toFixed(2)} {statShort}/min — blended into the numbers
+              below.
+            </>
+          )}
         </p>
       )}
     </ProjectionCard>
