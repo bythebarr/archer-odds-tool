@@ -34,6 +34,7 @@
     "backtest:cautious-edge": "tsx scripts/backtest-cautious-edge.ts",
     "migrate:status": "prisma migrate status || true",
     "migrate:resolve-nhl": "bash scripts/migrate-resolve-nhl.sh",
+    "migrate:inspect": "tsx scripts/migrate-inspect.ts",
     "report:tracking": "tsx scripts/report-tracking.ts",
     "backtest:games": "tsx scripts/backtest-games.ts",
     "backtest:all-sports": "tsx scripts/backtest-all-sports.ts",
