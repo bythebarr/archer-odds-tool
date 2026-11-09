@@ -30,6 +30,7 @@ import { PERIOD_SPECS, type Period, type PeriodSpec } from "@/lib/gameModel/mark
 import { injuryLevel } from "@/lib/injuries/status";
 import { getModelWeights } from "./modelWeights";
 import { MIN_FIT_SAMPLES } from "@/lib/propModel/market";
+import { isFitFresh } from "@/lib/engine/fitFreshness";
 import type { GameLineRow } from "./games";
 
 type Sport = "nba" | "nfl";
@@ -107,13 +108,13 @@ const replay = cache(async (sport: Sport) => {
   return ratings;
 });
 
-/** The fitted margin/total spreads (and period splits) from the latest games backtest, when it has enough games. */
+/** The fitted margin/total spreads (and period splits) from the latest games backtest, when it has enough games and is fresh enough to price with (Decision 9). */
 async function fittedSpreads(
   sport: Sport
 ): Promise<{ marginSd: number; totalSd: number; periods: Record<Exclude<Period, "game">, PeriodSpec> | null } | null> {
-  const r = await prisma.modelReport.findFirst({ where: { model: `${sport}-games:spread` }, orderBy: { createdAt: "desc" }, select: { n: true, extra: true } });
+  const r = await prisma.modelReport.findFirst({ where: { model: `${sport}-games:spread` }, orderBy: { createdAt: "desc" }, select: { n: true, extra: true, createdAt: true } });
   const e = r?.extra as { marginSd?: number; totalSd?: number; periods?: Record<string, PeriodSpec & { n: number }> | null } | null | undefined;
-  if (!r || r.n < MIN_FIT_SAMPLES || !e?.marginSd || !e?.totalSd) return null;
+  if (!r || r.n < MIN_FIT_SAMPLES || !isFitFresh(r.createdAt, new Date()) || !e?.marginSd || !e?.totalSd) return null;
   const p = e.periods;
   const periods = p && ["h1", "h2", "q1", "q2", "q3", "q4"].every((k) => p[k] && p[k].n >= MIN_FIT_SAMPLES) ? (p as Record<Exclude<Period, "game">, PeriodSpec>) : null;
   return { marginSd: e.marginSd, totalSd: e.totalSd, periods };

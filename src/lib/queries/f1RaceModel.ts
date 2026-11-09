@@ -6,6 +6,8 @@
 import { prisma } from "@/lib/prisma";
 import { loadF1Races } from "@/lib/f1/raceData";
 import { DEFAULT_F1_OPTS, F1Ratings, simulateRace, type DriverOdds, type F1ModelOpts } from "@/lib/f1/raceModel";
+import { MIN_FIT_SAMPLES } from "@/lib/propModel/market";
+import { isFitFresh } from "@/lib/engine/fitFreshness";
 import { getNextRace, type F1NextRace } from "./f1";
 import { flagForNationality } from "@/lib/f1/flags";
 
@@ -23,19 +25,27 @@ export interface F1RaceModelView {
   rows: F1DriverOddsRow[];
   /** True when the learning rates came from the backtest's fit. */
   fitted: boolean;
+  /** When the fitted learning rates were fitted (ISO), or null on defaults — a fit's date travels with its verdict (Decision 9). */
+  fitAsOf: string | null;
   racesReplayed: number;
 }
 
-async function fittedOpts(): Promise<F1ModelOpts | null> {
-  const r = await prisma.modelReport.findFirst({ where: { model: "f1-races:podium" }, orderBy: { createdAt: "desc" }, select: { extra: true } });
+/**
+ * The fitted learning rates, gated like every other fitted read
+ * (Decision 9): this read used to have NO gate at all — any saved fit,
+ * any sample, any age, priced at full strength.
+ */
+async function fittedOpts(): Promise<{ opts: F1ModelOpts; fitAt: Date } | null> {
+  const r = await prisma.modelReport.findFirst({ where: { model: "f1-races:podium" }, orderBy: { createdAt: "desc" }, select: { n: true, extra: true, createdAt: true } });
   const o = (r?.extra as { opts?: F1ModelOpts } | null | undefined)?.opts;
-  return o && typeof o.carRate === "number" ? o : null;
+  if (!r || r.n < MIN_FIT_SAMPLES || !isFitFresh(r.createdAt, new Date()) || !o || typeof o.carRate !== "number") return null;
+  return { opts: o, fitAt: r.createdAt };
 }
 
 export async function getF1RaceModel(): Promise<F1RaceModelView | null> {
   const [race, races, fit] = await Promise.all([getNextRace(), loadF1Races(), fittedOpts()]);
   if (!race || races.length < 5) return null;
-  const ratings = new F1Ratings(fit ?? DEFAULT_F1_OPTS);
+  const ratings = new F1Ratings(fit?.opts ?? DEFAULT_F1_OPTS);
   for (const r of races) {
     ratings.touch(r.entries, r.season);
     ratings.update(r);
@@ -54,6 +64,7 @@ export async function getF1RaceModel(): Promise<F1RaceModelView | null> {
   return {
     race,
     fitted: fit !== null,
+    fitAsOf: fit?.fitAt.toISOString() ?? null,
     racesReplayed: races.length,
     rows: odds.map((o) => ({
       ...o,
