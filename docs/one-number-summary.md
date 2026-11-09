@@ -15,25 +15,48 @@ This branch builds on that work instead of redoing it.
 
 ## Verdicts
 
-**Step 2 — grading the haircut: DATA REQUIRED.** This environment has no production database. `npm run backtest:cautious-edge` here fails to connect, prints `VERDICT: DATA REQUIRED` and exits 1. No results were produced, and none are claimed.
+**Step 2 — grading the haircut: graded on production data.** Model lab run [#65](https://github.com/bythebarr/archer-odds-tool/actions/runs/42691547365), script `backtest:cautious-edge`, main at `4e0d465`, 2026-11-09. It graded 350 NBA props on both sides of the consensus line: 700 sides, all priced at the close, all with minutes/role weighting. Lower log loss and Brier are better.
 
-To get a verdict, run the Model lab workflow with script `backtest:cautious-edge`. It needs:
-- the `DATABASE_URL` secret;
-- at least **300 graded NBA prop sides**. These come from final games with stored two-sided `NbaPropSnapshot` closing quotes and `NbaPlayerGameLog` box scores, including minutes and starter, for each player before and on that night.
+| Read | Log loss | Brier | Mean predicted vs actual |
+|---|---|---|---|
+| **ARCHR chance (blend)** | **0.6876** | **0.2473** | 50.0% vs 50.0% |
+| Evidence read (role-weighted, K = 20) | 0.6916 | 0.2491 | 50.0% vs 50.0% |
+| Evidence read, plain record | 0.6979 | 0.2521 | 50.0% vs 50.0% |
+| Legacy `min()` | 0.8410 | 0.2898 | 34.8% vs 50.0% |
 
-The run prints:
-- log loss, Brier, and mean predicted vs actual for the blend, the legacy `min()`, the evidence read, and the evidence read on the plain record. Results are shown for all props, overs, unders, and each stat.
-- buckets by each cautious read's edge: ≤0, 0–5%, 5–10%, 10–20%, 20%+ up to the +50% cap, and the distrusted tail. Each bucket shows hit rate against the closing price's implied chance (which answers "did it beat the close?") and flat-stake ROI with a 95% range.
-- a K sweep (5/10/20/40), as a diagnostic only;
-- the gate decision.
+- **The `min()` haircut is badly miscalibrated as a probability.** It reads about 35% on props that hit 50%.
+  - Overs: log loss 0.9077, mean predicted 31.5% vs actual 51.4%.
+  - Unders: log loss 0.7743, mean predicted 38.0% vs actual 48.6%.
+  - It is worse than the blend on every stat. The gap clears the grader's noise band overall and on points, assists, rebounds+assists and points+assists; the smaller per-stat samples read as a wash.
+- **The evidence read is close to the blend but slightly worse overall.** It is ahead on rebounds, threes and blocks; behind on points, assists and most combos. Role weighting helps (0.6916 vs 0.6979 on the plain record).
+- **The prior-strength sweep favors trusting the record less.** Log loss is 0.7100 at K = 5, 0.6980 at K = 10, 0.6916 at K = 20 and 0.6889 at K = 40. On this sample the record adds little on top of the blend. Diagnostic only; K stays at 20.
+- **Buckets against closing prices show no dependable ranking signal.**
+  - Evidence read: ≤0 → ROI −6.0%; 0–5% → −2.3%; 5–10% → −3.2%; 10–20% → hit 63.1% vs 51.5% implied, ROI +23.5% [+0.1%, +46.8%] on 65; 20%+ → hit 32.1%, ROI −37.3% [−71.8%, −2.9%] on 28.
+  - Legacy `min()`: 612 of 700 sides land at ≤0; the higher buckets hold 17–51 sides each, with ranges spanning zero.
+  - ROI doesn't rise with edge, and one positive bucket among ten is consistent with noise.
 
-**Step 3 — evidence gate: not met, so the old behavior is kept behind the same interface.** `CAUTIOUS_READ_MODE` in `canonical.ts` is `"legacy-min"`, so every live cautious number is exactly what it was before.
+The run is repeatable: Model lab, script `backtest:cautious-edge`, read-only.
 
-The evidence read is built, wired into every consumer, and tested. It ships only if `evidenceGate()` returns `adopt-evidence`. That requires, on at least 300 samples:
-- evidence log loss and Brier no worse than the blend's, and
-- evidence log loss strictly lower than legacy `min()`'s.
+**Step 3 — evidence gate: KEEP LEGACY `min()`.** The gate's verdict was "fails: worse than the blend alone" (evidence log loss 0.6916 / Brier 0.2491 vs blend 0.6876 / 0.2473). `CAUTIOUS_READ_MODE` in `canonical.ts` stays `"legacy-min"`, so every live cautious number is exactly what it was before.
 
-Shipping it is then a reviewed one-line change to `CAUTIOUS_READ_MODE`. Every explainer reads `CAUTIOUS_READ_MATH[CAUTIOUS_READ_MODE]`, so the copy changes along with the flag.
+The gate as specified only decides between the evidence read and `min()`; it doesn't address that `min()` is the least accurate of the three reads. Open decision for review, nothing changed:
+1. Keep `min()`. It is labeled ranking-only, but the screener's cautious sort and the optimizer run on it.
+2. Switch to the evidence read. That means relaxing the "no worse than the blend" bar.
+3. Rank the screener's cautious sort and the optimizer by ARCHR chance directly. This is the most accurate number, but it changes selection logic.
+
+The evidence read stays built, wired into every consumer and tested. It ships only if `evidenceGate()` returns `adopt-evidence` on at least 300 samples: evidence log loss and Brier no worse than the blend's, and log loss strictly below `min()`'s. Shipping it is then a reviewed one-line change to `CAUTIOUS_READ_MODE`. Every explainer reads `CAUTIOUS_READ_MATH[CAUTIOUS_READ_MODE]`, so the copy changes along with the flag.
+
+**Deploy.** Live in production since PR [#108](https://github.com/bythebarr/archer-odds-tool/pull/108) (`79a80aa`). Before that, every main deploy since `d1833dd` had failed.
+- The original NHL migration (`20261109200100`) failed in production and left a failed record.
+- It had also dropped `game_sport_competitor_check` without re-adding it.
+- Clearing the record through the pooler then leaked Prisma's migrate lock, so the next deploy timed out (P1002).
+
+Fixed from the Model lab:
+- `migrate:resolve-nhl` cleared the failed record.
+- `migrate:unlock` ended the idle pooled session holding the lock.
+- `migrate:deploy` applied the corrected migration over the direct host; 0 existing rows violated the constraint.
+- The constraint is back, now covering NHL.
+- Lab migrate commands now always use Neon's direct host (`scripts/migrate-direct.sh`).
 
 ## The four numbers
 
