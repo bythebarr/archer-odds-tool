@@ -106,7 +106,8 @@ export interface Standout {
   hit: { l5: [number, number]; l10: [number, number]; season: [number, number]; h2h: [number, number] };
   /** His record at the main line against teams that play like tonight's opponent; null when too few games. */
   style: StyleRecord | null;
-  alt: { point: number; priceAmerican: number; bookName: string; chance: number; ev: number; l10: [number, number] } | null;
+  /** chance/ev: standout-adjusted (what picks the rung, unchanged); rawChance: ARCHR chance at the rung, before the adjustment. */
+  alt: { point: number; priceAmerican: number; bookName: string; chance: number; rawChance: number; ev: number; l10: [number, number] } | null;
   reasons: Reason[];
 }
 
@@ -243,7 +244,7 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       // A price far longer than the chance says isn't value, it's a price that doesn't belong to the rung.
       if ((relativeEdge(c, q.priceAmerican) ?? 0) > MAX_TRUSTED_RELATIVE_EDGE) continue;
       const ev = c * americanToDecimal(q.priceAmerican) - 1;
-      if (!alt || ev > alt.ev) alt = { point, priceAmerican: q.priceAmerican, bookName: q.bookName, chance: c, ev, l10: rate(at, "l10") };
+      if (!alt || ev > alt.ev) alt = { point, priceAmerican: q.priceAmerican, bookName: q.bookName, chance: c, rawChance: rawAt!, ev, l10: rate(at, "l10") };
     }
 
     out.push({

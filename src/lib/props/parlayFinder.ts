@@ -24,6 +24,7 @@
  */
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
 import { parlayGameKey, type ParlayLeg } from "./parlay";
+import type { TonightRole } from "@/lib/propModel/cautiousRead";
 
 export interface FinderLeg extends ParlayLeg {
   /** Unique per player, stat, side and number. */
@@ -35,6 +36,8 @@ export interface FinderLeg extends ParlayLeg {
   /** The best bettable price at this number, or null if no book hangs it. */
   priceAmerican: number | null;
   bookName: string | null;
+  /** NBA: his expected minutes and role tonight, for the role-weighted record; absent where unknown. */
+  tonight?: TonightRole | null;
 }
 
 export interface FinderOptions {

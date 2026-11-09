@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { PropDirection } from "@/lib/props/tally";
+import { CANONICAL_NUMBERS } from "@/lib/propModel/canonical";
 
 /** Any league's game log, as the chart reads it. */
 export interface PropChartLog {
@@ -236,7 +237,7 @@ export function PropGameChart<L extends PropChartLog>({
             </span>
             {projection !== null && (
               <span className="inline-flex items-center gap-1">
-                <span className="inline-block h-0 w-4 border-t-[1.6px] border-dotted border-brand" /> ARCHR {projection.toFixed(1)}
+                <span className="inline-block h-0 w-4 border-t-[1.6px] border-dotted border-brand" /> {CANONICAL_NUMBERS.projection.shortLabel} {projection.toFixed(1)}
               </span>
             )}
             {avg !== null && (

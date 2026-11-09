@@ -19,6 +19,7 @@ import { formatSpreadPoint } from "@/lib/odds/americanOdds";
 import { getGameModelView } from "@/lib/queries/gameModel";
 import type { FinderLeg } from "@/lib/props/parlayFinder";
 import { edgeOf, ratesOf, type BuilderLeg } from "../types";
+import { roleWeightedRates } from "@/lib/propModel/cautiousRead";
 import { teamBetOutcomes, type PastGame } from "../teamHistory";
 
 /**
@@ -46,6 +47,12 @@ export function worthKeeping(l: BuilderLeg): boolean {
   return best >= 0.6 || (l.archr ?? 0) >= 0.6;
 }
 
+/** The role-weighted records over the builder's windows, where the leg knows tonight's role (NBA). */
+function roleRatesOf(l: FinderLeg, season: number): { roleRates?: BuilderLeg["roleRates"] } {
+  const rates = roleWeightedRates(l.logs, l.side, l.point, l.tonight, { l5: { last: 5 }, l10: { last: 10 }, l20: { last: 20 }, season: { season } });
+  return rates ? { roleRates: rates } : {};
+}
+
 function propLeg(sport: BuilderLeagueSport, l: FinderLeg, season: number, event: { label: string; startsAt: string }): BuilderLeg {
   const outcomes = l.logs.flatMap((g) => (g.value === null ? [] : [{ season: g.season, hit: l.side === "over" ? g.value > l.point : g.value < l.point }]));
   const yesNo = l.sideLabel === "Yes" || l.sideLabel === "No";
@@ -66,6 +73,7 @@ function propLeg(sport: BuilderLeagueSport, l: FinderLeg, season: number, event:
     archr: l.modelProb,
     edge: edgeOf(l.modelProb, l.priceAmerican),
     rates: ratesOf(outcomes, season),
+    ...roleRatesOf(l, season),
   };
 }
 

@@ -8,12 +8,17 @@ import { unpackLog, type GameLogPoint } from "@/lib/nba/propsMath";
 import { nbaStandouts, MIN_CHANCE, type Standout } from "@/lib/nba/standouts";
 import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { formatAmerican } from "@/lib/odds/americanOdds";
+import { CANONICAL_NUMBERS, edgeFromChance } from "@/lib/propModel/canonical";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
 import { SportCarousel } from "@/components/book/SportCarousel";
 import { SportTabs } from "@/components/book/SportTabs";
 import { LeagueHeader, leagueTabs } from "@/components/book/LeaguePage";
 import { ScrollRow } from "@/components/ScrollRow";
 import { EmptyState } from "@/components/EmptyState";
+
+/** What the standout-adjusted read is, for the hover note. */
+const STANDOUT_ADJUSTED_NOTE =
+  "ARCHR chance with part of its gap from the book's no-vig chance taken off, as much as replayed nights say these picks overstate it. It ranks this page.";
 
 export const metadata: Metadata = {
   title: "NBA — hottest props tonight",
@@ -53,6 +58,8 @@ function startLabel(iso: string): string {
 function Card({ s, rank }: { s: Standout; rank: number }) {
   const up = s.side === "over";
   const gap = s.projection - s.point;
+  // EDGE comes from ARCHR chance only (lib/propModel/canonical), never from the adjusted read.
+  const altEdge = s.alt ? edgeFromChance(s.alt.rawChance, s.alt.priceAmerican) : null;
   return (
     <li className="overflow-hidden rounded-2xl border border-border bg-card">
       <div className="flex items-start gap-3 p-3">
@@ -79,7 +86,7 @@ function Card({ s, rank }: { s: Standout; rank: number }) {
         </div>
         <div className="shrink-0 text-right">
           <p className="font-mono text-2xl font-extrabold leading-none text-foreground">{s.projection.toFixed(1)}</p>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">projection</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{CANONICAL_NUMBERS.projection.shortLabel}</p>
           <p className={`mt-0.5 font-mono text-xs font-bold ${up ? "text-emerald-600 dark:text-emerald-400" : "text-sky-600 dark:text-sky-400"}`}>
             {gap >= 0 ? "+" : "−"}
             {Math.abs(gap).toFixed(1)} vs line
@@ -89,8 +96,12 @@ function Card({ s, rank }: { s: Standout; rank: number }) {
       </div>
 
       <div className="grid grid-cols-3 gap-px border-y border-border bg-border text-center sm:grid-cols-6">
+        <div className="bg-card px-2 py-2" title={`${CANONICAL_NUMBERS.archrChance.blurb} Standout-adjusted: ${STANDOUT_ADJUSTED_NOTE}`}>
+          <p className="font-mono text-sm font-bold text-foreground">{pct(s.rawChance)}</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{CANONICAL_NUMBERS.archrChance.shortLabel}</p>
+          <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">adj. {pct(s.chance)}</p>
+        </div>
         {[
-          ["ARCHR", pct(s.chance)],
           ["L5", rec(s.hit.l5)],
           ["L10", rec(s.hit.l10)],
           ["Season", rec(s.hit.season)],
@@ -129,8 +140,14 @@ function Card({ s, rank }: { s: Standout; rank: number }) {
             <span className="font-mono font-bold">{formatAmerican(s.alt.priceAmerican)}</span>
             <span className="text-muted-foreground">
               {" "}
-              · ARCHR {pct(s.alt.chance)} · L10 {rec(s.alt.l10)} · EV {s.alt.ev >= 0 ? "+" : "−"}
-              {Math.abs(s.alt.ev * 100).toFixed(0)}%
+              · {CANONICAL_NUMBERS.archrChance.shortLabel} {pct(s.alt.rawChance)} (adj. {pct(s.alt.chance)}) · L10 {rec(s.alt.l10)}
+              {altEdge !== null && (
+                <>
+                  {" "}
+                  · {CANONICAL_NUMBERS.edge.shortLabel} {altEdge >= 0 ? "+" : "−"}
+                  {Math.abs(altEdge * 100).toFixed(0)}%
+                </>
+              )}
             </span>
           </p>
         ) : (
@@ -212,13 +229,15 @@ export default async function NbaHotPage({ searchParams }: { searchParams: Promi
       <p className="mt-5 text-[11px] leading-relaxed text-muted-foreground">
         A call makes the page when ARCHR&apos;s projection sits well clear of the main line, measured in the player&apos;s own game-to-game spread
         for that stat (a 3-point gap counts for more on a 12-point scorer than on a 30-point one), its chance on that side is at least{" "}
-        {pct(MIN_CHANCE)}, and his last-10 record doesn&apos;t flatly disagree. Calls are ranked by ARCHR&apos;s chance, calibrated: the biggest
-        disagreements with the book are also where a projection is most often wrong, so the chance shown keeps only part of ARCHR&apos;s edge
-        over the book&apos;s own, the part that held up when past nights were replayed. The reasons (▲ for the call, ▼ against) are the
+        {pct(MIN_CHANCE)}, and his last-10 record doesn&apos;t flatly disagree. ARCHR chance is the same
+        number every props page shows for the prop. Calls are ranked by its standout-adjusted read (&ldquo;adj.&rdquo;): the biggest
+        disagreements with the book are also where a projection is most often wrong, so the adjusted read keeps only part of ARCHR&apos;s edge
+        over the book&apos;s own, the part that held up when past nights were replayed — on these picks it has graded closer to what happened. The reasons (▲ for the call, ▼ against) are the
         projection&apos;s own inputs: his minutes (teammates out, rest, a return, tonight&apos;s lineup, blowout risk), what the opponent allows to
         his position, the game total and his recent form. Records (•) are context: against this opponent, at this venue, and against teams that
         play like it (&ldquo;Like&rdquo;: the five teams closest to the opponent in pace and in what they allow, his position included). The
-        alternate line is the rung beyond the main line with the best value at ARCHR&apos;s chance. Research only.
+        alternate line is the rung beyond the main line with the best value at the adjusted read; its edge is ARCHR edge, the price at ARCHR
+        chance, as everywhere. Research only.
       </p>
     </div>
   );

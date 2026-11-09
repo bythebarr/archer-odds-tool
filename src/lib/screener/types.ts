@@ -50,6 +50,8 @@ export interface ScreenerProp {
   leagueSlug?: string;
   /** NBA: ARCHR's projected minutes tonight (lib/nba/minutes). */
   minutes?: number;
+  /** NBA: the L10 and season records with each game weighted by how closely his minutes and role then match tonight's (lib/propModel/cautiousRead). Read only by the evidence cautious read. */
+  roleRates?: Record<"l10" | "szn", Rate>;
 }
 
 /** The sport's props board for this prop's game or league (kept off the row: the cached slice must stay small). */
@@ -86,14 +88,14 @@ export type ScreenSort = ScreenWindow | "archr" | "edge" | "cedge" | "price" | "
 
 /**
  * The prop's CAUTIOUS edge — the canonical ranking signal (see
- * lib/propModel/canonical): the lower of ARCHR's chance and the low end of
- * its L10 record's range (the season's when L10 is thin), over the chance
- * the price implies, minus one. A sort/filter signal, NOT a probability.
- * Null without a price or a read. (Historical name kept for callers.)
+ * lib/propModel/canonical): ARCHR's chance re-read against its L10 record
+ * (the season's when L10 is thin), over the chance the price implies, minus
+ * one. A sort/filter signal, NOT a probability. Null without a price or a
+ * read. (Historical name kept for callers.)
  */
-export function conservativeEdge(p: Pick<ScreenerProp, "archr" | "priceAmerican" | "rates">): number | null {
-  const rate = p.rates.l10[1] >= 5 ? p.rates.l10 : p.rates.szn;
-  return cautiousEdge(p.archr, rate, p.priceAmerican);
+export function conservativeEdge(p: Pick<ScreenerProp, "archr" | "priceAmerican" | "rates" | "roleRates">): number | null {
+  const w = p.rates.l10[1] >= 5 ? "l10" : "szn";
+  return cautiousEdge(p.archr, p.rates[w], p.priceAmerican, p.roleRates?.[w]);
 }
 
 export interface ScreenFilters {
