@@ -182,6 +182,7 @@ async function main() {
       props: [],
       defense,
       absences: {},
+      absenceImpacts: {},
       lines: {},
       modelWeights,
       calibrationFactors,

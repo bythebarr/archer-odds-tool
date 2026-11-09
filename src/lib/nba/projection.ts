@@ -33,6 +33,8 @@ import type { DefenseTable } from "./matchup";
 import { statMatchup, paceRank } from "./matchup";
 import type { PositionGroup } from "./positionGroups";
 import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
+import type { MissingPlayer } from "@/lib/gameModel/adjust";
+import { OPPONENT_SPILLOVER_SHARE } from "@/lib/gameModel/adjust";
 import { countCdf, rawProbOver, shrinkLogit, type StatDistribution } from "@/lib/propModel/distribution";
 import { NO_LINES, type GameLines } from "@/lib/propModel/environment";
 import { seasonMix, type SeasonMix } from "@/lib/propModel/seasonMix";
@@ -83,6 +85,16 @@ export interface PropProjection {
   games: number;
   /** When rotation teammates are out: the games without them that were blended in. */
   absence: { names: string[]; games: number; minutes: number; perMinute: number } | null;
+  /**
+   * When the OPPONENT is missing rotation players: the production lift on
+   * this mean from their absence (1 = nobody out). The game model prices a
+   * missing player partly as points the other side scores more easily
+   * (gameModel/adjust.ts: 40% of his impact lands on the opponent); props
+   * take that share until now had none of it. The impact itself is a
+   * box-score production read, so it undercounts pure defensive specialists —
+   * a floor, not a full defensive value.
+   */
+  opponentFactor: number;
   /** Game total and blowout adjustments from tonight's lines (neutral without them). */
   env: NbaEnvironment;
   /** How much of the per-minute rate rests on this season vs last. */
@@ -120,6 +132,8 @@ export interface ProjectionContext {
   positionGroup: PositionGroup | null;
   /** Rotation teammates out tonight (see injuries/absence). */
   absences?: Absence[];
+  /** The opponent's missing rotation players, with per-player impact (see gameModel/adjust). */
+  opponentAbsences?: MissingPlayer[];
   /** Tonight's consensus spread and total. */
   lines?: GameLines;
   /** His side tonight; null when unknown (the spread can't be read). */
@@ -136,6 +150,28 @@ export interface ProjectionContext {
   teamDates?: string[];
   /** In tonight's confirmed starting five (true), confirmed out of it (false), or not known yet. */
   starterTonight?: boolean;
+}
+
+/**
+ * The most a prop mean may lift from opponent absences — a star's defensive
+ * gravity is worth points, not a scoring explosion. (The split itself is the
+ * game model's: gameModel/adjust.ts OPPONENT_SPILLOVER_SHARE.)
+ */
+const OPPONENT_ABSENCE_CAP = 0.08;
+/** A team's points per game when neither a posted total nor a baseline is on hand. */
+const LEAGUE_TEAM_POINTS = 113;
+
+/**
+ * The factor an opponent's missing players apply to a prop mean: their
+ * combined box-score impact × the spillover share, against his team's
+ * expected points (half the combined baseline when there is one).
+ */
+export function opponentAbsenceFactor(opponentAbsences: MissingPlayer[] | undefined, baselineTotal: number | null | undefined): number {
+  if (!opponentAbsences?.length) return 1;
+  const impact = opponentAbsences.reduce((a, m) => a + Math.max(0, m.impact), 0);
+  if (impact <= 0) return 1;
+  const teamPoints = baselineTotal && baselineTotal > 0 ? baselineTotal / 2 : LEAGUE_TEAM_POINTS;
+  return Math.min(1 + OPPONENT_ABSENCE_CAP, 1 + (OPPONENT_SPILLOVER_SHARE * impact) / teamPoints);
 }
 
 /** Projects one stat for one player from his logs (most recent first). Null with fewer than THIN_MIN_GAMES. */
@@ -198,7 +234,8 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     }
   }
 
-  const mean = minutesAdj * perMinute * matchupFactor * paceFactor * env.totalFactor;
+  const opponentFactor = opponentAbsenceFactor(ctx.opponentAbsences, ctx.baselineTotal);
+  const mean = minutesAdj * perMinute * matchupFactor * paceFactor * env.totalFactor * opponentFactor;
 
   // Spread: the player's own game-to-game variance in this stat (last 20),
   // scaled to tonight's mean, never below Poisson.
@@ -218,6 +255,7 @@ export function projectProp(logs: GameLogPoint[], stat: NbaPropStatDef, ctx: Pro
     paceFactor,
     games: played.length,
     absence,
+    opponentFactor,
     env,
     seasons,
     thin,
