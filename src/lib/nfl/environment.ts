@@ -12,9 +12,15 @@
  *
  * Priors, capped; `npm run backtest:nfl-props` reports projection error with
  * and without them.
+ *
+ * Weather (Decision 11) joins here as a third factor: wind/precip from the
+ * game's forecast row (nfl/weather.ts), applied per stat alongside volume
+ * and script. It needs no lines — a game can be weather-priced before any
+ * total exists — so it is computed even on the neutral path.
  */
 import type { NflPropStat } from "@/generated/prisma/client";
 import { elasticFactor, impliedTeamTotal, teamSpread, type GameLines } from "@/lib/propModel/environment";
+import { nflWeatherFactor, type NflGameWeather } from "./weather";
 
 /** How each stat moves with the team's implied points (1 = proportionally). */
 const VOLUME_ELASTICITY: Record<NflPropStat, number> = {
@@ -70,20 +76,29 @@ export const NFL_AVG_TEAM_POINTS = 22.5;
 export interface NflEnvironment {
   volumeFactor: number;
   scriptFactor: number;
+  /** Wind/precip adjustment (Decision 11); 1 with no weather row. */
+  weatherFactor: number;
   impliedPoints: number | null;
   spread: number | null;
 }
 
-export const NEUTRAL_NFL_ENV: NflEnvironment = { volumeFactor: 1, scriptFactor: 1, impliedPoints: null, spread: null };
+export const NEUTRAL_NFL_ENV: NflEnvironment = { volumeFactor: 1, scriptFactor: 1, weatherFactor: 1, impliedPoints: null, spread: null };
 
 /** `baselinePoints`: what the team usually scores, so volume is this week vs its normal. */
-export function nflEnvironment(lines: GameLines, isHome: boolean | null, stat: NflPropStat, baselinePoints: number | null): NflEnvironment {
-  if (isHome === null) return NEUTRAL_NFL_ENV;
+export function nflEnvironment(
+  lines: GameLines,
+  isHome: boolean | null,
+  stat: NflPropStat,
+  baselinePoints: number | null,
+  weather?: NflGameWeather | null
+): NflEnvironment {
+  const weatherFactor = nflWeatherFactor(weather, stat);
+  if (isHome === null) return { ...NEUTRAL_NFL_ENV, weatherFactor };
   const implied = impliedTeamTotal(lines, isHome);
   const spread = teamSpread(lines, isHome);
   // A team's own scoring when it looks real; the league norm otherwise.
   const base = baselinePoints !== null && baselinePoints >= 10 && baselinePoints <= 40 ? baselinePoints : NFL_AVG_TEAM_POINTS;
   const volumeFactor = implied !== null && base > 0 ? elasticFactor(implied / base, VOLUME_ELASTICITY[stat], VOLUME_CAP) : 1;
   const scriptFactor = spread !== null ? Math.min(1 + SCRIPT_CAP, Math.max(1 - SCRIPT_CAP, 1 + SCRIPT_SLOPE[stat] * spread)) : 1;
-  return { volumeFactor, scriptFactor, impliedPoints: implied, spread };
+  return { volumeFactor, scriptFactor, weatherFactor, impliedPoints: implied, spread };
 }

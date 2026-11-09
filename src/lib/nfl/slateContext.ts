@@ -7,7 +7,7 @@ import type { NflPropsSlate, NflSlatePlayer } from "@/lib/queries/nflProps";
 import type { NflProjectionContext } from "./projection";
 import { NO_LINES } from "@/lib/propModel/environment";
 
-type SlateInputs = Pick<NflPropsSlate, "defense" | "absences" | "absenceImpacts" | "lines" | "teamPoints"> & Partial<Pick<NflPropsSlate, "modelLines">>;
+type SlateInputs = Pick<NflPropsSlate, "defense" | "absences" | "absenceImpacts" | "lines" | "teamPoints"> & Partial<Pick<NflPropsSlate, "modelLines" | "weather">>;
 
 export function nflProjectionContext(slate: SlateInputs, player: NflSlatePlayer): NflProjectionContext {
   const team = player.team?.abbreviation;
@@ -29,5 +29,6 @@ export function nflProjectionContext(slate: SlateInputs, player: NflSlatePlayer)
     lines: modelLines ?? slate.lines[player.gameId] ?? NO_LINES,
     isHome: player.venue === null ? null : player.venue === "home",
     baselinePoints: team ? (slate.teamPoints[team] ?? null) : null,
+    weather: slate.weather?.[player.gameId] ?? null,
   };
 }

@@ -309,6 +309,11 @@ model GameWeather {
   /// compass degrees — see weatherEffect.ts for how this combines with the
   /// venue's own azimuthDeg to resolve "blowing out" vs. "blowing in."
   windFromDeg  Float
+  /// NFL only: probability (0–1) of precipitation at game time, from the
+  /// same Open-Meteo forecast. Null for MLB rows and whenever the forecast
+  /// carries no probability — the NFL weather factor (nfl/weather.ts)
+  /// treats null as "no precip signal," never as zero rain.
+  precipProb   Float?
   capturedAt   DateTime @updatedAt
 }
 

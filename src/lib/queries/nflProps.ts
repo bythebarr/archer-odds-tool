@@ -20,6 +20,7 @@ import { NFL_QB_IMPACT, NFL_SKILL_CAP, NFL_SKILL_IMPACT, statusWeight, type Miss
 import type { SlateGame, SlateTeam } from "./nbaProps";
 import type { GameLines } from "@/lib/propModel/environment";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
+import type { NflGameWeather } from "@/lib/nfl/weather";
 import { projectNflProp } from "@/lib/nfl/projection";
 import { projectedLine } from "@/lib/nba/propsMath";
 import type { NflPropStat } from "@/generated/prisma/client";
@@ -75,6 +76,8 @@ export interface NflPropsSlate {
    * market lines stand in for those.
    */
   modelLines: Record<string, GameLines>;
+  /** Game id → the game's forecast weather (Decision 11); only open-air games the weather sync covered are present. */
+  weather: Record<string, NflGameWeather>;
   /** Team abbreviation → points per game over its recent games, the baseline for implied points. */
   teamPoints: Record<string, number>;
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
@@ -390,7 +393,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   // Every number the books have hung on these games (ESPN's DraftKings feed carries NFL numbers, rarely their prices).
   const board = (await eventPropBoard(listed.map((g) => g.id), NFL_STAT_BY_KEY)).filter((r) => r.athleteId);
   const games = dedupeGames(listed, new Set(board.map((r) => r.eventRef)));
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, absenceImpacts: {}, lines: {}, modelLines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, absenceImpacts: {}, lines: {}, modelLines: {}, weather: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -523,7 +526,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     const i = injuryById.get(espnIdOf.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
   }
-  const [absences, absenceImpacts, gameLines, modelTotals, teamPoints, modelWeights, calibrationFactors, blendReports] = await Promise.all([
+  const [absences, absenceImpacts, gameLines, modelTotals, teamPoints, modelWeights, calibrationFactors, blendReports, weatherRows] = await Promise.all([
     nflAbsences(slateGames, injuries, season, now),
     nflAbsenceImpacts(games, injuries, now),
     getConsensusGameLines(slateGames.map((g) => g.id)),
@@ -538,10 +541,16 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     getModelWeights("nfl"),
     getCalibrationFactors("nfl-props"),
     getReportedBlendVerdicts(),
+    prisma.gameWeather.findMany({
+      where: { gameId: { in: slateGames.map((g) => g.id) } },
+      select: { gameId: true, windMph: true, precipProb: true, temperatureF: true },
+    }),
   ]);
   // The model's own lines for the environment, in GameLines form.
   const modelLines: Record<string, GameLines> = {};
   for (const [gameId, e] of modelTotals) modelLines[gameId] = { total: e.home + e.away, homeSpread: e.away - e.home };
+  const weather: Record<string, NflGameWeather> = {};
+  for (const w of weatherRows) weather[w.gameId] = { windMph: w.windMph, precipProb: w.precipProb, temperatureF: w.temperatureF };
 
   // The numbers a book has hung without prices yet: the row reads against the book's number, not ARCHR's.
   const postedBy = new Map<string, { book: string; lines: { side: "over" | "under"; point: number }[] }>();
@@ -562,7 +571,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   }
 
   // ARCHR's line for each position's core stats, on games no book has posted props for yet (out / doubtful players sit out).
-  const inputs = { defense, absences, absenceImpacts, lines: gameLines, modelLines, teamPoints };
+  const inputs = { defense, absences, absenceImpacts, lines: gameLines, modelLines, weather, teamPoints };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful" || !player.position) continue;
@@ -590,6 +599,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     absenceImpacts,
     lines: gameLines,
     modelLines,
+    weather,
     teamPoints,
     modelWeights,
     calibrationFactors,

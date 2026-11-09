@@ -52,4 +52,10 @@ describe("nflProjectionContext", () => {
     expect(ctx.ownAbsenceImpact).toBe(3);
     expect(ctx.opponentAbsenceImpact).toBe(0.6);
   });
+
+  it("passes the game's weather row through, and null when there is none", () => {
+    const weather = { windMph: 22, precipProb: 0.4, temperatureF: 38 };
+    expect(nflProjectionContext(slate({ weather: { g1: weather } }), player).weather).toEqual(weather);
+    expect(nflProjectionContext(slate({}), player).weather).toBeNull();
+  });
 });

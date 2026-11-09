@@ -23,6 +23,7 @@ import { rawProbOver, shrinkLogit, type StatDistribution } from "@/lib/propModel
 import { NO_LINES, type GameLines } from "@/lib/propModel/environment";
 import { seasonMix, type SeasonMix } from "@/lib/propModel/seasonMix";
 import { nflEnvironment, type NflEnvironment } from "./environment";
+import type { NflGameWeather } from "./weather";
 import { nflStatMatchup, type NflDefenseTable, type NflPosition } from "./matchup";
 import type { NflLogPoint } from "./propsMath";
 import { additiveWithoutBlend, gamesWithout, gamesWithoutEach, withoutWeight, type Absence } from "@/lib/injuries/absence";
@@ -95,6 +96,8 @@ export interface NflProjectionContext {
   isHome?: boolean | null;
   /** What his team usually scores — the environment his logs were played in. */
   baselinePoints?: number | null;
+  /** The game's forecast weather (Decision 11); null/absent = neutral. */
+  weather?: NflGameWeather | null;
   season?: number;
   /** Overrides NFL_XTD_WEIGHT (the backtest varies it). */
   xtdWeight?: number;
@@ -187,8 +190,8 @@ export function projectNflProp(allLogs: NflLogPoint[], stat: NflPropStatDef, ctx
   const ownImpact = ctx.ownAbsenceImpact ?? 0;
   const opponentImpact = ctx.opponentAbsenceImpact ?? 0;
   const envLines = absenceAdjustedLines(ctx.lines ?? NO_LINES, ctx.isHome ?? null, ownImpact, opponentImpact);
-  const env = nflEnvironment(envLines, ctx.isHome ?? null, stat.key, ctx.baselinePoints ?? null);
-  const mean = base * matchupFactor * env.volumeFactor * env.scriptFactor;
+  const env = nflEnvironment(envLines, ctx.isHome ?? null, stat.key, ctx.baselinePoints ?? null, ctx.weather);
+  const mean = base * matchupFactor * env.volumeFactor * env.scriptFactor * env.weatherFactor;
 
   const sample = values.slice(0, WINDOW);
   const sMean = sample.reduce((a, b) => a + b, 0) / sample.length;
