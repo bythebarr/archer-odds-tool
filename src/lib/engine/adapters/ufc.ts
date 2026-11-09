@@ -83,6 +83,11 @@ const UFC_MODEL: SportModel = {
   backtest: { unit: "priceable bout", collect: collectUfcSamples },
   // From `npm run backtest:ufc` — a thin but real edge (skill just past no-skill).
   // Refresh as the sample grows; it sits close to the trusted/marginal line.
+  // NOTE (Decision 7): these baked numbers are V1's, and v1 is what prices
+  // whenever no fresh v2 fit says otherwise. While a fresh fit's beatsV1
+  // holds, v2 prices the posted plays and backtest:ufc-fights writes this
+  // sport's card from v2's out-of-sample grade instead of this collect —
+  // the verdict always belongs to the pricing model.
   calibration: {
     verdict: "trusted",
     brier: 0.2403,

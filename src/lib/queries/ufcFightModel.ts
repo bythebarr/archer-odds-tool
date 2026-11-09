@@ -45,6 +45,42 @@ async function fitted(): Promise<{ coefficients: number[] | null; beatsV1: boole
   return { coefficients: coefficientVector(e.coefficients as Partial<Record<FeatureName, number>>), beatsV1: e.beatsV1 === true };
 }
 
+/**
+ * The v2 pricing gate for posted plays (Decision 7). One pricing path,
+ * governed by the flag: v2 prices only when a FRESH fit (the Decision-9
+ * gate inside fitted()) carries coefficients AND its held-out head-to-head
+ * said v2 beats v1. Anything else — no fit, stale fit, v1 holds — returns
+ * null and fighter math v1 prices, exactly as the bout page headlines.
+ */
+export interface UfcV2Pricing {
+  coefficients: number[];
+}
+
+export async function getUfcV2Pricing(): Promise<UfcV2Pricing | null> {
+  const fit = await fitted();
+  return fit.coefficients && fit.beatsV1 ? { coefficients: fit.coefficients } : null;
+}
+
+/**
+ * v2's red-corner win probability for an upcoming bout, from the same
+ * request-cached replay the bout page reads. Null when either fighter has
+ * no replayed bouts — a debut rests on priors alone, and v1's low-
+ * confidence rule already refuses to post those; v2 keeps the same fence.
+ */
+export async function ufcV2ProbRed(
+  pricing: UfcV2Pricing,
+  redFighterId: string,
+  blueFighterId: string,
+  eventDate: Date,
+  weightClass: string
+): Promise<number | null> {
+  const replay = await replayed();
+  const date = eventDate > new Date() ? eventDate : new Date();
+  const { x, a, b } = replay.features(redFighterId, blueFighterId, date, weightClass);
+  if (a.fights === 0 || b.fights === 0) return null;
+  return fightWinProb(x, pricing.coefficients).probA;
+}
+
 export async function getUfcFightModel(boutId: string): Promise<UfcFightModelView | null> {
   const bout = await prisma.ufcBout.findUnique({
     where: { id: boutId },
