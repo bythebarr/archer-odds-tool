@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { loadUfcHistory } from "@/lib/ufc/fightData";
 import { UfcReplay, coefficientVector, fightWinProb, FEATURES, type FeatureName, type FighterProfile } from "@/lib/ufc/fightModel";
 import { finalProbOver, marketRead, MIN_FIT_SAMPLES, DEFAULT_MODEL_WEIGHT, type MarketRead } from "@/lib/propModel/market";
+import { isFitFresh } from "@/lib/engine/fitFreshness";
 import type { TwoSidedQuote } from "@/lib/odds/marketValue";
 import { getModelWeights } from "./modelWeights";
 
@@ -36,9 +37,11 @@ const replayed = cache(async () => {
 });
 
 async function fitted(): Promise<{ coefficients: number[] | null; beatsV1: boolean }> {
-  const r = await prisma.modelReport.findFirst({ where: { model: "ufc-fights:ml" }, orderBy: { createdAt: "desc" }, select: { n: true, extra: true } });
+  const r = await prisma.modelReport.findFirst({ where: { model: "ufc-fights:ml" }, orderBy: { createdAt: "desc" }, select: { n: true, extra: true, createdAt: true } });
   const e = r?.extra as { coefficients?: Record<string, number>; beatsV1?: boolean } | null | undefined;
-  if (!r || r.n < MIN_FIT_SAMPLES || !e?.coefficients) return { coefficients: null, beatsV1: false };
+  // A stale fit is no fit (Decision 9): coefficients and the beatsV1 flag
+  // revert together, so v2 can never price off an expired comparison.
+  if (!r || r.n < MIN_FIT_SAMPLES || !isFitFresh(r.createdAt, new Date()) || !e?.coefficients) return { coefficients: null, beatsV1: false };
   return { coefficients: coefficientVector(e.coefficients as Partial<Record<FeatureName, number>>), beatsV1: e.beatsV1 === true };
 }
 
