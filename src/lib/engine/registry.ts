@@ -4,15 +4,17 @@
  * are no parallel sport literals left to drift out of sync.
  *
  * MLB + UFC are the full adapters (odds model / fighter-math, with a live board
- * and grader). NFL, NBA, tennis, soccer, and F1 register as thin
+ * and grader). NFL, NBA, NHL, tennis, soccer, and F1 register as thin
  * market/results-lite adapters: real `meta` and `ingest`, but an empty board
  * until their paid-EV lens lands — F1 is results-only (`meta.resultsOnly`).
+ * NHL (Phase 5) is the teamLeague adapter at lines parity, no game model yet.
  * Adding a sport is a single push here; see docs/architecture/sport-engine.md.
  */
 import type { SportAdapter } from "./types";
 import { mlbAdapter } from "./adapters/mlb";
 import { nflAdapter } from "./adapters/nfl";
 import { nbaAdapter } from "./adapters/nba";
+import { nhlAdapter } from "./adapters/nhl";
 import { ufcAdapter } from "./adapters/ufc";
 import { tennisAdapter } from "./adapters/tennis";
 import { soccerAdapter } from "./adapters/soccer";
@@ -22,7 +24,7 @@ import { f1Adapter } from "./adapters/f1";
 // adapters stay registered: their pages still work and past plays still grade. Each adapter's `meta` points at the client-safe
 // SPORT_METAS entry, so identity/display and behavior share one source without
 // forcing this server-only module (prisma, ingest) into the client bundle.
-export const SPORTS: SportAdapter[] = [nbaAdapter, nflAdapter, ufcAdapter, mlbAdapter, tennisAdapter, soccerAdapter, f1Adapter];
+export const SPORTS: SportAdapter[] = [nbaAdapter, nflAdapter, nhlAdapter, ufcAdapter, mlbAdapter, tennisAdapter, soccerAdapter, f1Adapter];
 
 // The sport-key unions derive from the client-safe meta list (see sportsMeta.ts);
 // re-exported here so `@/lib/engine` stays the one import for engine types.

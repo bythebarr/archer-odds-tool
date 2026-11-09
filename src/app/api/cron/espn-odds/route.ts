@@ -2,11 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { checkCronAuth } from "@/lib/cronAuth";
 import { NBA_LEAGUE } from "@/lib/nba/league";
 import { NFL_LEAGUE } from "@/lib/nfl/league";
+import { NHL_LEAGUE } from "@/lib/nhl/league";
 import { espnOddsStatus, pollEspnOddsMlb, pollEspnOddsTeamLeague, storeScoreboardOddsForLeague, storeSoccerPickcenterOdds, type EspnOddsSummary, type EspnRunSection } from "@/lib/odds/espnOddsPoll";
 import { recordPollLog } from "@/lib/pollingPolicy";
 
 /**
- * Free book prices from ESPN (no key, no credits): NBA, NFL and MLB games, every
+ * Free book prices from ESPN (no key, no credits): NBA, NFL, NHL and MLB games, every
  * US-style ESPN league in the all-sports engine, then soccer match by match
  * until the time runs out. Safe to call as often as the cron allows.
  */
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
   const nba = await safe("nba", () => pollEspnOddsTeamLeague(NBA_LEAGUE, 2));
   const nfl = await safe("nfl", () => pollEspnOddsTeamLeague(NFL_LEAGUE, 7));
   const mlb = await safe("mlb", () => pollEspnOddsMlb(3));
+  const nhl = await safe("nhl", () => pollEspnOddsTeamLeague(NHL_LEAGUE, 3));
   const leagues = await prisma.league.findMany({ where: { active: true, espnPath: { not: null }, NOT: { sport: "soccer" }, upcomingCount: { gt: 0 } }, select: { espnPath: true } });
   let others = 0;
   let leagueFeedFailures = 0;
@@ -69,6 +71,7 @@ export async function POST(request: Request) {
   pushSummary("nba", nba);
   pushSummary("nfl", nfl);
   pushSummary("mlb", mlb);
+  pushSummary("nhl", nhl);
   sections.push({
     label: "otherLeagues",
     games: 0,

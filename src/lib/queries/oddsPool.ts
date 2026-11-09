@@ -100,6 +100,7 @@ const HREF: Record<Exclude<SlateSport, "ufc">, (id: string) => string> = {
   mlb: (id) => `/games/${id}`,
   nfl: (id) => `/nfl/${id}`,
   nba: (id) => `/nba/${id}`,
+  nhl: (id) => `/nhl/${id}`,
   tennis: (id) => `/tennis/${id}`,
   soccer: (id) => `/soccer/${id}`,
 };

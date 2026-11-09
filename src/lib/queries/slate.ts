@@ -251,22 +251,23 @@ export const getSlateForDate = cache(async function getSlateForDate(dateEt: stri
   // Parked sports are skipped outright: no queries, no rows (see SportMeta.parked).
   const unlessParked = (sport: SlateSport, load: () => Promise<SlateItem[]>) =>
     isParked(sport) ? Promise.resolve([]) : load();
-  const [mlb, nfl, nba, tennis, soccer, ufc] = await Promise.all([
+  const [mlb, nfl, nba, nhl, tennis, soccer, ufc] = await Promise.all([
     unlessParked("mlb", () => mlbItems(dateEt)),
     unlessParked("nfl", () => teamLeagueItems("nfl", gte, lt)),
     unlessParked("nba", () => teamLeagueItems("nba", gte, lt)),
+    unlessParked("nhl", () => teamLeagueItems("nhl", gte, lt)),
     unlessParked("tennis", () => tennisItems(gte, lt)),
     unlessParked("soccer", () => soccerItems(gte, lt)),
     unlessParked("ufc", () => ufcItems(dateEt)),
   ]);
 
-  const items = [...mlb, ...nfl, ...nba, ...tennis, ...soccer, ...ufc].sort(
+  const items = [...mlb, ...nfl, ...nba, ...nhl, ...tennis, ...soccer, ...ufc].sort(
     (a, b) => a.startUtc.getTime() - b.startUtc.getTime()
   );
 
   return {
     date: dateEt,
     items,
-    counts: { mlb: mlb.length, nfl: nfl.length, nba: nba.length, tennis: tennis.length, soccer: soccer.length, ufc: ufc.length },
+    counts: { mlb: mlb.length, nfl: nfl.length, nba: nba.length, nhl: nhl.length, tennis: tennis.length, soccer: soccer.length, ufc: ufc.length },
   };
 });

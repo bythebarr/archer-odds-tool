@@ -10,7 +10,7 @@
  */
 
 /** Sports that run on this pipeline. Each needs the Sport enum value and the team-pair DB check. */
-export type TeamLeagueSport = "nfl" | "nba";
+export type TeamLeagueSport = "nfl" | "nba" | "nhl";
 
 export interface LeagueTeamInfo {
   /** Canonical full name, stored as Team.name, e.g. "Kansas City Chiefs". */

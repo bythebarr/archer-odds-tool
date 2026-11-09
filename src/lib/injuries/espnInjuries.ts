@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import type { Sport } from "@/generated/prisma/client";
 
 const BASE = "https://site.api.espn.com/apis/site/v2/sports";
-const PATH: Partial<Record<Sport, string>> = { nba: "basketball/nba", nfl: "football/nfl" };
+const PATH: Partial<Record<Sport, string>> = { nba: "basketball/nba", nfl: "football/nfl", nhl: "hockey/nhl" };
 
 export interface ParsedInjury {
   espnAthleteId: string;

@@ -10,15 +10,20 @@ describe("league keys", () => {
     expect(fromToaKey("icehockey_sweden_hockey_league")).toEqual({ sport: "hockey", slug: "sweden-hockey-league" });
     expect(fromToaKey("basketball_nba")).toBeNull();
     expect(fromToaKey("americanfootball_nfl")).toBeNull();
+    expect(fromToaKey("icehockey_nhl")).toBeNull();
+    expect(fromToaKey("icehockey_nhl_preseason")).toBeNull();
     expect(fromToaKey("baseball_mlb")).toBeNull();
     expect(fromToaKey("basketball_nba_championship_winner")).toEqual({ sport: "basketball", slug: "nba-championship-winner" });
     expect(fromToaKey("politics_us_presidential_election_winner")).toBeNull();
   });
-  it("maps odds-api.io sports and keeps NBA/UFC with their own pipelines", () => {
+  it("maps odds-api.io sports and keeps NBA/UFC/NHL with their own pipelines", () => {
     expect(fromOddsApiIo("table-tennis", "czech-liga-pro", "Czech Republic - Liga Pro")).toEqual({ sport: "table-tennis", slug: "czech-liga-pro" });
     expect(fromOddsApiIo("football", "england-premier-league", "England - Premier League")?.sport).toBe("soccer");
     expect(fromOddsApiIo("basketball", "usa-nba", "USA - NBA")).toBeNull();
     expect(fromOddsApiIo("mixed-martial-arts", "ufc", "UFC")).toBeNull();
+    expect(fromOddsApiIo("ice-hockey", "usa-nhl", "USA - NHL")).toBeNull();
+    // Non-NHL hockey stays with the all-sports engine.
+    expect(fromOddsApiIo("ice-hockey", "sweden-shl", "Sweden - SHL")).toEqual({ sport: "hockey", slug: "sweden-shl" });
   });
 });
 
