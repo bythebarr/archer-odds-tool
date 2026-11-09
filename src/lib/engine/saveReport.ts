@@ -16,6 +16,11 @@ export async function saveReport(
   extra?: Record<string, unknown>
 ): Promise<void> {
   if (!SAVING || report.n === 0) return;
+  // The sample's data-as-of rides in extra so the /models card can show the
+  // DATA date next to the run date (Decision 10) — a re-run over a frozen
+  // population then visibly re-prints the same data date instead of
+  // looking freshly graded. A caller's own key wins on collision.
+  const mergedExtra = { ...(report.sampleDataAsOf ? { sampleDataAsOf: report.sampleDataAsOf } : {}), ...(extra ?? {}) };
   await prisma.modelReport.create({
     data: {
       model,
@@ -29,7 +34,7 @@ export async function saveReport(
       actual: report.actual,
       verdict: report.verdict,
       detail: { buckets: report.buckets, refit: report.refit } as unknown as Prisma.InputJsonValue,
-      ...(extra ? { extra: extra as Prisma.InputJsonValue } : {}),
+      ...(Object.keys(mergedExtra).length > 0 ? { extra: mergedExtra as Prisma.InputJsonValue } : {}),
     },
   });
 }

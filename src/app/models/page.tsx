@@ -60,6 +60,13 @@ function Card({ c }: { c: ModelCard }) {
           <p className="text-sm font-semibold text-foreground">{c.label}</p>
           <p className="text-[11px] text-muted-foreground">
             {c.n.toLocaleString()} {c.unit}s · graded {c.runAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            {c.dataAsOf && (
+              <>
+                {" "}· data through{" "}
+                {new Date(`${c.dataAsOf}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </>
+            )}
+            {c.deltaN !== null && (c.deltaN > 0 ? <> · +{c.deltaN.toLocaleString()} new</> : <> · no new samples</>)}
           </p>
         </div>
         <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${v.tone}`} title={v.note}>
@@ -120,6 +127,10 @@ export default async function ModelsPage() {
   for (const c of cards) bySport.set(sportOf(c.model), [...(bySport.get(sportOf(c.model)) ?? []), c]);
   const sports = [...bySport.keys()].sort((a, b) => (SPORT_ORDER.indexOf(a) + 1 || 99) - (SPORT_ORDER.indexOf(b) + 1 || 99));
   const counts = Object.fromEntries(Object.keys(VERDICT).map((k) => [k, cards.filter((c) => c.verdict === k).length]));
+  // Run date vs data date, page-wide (Decision 10): the lab can re-run on
+  // schedule while the graded data stands still — both dates print.
+  const lastRun = cards.length ? new Date(Math.max(...cards.map((c) => c.runAt.getTime()))) : null;
+  const newestData = cards.reduce<string | null>((acc, c) => (c.dataAsOf && (acc === null || c.dataAsOf > acc) ? c.dataAsOf : acc), null);
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
@@ -141,6 +152,17 @@ export default async function ModelsPage() {
         {cards.length > 0 && (
           <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
             {Object.entries(VERDICT).map(([k, v]) => (counts[k] ? <span key={k}>{counts[k]} {v.label.toLowerCase()}</span> : null))}
+          </p>
+        )}
+        {lastRun && (
+          <p className="mt-2 text-[11px] text-[#8a90a0]">
+            Model lab last ran {lastRun.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            {newestData && (
+              <>
+                {" "}· newest graded data{" "}
+                {new Date(`${newestData}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </>
+            )}
           </p>
         )}
       </div>

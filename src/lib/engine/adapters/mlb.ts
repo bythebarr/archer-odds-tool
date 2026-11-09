@@ -11,7 +11,7 @@
  * ledger, grader, and nav can derive from the registry (Phase 3).
  */
 import { prisma } from "@/lib/prisma";
-import { shiftEtDate } from "@/lib/dateEt";
+import { etDateOf, shiftEtDate } from "@/lib/dateEt";
 import { getOddsPoolForDate, type OddsPlay } from "@/lib/queries/oddsPool";
 import { unitsFor } from "@/lib/betting/kelly";
 import { playLine } from "@/lib/card/line";
@@ -198,6 +198,7 @@ async function collectMlbSamples({ limit }: { limit: number }): Promise<Calibrat
     samples.push({
       pred: homeFav ? proj.homeProb : proj.awayProb,
       won: homeFav === homeWon ? 1 : 0,
+      date: etDateOf(g.scheduledStartUtc),
     });
   }
   return samples;

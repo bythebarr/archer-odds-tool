@@ -33,6 +33,13 @@ export interface CalibrationSample {
   pred: number;
   /** 1 if that outcome occurred, 0 otherwise. */
   won: 0 | 1;
+  /**
+   * The sampled event's date (ET, YYYY-MM-DD), when the builder knows it.
+   * Optional and unused by the scoring math — it exists so a report card
+   * can state how fresh its graded sample actually is (Decision 10): a
+   * weekly re-run over a frozen population must not read as fresh grading.
+   */
+  date?: string;
 }
 
 /** Guard: probabilities must be strictly inside (0, 1) or logit/logLoss blow up. */
@@ -216,6 +223,12 @@ export interface CalibrationReport {
   buckets: ReliabilityBucket[];
   refit: RefitResult;
   verdict: CalibrationVerdict;
+  /**
+   * The newest sampled event's date across the graded population, or null
+   * when no sample carried a date. This is the card's DATA date — distinct
+   * from the run date the report row is stamped with (Decision 10).
+   */
+  sampleDataAsOf: string | null;
 }
 
 /** Default `trustMargin` for scoreCalibration — exported so callers that need this exact bar outside a calibration verdict (e.g. a before/after backtest's own ship/no-ship gate) can reuse it instead of restating the number. */
@@ -247,6 +260,11 @@ export function scoreCalibration(
         : skill < trustMargin
           ? "marginal"
           : "unproven";
+  // ISO dates order lexicographically, so the max string is the newest sample.
+  let sampleDataAsOf: string | null = null;
+  for (const s of samplesNewestFirst) {
+    if (s.date && (sampleDataAsOf === null || s.date > sampleDataAsOf)) sampleDataAsOf = s.date;
+  }
   return {
     n,
     meanPred,
@@ -258,6 +276,7 @@ export function scoreCalibration(
     buckets: reliabilityBuckets(samplesNewestFirst),
     refit: timeSplitRefit(samplesNewestFirst),
     verdict,
+    sampleDataAsOf,
   };
 }
 
@@ -282,6 +301,7 @@ export function formatCalibrationReport(
   }[r.verdict];
   const lines: string[] = [];
   lines.push(`=== ${name} — ${r.n} ${unit}s — ${badge} ===`);
+  if (r.sampleDataAsOf) lines.push(`graded sample data through ${r.sampleDataAsOf}`);
   lines.push(
     `mean predicted ${pct(r.meanPred)}   actual ${pct(r.actual)}   gap ${signed(
       (r.actual - r.meanPred) * 100
