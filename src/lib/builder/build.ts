@@ -16,7 +16,7 @@ import { trustedRelativeEdge } from "./conservative";
 import { cautiousEdge } from "@/lib/propModel/canonical";
 
 /** A leg's CAUTIOUS edge over a window — the canonical ranking signal (see lib/propModel/canonical); null without a price or a read. (Historical name kept for callers.) */
-export const legConservativeEdge = (l: BuilderLeg, w: BuilderWindow) => cautiousEdge(l.archr, l.rates[w], l.priceAmerican);
+export const legConservativeEdge = (l: BuilderLeg, w: BuilderWindow) => cautiousEdge(l.archr, l.rates[w], l.priceAmerican, l.roleRates?.[w]);
 
 export type BuilderSort = "archr" | "edge" | "cedge" | "hit";
 

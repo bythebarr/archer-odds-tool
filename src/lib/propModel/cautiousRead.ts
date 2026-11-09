@@ -117,3 +117,28 @@ export function roleWeightedRecord(
   }
   return [hits, n];
 }
+
+/** A role-weighted record rounded to hundredths: cached rows stay small, and nothing reads it finer. */
+const round2 = ([h, n]: Rate): Rate => [Math.round(h * 100) / 100, Math.round(n * 100) / 100];
+
+/**
+ * Role-weighted records over named windows: each a count of the latest games
+ * (`last`) and/or one season's games (`season`). Null without a tonight role:
+ * there's nothing to weight by, and the plain record already says it.
+ */
+export function roleWeightedRates<W extends string>(
+  games: (RecordGame & { season: number })[],
+  side: "over" | "under" | "yes",
+  point: number,
+  tonight: TonightRole | null | undefined,
+  windows: Record<W, { last?: number; season?: number }>
+): Record<W, Rate> | null {
+  if (!tonight) return null;
+  const out = {} as Record<W, Rate>;
+  for (const w of Object.keys(windows) as W[]) {
+    const { last = Infinity, season } = windows[w];
+    const pool = season === undefined ? games : games.filter((g) => g.season === season);
+    out[w] = round2(roleWeightedRecord(pool, side, point, tonight, last));
+  }
+  return out;
+}

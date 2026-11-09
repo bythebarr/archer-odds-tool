@@ -24,6 +24,7 @@ import { SOCCER_PROP_STATS, projectionOver, unpackSoccerLog } from "@/lib/soccer
 import { edgeOf } from "@/lib/builder/types";
 import type { FinderLeg } from "@/lib/props/parlayFinder";
 import { mainPoint, screenRates, type ScreenerProp } from "./types";
+import { roleWeightedRates } from "@/lib/propModel/cautiousRead";
 import { eventPropPostedLines } from "@/lib/queries/eventPropLines";
 import { SOCCER_STAT_BY_KEY } from "@/lib/odds/espnProps";
 import { getMlbPropsSlate } from "@/lib/queries/mlbProps";
@@ -45,6 +46,13 @@ const SOCCER_LEAGUES = 10;
  */
 function keep(p: ScreenerProp): boolean {
   return p.main || Object.values(p.rates).some(([h, n]) => n >= 5 && h / n >= 0.7);
+}
+
+/** The role-weighted L10 and season records, where the leg knows tonight's role (NBA). */
+function roleRatesOf(l: FinderLeg, season: number): { roleRates?: ScreenerProp["roleRates"] } {
+  const yes = l.sideLabel === "Yes";
+  const rates = roleWeightedRates(l.logs, yes ? "yes" : l.side, l.point, l.tonight, { l10: { last: 10 }, szn: { season } });
+  return rates ? { roleRates: rates } : {};
 }
 
 function fromFinderLeg(
@@ -74,6 +82,7 @@ function fromFinderLeg(
     archr: l.modelProb,
     edge: edgeOf(l.modelProb, l.priceAmerican),
     rates: screenRates(l.logs, l.side, l.point, season),
+    ...roleRatesOf(l, season),
     ...(ctx.minutes !== undefined && ctx.minutes !== null ? { minutes: Math.round(ctx.minutes * 10) / 10 } : {}),
   };
 }

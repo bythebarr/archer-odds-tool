@@ -48,6 +48,8 @@ export interface BuilderLeg {
   /** EV of the best price at ARCHR's chance, as a fraction; null without both. */
   edge: number | null;
   rates: Record<BuilderWindow, Rate>;
+  /** NBA props: the same windows with each game weighted by how closely his minutes and role then match tonight's (lib/propModel/cautiousRead). Read only by the evidence cautious read. */
+  roleRates?: Record<BuilderWindow, Rate>;
 }
 
 /** One hit-rate history entry, newest first: did the same bet cash that game, and in which season. */

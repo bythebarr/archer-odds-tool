@@ -21,6 +21,9 @@ export interface ParlayLog {
   /** The player's team that game; the leg's current team when not known. */
   team?: string;
   value: number | null;
+  /** NBA: his minutes and whether he started that game, for weighting the record by role (lib/propModel/cautiousRead). */
+  minutes?: number;
+  starter?: boolean;
 }
 
 export interface ParlayLeg {

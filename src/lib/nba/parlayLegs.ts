@@ -8,9 +8,10 @@ import { bestBettableLine } from "@/lib/odds/bestPrice";
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 import { summarizeProp, type GameLogPoint, type PropContext } from "./propsMath";
 import type { WireNbaPropsSlate } from "@/lib/queries/nbaProps";
-import { nbaProjectionContext } from "./slateContext";
+import { nbaProjectionContext, nbaTonightRole } from "./slateContext";
 import type { FinderLeg } from "@/lib/props/parlayFinder";
 import type { PropDirection } from "@/lib/props/tally";
+import type { TonightRole } from "@/lib/propModel/cautiousRead";
 
 export interface NbaLegOptions {
   /** Skip legs priced shorter than this (e.g. −500), so near-certain rungs don't pad the count. */
@@ -19,13 +20,25 @@ export interface NbaLegOptions {
 
 export function nbaFinderLegs(slate: WireNbaPropsSlate, logs: Record<string, GameLogPoint[]>, gameId: string, opts: NbaLegOptions): FinderLeg[] {
   const out: FinderLeg[] = [];
+  const roles = new Map<string, TonightRole | null>();
   for (const prop of slate.props) {
     const player = slate.players[prop.playerId];
     const statDef = NBA_PROP_STAT_BY_KEY.get(prop.stat);
     if (!player || player.gameId !== gameId || !statDef || !prop.quotes.length) continue;
     if (player.injury?.level === "out" || player.injury?.level === "doubtful") continue;
     const playerLogs = logs[prop.playerId] ?? [];
-    const legLogs = playerLogs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, team: l.team, value: statDef.value(l) }));
+    const legLogs = playerLogs.map((l) => ({
+      date: l.date,
+      opponent: l.opponent,
+      isHome: l.isHome,
+      season: l.season,
+      team: l.team,
+      value: statDef.value(l),
+      minutes: l.minutes,
+      ...(l.starter === undefined ? {} : { starter: l.starter }),
+    }));
+    if (!roles.has(prop.playerId)) roles.set(prop.playerId, nbaTonightRole(slate, player, playerLogs));
+    const tonight = roles.get(prop.playerId)!;
     const context: PropContext = {
       season: slate.season,
       venue: player.venue,
@@ -58,6 +71,7 @@ export function nbaFinderLegs(slate: WireNbaPropsSlate, logs: Record<string, Gam
           priceAmerican: best.priceAmerican,
           bookName: best.bookName,
           logs: legLogs,
+          tonight,
         });
       }
     }

@@ -5,6 +5,7 @@ import {
   legacyCautiousChance,
   roleWeight,
   roleWeightedRecord,
+  roleWeightedRates,
   type RecordGame,
 } from "./cautiousRead";
 import { cautiousChance, cautiousEdge, CAUTIOUS_READ_MODE } from "./canonical";
@@ -107,5 +108,27 @@ describe("canonical cautious read", () => {
   it("evidence mode prefers the role-weighted record, else the plain one", () => {
     expect(cautiousChance(0.6, [10, 10], [0, 0], "evidence")).toBe(0.6);
     expect(cautiousChance(0.6, [10, 10], null, "evidence")).toBeCloseTo((10 + 20 * 0.6) / 30, 10);
+  });
+});
+
+describe("roleWeightedRates", () => {
+  const games = [
+    { value: 20, minutes: 34, starter: true, season: 2026 },
+    { value: 10, minutes: 16, starter: false, season: 2026 },
+    { value: 25, minutes: 33, starter: true, season: 2025 },
+  ];
+
+  it("is null without a tonight role (non-NBA legs carry no roleRates)", () => {
+    expect(roleWeightedRates(games, "over", 15, null, { l10: { last: 10 } })).toBeNull();
+    expect(roleWeightedRates(games, "over", 15, undefined, { l10: { last: 10 } })).toBeNull();
+  });
+
+  it("weights each window, season windows filtered to that season, rounded to hundredths", () => {
+    const r = roleWeightedRates(games, "over", 15, { minutes: 34, starter: true }, { l2: { last: 2 }, szn: { season: 2025 } })!;
+    expect(r.l2[0]).toBe(1);
+    // The 16-minute bench game counts ~0.015 (minutes far off, role mismatched): barely at all.
+    expect(r.l2[1]).toBeCloseTo(1.02, 10);
+    const w = Math.round(Math.exp(-0.5 * (1 / 6.8) ** 2) * 100) / 100; // 33 min vs 34 tonight
+    expect(r.szn).toEqual([w, w]);
   });
 });

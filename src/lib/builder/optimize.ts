@@ -85,7 +85,7 @@ function candidates(pool: BuilderLeg[], o: OptimizeOptions): Map<string, Cand[]>
     if (leg.priceAmerican === null || leg.priceAmerican < o.shortest) continue;
     if (!inScope(leg, o)) continue;
     // The canonical cautious read (lib/propModel/canonical) — the same one the screener sorts by.
-    const prob = cautiousChance(leg.archr, leg.rates[o.window]);
+    const prob = cautiousChance(leg.archr, leg.rates[o.window], leg.roleRates?.[o.window]);
     if (prob === null || prob < o.minProb || prob >= 1) continue;
     // A price far longer than the leg's cautious read is a price that doesn't belong to it: the optimizer would chase it.
     if ((leg.edge !== null && leg.edge > MAX_TRUSTED_EDGE) || (relativeEdge(prob, leg.priceAmerican) ?? 0) > MAX_TRUSTED_RELATIVE_EDGE) continue;
