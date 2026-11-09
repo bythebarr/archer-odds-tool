@@ -57,7 +57,7 @@ const MAX_MODEL_EV = 0.2;
  */
 async function collectTennisSamples({ limit }: { limit: number }): Promise<CalibrationSample[]> {
   const matches = await prisma.tennisArchiveMatch.findMany({
-    select: { winnerSackId: true, loserSackId: true, surface: true },
+    select: { winnerSackId: true, loserSackId: true, surface: true, tourneyDate: true },
     orderBy: [{ tourneyDate: "asc" }, { matchNum: "asc" }],
   });
 
@@ -74,6 +74,7 @@ async function collectTennisSamples({ limit }: { limit: number }): Promise<Calib
       chrono.push({
         pred: pWinner >= 0.5 ? pWinner : 1 - pWinner,
         won: pWinner >= 0.5 ? 1 : 0,
+        date: m.tourneyDate.toISOString().slice(0, 10),
       });
     }
     elo.update(m.winnerSackId, m.loserSackId, surf);

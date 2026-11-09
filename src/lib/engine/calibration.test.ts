@@ -156,3 +156,18 @@ describe("scoreCalibration verdict", () => {
     expect(rep.verdict).toBe("trusted");
   });
 });
+
+describe("sampleDataAsOf (Decision 10)", () => {
+  it("reports the newest sample date as the data date", () => {
+    const samples: CalibrationSample[] = [
+      { pred: 0.6, won: 1, date: "2026-11-01" },
+      { pred: 0.4, won: 0, date: "2026-10-27" },
+      { pred: 0.5, won: 1 },
+    ];
+    expect(scoreCalibration(samples).sampleDataAsOf).toBe("2026-11-01");
+  });
+
+  it("is null when no sample carries a date", () => {
+    expect(scoreCalibration([s(0.6, 1), s(0.4, 0)]).sampleDataAsOf).toBeNull();
+  });
+});

@@ -71,6 +71,7 @@ async function collectUfcSamples({ limit }: { limit: number }): Promise<Calibrat
     samples.push({
       pred: redFav ? proj.fighterAProb : proj.fighterBProb,
       won: b.winnerFighterId === (redFav ? b.redCornerFighterId : b.blueCornerFighterId) ? 1 : 0,
+      date: etDateOf(b.event.eventDate),
     });
   }
   return samples;
