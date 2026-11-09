@@ -21,11 +21,14 @@ export interface SoccerPoissonOpts {
   maxGoals: number; // score-matrix truncation
   /**
    * Draw inflation (Dixon-Coles-style low-score correction, simplified). Independent
-   * Poisson under-produces draws and over-produces favorites, leaving the raw model
-   * overconfident (its 80% picks won ~75%). This multiplies the diagonal (draw)
-   * score-matrix cells by (1 + drawBoost) before normalizing, pulling probability mass
-   * from the over-confident favorites onto draws — the principled fix, not a blunt
-   * temperature that would flatten everything toward a 1/3 uniform.
+   * Poisson under-produces LOW-SCORE draws, so this multiplies the 0-0 and 1-1
+   * score-matrix cells by (1 + drawBoost) before normalizing, pulling probability
+   * mass from the over-confident favorites onto the draws that are actually
+   * under-produced — the principled fix, not a blunt temperature that would
+   * flatten everything toward a 1/3 uniform. Scoped to 0-0/1-1 since
+   * Decision 12: the boost previously hit EVERY diagonal cell (2-2, 3-3, …),
+   * inflating draws most in exactly the high-scoring matchups where the
+   * correction doesn't apply.
    */
   drawBoost: number;
 }
@@ -102,7 +105,7 @@ export class SoccerPoisson {
       for (let j = 0; j <= this.opts.maxGoals; j++) {
         const p = pi * poissonPmf(j, la);
         if (i > j) h += p;
-        else if (i === j) dr += p * (1 + this.opts.drawBoost); // low-score/draw correction
+        else if (i === j) dr += p * (1 + (i <= 1 ? this.opts.drawBoost : 0)); // low-score draw correction (0-0, 1-1 only)
         else a += p;
       }
     }

@@ -141,7 +141,7 @@ async function soccerItems(gte: Date, lt: Date): Promise<SlateItem[]> {
     title: null,
     home: { name: m.homeTeam?.name ?? "TBD", meta: m.homeTeam?.abbreviation },
     away: { name: m.awayTeam?.name ?? "TBD", meta: m.awayTeam?.abbreviation },
-    modelProb: null, // SEAM: a soccer model plugs in here
+    modelProb: null, // No dedicated soccer model (retired, Decision 12): the generic all-sports engine's soccer ratings live on /sports and in the parlay builder, fed by their own fixture universe — this slate's matches come from the odds poll, and joining the two would price off mismatched fixtures.
     ev: null, // SEAM: paid EV
   }));
 }

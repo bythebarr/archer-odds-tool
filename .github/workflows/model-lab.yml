@@ -39,7 +39,6 @@ on:
           - backtest:all
           - backtest:all-sports
           - backtest:soccer-props
-          - backtest:soccer
           - backtest:tennis
           - import:tennis
           - diagnose:props

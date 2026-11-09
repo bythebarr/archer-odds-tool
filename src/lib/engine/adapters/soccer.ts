@@ -1,9 +1,18 @@
 /**
  * Soccer adapter (thin, Phase 4 lead-in). Soccer has an odds feed
- * (pollAndStoreSoccerOdds) and a Slate presence but no ARCHR model yet — so it
- * carries NO +EV board plays. It registers here so nav/Slate/rail derive from the
- * ONE registry (Phase 3d); `listPlays` fills in when the paid-EV lens lights up.
- * Full Phase 4 also generalizes devig to the 3-way (home/draw/away) market.
+ * (pollAndStoreSoccerOdds) and a Slate presence but no ARCHR model on this
+ * surface — so it carries NO +EV board plays. It registers here so nav/Slate/rail
+ * derive from the ONE registry (Phase 3d); `listPlays` fills in when the paid-EV
+ * lens lights up. Full Phase 4 also generalizes devig to the 3-way
+ * (home/draw/away) market.
+ *
+ * The dedicated soccer model layer (lib/soccer/model.ts: a standalone
+ * Poisson pipeline with its own frozen-at-"2425" history, built to plug in
+ * here) was RETIRED in Decision 12 — it was never wired to this adapter or
+ * the slate, and the generic all-sports engine (lib/allSports) already
+ * prices soccer on /sports and in the parlay builder using the shared
+ * SoccerPoisson class. One soccer model, in the generic engine, is the
+ * standing arrangement; this adapter stays model-less by design.
  *
  * Market-lite for now: meta + a real `ingest` wrapper, an empty board, and a
  * conservative `grade`. See docs/architecture/sport-engine.md.
