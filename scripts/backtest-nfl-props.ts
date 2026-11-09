@@ -6,6 +6,7 @@ import { nflProbOver, projectNflProp } from "@/lib/nfl/projection";
 import { NFL_LOG_COLUMNS, type NflLogPoint } from "@/lib/nfl/propsMath";
 import type { NflDefenseTable } from "@/lib/nfl/matchup";
 import { inferNflPosition, nflDefenseTableFromSums, type NflDefenseSumRow } from "@/lib/queries/nflProps";
+import { GAME_MODEL_BY_SPORT, PointsRatings, adjustExpected, restEdge } from "@/lib/gameModel";
 import type { Absence } from "@/lib/injuries/absence";
 import { NFL_QB_IMPACT, NFL_SKILL_CAP, NFL_SKILL_IMPACT } from "@/lib/gameModel/adjust";
 import { scoreCalibration, formatCalibrationReport, type CalibrationSample } from "@/lib/engine/calibration";
@@ -23,14 +24,19 @@ import { closingGameLines, teamBaselinesByGame } from "./props/history";
  *
  * The projection graded is the LIVE one, rebuilt as of each date: the
  * defense-by-position table from games before that date
- * (nflDefenseTableFromSums, the slate's own builder), and availability
+ * (nflDefenseTableFromSums, the slate's own builder); availability
  * reconstructed from the logs — a key player (a QB, or ≥6 touches + targets
  * a game over his team's previous six games, the slate's KEY_USAGE rule)
  * with no game that week was out, feeding the with/without splits and the
  * game-model absence impacts (QB 3, skill 0.6 capped at 2, from his last
- * three team games' shares) that re-read the closing lines. The REDUCED
- * projection this backtest used to grade (matchup neutral, no availability)
- * stays beside it so the stack's contribution stays visible.
+ * three team games' shares); and the environment from the game model's OWN
+ * expected totals — ratings replayed only over games before that date,
+ * rest and the reconstructed absences applied — with the closing market
+ * lines (absence re-read applied) standing in only where a team is under
+ * the ratings' minimum games, exactly as the live slate falls back. The
+ * REDUCED projection this backtest used to grade (matchup neutral, no
+ * availability, market environment) stays beside it so the stack's
+ * contribution stays visible.
  *
  * Run: `npm run backtest:nfl-props`.
  */
@@ -49,7 +55,10 @@ async function main() {
   const rows = await prisma.nflPlayerGameLog.findMany({ orderBy: [{ gameDate: "asc" }] });
   const gameIds = [...new Set(rows.map((r) => r.gameId))];
   const [games, teams, players, closing, baselines] = await Promise.all([
-    prisma.game.findMany({ where: { id: { in: gameIds } }, select: { id: true, homeTeamId: true, awayTeamId: true } }),
+    prisma.game.findMany({
+      where: { id: { in: gameIds } },
+      select: { id: true, homeTeamId: true, awayTeamId: true, scheduledStartUtc: true, season: true, status: true, homeScore: true, awayScore: true },
+    }),
     prisma.team.findMany({ select: { id: true, abbreviation: true } }),
     prisma.nflPlayer.findMany({ select: { id: true, fullName: true } }),
     closingGameLines("nfl"),
@@ -186,6 +195,55 @@ async function main() {
     return total;
   };
 
+  // The game model's own lines per game, as of its date: ratings replayed
+  // over strictly earlier games, rest from each team's previous start, and
+  // the reconstructed absence totals applied as one synthetic missing entry
+  // per side (adjustExpected only sums impacts).
+  const modelLinesByGame = new Map<string, { homeSpread: number; total: number }>();
+  {
+    const league = GAME_MODEL_BY_SPORT.nfl;
+    const ratings = new PointsRatings(league.ratings);
+    const finished = games
+      .filter((g) => g.status === "final" && g.homeScore !== null && g.awayScore !== null && g.homeTeamId && g.awayTeamId)
+      .sort((a, b) => a.scheduledStartUtc.getTime() - b.scheduledStartUtc.getTime());
+    const byDate = new Map<string, typeof finished>();
+    for (const g of finished) {
+      const d = etDateOf(g.scheduledStartUtc);
+      (byDate.get(d) ?? byDate.set(d, []).get(d)!).push(g);
+    }
+    const lastStart = new Map<string, number>();
+    const daysSince = (teamId: string, start: Date): number | null => {
+      const prev = lastStart.get(teamId);
+      if (prev === undefined) return null;
+      const days = Math.round((start.getTime() - prev) / 86_400_000);
+      return days > 30 ? null : days;
+    };
+    for (const date of [...byDate.keys()].sort()) {
+      const todays = byDate.get(date)!;
+      for (const g of todays) {
+        if (ratings.games(g.homeTeamId!) < league.minGames || ratings.games(g.awayTeamId!) < league.minGames) continue;
+        ratings.touch(g.homeTeamId!, g.season);
+        ratings.touch(g.awayTeamId!, g.season);
+        const rest = restEdge("nfl", { homeDays: daysSince(g.homeTeamId!, g.scheduledStartUtc), awayDays: daysSince(g.awayTeamId!, g.scheduledStartUtc) });
+        const homeAbbr = abbr.get(g.homeTeamId!);
+        const awayAbbr = abbr.get(g.awayTeamId!);
+        const missing = {
+          home: homeAbbr ? [{ name: "reconstructed", status: "out", impact: impactTotalFor(homeAbbr, date) }] : [],
+          away: awayAbbr ? [{ name: "reconstructed", status: "out", impact: impactTotalFor(awayAbbr, date) }] : [],
+        };
+        const expected = adjustExpected(ratings.expected(g.homeTeamId!, g.awayTeamId!), rest, missing);
+        modelLinesByGame.set(g.id, { total: expected.home + expected.away, homeSpread: expected.away - expected.home });
+      }
+      for (const g of todays) {
+        ratings.touch(g.homeTeamId!, g.season);
+        ratings.touch(g.awayTeamId!, g.season);
+        ratings.update(g.homeTeamId!, g.awayTeamId!, g.homeScore!, g.awayScore!);
+        lastStart.set(g.homeTeamId!, g.scheduledStartUtc.getTime());
+        lastStart.set(g.awayTeamId!, g.scheduledStartUtc.getTime());
+      }
+    }
+  }
+
   for (const key of STATS) {
     const stat = NFL_PROP_STAT_BY_KEY.get(key)!;
     const samples: (CalibrationSample & { date: string })[] = [];
@@ -195,6 +253,7 @@ async function main() {
     let naiveErr = 0;
     let withLines = 0;
     let withAbsences = 0;
+    let withModelLines = 0;
     let n = 0;
     for (const games of byPlayer.values()) {
       for (let i = 4; i < games.length; i++) {
@@ -208,14 +267,16 @@ async function main() {
         const base = baselines.get(game.gameId);
         const absences = absencesFor(game.teamAbbr, game.date);
         const position = nflPositionGroup(game.position) ?? nflPositionGroup(inferNflPosition(history));
+        const modelLines = modelLinesByGame.get(game.gameId);
         const proj = projectNflProp(history, stat, {
           defense: defenseAsOf(game.date, game.season),
           opponent: game.opponent || null,
           position,
           absences,
-          ownAbsenceImpact: impactTotalFor(game.teamAbbr, game.date),
-          opponentAbsenceImpact: game.opponent ? impactTotalFor(game.opponent, game.date) : 0,
-          lines,
+          // Model totals already carry the absences; market lines get the re-read.
+          ownAbsenceImpact: modelLines ? 0 : impactTotalFor(game.teamAbbr, game.date),
+          opponentAbsenceImpact: modelLines ? 0 : game.opponent ? impactTotalFor(game.opponent, game.date) : 0,
+          lines: modelLines ?? lines,
           isHome: game.isHome,
           baselinePoints: (game.isHome ? base?.home : base?.away)?.scored ?? null,
           season: game.season,
@@ -231,6 +292,7 @@ async function main() {
         if (!proj || !reduced || !plain) continue;
         const actual = stat.value(game);
         if (lines.total !== null) withLines++;
+        if (modelLinesByGame.has(game.gameId)) withModelLines++;
         if (absences.length > 0) withAbsences++;
         modelErr += Math.abs(proj.mean - actual);
         reducedErr += Math.abs(reduced.mean - actual);
@@ -244,7 +306,7 @@ async function main() {
     }
     samples.sort((a, b) => (a.date < b.date ? 1 : -1));
     console.log(
-      `\n${stat.label}: LIVE projection MAE ${(modelErr / n).toFixed(3)} vs reduced ${(reducedErr / n).toFixed(3)}, without game lines ${(noLinesErr / n).toFixed(3)}, L5-average MAE ${(naiveErr / n).toFixed(3)} over ${n} games (${withLines} with closing lines, ${withAbsences} with a key teammate out)`
+      `\n${stat.label}: LIVE projection MAE ${(modelErr / n).toFixed(3)} vs reduced ${(reducedErr / n).toFixed(3)}, without game lines ${(noLinesErr / n).toFixed(3)}, L5-average MAE ${(naiveErr / n).toFixed(3)} over ${n} games (${withModelLines} on model lines, ${withLines} with closing lines, ${withAbsences} with a key teammate out)`
     );
     const report = scoreCalibration(samples);
     console.log(formatCalibrationReport(`NFL ${stat.shortLabel} projection`, "player-game", report));
@@ -255,6 +317,7 @@ async function main() {
       baseline: "L5 average",
       noLinesMae: noLinesErr / n,
       gamesWithLines: withLines,
+      gamesWithModelLines: withModelLines,
       gamesWithAbsences: withAbsences,
     });
   }

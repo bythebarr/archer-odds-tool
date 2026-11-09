@@ -1,5 +1,7 @@
 /**
- * This week's game environment for an NFL prop, from the game lines:
+ * This week's game environment for an NFL prop, from the game lines —
+ * the game model's own spread and total where the slate supplies them
+ * (queries/nflProps modelLines), the books' consensus otherwise:
  *
  * - Volume: the team's implied points ((total − spread) / 2) against what it
  *   usually scores. More expected points means more plays, more yards and
