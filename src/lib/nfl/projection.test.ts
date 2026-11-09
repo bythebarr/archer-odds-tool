@@ -80,3 +80,57 @@ describe("packNflLog / unpackNflLog", () => {
     expect(unpackNflLog(packNflLog(l))).toEqual(l);
   });
 });
+
+describe("absenceAdjustedLines", () => {
+  it("passes lines through untouched without impacts or a side", async () => {
+    const { absenceAdjustedLines } = await import("./projection");
+    const lines = { homeSpread: -3, total: 44 };
+    expect(absenceAdjustedLines(lines, true, 0, 0)).toBe(lines);
+    expect(absenceAdjustedLines(lines, null, 3, 0)).toBe(lines);
+    expect(absenceAdjustedLines({ homeSpread: null, total: null }, true, 3, 0)).toEqual({ homeSpread: null, total: null });
+  });
+
+  it("an opposing QB out makes the home side a bigger favorite and trims the total", async () => {
+    const { absenceAdjustedLines } = await import("./projection");
+    // Opponent loses 3 points of impact: our scoring +0.4×3, theirs −0.6×3.
+    const adj = absenceAdjustedLines({ homeSpread: 3, total: 44 }, true, 0, 3);
+    expect(adj.total).toBeCloseTo(44 - 0.6, 6);
+    expect(adj.homeSpread).toBeCloseTo(0, 6);
+  });
+
+  it("our own QB out moves the same game the other way", async () => {
+    const { absenceAdjustedLines } = await import("./projection");
+    const adj = absenceAdjustedLines({ homeSpread: 3, total: 44 }, true, 3, 0);
+    expect(adj.total).toBeCloseTo(44 - 0.6, 6);
+    expect(adj.homeSpread).toBeCloseTo(6, 6);
+  });
+
+  it("reads from the away side symmetrically", async () => {
+    const { absenceAdjustedLines } = await import("./projection");
+    // We're away; the HOME team's QB (impact 3) is out: home spread should rise toward us by 3.
+    const adj = absenceAdjustedLines({ homeSpread: -3, total: 44 }, false, 0, 3);
+    expect(adj.homeSpread).toBeCloseTo(0, 6);
+    expect(adj.total).toBeCloseTo(44 - 0.6, 6);
+  });
+});
+
+describe("projectNflProp opponent absences", () => {
+  const rb = (yards: number[]) => yards.map((y, i) => log({ rushAttempts: 15, rushYards: y }, i));
+  const rbCtx = { defense, opponent: null, position: "RB" as const, lines: { homeSpread: 3, total: 44 }, isHome: true, baselinePoints: 22 };
+
+  it("an opposing QB out lifts a back's rushing mean through the script", () => {
+    const whole = projectNflProp(rb([60, 70, 65, 75, 68, 72]), stat("rushYards"), rbCtx)!;
+    const qbOut = projectNflProp(rb([60, 70, 65, 75, 68, 72]), stat("rushYards"), { ...rbCtx, opponentAbsenceImpact: 3 })!;
+    expect(whole.absenceImpact).toBeNull();
+    expect(qbOut.absenceImpact).toEqual({ own: 0, opponent: 3 });
+    expect(qbOut.mean).toBeGreaterThan(whole.mean);
+    expect(qbOut.env.spread).toBeCloseTo(0, 6);
+  });
+
+  it("our own QB out does the reverse", () => {
+    const whole = projectNflProp(rb([60, 70, 65, 75, 68, 72]), stat("rushYards"), rbCtx)!;
+    const qbOut = projectNflProp(rb([60, 70, 65, 75, 68, 72]), stat("rushYards"), { ...rbCtx, ownAbsenceImpact: 3 })!;
+    expect(qbOut.mean).toBeLessThan(whole.mean);
+    expect(qbOut.env.spread).toBeCloseTo(6, 6);
+  });
+});

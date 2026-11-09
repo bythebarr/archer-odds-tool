@@ -16,6 +16,7 @@ import { NFL_EXTRA_COLUMNS, NFL_LOG_COLUMNS as COLUMNS, emptyNflExtras, packNflL
 import { EV_FLAG } from "@/lib/odds/marketValue";
 import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
 import type { Absence } from "@/lib/injuries/absence";
+import { NFL_QB_IMPACT, NFL_SKILL_CAP, NFL_SKILL_IMPACT, statusWeight, type MissingPlayer } from "@/lib/gameModel/adjust";
 import type { SlateGame, SlateTeam } from "./nbaProps";
 import type { GameLines } from "@/lib/propModel/environment";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
@@ -55,6 +56,13 @@ export interface NflPropsSlate {
   defense: NflDefenseTable;
   /** Per team abbreviation: key players ruled out or doubtful this week. */
   absences: Record<string, Absence[]>;
+  /**
+   * Per team abbreviation: missing players in the game model's impact form
+   * (starting QB 3 points, high-usage skill players 0.6 each up to a cap,
+   * × status weight) — what the props projection applies to BOTH sides'
+   * environments when this team is shorthanded.
+   */
+  absenceImpacts: Record<string, MissingPlayer[]>;
   /** Game id → this week's consensus spread and total (the projection's game environment). */
   lines: Record<string, GameLines>;
   /** Team abbreviation → points per game over its recent games, the baseline for implied points. */
@@ -237,6 +245,94 @@ async function nflAbsences(
 }
 
 /**
+ * Per team on the slate: its missing players in the game model's impact form
+ * (see gameModel/adjust and queries/gameModel's nflMissing) — the raw
+ * material for the absence read in the props projection. Batched where the
+ * game-model page reads team by team: each slate team's last three finished
+ * games supply the attempt and usage shares in two queries.
+ */
+async function nflAbsenceImpacts(
+  games: {
+    homeTeamId: string | null;
+    awayTeamId: string | null;
+    homeTeam: { id: string; name: string; abbreviation: string } | null;
+    awayTeam: { id: string; name: string; abbreviation: string } | null;
+  }[],
+  injuries: { espnAthleteId: string; teamName: string; status: string }[],
+  before: Date
+): Promise<Record<string, MissingPlayer[]>> {
+  const teamById = new Map<string, { name: string; abbreviation: string }>();
+  const idByName = new Map<string, string>();
+  for (const g of games) {
+    for (const t of [g.homeTeam, g.awayTeam]) {
+      if (!t) continue;
+      teamById.set(t.id, { name: t.name, abbreviation: t.abbreviation });
+      idByName.set(t.name, t.id);
+    }
+  }
+  const injured = injuries.filter((i) => idByName.has(i.teamName) && statusWeight(injuryLevel(i.status)) > 0);
+  if (injured.length === 0 || teamById.size === 0) return {};
+  const teamIds = [...teamById.keys()];
+  const recent = await prisma.game.findMany({
+    where: { sport: "nfl", status: "final", scheduledStartUtc: { lt: before }, OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] },
+    orderBy: { scheduledStartUtc: "desc" },
+    take: 400,
+    select: { id: true, homeTeamId: true, awayTeamId: true },
+  });
+  const recentByTeam = new Map<string, string[]>();
+  for (const g of recent) {
+    for (const tid of [g.homeTeamId, g.awayTeamId]) {
+      if (!tid || !teamById.has(tid)) continue;
+      const list = recentByTeam.get(tid) ?? [];
+      if (list.length < 3) {
+        list.push(g.id);
+        recentByTeam.set(tid, list);
+      }
+    }
+  }
+  const gameIds = [...new Set([...recentByTeam.values()].flat())];
+  if (gameIds.length === 0) return {};
+  const logs = await prisma.nflPlayerGameLog.findMany({
+    where: { teamId: { in: teamIds }, gameId: { in: gameIds } },
+    select: { teamId: true, passAttempts: true, rushAttempts: true, targets: true, receptions: true, nflPlayer: { select: { espnAthleteId: true, fullName: true } } },
+  });
+  const totals = new Map<string, { att: number; use: number }>();
+  const mine = new Map<string, { att: number; use: number; name: string }>();
+  for (const l of logs) {
+    const t = totals.get(l.teamId) ?? { att: 0, use: 0 };
+    const use = l.rushAttempts + l.targets + l.receptions;
+    t.att += l.passAttempts;
+    t.use += use;
+    totals.set(l.teamId, t);
+    const key = `${l.teamId}|${l.nflPlayer.espnAthleteId}`;
+    const m = mine.get(key) ?? { att: 0, use: 0, name: l.nflPlayer.fullName };
+    m.att += l.passAttempts;
+    m.use += use;
+    mine.set(key, m);
+  }
+  const out: Record<string, MissingPlayer[]> = {};
+  const skillUsed = new Map<string, number>();
+  for (const i of injured) {
+    const tid = idByName.get(i.teamName)!;
+    const m = mine.get(`${tid}|${i.espnAthleteId}`);
+    const t = totals.get(tid);
+    if (!m || !t) continue;
+    const w = statusWeight(injuryLevel(i.status));
+    let impact = 0;
+    if (t.att > 0 && m.att / t.att >= 0.6) {
+      impact = NFL_QB_IMPACT * w;
+    } else if (t.use > 0 && m.use / t.use >= 0.15) {
+      const used = skillUsed.get(tid) ?? 0;
+      impact = Math.min(NFL_SKILL_IMPACT * w, Math.max(NFL_SKILL_CAP - used, 0));
+      skillUsed.set(tid, used + impact);
+    }
+    if (impact <= 0) continue;
+    (out[teamById.get(tid)!.abbreviation] ??= []).push({ name: m.name, status: i.status, impact });
+  }
+  return out;
+}
+
+/**
  * One row per matchup: a schedule feed can list the same game twice (two ids,
  * same teams and day). Keeps the one the prop feed matched, else the first.
  */
@@ -266,7 +362,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   // Every number the books have hung on these games (ESPN's DraftKings feed carries NFL numbers, rarely their prices).
   const board = (await eventPropBoard(listed.map((g) => g.id), NFL_STAT_BY_KEY)).filter((r) => r.athleteId);
   const games = dedupeGames(listed, new Set(board.map((r) => r.eventRef)));
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, lines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, absenceImpacts: {}, lines: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -399,8 +495,9 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     const i = injuryById.get(espnIdOf.get(player.id) ?? "");
     if (i) player.injury = { status: i.status, detail: i.detail, level: injuryLevel(i.status) };
   }
-  const [absences, gameLines, teamPoints, modelWeights, calibrationFactors, blendReports] = await Promise.all([
+  const [absences, absenceImpacts, gameLines, teamPoints, modelWeights, calibrationFactors, blendReports] = await Promise.all([
     nflAbsences(slateGames, injuries, season, now),
+    nflAbsenceImpacts(games, injuries, now),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     nflTeamPoints(games.flatMap((g) => [g.homeTeam, g.awayTeam].filter((t) => t !== null)), now),
     getModelWeights("nfl"),
@@ -427,7 +524,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   }
 
   // ARCHR's line for each position's core stats, on games no book has posted props for yet (out / doubtful players sit out).
-  const inputs = { defense, absences, lines: gameLines, teamPoints };
+  const inputs = { defense, absences, absenceImpacts, lines: gameLines, teamPoints };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful" || !player.position) continue;
@@ -452,6 +549,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     props: [...props.values()],
     defense,
     absences,
+    absenceImpacts,
     lines: gameLines,
     teamPoints,
     modelWeights,

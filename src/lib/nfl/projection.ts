@@ -26,6 +26,7 @@ import { nflEnvironment, type NflEnvironment } from "./environment";
 import { nflStatMatchup, type NflDefenseTable, type NflPosition } from "./matchup";
 import type { NflLogPoint } from "./propsMath";
 import { gamesWithout, withoutWeight, type Absence } from "@/lib/injuries/absence";
+import { OPPONENT_SPILLOVER_SHARE, OWN_SCORE_SHARE } from "@/lib/gameModel/adjust";
 
 const HALF_LIFE = 4;
 const WINDOW = 17;
@@ -63,6 +64,12 @@ export interface NflProjection {
   games: number;
   /** When key teammates are out: the games without them that were blended in. */
   absence: { names: string[]; games: number; perGame: number } | null;
+  /**
+   * Both sides' missing-player impact (gameModel points) the environment was
+   * re-read through — the opponent's share is what props used to miss
+   * entirely: an opposing QB out changes our side's script and volume.
+   */
+  absenceImpact: { own: number; opponent: number } | null;
   /** Implied points and script from this week's lines (neutral without them). */
   env: NflEnvironment;
   /** How much of the projection rests on this season vs last. */
@@ -79,6 +86,10 @@ export interface NflProjectionContext {
   position: NflPosition | null;
   /** Key teammates out this week (see injuries/absence). */
   absences?: Absence[];
+  /** His own team's missing-player impact, in gameModel points (QB 3, skill ≤ 2). */
+  ownAbsenceImpact?: number;
+  /** The opponent's missing-player impact, same scale. */
+  opponentAbsenceImpact?: number;
   /** This week's consensus spread and total. */
   lines?: GameLines;
   isHome?: boolean | null;
@@ -87,6 +98,27 @@ export interface NflProjectionContext {
   season?: number;
   /** Overrides NFL_XTD_WEIGHT (the backtest varies it). */
   xtdWeight?: number;
+}
+
+/**
+ * Tonight's lines re-read through the absence report. The books' spread and
+ * total express the market's view; the model's own absence read — gameModel
+ * impacts, split between the sides exactly as adjustExpected splits an
+ * expected score (60% off the missing player's own scoring, 40% added to the
+ * opponent's) — shifts them before the environment is read, so the script
+ * reflects who's actually missing: an opposing QB out means our side leads
+ * more and runs more, a channel the raw spread understates once the total
+ * has already sagged. Lines without a posted total or spread pass through.
+ */
+export function absenceAdjustedLines(lines: GameLines, isHome: boolean | null, ownImpact: number, opponentImpact: number): GameLines {
+  if (isHome === null || (ownImpact <= 0 && opponentImpact <= 0)) return lines;
+  if (lines.total === null || lines.homeSpread === null) return lines;
+  const ownShift = -OWN_SCORE_SHARE * ownImpact + OPPONENT_SPILLOVER_SHARE * opponentImpact;
+  const oppShift = -OWN_SCORE_SHARE * opponentImpact + OPPONENT_SPILLOVER_SHARE * ownImpact;
+  const total = lines.total + ownShift + oppShift;
+  // The home margin moves by (home score shift − away score shift); the spread moves opposite the margin.
+  const homeMarginShift = isHome ? ownShift - oppShift : oppShift - ownShift;
+  return { total, homeSpread: lines.homeSpread - homeMarginShift };
 }
 
 export function projectNflProp(allLogs: NflLogPoint[], stat: NflPropStatDef, ctx: NflProjectionContext): NflProjection | null {
@@ -132,7 +164,10 @@ export function projectNflProp(allLogs: NflLogPoint[], stat: NflPropStatDef, ctx
       matchupFactor = Math.min(1 + MATCHUP_CAP, Math.max(1 - MATCHUP_CAP, f));
     }
   }
-  const env = nflEnvironment(ctx.lines ?? NO_LINES, ctx.isHome ?? null, stat.key, ctx.baselinePoints ?? null);
+  const ownImpact = ctx.ownAbsenceImpact ?? 0;
+  const opponentImpact = ctx.opponentAbsenceImpact ?? 0;
+  const envLines = absenceAdjustedLines(ctx.lines ?? NO_LINES, ctx.isHome ?? null, ownImpact, opponentImpact);
+  const env = nflEnvironment(envLines, ctx.isHome ?? null, stat.key, ctx.baselinePoints ?? null);
   const mean = base * matchupFactor * env.volumeFactor * env.scriptFactor;
 
   const sample = values.slice(0, WINDOW);
@@ -151,7 +186,7 @@ export function projectNflProp(allLogs: NflLogPoint[], stat: NflPropStatDef, ctx
       : stat.shape === "yards"
         ? { kind: "normal", mean, sd }
         : { kind: "count", mean, variance: sd * sd };
-  return { mean, sd, matchupFactor, games: logs.length, absence, env, seasons, distribution };
+  return { mean, sd, matchupFactor, games: logs.length, absence, absenceImpact: ownImpact > 0 || opponentImpact > 0 ? { own: ownImpact, opponent: opponentImpact } : null, env, seasons, distribution };
 }
 
 /** The model's uncalibrated chance the Over cashes at `point` (pushes refund). */

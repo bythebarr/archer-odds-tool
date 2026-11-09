@@ -36,6 +36,11 @@ export interface MissingPlayer {
   impact: number;
 }
 
+/** How a missing player's margin impact splits: this share off his own team's scoring... */
+export const OWN_SCORE_SHARE = 0.6;
+/** ...and this share added to the opponent's (players defend too). */
+export const OPPONENT_SPILLOVER_SHARE = 0.4;
+
 /**
  * Applies rest and absences to an expected score. A missing player costs his
  * team `impact` points of margin: 60% from its own scoring, 40% added to the
@@ -50,8 +55,8 @@ export function adjustExpected(
   const h = lost(missing.home);
   const a = lost(missing.away);
   return {
-    home: base.home + rest.home / 2 - rest.away / 2 - 0.6 * h + 0.4 * a,
-    away: base.away + rest.away / 2 - rest.home / 2 - 0.6 * a + 0.4 * h,
+    home: base.home + rest.home / 2 - rest.away / 2 - OWN_SCORE_SHARE * h + OPPONENT_SPILLOVER_SHARE * a,
+    away: base.away + rest.away / 2 - rest.home / 2 - OWN_SCORE_SHARE * a + OPPONENT_SPILLOVER_SHARE * h,
   };
 }
 

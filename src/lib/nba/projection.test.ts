@@ -149,3 +149,45 @@ describe("positionRates", () => {
     expect(rates.C).toBeUndefined(); // 30 minutes isn't enough to read a position's rate
   });
 });
+
+describe("opponentAbsenceFactor", () => {
+  it("is 1 when the opponent is whole", async () => {
+    const { opponentAbsenceFactor } = await import("./projection");
+    expect(opponentAbsenceFactor(undefined, 226)).toBe(1);
+    expect(opponentAbsenceFactor([], 226)).toBe(1);
+    expect(opponentAbsenceFactor([{ name: "Nobody", status: "out", impact: 0 }], 226)).toBe(1);
+  });
+
+  it("lifts by the game model's spillover share of the missing impact", async () => {
+    const { opponentAbsenceFactor } = await import("./projection");
+    // A star out (impact 4) against a 226 combined baseline: 0.4 × 4 / 113.
+    expect(opponentAbsenceFactor([{ name: "Star", status: "out", impact: 4 }], 226)).toBeCloseTo(1 + (0.4 * 4) / 113, 6);
+    // Two rotation pieces sum.
+    const two = opponentAbsenceFactor(
+      [
+        { name: "A", status: "out", impact: 2 },
+        { name: "B", status: "doubtful", impact: 1.5 },
+      ],
+      null
+    );
+    expect(two).toBeCloseTo(1 + (0.4 * 3.5) / 113, 6);
+  });
+
+  it("caps the lift", async () => {
+    const { opponentAbsenceFactor } = await import("./projection");
+    expect(opponentAbsenceFactor([{ name: "Everyone", status: "out", impact: 40 }], 226)).toBe(1.08);
+  });
+
+  it("moves a projection's mean and reports itself", () => {
+    const base = projectProp(steady(20), PTS, { defense, opponent: "MID", positionGroup: null })!;
+    const lifted = projectProp(steady(20), PTS, {
+      defense,
+      opponent: "MID",
+      positionGroup: null,
+      opponentAbsences: [{ name: "Rim Protector", status: "out", impact: 4 }],
+    })!;
+    expect(base.opponentFactor).toBe(1);
+    expect(lifted.opponentFactor).toBeGreaterThan(1);
+    expect(lifted.mean / base.mean).toBeCloseTo(lifted.opponentFactor, 6);
+  });
+});

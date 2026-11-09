@@ -11,15 +11,17 @@ import { projectNbaMinutes } from "./minutes";
 import { nbaEnvironment } from "./environment";
 import { starterTonight } from "./lineups";
 
-type SlateInputs = Pick<NbaPropsSlate, "defense" | "absences" | "lines"> & Partial<Pick<NbaPropsSlate, "positionRates" | "teamDates" | "date" | "lineups">>;
+type SlateInputs = Pick<NbaPropsSlate, "defense" | "absences" | "lines"> & Partial<Pick<NbaPropsSlate, "positionRates" | "teamDates" | "date" | "lineups" | "absenceImpacts">>;
 
 export function nbaProjectionContext(slate: SlateInputs, player: SlatePlayer): ProjectionContext {
   const team = player.team?.abbreviation;
+  const opponent = player.opponent?.abbreviation;
   return {
     defense: slate.defense,
-    opponent: player.opponent?.abbreviation ?? null,
+    opponent: opponent ?? null,
     positionGroup: player.positionGroup,
     absences: team ? slate.absences[team] : undefined,
+    opponentAbsences: opponent ? slate.absenceImpacts?.[opponent] : undefined,
     lines: slate.lines[player.gameId] ?? NO_LINES,
     isHome: player.venue === null ? null : player.venue === "home",
     baselineTotal: team ? (slate.defense.teams[team]?.combinedPoints ?? null) : null,

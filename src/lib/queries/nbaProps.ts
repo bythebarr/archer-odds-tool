@@ -11,6 +11,7 @@ import type { DefenseTable, TeamDefenseRow } from "@/lib/nba/matchup";
 import { EV_FLAG } from "@/lib/odds/marketValue";
 import { injuryLevel, type PlayerInjuryInfo } from "@/lib/injuries/status";
 import type { Absence } from "@/lib/injuries/absence";
+import { nbaPlayerImpact, statusWeight, type MissingPlayer } from "@/lib/gameModel/adjust";
 import { positionGroup, type PositionGroup } from "@/lib/nba/positionGroups";
 import type { NbaPropStat } from "@/generated/prisma/client";
 import type { GameLines } from "@/lib/propModel/environment";
@@ -62,6 +63,12 @@ export interface NbaPropsSlate {
   defense: DefenseTable;
   /** Per team abbreviation: rotation players ruled out or doubtful tonight (see injuries/absence). */
   absences: Record<string, Absence[]>;
+  /**
+   * Per team abbreviation: missing players in the game model's impact form
+   * (box-score impact × status weight) — what the props projection applies
+   * to the OTHER side's means when this team is shorthanded.
+   */
+  absenceImpacts: Record<string, MissingPlayer[]>;
   /** Game id → tonight's consensus spread and total (the projection's game environment). */
   lines: Record<string, GameLines>;
   /** Stat → the model's fitted weight against the market (stats without a fit use the default). */
@@ -124,6 +131,44 @@ async function nbaAbsences(games: SlateGame[], season: number, before: Date): Pr
     const usage = withTeam.reduce((a, l) => a + l.minutes, 0) / withTeam.length;
     if (usage < ROTATION_MINUTES) continue;
     (out[abbr] ??= []).push({ name: p.fullName, status: i.status, playedDates: withTeam.map((l) => etDateOf(l.gameDate)), usage });
+  }
+  return out;
+}
+
+/**
+ * Per team on the slate: its missing players in the game model's impact form
+ * (see gameModel/adjust and queries/gameModel's nbaMissing) — the raw
+ * material for the opponent-absence lift in the props projection. Unlike
+ * nbaAbsences this keeps questionable players: the game model already
+ * prices them at a 0.35 weight, and the slate ships both forms so each
+ * consumer keeps its own rule.
+ */
+async function nbaAbsenceImpacts(games: SlateGame[], season: number, before: Date): Promise<Record<string, MissingPlayer[]>> {
+  const teamNames = new Map(games.flatMap((g) => [[g.home.name, g.home.abbreviation], [g.away.name, g.away.abbreviation]] as const));
+  const injured = (await prisma.playerInjury.findMany({ where: { sport: "nba", teamName: { in: [...teamNames.keys()] } } })).filter(
+    (i) => statusWeight(injuryLevel(i.status)) > 0
+  );
+  if (injured.length === 0) return {};
+  const players = await prisma.nbaPlayer.findMany({
+    where: { espnAthleteId: { in: injured.map((i) => i.espnAthleteId) } },
+    include: {
+      gameLogs: {
+        where: { season: { in: [season - 1, season] }, gameDate: { lt: before } },
+        orderBy: { gameDate: "desc" },
+        take: 15,
+        select: { minutes: true, points: true, rebounds: true, assists: true, steals: true, blocks: true, turnovers: true, team: { select: { name: true } } },
+      },
+    },
+  });
+  const out: Record<string, MissingPlayer[]> = {};
+  for (const i of injured) {
+    const p = players.find((x) => x.espnAthleteId === i.espnAthleteId);
+    const abbr = teamNames.get(i.teamName);
+    if (!p || !abbr) continue;
+    const withTeam = p.gameLogs.filter((l) => l.team.name === i.teamName);
+    const impact = nbaPlayerImpact(withTeam) * statusWeight(injuryLevel(i.status));
+    if (impact <= 0) continue;
+    (out[abbr] ??= []).push({ name: p.fullName, status: i.status, impact: Math.max(impact, 0.3) });
   }
   return out;
 }
@@ -258,6 +303,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     props: [],
     defense: { season, fromLastSeason: false, teams: {} },
     absences: {},
+    absenceImpacts: {},
     lines: {},
     modelWeights: {},
     calibrationFactors: {},
@@ -379,8 +425,9 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     });
   }
 
-  const [absences, gameLines, modelWeights, calibrationFactors, teamDates, lineups, blendReports] = await Promise.all([
+  const [absences, absenceImpacts, gameLines, modelWeights, calibrationFactors, teamDates, lineups, blendReports] = await Promise.all([
     nbaAbsences(slateGames, season, gte),
+    nbaAbsenceImpacts(slateGames, season, gte),
     getConsensusGameLines(slateGames.map((g) => g.id)),
     getModelWeights("nba"),
     getCalibrationFactors("nba-props"),
@@ -398,7 +445,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
 
   // ARCHR's line for every core stat a book hasn't posted (out / doubtful players sit out).
   const rates = positionRates(Object.values(players), logs, NBA_PROP_STATS.filter((s) => !s.milestone));
-  const inputs = { defense, absences, lines: gameLines, positionRates: rates, teamDates, date: dateEt, lineups };
+  const inputs = { defense, absences, absenceImpacts, lines: gameLines, positionRates: rates, teamDates, date: dateEt, lineups };
   for (const player of Object.values(players)) {
     const level = player.injury?.level;
     if (level === "out" || level === "doubtful") continue;
@@ -419,6 +466,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     props: [...propsByKey.values()],
     defense,
     absences,
+    absenceImpacts,
     lines: gameLines,
     modelWeights,
     calibrationFactors,
