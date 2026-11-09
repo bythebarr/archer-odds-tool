@@ -13,6 +13,8 @@ import { scoreCalibration, formatCalibrationReport } from "@/lib/engine/calibrat
  * no wiring per sport (sport-engine Phase 4a).
  *
  * Run: `npm run backtest:all` (optionally `N=1500 npm run backtest:all`).
+ * Exits non-zero if any sport's backtest fails, so a partial refresh can
+ * never look green in CI (the Model lab workflow keys off this exit code).
  */
 async function main() {
   const limit = Number(process.env.N ?? 1500);
@@ -51,6 +53,14 @@ async function main() {
         String(s.n).padStart(5) +
         `   ${s.brier.toFixed(4)}  ${s.base.toFixed(4)}  ${s.brier <= s.base ? "" : "+"}${skill}`
     );
+  }
+
+  const failures = summary.filter((s) => s.verdict === "error");
+  if (failures.length > 0) {
+    console.error(
+      `\n${failures.length} sport(s) failed to backtest (${failures.map((s) => s.sport).join(", ")}) - exiting non-zero so the run is loud, not green.`
+    );
+    process.exitCode = 1;
   }
 }
 
