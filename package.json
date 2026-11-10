@@ -60,6 +60,7 @@
     "diagnose:parlays": "tsx scripts/diagnose-parlays.ts",
     "diagnose:builder": "tsx scripts/diagnose-builder.ts",
     "diagnose:db": "tsx scripts/diagnose-db.ts",
+    "diagnose:db-watch": "WATCH=1 tsx scripts/diagnose-db.ts",
     "diagnose:screener": "tsx scripts/diagnose-screener.ts",
     "poll:espn-props": "tsx scripts/poll-espn-props.ts",
     "poll:espn-odds": "tsx scripts/poll-espn-odds.ts",

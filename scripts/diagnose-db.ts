@@ -13,7 +13,29 @@ const show = (title: string, rows: unknown[]) => {
   for (const r of rows) console.log(JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? Number(v) : v)));
 };
 
+/** WATCH=1: sample every 5s for ~4 minutes, so a slow spell is caught while it happens. */
+async function watch() {
+  const end = Date.now() + 240_000;
+  console.log("time      ping_ms  active  waiting  longest_s  longest_query");
+  while (Date.now() < end) {
+    const t = Date.now();
+    await q(`SELECT 1`);
+    const ping = Date.now() - t;
+    const [a] = await q<{ active: number; waiting: number }>(
+      `SELECT count(*) FILTER (WHERE state = 'active' AND pid <> pg_backend_pid())::int AS active,
+              count(*) FILTER (WHERE wait_event_type = 'Lock')::int AS waiting FROM pg_stat_activity`
+    );
+    const [l] = await q<{ s: number; query: string }>(
+      `SELECT round(extract(epoch FROM now() - query_start))::int AS s, left(regexp_replace(query, '\\s+', ' ', 'g'), 110) AS query
+       FROM pg_stat_activity WHERE state = 'active' AND pid <> pg_backend_pid() ORDER BY query_start NULLS LAST LIMIT 1`
+    );
+    console.log(`${new Date().toISOString().slice(11, 19)}  ${String(ping).padStart(7)}  ${String(a?.active ?? 0).padStart(6)}  ${String(a?.waiting ?? 0).padStart(7)}  ${String(l?.s ?? 0).padStart(9)}  ${l?.query ?? ""}`);
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+}
+
 async function main() {
+  if (process.env.WATCH) return watch();
   const t = Date.now();
   await q(`SELECT 1`);
   console.log(`round trip: ${Date.now() - t} ms`);

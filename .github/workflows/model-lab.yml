@@ -51,6 +51,7 @@ on:
           - diagnose:builder
           - diagnose:screener
           - diagnose:db
+          - diagnose:db-watch
           - diagnose:hot
           - diagnose:nfl
           - diagnose:leans
