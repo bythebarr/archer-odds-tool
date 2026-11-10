@@ -50,6 +50,7 @@ on:
           - diagnose:parlays
           - diagnose:builder
           - diagnose:screener
+          - diagnose:db
           - diagnose:hot
           - diagnose:nfl
           - diagnose:leans
