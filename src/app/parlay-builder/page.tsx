@@ -16,6 +16,9 @@ import { ParlayGenerator } from "@/components/builder/ParlayGenerator";
 import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { scopeOptions } from "@/lib/builder/scope";
 
+/** A render that runs this long has stalled (pools are pre-built: lib/pools): end it rather than let stalled calls pile up. */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: "Parlay Builder — legs that clear your hit rate and ARCHR's bar, every sport",
   description: "Build parlays from player props, moneylines, spreads and totals across every sport, filtered by hit rate over the sample you pick and ARCHR's chance and edge.",

@@ -69,6 +69,9 @@ export const JOBS: Job[] = [
   { path: "post-discord", hours: [13, 14, 18, 20, 21, 23], phase: 2 },
   { path: "post-results", hours: [0, 6, 13], phase: 2 },
   { path: "cleanup", hours: [10], phase: 2 },
+  // The screener's and parlay builder's pre-built leg pools (lib/pools), after the window's odds and props:
+  // warm before anyone views; page views rebuild a stale pool in between.
+  { path: "warm-pools", every: 55, phase: 2 },
   // MLB game outcomes, graded from the scores sync-results just wrote (same cadence, after it).
   { path: "grade-outcomes", every: 355, phase: 2 },
 ];

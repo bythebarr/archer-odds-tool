@@ -16,6 +16,9 @@ import { LeagueHeader, leagueTabs } from "@/components/book/LeaguePage";
 import { ScrollRow } from "@/components/ScrollRow";
 import { EmptyState } from "@/components/EmptyState";
 
+/** A render that runs this long has stalled: end it rather than let stalled calls pile up and load the database. */
+export const maxDuration = 60;
+
 /** What the standout-adjusted read is, for the hover note. */
 const STANDOUT_ADJUSTED_NOTE =
   "ARCHR chance with part of its gap from the book's no-vig chance taken off, as much as replayed nights say these picks overstate it. It ranks this page.";

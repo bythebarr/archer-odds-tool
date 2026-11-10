@@ -11,6 +11,9 @@ import { refreshOnView } from "@/lib/ops/refreshOnView";
 import { PropsScreener, type ScreenerParams } from "@/components/screener/PropsScreener";
 import { PropsViewToggle, wantsScreen } from "@/components/screener/PropsViewToggle";
 
+/** A render that runs this long has stalled (pools are pre-built: lib/pools): end it rather than let stalled calls pile up. */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: "NFL Props — best price, hit rate and projection at every line",
   description: "NFL player props for the week: the best Over and Under across sportsbooks, hit rates, matchups and ARCHR's projection.",
