@@ -6,6 +6,9 @@ import { PropsScreener, type ScreenerParams } from "@/components/screener/PropsS
 import { refreshOnView } from "@/lib/ops/refreshOnView";
 import { ScrollRow } from "@/components/ScrollRow";
 
+/** A render that runs this long has stalled (pools are pre-built: lib/pools): end it rather than let stalled calls pile up. */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: "Player Props — every sport, screened by hit rate",
   description:

@@ -28,12 +28,32 @@ export interface UfcFightModelView {
   blue: FighterProfile;
 }
 
-/** All completed bouts replayed once per request (the bout being viewed is upcoming, so it isn't in it). */
-const replayed = cache(async () => {
-  const history = await loadUfcHistory();
-  const replay = new UfcReplay(history.fighters, history.bouts);
-  for (const b of history.bouts) replay.update(b);
-  return replay;
+/** How long one replay of the history is reused across calls (the history changes when ufc-history runs, every few hours). */
+const REPLAY_TTL_MS = 5 * 60_000;
+let replayMemo: { at: number; replay: Promise<UfcReplay> } | null = null;
+
+/**
+ * All completed bouts replayed (the bout being priced is upcoming, so it isn't
+ * in it). Shared for REPLAY_TTL_MS across calls, not just within one render:
+ * React's cache() only dedupes inside a render, so callers outside one (the
+ * parlay builder's pool build, scripts) reloaded the whole UFC history once
+ * per bout — a 200-second build and a flood of fighter-stat queries.
+ */
+const replayed = cache(async (): Promise<UfcReplay> => {
+  if (!replayMemo || Date.now() - replayMemo.at > REPLAY_TTL_MS) {
+    const replay = (async () => {
+      const history = await loadUfcHistory();
+      const r = new UfcReplay(history.fighters, history.bouts);
+      for (const b of history.bouts) r.update(b);
+      return r;
+    })();
+    replayMemo = { at: Date.now(), replay };
+    // A failed load isn't kept: the next call tries again.
+    replay.catch(() => {
+      if (replayMemo?.replay === replay) replayMemo = null;
+    });
+  }
+  return replayMemo.replay;
 });
 
 async function fitted(): Promise<{ coefficients: number[] | null; beatsV1: boolean }> {

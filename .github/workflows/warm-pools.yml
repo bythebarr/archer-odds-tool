@@ -1,0 +1,20 @@
+name: Warm pools (screener + parlay builder)
+
+# Rebuilds every pre-built leg pool now (lib/pools): the props screener's and
+# the parlay builder's. Pages only read these pools; the hourly tick and stale
+# page views rebuild them on their own, so this is for right after a deploy
+# (or a migration) when they're empty. Manual only. Each pool claims before it
+# builds, so running this while a rebuild is underway does no double work.
+on:
+  workflow_dispatch:
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Rebuild every pool
+        run: |
+          if [ -z "${{ secrets.APP_URL }}" ] || [ -z "${{ secrets.CRON_SECRET }}" ]; then echo "Needs APP_URL and CRON_SECRET repository secrets."; exit 1; fi
+          curl -sSL --fail-with-body --max-time 90 "${{ secrets.APP_URL }}/api/cron/warm-pools" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" | head -c 4000; echo

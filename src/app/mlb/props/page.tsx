@@ -10,6 +10,9 @@ import { PropsScreener, type ScreenerParams } from "@/components/screener/PropsS
 import { PropsViewToggle, wantsScreen } from "@/components/screener/PropsViewToggle";
 import { ScrollRow } from "@/components/ScrollRow";
 
+/** A render that runs this long has stalled (pools are pre-built: lib/pools): end it rather than let stalled calls pile up. */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: "MLB Props — hits, total bases, home runs, strikeouts",
   description: "MLB player props for every batter and starter: ARCHR's chance at the books' line, the best price, and every game charted.",

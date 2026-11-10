@@ -727,6 +727,22 @@ model CardSelection {
 }
 
 /// Drives the tiered polling throttle — last successful poll timestamp per job.
+/// Pre-built leg pools for the props screener and the parlay builder
+/// (lib/pools). Pages only read these rows; a rebuild runs off the request
+/// path (/api/cron/warm-pools), one at a time per pool across every server.
+/// Two kinds of row: a pool's meta row ("screener:nba") holds when it was
+/// built and the rebuild claim; its chunk rows ("screener:nba:main:0") hold
+/// the data, each small enough for one cache entry.
+model PoolSnapshot {
+  key           String    @id
+  data          Json      @default("[]")
+  rows          Int       @default(0)
+  builtAt       DateTime?
+  /// Set while a rebuild holds the claim; a claim older than the build's limit is free to take.
+  buildingSince DateTime?
+  error         String?
+}
+
 model PollLog {
   jobName          String   @id
   lastPolledAt     DateTime
