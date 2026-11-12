@@ -33,6 +33,7 @@
     "backtest:props-market": "tsx scripts/backtest-props-market.ts",
     "backtest:cautious-edge": "tsx scripts/backtest-cautious-edge.ts",
     "backtest:confidence": "tsx scripts/backtest-confidence.ts",
+    "audit:factors": "tsx scripts/audit-factors.ts",
     "migrate:status": "bash scripts/migrate-direct.sh prisma migrate status || true",
     "migrate:resolve-nhl": "bash scripts/migrate-resolve-nhl.sh",
     "migrate:inspect": "tsx scripts/migrate-inspect.ts",

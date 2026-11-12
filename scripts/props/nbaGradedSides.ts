@@ -37,6 +37,8 @@ export interface GradedSide {
   /** Projected minutes that night (prior games only) and his last-10 average. */
   minutes: { projected: number; recent: number | null } | null;
   won: 0 | 1;
+  /** ET date of the game. */
+  date: string;
 }
 
 export function closingQuotes<T extends { playerId: string; stat: string; bookKey: string; side: string; point: number; priceAmerican: number; polledAt: Date }>(
@@ -126,6 +128,7 @@ export async function gradedNbaSides(closing: Map<string, GameLines>, baselines:
           sampleGames: history.length,
           minutes,
           won,
+          date: etDateOf(g.scheduledStartUtc),
         });
       }
     }
