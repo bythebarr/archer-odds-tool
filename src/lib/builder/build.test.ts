@@ -79,3 +79,19 @@ describe("ratesOf", () => {
     expect(ratesOf(outcomes, 2026)).toEqual({ l5: [3, 5], l10: [5, 10], l20: [10, 20], season: [6, 12] });
   });
 });
+
+describe("stat tiles in the builder", () => {
+  it("weeds out switched-off prop stats, never game lines or legs without a stat", () => {
+    const pool = [
+      leg("pts", { stat: "PTS" }),
+      leg("stl", { stat: "STL" }),
+      leg("ml", { kind: "ml", stat: undefined }),
+      leg("old", { stat: undefined }),
+      leg("nflRec", { sport: "nfl", stat: "REC" }),
+    ];
+    const ids = (excludeStats: string[]) => buildParlays(pool, { ...opts, legs: 1, excludeStats }).parlays.map((p) => p.legs[0].id).sort();
+    expect(ids([])).toHaveLength(5);
+    expect(ids(["nba:STL"])).toEqual(["ml", "nflRec", "old", "pts"]);
+    expect(ids(["nba:STL", "nba:PTS", "nfl:REC"])).toEqual(["ml", "old"]);
+  });
+});

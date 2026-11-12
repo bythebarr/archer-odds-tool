@@ -66,6 +66,7 @@ function propLeg(sport: BuilderLeagueSport, l: FinderLeg, season: number, event:
     startsAt: event.startsAt,
     href: `/${sport}/props?game=${l.gameId}`,
     kind: "prop",
+    stat: l.statShort,
     label: yesNo ? `${l.playerName} ${l.statShort} ${l.sideLabel}` : `${l.playerName} ${l.sideLabel} ${l.point} ${l.statShort}`,
     group: `${sport}:prop:${l.group}`,
     priceAmerican: l.priceAmerican,

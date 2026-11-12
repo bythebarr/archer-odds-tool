@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getBuilderPool } from "@/lib/builder/pool";
-import { buildParlays, legConservativeEdge, type BuilderOptions, type BuilderSort, type BuiltParlay } from "@/lib/builder/build";
+import { buildParlays, inScope, legConservativeEdge, type BuilderOptions, type BuilderSort, type BuiltParlay } from "@/lib/builder/build";
 import { optimizeParlays, type OptimizedParlay } from "@/lib/builder/optimize";
 import type { BuilderLeg, BuilderWindow } from "@/lib/builder/types";
 import { ALL_SPORTS } from "@/lib/allSports/sports";
@@ -15,6 +15,8 @@ import { ScrollRow } from "@/components/ScrollRow";
 import { ParlayGenerator } from "@/components/builder/ParlayGenerator";
 import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { scopeOptions } from "@/lib/builder/scope";
+import { parseStatList, statTiles } from "@/lib/props/statTiles";
+import { StatTileLinks } from "@/components/props/StatTiles";
 
 /** A render that runs this long has stalled (pools are pre-built: lib/pools): end it rather than let stalled calls pile up. */
 export const maxDuration = 60;
@@ -26,7 +28,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-type Params = { mode?: string; pay?: string; n?: string; sports?: string; game?: string; team?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; short?: string; sgp?: string; sort?: string };
+type Params = { mode?: string; pay?: string; n?: string; sports?: string; game?: string; team?: string; xstat?: string; legs?: string; window?: string; rate?: string; archr?: string; edge?: string; short?: string; sgp?: string; sort?: string };
 
 /** Payouts the optimizer aims for (American), and its leg counts. */
 const PAYOUTS = [100, 200, 300, 500, 750, 1000, 2000, 5000];
@@ -74,6 +76,7 @@ function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: s
     sports: (p.sports ?? "").split(",").filter(Boolean),
     game: p.game || undefined,
     team: p.team || undefined,
+    excludeStats: parseStatList(p.xstat),
     legs: num(p.legs, LEG_COUNTS, DEFAULTS.legs),
     window: WINDOWS.some((w) => w.key === p.window) ? (p.window as BuilderWindow) : DEFAULTS.window,
     minRate: num(p.rate, RATES, DEFAULTS.rate),
@@ -243,6 +246,21 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
   const narrowed = Boolean(o.game || o.team);
   if (narrowed) o.sameGame = true;
   const allScope = scopeOptions(pool, []);
+  // The stat tiles: every prop stat among the legs in scope (sports, game, team), all on unless switched off.
+  const statLegs = pool.filter((l) => l.kind === "prop" && l.stat && inScope(l, { ...o, excludeStats: [] }));
+  // The generator's tiles follow its own Sports/Game/Team picks: prop legs counted per game, team and stat.
+  const statCounts = new Map<string, { sport: string; stat: string; event: string; teams: string[]; n: number }>();
+  for (const l of pool) {
+    if (l.kind !== "prop" || !l.stat) continue;
+    const k = `${l.eventId}|${(l.teams ?? []).join(",")}|${l.stat}`;
+    const c = statCounts.get(k) ?? statCounts.set(k, { sport: l.sport, stat: l.stat, event: l.eventId, teams: l.teams ?? [], n: 0 }).get(k)!;
+    c.n++;
+  }
+  const statItems = [...statCounts.values()];
+  const tiles = statTiles(
+    statLegs.map((l) => ({ sport: l.sport, stat: l.stat!, label: l.stat! })),
+    (s) => SPORT_LABEL[s] ?? s.toUpperCase()
+  );
   const payout = o.mode === "payout";
   const gen = o.mode === "gen";
   const { qualifying, parlays } = payout || gen ? { qualifying: 0, parlays: [] } : buildParlays(pool, o);
@@ -253,6 +271,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         sports: o.sports,
         game: o.game,
         team: o.team,
+        excludeStats: o.excludeStats,
         window: o.window,
         sameGame: o.sameGame,
         shortest: o.shortest,
@@ -268,6 +287,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
       sports: o.sports.join(","),
       game: o.game ?? "",
       team: o.team ?? "",
+      xstat: (o.excludeStats ?? []).join(","),
       legs: String(o.legs),
       window: o.window,
       rate: String(o.minRate),
@@ -319,6 +339,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           games={allScope.games.map((g) => ({ id: g.id, sport: g.sport, label: `${g.label} · ${startLabel(g.startsAt)}`, teams: g.teams }))}
           teams={allScope.teams.map((t) => ({ key: t.key, sport: t.sport, label: t.label }))}
           sportLabels={SPORT_LABEL}
+          statItems={statItems}
         />
       )}
       {!gen && (
@@ -367,6 +388,9 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           </button>
         </noscript>
       </AutoSubmitForm>
+      <div className="mt-4">
+        <StatTileLinks tiles={tiles} excluded={o.excludeStats ?? []} href={(off) => href({ xstat: off.join(",") })} />
+      </div>
       {payout && (
         <>
           <Row title="Payout you want (at least)">

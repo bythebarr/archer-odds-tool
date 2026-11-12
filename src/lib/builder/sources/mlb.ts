@@ -44,6 +44,7 @@ export function mlbLegFromProp(
         startsAt: game.startUtc,
         href: "/mlb/props",
         kind: "prop",
+        stat: def.shortLabel,
         label: `${player.name} ${side === "over" ? "Over" : "Under"} ${point} ${def.shortLabel}`,
         group: `mlb:prop:${prop.playerId}:${prop.stat}`,
         priceAmerican: best.priceAmerican,

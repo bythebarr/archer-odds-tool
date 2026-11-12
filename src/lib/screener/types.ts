@@ -8,6 +8,7 @@
 
 import { trustedRelativeEdge } from "@/lib/builder/conservative";
 import { cautiousEdge } from "@/lib/propModel/canonical";
+import { statShown } from "@/lib/props/statTiles";
 
 export type ScreenWindow = "l3" | "l5" | "l10" | "l15" | "szn" | "last";
 export const SCREEN_WINDOWS: { key: ScreenWindow; label: string }[] = [
@@ -102,7 +103,10 @@ export interface ScreenFilters {
   sport: string | null;
   gameId: string | null;
   team: string | null;
+  /** Only this stat (older `?stat=` links); the tiles below are the filter now. */
   stat: string | null;
+  /** Stats switched off on the stat tiles, sport-scoped ("nba:steals"): lib/props/statTiles. */
+  excludeStats: string[];
   side: "over" | "under" | "yes" | null;
   /** Main lines only (default) or every alt rung too. */
   mainOnly: boolean;
@@ -126,6 +130,7 @@ export const DEFAULT_FILTERS: ScreenFilters = {
   gameId: null,
   team: null,
   stat: null,
+  excludeStats: [],
   side: null,
   mainOnly: true,
   min: {},
@@ -159,6 +164,7 @@ export function passes(p: ScreenerProp, f: ScreenFilters): boolean {
   if (f.gameId && p.gameId !== f.gameId) return false;
   if (f.team && p.team !== f.team) return false;
   if (f.stat && p.stat !== f.stat) return false;
+  if (f.excludeStats.length && !statShown(f.excludeStats, p.sport, p.stat)) return false;
   if (f.side && p.side !== f.side) return false;
   if (f.mainOnly && !p.main) return false;
   for (const [w, bar] of Object.entries(barsOf(f)) as [ScreenWindow, number][]) {

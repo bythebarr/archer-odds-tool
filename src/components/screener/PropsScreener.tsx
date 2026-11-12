@@ -14,11 +14,16 @@ import { DEFAULT_FILTERS, SCREEN_WINDOWS, conservativeEdge, barsOf, propHref, sc
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { MAX_TRUSTED_RELATIVE_EDGE } from "@/lib/builder/conservative";
 import { CANONICAL_NUMBERS, cautiousReadMath } from "@/lib/propModel/canonical";
+import { parseStatList, statTiles } from "@/lib/props/statTiles";
+import { StatTileLinks } from "@/components/props/StatTiles";
 import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
 import { getReportedBlendVerdicts } from "@/lib/queries/modelTrust";
 import { propBlendVerdict, propIsUnproven } from "@/lib/props/provenance";
 
-export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>>;
+export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>> & {
+  /** Stats switched off on the stat tiles (lib/props/statTiles): comma-separated or repeated. */
+  xstat?: string | string[];
+};
 
 const BARS = [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
 const MIN_GAMES = [3, 5, 8, 10];
@@ -52,6 +57,7 @@ function readFilters(p: ScreenerParams, fixed: ScreenerSport | null): ScreenFilt
     gameId: p.game || null,
     team: p.team || null,
     stat: p.stat || null,
+    excludeStats: parseStatList(p.xstat),
     side: p.side === "over" || p.side === "under" || p.side === "yes" ? p.side : null,
     mainOnly: p.line !== "all",
     min,
@@ -130,25 +136,38 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
   const read = readFilters(params, sport);
   const [pool, blendVerdicts] = await Promise.all([getScreenerPool(read.sport, !read.mainOnly), getReportedBlendVerdicts()]);
   // A game, team or stat left over from another sport would screen everything out: drop it.
-  const f: ScreenFilters = {
+  const scoped: ScreenFilters = {
     ...read,
     gameId: read.gameId && pool.some((p) => p.gameId === read.gameId) ? read.gameId : null,
     team: read.team && pool.some((p) => p.team === read.team) ? read.team : null,
-    stat: read.stat && pool.some((p) => p.stat === read.stat) ? read.stat : null,
   };
   // Options narrow with the sport (and the teams and stats with the game).
-  const inGame = f.gameId ? pool.filter((p) => p.gameId === f.gameId) : pool;
-  const games = [...new Map(pool.map((p) => [p.gameId, { id: p.gameId, label: `${f.sport ? "" : `${p.league} · `}${p.game}`, at: p.startsAt }])).values()].sort((a, b) => a.at.localeCompare(b.at));
+  const inGame = scoped.gameId ? pool.filter((p) => p.gameId === scoped.gameId) : pool;
+  const games = [...new Map(pool.map((p) => [p.gameId, { id: p.gameId, label: `${scoped.sport ? "" : `${p.league} · `}${p.game}`, at: p.startsAt }])).values()].sort((a, b) => a.at.localeCompare(b.at));
   const teams = [...new Set(inGame.map((p) => p.team))].filter(Boolean).sort();
-  const stats = [...new Map(inGame.map((p) => [p.stat, `${f.sport ? "" : `${SPORT_LABEL[p.sport] ?? p.league} `}${p.statLabel}`])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  // The stat tiles: every stat in scope, all on unless switched off. An older `?stat=` link means "only that stat".
+  const tiles = statTiles(
+    inGame.filter((p) => !scoped.team || p.team === scoped.team).map((p) => ({ sport: p.sport, stat: p.stat, label: p.statLabel })),
+    (s) => SPORT_LABEL[s] ?? s.toUpperCase()
+  );
+  const excludeStats = read.stat && !read.excludeStats.length ? tiles.filter((t) => !t.key.endsWith(`:${read.stat}`)).map((t) => t.key) : read.excludeStats;
+  const f: ScreenFilters = { ...scoped, stat: null, excludeStats };
   const results = screen(pool, f);
   const bars = barsOf(f);
-  const active = [sport ? null : f.sport, f.gameId, f.team, f.stat, f.side, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minMinutes || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
+  const statsOff = tiles.filter((t) => excludeStats.includes(t.key)).length;
+  const active = [sport ? null : f.sport, f.gameId, f.team, statsOff || null, f.side, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minMinutes || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
   const query = new URLSearchParams(keep).toString();
   const clearHref = query ? `${basePath}?${query}` : basePath;
+  /** The current screen with the stat tiles replaced (All on / All off). */
+  const statsHref = (off: string[]) => {
+    const rest = Object.entries(params).filter(([k, v]) => k !== "xstat" && k !== "stat" && typeof v === "string" && v !== "") as [string, string][];
+    const qs = new URLSearchParams({ ...Object.fromEntries(rest), ...keep, ...(off.length ? { xstat: off.join(",") } : {}) });
+    return `${basePath}?${qs.toString()}`;
+  };
   /** The same screen sorted by another column (the table's headers are links). */
   const sortHref = (sort: ScreenSort) => {
-    const qs = new URLSearchParams({ ...(Object.fromEntries(Object.entries(params).filter(([, v]) => typeof v === "string" && v !== "")) as Record<string, string>), ...keep, sort });
+    const rest = Object.entries(params).filter(([k, v]) => k !== "xstat" && k !== "stat" && typeof v === "string" && v !== "") as [string, string][];
+    const qs = new URLSearchParams({ ...Object.fromEntries(rest), ...keep, ...(excludeStats.length ? { xstat: excludeStats.join(",") } : {}), sort });
     return `${basePath}?${qs.toString()}`;
   };
 
@@ -200,16 +219,9 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
               ))}
             </select>
           </Field>
-          <Field label="Stat">
-            <select name="stat" defaultValue={f.stat ?? ""} className={selectClass}>
-              <option value="">All stats</option>
-              {stats.map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {/* The tiles are links (one param, comma-joined); the form carries the same selection for its other filters. */}
+          {excludeStats.length > 0 && <input type="hidden" name="xstat" value={excludeStats.join(",")} />}
+          <StatTileLinks tiles={tiles} excluded={excludeStats} href={statsHref} />
           <div className="grid grid-cols-2 gap-2">
             <Field label="Side">
               <select name="side" defaultValue={f.side ?? ""} className={selectClass}>

@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     sports: strings(body.sports),
     game: typeof body.game === "string" && body.game.length < 200 ? body.game : undefined,
     team: typeof body.team === "string" && body.team.length < 200 ? body.team : undefined,
+    excludeStats: strings(body.excludeStats, 200),
     legs: Math.round(num(body.legs, 1, 15, 4)),
     window: WINDOWS.includes(body.window as BuilderWindow) ? (body.window as BuilderWindow) : "l10",
     minRate: num(body.minRate, 0, 1, 0.7),

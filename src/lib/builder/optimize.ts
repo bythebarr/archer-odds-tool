@@ -30,6 +30,8 @@ export interface OptimizeOptions {
   /** One game / one team to draw from (see build.inScope); empty = any. */
   game?: string;
   team?: string;
+  /** Prop stats switched off on the stat tiles (see build.inScope). */
+  excludeStats?: string[];
   /** The payout wanted, American (+500). The parlay pays at least this. */
   target: number;
   /** Exact leg count, or null for any count from 2 to `maxLegs`. */

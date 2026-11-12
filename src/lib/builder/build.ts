@@ -14,6 +14,7 @@ import type { BuilderLeg, BuilderWindow } from "./types";
 import { sameGameCorrelationFactor } from "./correlation";
 import { trustedRelativeEdge } from "./conservative";
 import { cautiousEdge } from "@/lib/propModel/canonical";
+import { statShown } from "@/lib/props/statTiles";
 
 /** A leg's CAUTIOUS edge over a window — the canonical ranking signal (see lib/propModel/canonical); null without a price or a read. (Historical name kept for callers.) */
 export const legConservativeEdge = (l: BuilderLeg, w: BuilderWindow) => cautiousEdge(l.archr, l.rates[w], l.priceAmerican, l.roleRates?.[w]);
@@ -27,6 +28,8 @@ export interface BuilderOptions {
   game?: string;
   /** One team (a sport-scoped key, "nba:BOS") the legs must be about; empty = any. */
   team?: string;
+  /** Prop stats switched off on the stat tiles ("nba:STL"); game lines are never filtered by these. */
+  excludeStats?: string[];
   legs: number;
   window: BuilderWindow;
   /** Each leg's record over the window must be at least this (0–1). */
@@ -80,11 +83,12 @@ function floor(hits: number, n: number): number {
   return (p + 1 / (2 * n) - Math.sqrt((p * (1 - p)) / n + 1 / (4 * n * n))) / d;
 }
 
-/** The sport, game and team filters: where a leg comes from, before its numbers are read. */
-export function inScope(l: BuilderLeg, o: Pick<BuilderOptions, "sports" | "game" | "team">): boolean {
+/** The sport, game, team and stat filters: where a leg comes from, before its numbers are read. */
+export function inScope(l: BuilderLeg, o: Pick<BuilderOptions, "sports" | "game" | "team" | "excludeStats">): boolean {
   if (o.sports.length && !o.sports.includes(l.sport)) return false;
   if (o.game && l.eventId !== o.game) return false;
   if (o.team && !(l.teams ?? []).includes(o.team)) return false;
+  if (o.excludeStats?.length && l.kind === "prop" && l.stat && !statShown(o.excludeStats, l.sport, l.stat)) return false;
   return true;
 }
 
