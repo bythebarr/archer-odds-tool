@@ -6,9 +6,10 @@
  * alt rungs, ARCHR's chance and edge, and a price range. Pure.
  */
 
-import { trustedRelativeEdge } from "@/lib/builder/conservative";
 import { cautiousEdge } from "@/lib/propModel/canonical";
 import { statShown } from "@/lib/props/statTiles";
+import type { CompactConfidence } from "@/lib/propModel/confidence";
+import type { LegFacts } from "@/lib/props/parlayFinder";
 
 export type ScreenWindow = "l3" | "l5" | "l10" | "l15" | "szn" | "last";
 export const SCREEN_WINDOWS: { key: ScreenWindow; label: string }[] = [
@@ -51,6 +52,10 @@ export interface ScreenerProp {
   leagueSlug?: string;
   /** NBA: ARCHR's projected minutes tonight (lib/nba/minutes). */
   minutes?: number;
+  /** Confidence in ARCHR's read of this prop, computed when the pool is built (lib/propModel/confidence). */
+  confidence?: CompactConfidence;
+  /** While the pool is built only: the facts the grade reads (lib/pools/confidence); dropped before storing. */
+  facts?: LegFacts;
   /** NBA: the L10 and season records with each game weighted by how closely his minutes and role then match tonight's (lib/propModel/cautiousRead). Read only by the evidence cautious read. */
   roleRates?: Record<"l10" | "szn", Rate>;
 }
@@ -85,7 +90,7 @@ export function screenRates(
   };
 }
 
-export type ScreenSort = ScreenWindow | "archr" | "edge" | "cedge" | "price" | "minutes";
+export type ScreenSort = ScreenWindow | "archr" | "edge" | "conf" | "price" | "minutes";
 
 /**
  * The prop's CAUTIOUS edge — the canonical ranking signal (see
@@ -185,7 +190,8 @@ function sortValue(p: ScreenerProp, s: ScreenSort): number {
   if (s === "edge") return p.edge !== null && p.edge <= MAX_TRUSTED_EDGE ? p.edge : -1;
   if (s === "price") return p.priceAmerican ?? -Infinity;
   if (s === "minutes") return p.minutes ?? -Infinity;
-  if (s === "cedge") return trustedRelativeEdge(conservativeEdge(p)) ?? -Infinity;
+  // Confidence (lib/propModel/confidence): the cautious read is one of its factors now.
+  if (s === "conf") return p.confidence?.score ?? -Infinity;
   return rateOf(p.rates[s]);
 }
 

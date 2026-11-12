@@ -14,7 +14,7 @@ import { InfoTip } from "./InfoTip";
 import { useSlip, buildSlipPickId, type SlipPick, type SlipSport } from "@/lib/slip/SlipContext";
 import type { FeedFreshness } from "@/lib/freshness";
 import { EmptyState } from "./EmptyState";
-import { UnprovenModelBadge } from "./UnprovenModelBadge";
+import { TrackRecordChip } from "./TrackRecordChip";
 import { FreshnessStamp } from "./FreshnessStamp";
 // Sport label/icon comes from the shared client-safe meta list (the ONE source),
 // so this board's chips can't drift from nav/the Slate.
@@ -110,12 +110,15 @@ function PlayRow({
   value,
   lens,
   modelVerdict,
+  modelGraded,
 }: {
   play: OddsPlay;
   value: number | null;
   lens: Lens;
   /** The model's calibration verdict (reported first, baked fallback) — drives the provenance badge. */
   modelVerdict: string | null;
+  /** Outcomes that model's report card was graded on. */
+  modelGraded?: number;
 }) {
   const matchup =
     play.away.meta && play.home.meta ? `${play.away.meta} @ ${play.home.meta}` : `${play.away.name} @ ${play.home.name}`;
@@ -148,7 +151,7 @@ function PlayRow({
             <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-semibold uppercase tracking-wide">
               {KIND_LABEL[play.kind]}
             </span>
-            {lens === "model" && play.modelEv !== null && <UnprovenModelBadge verdict={modelVerdict} />}
+            {lens === "model" && play.modelEv !== null && <TrackRecordChip verdict={modelVerdict} graded={modelGraded} />}
             <span className="truncate">
               {matchup} · {timeLabel(play.startUtc)}
             </span>
@@ -192,11 +195,14 @@ export function OddsPoolBoard({
   pool,
   freshness,
   modelVerdicts,
+  modelGraded,
 }: {
   pool: OddsPool;
   freshness?: FeedFreshness;
   /** Per-sport calibration verdicts for provenance badges on model-priced rows. */
   modelVerdicts?: Record<string, string | null>;
+  /** Model key → outcomes its latest report card was graded on. */
+  modelGraded?: Record<string, number>;
 }) {
   const [sport, setSport] = useState<SlateSport | "all">("all");
   const [kind, setKind] = useState<MarketKind | "all">("all");
@@ -440,6 +446,7 @@ export function OddsPoolBoard({
                 value={valueOf(play)}
                 lens={lens}
                 modelVerdict={modelVerdicts?.[play.sport] ?? null}
+                modelGraded={modelGraded?.[play.sport]}
               />
             ))}
           </div>

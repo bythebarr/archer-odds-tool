@@ -10,15 +10,14 @@ import Link from "next/link";
 import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { FilterPanel } from "@/components/screener/FilterPanel";
 import { getScreenerPool, SCREENER_SPORTS, type ScreenerSport } from "@/lib/screener/pool";
-import { DEFAULT_FILTERS, SCREEN_WINDOWS, conservativeEdge, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
+import { DEFAULT_FILTERS, SCREEN_WINDOWS, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
 import { formatAmerican } from "@/lib/odds/americanOdds";
-import { MAX_TRUSTED_RELATIVE_EDGE } from "@/lib/builder/conservative";
-import { CANONICAL_NUMBERS, cautiousReadMath } from "@/lib/propModel/canonical";
 import { parseStatList, statTiles } from "@/lib/props/statTiles";
 import { StatTileLinks } from "@/components/props/StatTiles";
-import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
-import { getReportedBlendVerdicts } from "@/lib/queries/modelTrust";
-import { propBlendVerdict, propIsUnproven } from "@/lib/props/provenance";
+import { ConfidenceChip } from "@/components/props/ConfidencePanel";
+import { TrackRecordChip } from "@/components/TrackRecordChip";
+import { getReportedBlendVerdicts, getReportedGraded } from "@/lib/queries/modelTrust";
+import { blendCardKey, propBlendVerdict, propIsUnproven } from "@/lib/props/provenance";
 
 export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>> & {
   /** Stats switched off on the stat tiles (lib/props/statTiles): comma-separated or repeated. */
@@ -36,7 +35,7 @@ const SORTS: { key: ScreenSort; label: string }[] = [
   ...SCREEN_WINDOWS.map((w) => ({ key: w.key as ScreenSort, label: `${w.label} rate` })),
   { key: "archr", label: "ARCHR chance" },
   { key: "edge", label: "ARCHR edge" },
-  { key: "cedge", label: CANONICAL_NUMBERS.cautiousEdge.label },
+  { key: "conf", label: "Confidence" },
   { key: "minutes", label: "Projected minutes (NBA)" },
   { key: "price", label: "Longest price" },
 ];
@@ -68,7 +67,8 @@ function readFilters(p: ScreenerParams, fixed: ScreenerSport | null): ScreenFilt
     minEdge: p.edge && EDGES.includes(p.edge) && p.edge !== "any" ? Number(p.edge) : null,
     shortest: p.pmin && PRICES.includes(Number(p.pmin)) ? Number(p.pmin) : null,
     longest: p.pmax && PRICES.includes(Number(p.pmax)) ? Number(p.pmax) : null,
-    sort: SORTS.some((s) => s.key === p.sort) ? (p.sort as ScreenSort) : DEFAULT_FILTERS.sort,
+    // An older `sort=cedge` link sorts by Confidence, which the cautious read now feeds.
+    sort: p.sort === "cedge" ? "conf" : SORTS.some((s) => s.key === p.sort) ? (p.sort as ScreenSort) : DEFAULT_FILTERS.sort,
   };
 }
 
@@ -110,19 +110,10 @@ function SortHead({ href, active, children, className = "" }: { href: string; ac
   );
 }
 
-function CautiousEdgeCell({ p }: { p: ScreenerProp }) {
-  const e = conservativeEdge(p);
-  if (e === null) return <td className="px-2 py-2 text-center font-mono text-[11px] text-muted-foreground">—</td>;
-  if (e > MAX_TRUSTED_RELATIVE_EDGE)
-    return (
-      <td className="px-2 py-2 text-center font-mono text-[11px] text-muted-foreground" title="Far above the price: likely a price that doesn't belong to this line; not sorted as edge">
-        +{Math.round(e * 100)}%?
-      </td>
-    );
+function ConfidenceCell({ p }: { p: ScreenerProp }) {
   return (
-    <td className={`px-2 py-2 text-center font-mono text-[11px] font-semibold ${e > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-      {e > 0 ? "+" : ""}
-      {(e * 100).toFixed(1)}%
+    <td className="px-2 py-2 text-center">
+      <ConfidenceChip c={p.confidence} />
     </td>
   );
 }
@@ -134,7 +125,7 @@ function sideText(p: ScreenerProp): string {
 
 export async function PropsScreener({ params, basePath, sport = null, keep = {} }: { params: ScreenerParams; basePath: string; sport?: ScreenerSport | null; keep?: Record<string, string> }) {
   const read = readFilters(params, sport);
-  const [pool, blendVerdicts] = await Promise.all([getScreenerPool(read.sport, !read.mainOnly), getReportedBlendVerdicts()]);
+  const [pool, blendVerdicts, graded] = await Promise.all([getScreenerPool(read.sport, !read.mainOnly), getReportedBlendVerdicts(), getReportedGraded()]);
   // A game, team or stat left over from another sport would screen everything out: drop it.
   const scoped: ScreenFilters = {
     ...read,
@@ -378,10 +369,8 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                   <SortHead href={sortHref("archr")} active={f.sort === "archr"} className="px-2 text-center">
                     ARCHR
                   </SortHead>
-                  <SortHead href={sortHref("cedge")} active={f.sort === "cedge"} className="px-2 text-center">
-                    <span title={`${CANONICAL_NUMBERS.cautiousEdge.label}, not a probability: ${cautiousReadMath} (L10; the season when L10 is thin), over the price's implied chance`}>
-                      {CANONICAL_NUMBERS.cautiousEdge.shortLabel}
-                    </span>
+                  <SortHead href={sortHref("conf")} active={f.sort === "conf"} className="px-2 text-center">
+                    <span title="Confidence: how far to trust ARCHR's chance and edge on this prop (A–D), not a chance. Open a player for the reasons behind it.">Conf.</span>
                   </SortHead>
                   <SortHead href={sortHref("minutes")} active={f.sort === "minutes"} className="px-2 text-center">
                     <span title="NBA: ARCHR's projected minutes tonight, if he plays">Proj min</span>
@@ -397,7 +386,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                       </Link>
                       <span className="ml-1.5 text-muted-foreground">{sideText(p)}</span>
                       {!p.main && <span className="ml-1.5 rounded bg-muted px-1 text-[10px] text-muted-foreground">alt</span>}
-                      {propIsUnproven(p, blendVerdicts) && <UnprovenModelBadge verdict={propBlendVerdict(p.sport, p.stat, blendVerdicts)} className="ml-1.5" />}
+                      {propIsUnproven(p, blendVerdicts) && <TrackRecordChip verdict={propBlendVerdict(p.sport, p.stat, blendVerdicts)} graded={graded[blendCardKey(p.sport, p.stat)]} className="ml-1.5" />}
                       <span className="block text-[11px] text-muted-foreground">
                         {p.league} · {p.team ? `${p.team} vs ${p.opponent}` : `vs ${p.opponent}`} · {p.game}
                       </span>
@@ -422,7 +411,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                         </span>
                       )}
                     </td>
-                    <CautiousEdgeCell p={p} />
+                    <ConfidenceCell p={p} />
                     <td className="px-2 py-2 text-center font-mono text-[11px] text-foreground">{p.minutes !== undefined ? p.minutes.toFixed(1) : <span className="text-muted-foreground">—</span>}</td>
                   </tr>
                 ))}
@@ -433,7 +422,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus — and ARCHR&apos;s edge is that chance against the best price. The cautious edge is ranking only, not a probability: it reads the prop cautiously — {cautiousReadMath} (L10; the season when L10 is thin) — against the chance the price implies; +10% means 10% likelier than the price says, even read that way. Past +50% it reads &quot;?&quot; and isn&apos;t sorted as edge: a gap that wide is a price that doesn&apos;t belong to the line, not value. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, an &quot;Unproven model&quot; badge rides on the row until that blend earns a passing grade on /models. Click a column to sort by it. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus — and ARCHR&apos;s edge is that chance against the best price. Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, a chip on the row shows that blend&apos;s track record from /models (e.g. &quot;Even with baseline · 412 graded&quot;) until it earns a passing grade. Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

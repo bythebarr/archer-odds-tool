@@ -37,3 +37,17 @@ export async function getReportedBlendVerdicts(): Promise<ReportedVerdicts> {
   });
   return new Map(rows.map((r) => [r.model, r.verdict]));
 }
+
+/**
+ * How many outcomes each model's latest /models report card was graded on,
+ * keyed like the verdict maps (sport key, or `market-blend:<sport>:<stat>`).
+ * Display only: it fills the track-record chips' counts.
+ */
+export async function getReportedGraded(): Promise<Record<string, number>> {
+  const rows = await prisma.modelReport.findMany({
+    orderBy: { createdAt: "desc" },
+    distinct: ["model"],
+    select: { model: true, n: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.model, r.n]));
+}

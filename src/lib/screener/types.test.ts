@@ -108,3 +108,14 @@ describe("screen: stat tiles", () => {
     expect(ids(["soccer:shots"])).not.toContain("soccerShots");
   });
 });
+
+describe("screen: confidence sort", () => {
+  it("sorts by the confidence score, props without one last", () => {
+    const pool = [
+      prop("c", { confidence: { grade: "C", score: 50, why: "" } }),
+      prop("none"),
+      prop("a", { confidence: { grade: "A", score: 80, why: "" } }),
+    ];
+    expect(screen(pool, { ...DEFAULT_FILTERS, sort: "conf" }).map((p) => p.id)).toEqual(["a", "c", "none"]);
+  });
+});

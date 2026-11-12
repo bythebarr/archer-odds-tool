@@ -38,6 +38,22 @@ export interface FinderLeg extends ParlayLeg {
   bookName: string | null;
   /** NBA: his expected minutes and role tonight, for the role-weighted record; absent where unknown. */
   tonight?: TonightRole | null;
+  /** The facts the Confidence grade reads beyond the leg itself (lib/propModel/confidence). */
+  facts?: LegFacts;
+}
+
+/** What a leg's Confidence grade needs that the leg doesn't already carry. */
+export interface LegFacts {
+  /** The books' no-vig chance on this side; null without a two-sided market. */
+  market: number | null;
+  injury: string | null;
+  /** Games of history behind the projection. */
+  games: number;
+  /** NBA: his recent minutes average. */
+  recentMinutes: number | null;
+  /** (projection − line) / its spread, toward this side; null without a projection. */
+  z?: number | null;
+  side?: "over" | "under";
 }
 
 export interface FinderOptions {

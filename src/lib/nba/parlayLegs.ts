@@ -55,6 +55,7 @@ export function nbaFinderLegs(slate: WireNbaPropsSlate, logs: Record<string, Gam
         if (!best || best.priceAmerican < opts.shortestPrice) continue;
         const summary = summarizeProp(prop, playerLogs, statDef, side, context, point);
         const model = summary?.model ? (side === "over" ? summary.model.probOver : summary.model.probUnder) : null;
+        const mk = summary?.model?.market ?? null;
         out.push({
           key: `${prop.playerId}:${prop.stat}:${side}:${point}`,
           group: `${prop.playerId}:${prop.stat}`,
@@ -72,6 +73,14 @@ export function nbaFinderLegs(slate: WireNbaPropsSlate, logs: Record<string, Gam
           bookName: best.bookName,
           logs: legLogs,
           tonight,
+          facts: {
+            market: mk ? (side === "over" ? mk.probOver : 1 - mk.probOver) : null,
+            injury: player.injury?.level ?? null,
+            games: summary?.model?.projection.games ?? playerLogs.length,
+            recentMinutes: summary?.avgMinutesL5 ?? null,
+            z: summary?.model ? ((summary.model.projection.mean - point) / Math.max(summary.model.projection.sd, 1e-6)) * (side === "over" ? 1 : -1) : null,
+            side,
+          },
         });
       }
     }

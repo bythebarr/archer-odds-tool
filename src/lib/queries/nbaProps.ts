@@ -18,8 +18,8 @@ import type { GameLines } from "@/lib/propModel/environment";
 import { getConsensusGameLines } from "./gameLines";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
 import { fetchNbaLineups, type TeamLineup } from "@/lib/nba/lineups";
-import { getReportedBlendVerdicts } from "./modelTrust";
-import { blendVerdictsByStat } from "@/lib/props/provenance";
+import { getReportedBlendVerdicts, getReportedGraded } from "./modelTrust";
+import { blendGradedByStat, blendVerdictsByStat } from "@/lib/props/provenance";
 
 export interface SlateTeam {
   abbreviation: string;
@@ -77,6 +77,8 @@ export interface NbaPropsSlate {
   calibrationFactors: Record<string, number>;
   /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
   blendVerdicts: Record<string, string>;
+  /** Stat → outcomes its blend card was graded on (for the track-record chip). */
+  blendGraded: Record<string, number>;
   /** Position group → stat → league per-minute rate: the prior for players with only a few games (rookies). */
   positionRates: Record<string, Record<string, number>>;
   /** Team abbreviation → the ET dates it played in the last few weeks (back-to-backs, the games a player missed). */
@@ -308,6 +310,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     modelWeights: {},
     calibrationFactors: {},
     blendVerdicts: {},
+    blendGraded: {},
     positionRates: {},
     teamDates: {},
     lineups: {},
@@ -433,7 +436,7 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     getCalibrationFactors("nba-props"),
     nbaTeamDates(gte),
     fetchNbaLineups(dateEt),
-    getReportedBlendVerdicts(),
+    Promise.all([getReportedBlendVerdicts(), getReportedGraded()]),
   ]);
   const injuries = await prisma.playerInjury.findMany({ where: { sport: "nba" } });
   const injuryById = new Map(injuries.map((i) => [i.espnAthleteId, i]));
@@ -470,7 +473,8 @@ export const getNbaPropsSlate = cache(async (dateEt: string): Promise<NbaPropsSl
     lines: gameLines,
     modelWeights,
     calibrationFactors,
-    blendVerdicts: blendVerdictsByStat("nba", blendReports),
+    blendVerdicts: blendVerdictsByStat("nba", blendReports[0]),
+    blendGraded: blendGradedByStat("nba", blendReports[1]),
     positionRates: rates,
     teamDates,
     lineups,

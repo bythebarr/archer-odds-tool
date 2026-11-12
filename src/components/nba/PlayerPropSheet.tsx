@@ -6,7 +6,7 @@ import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { NBA_ALT_COLUMNS, altLinePointsNba, altLineRows, booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
 import { fairPrice } from "@/lib/odds/marketValue";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
+import { TrackRecordChip } from "@/components/TrackRecordChip";
 import type { ProjectionContext } from "@/lib/nba/projection";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
@@ -20,9 +20,12 @@ import { AltLinesTable } from "@/components/props/AltLinesTable";
 import { ParlayButton } from "@/components/props/Parlay";
 import type { ParlayLeg } from "@/lib/props/parlay";
 import type { DefenseTable } from "@/lib/nba/matchup";
+import { confidenceOf } from "@/lib/propModel/confidence";
+import { reasonsFor } from "@/lib/nba/standouts";
+import { ConfidencePanel } from "@/components/props/ConfidencePanel";
 
 /** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
-function ProjectionPanel({ model, point, side, statShort, milestone = false, blendVerdict }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean; blendVerdict?: string | null }) {
+function ProjectionPanel({ model, point, side, statShort, milestone = false, blendVerdict, blendGraded }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean; blendVerdict?: string | null; blendGraded?: number }) {
   const p = model.projection;
   const ev = side === "over" ? model.evOver : model.evUnder;
   const mult = (x: number) => `×${x.toFixed(2)}`;
@@ -55,7 +58,7 @@ function ProjectionPanel({ model, point, side, statShort, milestone = false, ble
           until he has 5 games of his own.
         </p>
       )}
-      <UnprovenModelBadge verdict={blendVerdict} className="mt-3" />
+      <TrackRecordChip verdict={blendVerdict} graded={blendGraded} className="mt-3" />
       <BlendLine model={model} side={side} />
       <SeasonMixLine seasons={p.seasons} />
       <EnvLine
@@ -100,6 +103,7 @@ export function PlayerPropSheet({
   modelWeights,
   calibrationFactors,
   blendVerdicts,
+  blendGraded = {},
   initialStat,
   side: initialSide,
   startLabel,
@@ -119,8 +123,10 @@ export function PlayerPropSheet({
   modelWeights: Record<string, number>;
   /** Stat → the backtest's fitted calibration factor. */
   calibrationFactors: Record<string, number>;
-  /** Stat → the market-blend report card's verdict (absent stat = no card = unproven). */
+  /** Stat → the market-blend report card's verdict (absent stat = no card). */
   blendVerdicts: Record<string, string>;
+  /** Stat → outcomes that card was graded on. */
+  blendGraded?: Record<string, number>;
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
@@ -177,6 +183,31 @@ export function PlayerPropSheet({
     modelProb: summary?.model ? (side === "over" ? summary.model.probOver : summary.model.probUnder) : null,
     logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, team: l.team, value: statDef.value(l) })),
   };
+
+  // Confidence: how far to trust ARCHR's read of this bet, and why (lib/propModel/confidence).
+  const confidence = useMemo(() => {
+    const m = summary?.model;
+    if (!summary || !m) return null;
+    const over = side === "over";
+    const l10 = summary.hitRates.l10;
+    const rec = l10.sampleSize >= 5 ? l10 : summary.hitRates.season;
+    const quote = over ? summary.over : summary.under;
+    return confidenceOf({
+      archr: over ? m.probOver : m.probUnder,
+      marketChance: m.market ? (over ? m.market.probOver : 1 - m.market.probOver) : null,
+      priceAmerican: summary.projected ? null : (quote?.priceAmerican ?? null),
+      rate: [rec.hits, rec.sampleSize],
+      sampleGames: m.projection.games,
+      blendVerdict: blendVerdicts[prop.stat] ?? null,
+      injury: player.injury?.level ?? null,
+      minutes: { projected: m.projection.minutes, recent: summary.avgMinutesL5 },
+      alt: point !== main,
+      z: ((m.projection.mean - point) / Math.max(m.projection.sd, 1e-6)) * (over ? 1 : -1),
+      side,
+      sport: "nba",
+    });
+  }, [summary, side, blendVerdicts, prop.stat, player.injury?.level, point, main]);
+  const priceReasons = useMemo(() => (summary ? reasonsFor(summary, side, statDef, player, logs, season, null) : []), [summary, side, statDef, player, logs, season]);
 
   const statsOffered = NBA_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
   const chartLogs = useMemo(() => logs.map((l) => ({ ...l, volume: l.minutes })), [logs]);
@@ -250,7 +281,9 @@ export function PlayerPropSheet({
         </p>
       )}
 
-      {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} blendVerdict={blendVerdicts[prop.stat]} />}
+      {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} blendVerdict={blendVerdicts[prop.stat]} blendGraded={blendGraded[prop.stat]} />}
+
+      <ConfidencePanel c={confidence} reasons={priceReasons} sideLabel={`${statDef.milestone ? (side === "over" ? "Yes" : "No") : side === "over" ? "Over" : "Under"} ${point} ${statDef.shortLabel}`} />
 
       {altRows.length > 1 && (
         <AltLinesTable

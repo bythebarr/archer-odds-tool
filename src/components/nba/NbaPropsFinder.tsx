@@ -18,7 +18,7 @@ import { addLeg, type ParlayLeg } from "@/lib/props/parlay";
 import { MatchupChip } from "./Matchup";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
+import { TrackRecordChip } from "@/components/TrackRecordChip";
 import type { DefenseTable } from "@/lib/nba/matchup";
 import type { NbaPropStatDef } from "@/lib/nba/propStats";
 
@@ -51,6 +51,7 @@ function NbaCard({
   stat,
   defense,
   blendVerdict,
+  blendGraded,
   onOpen,
 }: {
   summary: PropSummary;
@@ -59,8 +60,10 @@ function NbaCard({
   side: PropDirection;
   stat: NbaPropStatDef;
   defense: DefenseTable;
-  /** The blend card's verdict for this stat (absent stat = no card = unproven). */
+  /** The blend card's verdict for this stat (absent stat = no card). */
   blendVerdict?: string | null;
+  /** Outcomes that card was graded on. */
+  blendGraded?: number;
   onOpen: () => void;
 }) {
   const best = side === "over" ? summary.over : summary.under;
@@ -88,7 +91,7 @@ function NbaCard({
       badges={
         <>
           <InjuryBadge injury={player.injury} />
-          {summary.model && <UnprovenModelBadge verdict={blendVerdict} />}
+          {summary.model && <TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
         </>
       }
       teamLogo={player.team?.logoUrl}
@@ -288,6 +291,7 @@ export function NbaPropsFinder({
               stat={statDef}
               defense={slate.defense}
               blendVerdict={slate.blendVerdicts[prefs.stat]}
+              blendGraded={slate.blendGraded?.[prefs.stat]}
               onOpen={() => setOpen(s.playerId)}
             />
             </Fragment>
@@ -307,6 +311,7 @@ export function NbaPropsFinder({
           modelWeights={slate.modelWeights}
           calibrationFactors={slate.calibrationFactors ?? {}}
           blendVerdicts={slate.blendVerdicts}
+          blendGraded={slate.blendGraded}
           initialStat={prefs.stat}
           side={prefs.side}
           startLabel={(() => {

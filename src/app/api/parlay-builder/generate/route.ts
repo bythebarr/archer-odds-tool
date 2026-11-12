@@ -12,7 +12,7 @@ import { WINDOWS, type BuilderKind, type BuilderWindow } from "@/lib/builder/typ
 export const dynamic = "force-dynamic";
 
 const KINDS: BuilderKind[] = ["prop", "ml", "spread", "total"];
-const SORTS: BuilderSort[] = ["archr", "hit", "edge", "cedge"];
+const SORTS: BuilderSort[] = ["archr", "hit", "edge", "conf"];
 
 const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
 const strings = (v: unknown, max = 40) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length < 200).slice(0, max) : []);
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     shortest: typeof body.shortest === "number" ? num(body.shortest, -100000, -100, -500) : -Infinity,
     // One game (or one team's game) can only make a same-game parlay.
     sameGame: body.sameGame === true || (typeof body.game === "string" && body.game !== "") || (typeof body.team === "string" && body.team !== ""),
-    sort: SORTS.includes(body.sort as BuilderSort) ? (body.sort as BuilderSort) : "archr",
+    sort: body.sort === "cedge" ? "conf" : SORTS.includes(body.sort as BuilderSort) ? (body.sort as BuilderSort) : "archr",
     kinds: strings(body.kinds).filter((k): k is BuilderKind => KINDS.includes(k as BuilderKind)),
     pricedOnly: body.pricedOnly === true,
     lockedIds: strings(body.locked, 15),

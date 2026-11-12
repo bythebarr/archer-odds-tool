@@ -4,9 +4,9 @@ import { collectPlays } from "@/lib/discord/postCard";
 import { readTokenOk } from "@/lib/tokenAuth";
 import { getSelection, splitBySelection } from "@/lib/card/selection";
 import { SPORTS, stakeable, trustVerdict } from "@/lib/engine";
-import { getReportedVerdicts } from "@/lib/queries/modelTrust";
+import { getReportedGraded, getReportedVerdicts } from "@/lib/queries/modelTrust";
 import { playIsUnproven } from "@/lib/engine/provenance";
-import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
+import { TrackRecordChip } from "@/components/TrackRecordChip";
 import { todayEt } from "@/lib/dateEt";
 import { PageShell, PageHeader } from "@/components/PageShell";
 import { pickAction, clearAction, unitsAction, fireAction } from "./actions";
@@ -69,11 +69,12 @@ export default async function DeckPage({
   if (!token || !readTokenOk(token)) notFound();
 
   const dateEt = date ?? todayEt();
-  const [plays, selection, firedAt, verdicts] = await Promise.all([
+  const [plays, selection, firedAt, verdicts, graded] = await Promise.all([
     collectPlays(dateEt),
     getSelection(dateEt),
     postedAt("post-card", dateEt),
     getReportedVerdicts(),
+    getReportedGraded(),
   ]);
   const canStake = (p: (typeof plays)[number]) => stakeable(p, verdicts);
   const split = splitBySelection(plays, selection, canStake);
@@ -204,7 +205,7 @@ export default async function DeckPage({
                   >
                     {SPORT_LABEL.get(p.sportKey) ?? p.sportKey}
                   </span>
-                  {unproven && <UnprovenModelBadge verdict={trustVerdict(p.sportKey, verdicts)} />}
+                  {unproven && <TrackRecordChip verdict={trustVerdict(p.sportKey, verdicts)} graded={graded[p.sportKey]} />}
                   <span className="font-semibold text-foreground">{p.selection.label}</span>
                   <span className="text-sm text-muted-foreground">
                     {american(p.bestPrice)} · {p.bestBookName}

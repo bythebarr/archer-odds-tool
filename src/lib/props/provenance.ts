@@ -62,3 +62,11 @@ export function blendVerdictsByStat(sport: string, reported: ReportedVerdicts): 
   }
   return out;
 }
+
+/** One sport's blend-card graded counts as stat → n (see getReportedGraded). */
+export function blendGradedByStat(sport: string, graded: Record<string, number>): Record<string, number> {
+  const prefix = `market-blend:${sport}:`;
+  const out: Record<string, number> = {};
+  for (const [key, n] of Object.entries(graded)) if (key.startsWith(prefix)) out[key.slice(prefix.length)] = n;
+  return out;
+}
