@@ -33,6 +33,7 @@ on:
           - backtest:cautious-edge
           - backtest:confidence
           - audit:factors
+          - fit:side-calibration
           - report:tracking
           - backtest:nfl-props
           - backtest:props-market

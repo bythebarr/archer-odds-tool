@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fairOver } from "./capture";
+import { fairOver, leanConfidence } from "./capture";
 
 describe("fairOver", () => {
   it("de-vigs one book's two sides", () => {
@@ -19,5 +19,15 @@ describe("fairOver", () => {
     const fd = (150 / 250) / (150 / 250 + 100 / 220);
     expect(fairOver(quotes, 24.5)).toBeCloseTo((0.5 + fd) / 2, 4);
     expect(fairOver(quotes, 26.5)).toBeNull();
+  });
+});
+
+describe("leanConfidence", () => {
+  it("freezes the grade the product shows, or nothing without an ARCHR read", () => {
+    const input = { archr: 0.6, marketChance: 0.55, priceAmerican: -110, rate: [8, 10] as [number, number], sampleGames: 40, blendVerdict: "trusted", z: 0.9, side: "under" as const, sport: "nba" };
+    const c = leanConfidence(input)!;
+    expect(c.grade).toBe("A");
+    expect(c.score).toBeGreaterThanOrEqual(75);
+    expect(leanConfidence({ ...input, archr: null })).toBeUndefined();
   });
 });
