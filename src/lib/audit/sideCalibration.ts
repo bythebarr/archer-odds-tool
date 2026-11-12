@@ -84,7 +84,7 @@ export function sideStats(rows: SideSample[], f: SideFit = IDENTITY): SideStats 
 export function fitSide(rows: SideSample[]): SideFit {
   let best = IDENTITY;
   let bestLoss = sideStats(rows, IDENTITY).logLoss;
-  for (let k = 0.1; k <= 1.3001; k += 0.05) {
+  for (let k = 0; k <= 1.3001; k += 0.05) {
     for (let delta = -0.8; delta <= 0.4001; delta += 0.02) {
       const f = { k: Math.round(k * 100) / 100, delta: Math.round(delta * 100) / 100 };
       const loss = sideStats(rows, f).logLoss;
