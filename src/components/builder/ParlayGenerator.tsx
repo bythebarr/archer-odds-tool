@@ -9,6 +9,8 @@ import type { BuilderKind, BuilderWindow } from "@/lib/builder/types";
 import { buildSlipPickId, useSlip, type SlipSport } from "@/lib/slip/SlipContext";
 import { ScrollRow } from "@/components/ScrollRow";
 import { chip } from "@/components/props/kit";
+import { statTiles, toggleStat } from "@/lib/props/statTiles";
+import { StatTileButtons } from "@/components/props/StatTiles";
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 const selectClass = "w-full rounded-lg border border-border bg-background px-2.5 py-2 text-sm text-foreground";
@@ -41,6 +43,8 @@ interface Filters {
   /** One game (a leg's eventId) / one team ("nba:BOS"); "" = any. */
   game: string;
   team: string;
+  /** Prop stats switched off on the stat tiles ("nba:STL"). */
+  excludeStats: string[];
   kinds: BuilderKind[];
   window: BuilderWindow;
   minRate: number;
@@ -50,7 +54,7 @@ interface Filters {
   pricedOnly: boolean;
 }
 
-const DEFAULTS: Filters = { legs: 4, sports: [], game: "", team: "", kinds: [], window: "l10", minRate: 0.7, minArchr: 0, shortest: "-500", sameGame: false, pricedOnly: false };
+const DEFAULTS: Filters = { legs: 4, sports: [], game: "", team: "", excludeStats: [], kinds: [], window: "l10", minRate: 0.7, minArchr: 0, shortest: "-500", sameGame: false, pricedOnly: false };
 
 const SLIP_SPORTS = new Set<SlipSport>(["mlb", "nfl", "nba", "ufc", "tennis", "soccer"]);
 const MARKET: Record<BuilderKind, MarketType | "prop"> = { prop: "prop", ml: "h2h", spread: "spreads", total: "totals" };
@@ -101,11 +105,14 @@ export function ParlayGenerator({
   games,
   teams,
   sportLabels,
+  statItems,
 }: {
   sports: { key: string; label: string; count: number }[];
   games: { id: string; sport: string; label: string; teams: string[] }[];
   teams: { key: string; sport: string; label: string }[];
   sportLabels: Record<string, string>;
+  /** Prop legs counted per game, team and stat, for the stat tiles. */
+  statItems: { sport: string; stat: string; event: string; teams: string[]; n: number }[];
 }) {
   const [f, setF] = useState<Filters>(DEFAULTS);
   const [legs, setLegs] = useState<GeneratedLeg[]>([]);
@@ -123,6 +130,14 @@ export function ParlayGenerator({
   const inGame = f.game ? new Set(games.find((g) => g.id === f.game)?.teams ?? []) : null;
   const teamOptions = teams.filter((t) => (!f.sports.length || f.sports.includes(t.sport)) && (!inGame || inGame.has(t.key)));
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  // The stat tiles: prop stats among the legs the Sports/Game/Team picks leave, all on unless switched off.
+  const statTileList = statTiles(
+    statItems
+      .filter((s) => (!f.sports.length || f.sports.includes(s.sport)) && (!f.game || s.event === f.game) && (!f.team || s.teams.includes(f.team)))
+      .map((s) => ({ sport: s.sport, stat: s.stat, label: s.stat, n: s.n })),
+    (s) => sportLabels[s] ?? s.toUpperCase()
+  );
+  const propsOn = !f.kinds.length || f.kinds.includes("prop");
 
   async function call(lockedIds: string[], exclude: string[], legCount = f.legs): Promise<GenerateResult | null> {
     setError(null);
@@ -275,6 +290,16 @@ export function ParlayGenerator({
             </button>
           ))}
         </Row>
+        {propsOn && statTileList.length > 0 && (
+          <div className="mt-3">
+            <StatTileButtons
+              tiles={statTileList}
+              excluded={f.excludeStats}
+              onToggle={(k) => set("excludeStats", toggleStat(f.excludeStats, k))}
+              onSet={(off) => set("excludeStats", off)}
+            />
+          </div>
+        )}
         <Row title="Each leg has hit at least">
           {RATES.map((r) => (
             <button key={r} type="button" onClick={() => set("minRate", r)} className={chip(f.minRate === r)}>

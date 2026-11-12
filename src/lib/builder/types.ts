@@ -37,6 +37,8 @@ export interface BuilderLeg {
   startsAt: string;
   href: string;
   kind: BuilderKind;
+  /** Props: the stat's short label ("PTS"), for the stat tiles (lib/props/statTiles, keyed "nba:PTS"). Missing on game lines, and on legs cached before the field existed. */
+  stat?: string;
   /** "Jaylen Brown Over 14.5 PTS", "Celtics ML", "Celtics −3.5", "Over 221.5". */
   label: string;
   /** Legs that can't share a parlay (both sides of one market, two rungs of one stat). */

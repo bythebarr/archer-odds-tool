@@ -86,3 +86,25 @@ describe("mainPoint", () => {
     expect(mainPoint([{ side: "over", point: 1.5 }, { side: "over", point: 2.5 }])).toBeNull();
   });
 });
+
+describe("screen: stat tiles", () => {
+  const pool = [
+    prop("pts", { stat: "points" }),
+    prop("reb", { stat: "rebounds", statLabel: "REB" }),
+    prop("stl", { stat: "steals", statLabel: "STL" }),
+    prop("soccerShots", { sport: "soccer", stat: "shots", statLabel: "SHOTS" }),
+    prop("nhlShots", { sport: "nhl", stat: "shots", statLabel: "SOG" }),
+  ];
+  const ids = (excludeStats: string[]) => screen(pool, { ...DEFAULT_FILTERS, excludeStats }).map((p) => p.id).sort();
+
+  it("every stat on by default; switching tiles off weeds those stats out", () => {
+    expect(ids([])).toHaveLength(5);
+    expect(ids(["nba:steals"])).toEqual(["nhlShots", "pts", "reb", "soccerShots"]);
+    expect(ids(["nba:steals", "nba:rebounds", "nba:points"])).toEqual(["nhlShots", "soccerShots"]);
+  });
+
+  it("is sport-scoped: one sport's tile doesn't hide another's same-named stat", () => {
+    expect(ids(["soccer:shots"])).toContain("nhlShots");
+    expect(ids(["soccer:shots"])).not.toContain("soccerShots");
+  });
+});

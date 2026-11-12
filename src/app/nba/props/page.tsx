@@ -36,7 +36,8 @@ export default async function NbaPropsPage({
   await refreshOnView([["sync-injuries", 20], ["sync-results-nba", 60], ["espn-odds", 30], ["espn-props", 30]]);
   const days = await getLeagueDays("nba", todayEt());
   const date = params.date && isValidEtDate(params.date) ? params.date : (days[0] ?? todayEt());
-  const prefs = await readPropsPrefs(params);
+  // The finder reads its own stat/side/sort; the screener's stat tiles (xstat) aren't its business.
+  const prefs = await readPropsPrefs({ ...params, xstat: undefined });
 
   const [slate, freshness] = await Promise.all([getNbaPropsSlate(date), getFeedFreshness("nbaProps")]);
   const initialGame = params.game && slate.games.some((g) => g.id === params.game) ? params.game : null;

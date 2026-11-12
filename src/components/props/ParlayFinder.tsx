@@ -9,6 +9,8 @@ import { ParlayTray } from "@/components/props/Parlay";
 import type { ParlayLeg } from "@/lib/props/parlay";
 import { EmptyList, GameChips, ListNote, PRICE_STEPS, PriceRange, Segmented, chip, type ChipTeam } from "@/components/props/kit";
 import { ScrollRow } from "@/components/ScrollRow";
+import { statShown, statTiles, toggleStat } from "@/lib/props/statTiles";
+import { StatTileButtons } from "@/components/props/StatTiles";
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 
@@ -38,6 +40,8 @@ export interface FinderGame {
   start: string;
 }
 
+/** A leg's stat key: its id is `${player}:${stat}`. */
+const legStat = (l: FinderLeg) => l.id.slice(l.id.indexOf(":") + 1);
 const legText = (l: FinderLeg) => (l.sideLabel === "Yes" || l.sideLabel === "No" ? `${l.statShort} ${l.sideLabel}` : `${l.sideLabel} ${l.point} ${l.statShort}`);
 
 /** The legs, each with its own record in the games the combination is counted over. */
@@ -277,6 +281,8 @@ export function ParlayFinder({
   const [lab, setLab] = useState<ParlayLeg[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [rank, setRank] = useState<StackRank>("rate");
+  /** Stats switched off on the stat tiles; kept across games so a weeded-out stat stays out. */
+  const [offStats, setOffStats] = useState<string[]>([]);
 
   const gameLegs = useMemo(() => (gameId ? legsFor(gameId, -Infinity) : []), [legsFor, gameId]);
   // Inside the odds range (the ends of the slider mean no limit that way); a leg with no price and no read stays in.
@@ -289,8 +295,13 @@ export function ParlayFinder({
       return v === null || (ladder(v) >= ladder(lo) && ladder(v) <= ladder(hi));
     });
   }, [gameLegs, range]);
-  // Overs only, unders only, or both (a Yes leg, like an anytime TD, counts as an over).
-  const legs = useMemo(() => (sides === "all" ? allLegs : allLegs.filter((l) => l.side === sides)), [allLegs, sides]);
+  // The stat tiles: every stat with a leg on this game (in the odds range), all on unless switched off.
+  const tiles = useMemo(() => statTiles(allLegs.map((l) => ({ sport: "leg", stat: legStat(l), label: l.statShort }))), [allLegs]);
+  // Overs only, unders only, or both (a Yes leg, like an anytime TD, counts as an over); minus the stats switched off.
+  const legs = useMemo(
+    () => allLegs.filter((l) => (sides === "all" || l.side === sides) && statShown(offStats, "leg", legStat(l))),
+    [allLegs, sides, offStats]
+  );
   const options = useMemo(
     () => ({
       minLegRate: Number(legRate),
@@ -401,6 +412,9 @@ export function ParlayFinder({
       </div>
       <div className="mt-3">
         <PriceRange lo={range[0]} hi={range[1]} onChange={(lo, hi) => setRange([lo, hi])} label="Each leg's odds" />
+      </div>
+      <div className="mt-3">
+        <StatTileButtons tiles={tiles} excluded={offStats} onToggle={(k) => setOffStats((x) => toggleStat(x, k))} onSet={setOffStats} />
       </div>
 
       {teams === "pick" ? (
