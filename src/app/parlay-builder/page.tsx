@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getBuilderPool } from "@/lib/builder/pool";
-import { buildParlays, inScope, legConservativeEdge, type BuilderOptions, type BuilderSort, type BuiltParlay } from "@/lib/builder/build";
+import { buildParlays, inScope, type BuilderOptions, type BuilderSort, type BuiltParlay } from "@/lib/builder/build";
 import { optimizeParlays, type OptimizedParlay } from "@/lib/builder/optimize";
 import type { BuilderLeg, BuilderWindow } from "@/lib/builder/types";
 import { ALL_SPORTS } from "@/lib/allSports/sports";
@@ -17,6 +17,7 @@ import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { scopeOptions } from "@/lib/builder/scope";
 import { parseStatList, statTiles } from "@/lib/props/statTiles";
 import { StatTileLinks } from "@/components/props/StatTiles";
+import { ConfidenceChip } from "@/components/props/ConfidencePanel";
 
 /** A render that runs this long has stalled (pools are pre-built: lib/pools): end it rather than let stalled calls pile up. */
 export const maxDuration = 60;
@@ -61,7 +62,7 @@ const SORTS: { key: BuilderSort; label: string }[] = [
   { key: "archr", label: "ARCHR chance" },
   { key: "hit", label: "Hit rate" },
   { key: "edge", label: "ARCHR edge" },
-  { key: "cedge", label: "Cautious edge" },
+  { key: "conf", label: "Confidence" },
 ];
 const DEFAULTS = { legs: 4, window: "l10" as BuilderWindow, rate: 0.7, archr: 0, edge: "any", short: "-500", sgp: false, sort: "archr" as BuilderSort };
 
@@ -86,7 +87,8 @@ function readOptions(p: Params): BuilderOptions & { edgeKey: string; shortKey: s
     shortest: shortKey === "any" ? -Infinity : Number(shortKey),
     shortKey,
     sameGame: p.sgp === "1",
-    sort: SORTS.some((s) => s.key === p.sort) ? (p.sort as BuilderSort) : DEFAULTS.sort,
+    // An older `sort=cedge` link sorts by Confidence, which the cautious read now feeds.
+    sort: p.sort === "cedge" ? "conf" : SORTS.some((s) => s.key === p.sort) ? (p.sort as BuilderSort) : DEFAULTS.sort,
     // Generate is the default: the tool most people come for.
     mode: p.mode === "payout" ? "payout" : p.mode === "bars" ? "bars" : "gen",
     pay: num(p.pay, PAYOUTS, 500),
@@ -113,7 +115,6 @@ function Row({ title, children }: { title: string; children: React.ReactNode }) 
 
 function LegRow({ l, window, prob }: { l: BuilderLeg; window: BuilderWindow; prob?: number }) {
   const [h, n] = l.rates[window];
-  const cedge = legConservativeEdge(l, window);
   return (
     <li className="flex items-start justify-between gap-3 px-3 py-2 text-xs">
       <div className="min-w-0">
@@ -142,10 +143,9 @@ function LegRow({ l, window, prob }: { l: BuilderLeg; window: BuilderWindow; pro
             </span>
           )}
         </p>
-        {cedge !== null && (
-          <p className={`text-[10px] ${cedge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} title={CAUTIOUS_NOTE}>
-            {CANONICAL_NUMBERS.cautiousEdge.shortLabel.toLowerCase()} {cedge > 0 ? "+" : ""}
-            {(cedge * 100).toFixed(1)}%
+        {l.confidence && (
+          <p className="mt-0.5 flex items-center justify-end gap-1 font-sans text-[10px] text-muted-foreground">
+            Conf. <ConfidenceChip c={l.confidence} />
           </p>
         )}
       </div>
@@ -525,8 +525,9 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         combination (one leg per game) for the highest cautious score (the legs&apos; cautious reads multiplied) whose price pays at least what
         you picked; the alternatives below it each leave one of its legs out. The cautious score ranks, it isn&apos;t a chance: the parlay&apos;s
         chance is its ARCHR chance, and its edge is ARCHR edge. Legs whose price is far longer than their cautious read (more than +50% cautious
-        edge) are left out: that gap is a price that doesn&apos;t belong to the line. The cautious edge compares a leg&apos;s cautious read with the
-        chance its price implies — ranking only, for sorting and building, not a probability. Research only.
+        edge) are left out: that gap is a price that doesn&apos;t belong to the line. Each prop leg also carries a Confidence grade (A–D): how far to trust its
+        ARCHR chance and edge, from the stat&apos;s report card, his history, whether his record backs the price, how far ARCHR sits from the books,
+        his minutes and injury tags. Hover it for what moved it. It&apos;s unproven until the backtest shows higher grades win more. Research only.
       </p>
         </>
       )}

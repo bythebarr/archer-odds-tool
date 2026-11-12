@@ -5,6 +5,8 @@
  * Each sport's source (lib/builder/sources) turns its own data into these; the
  * builder (build.ts) only ever sees this. JSON-safe: it is cached as is.
  */
+import type { CompactConfidence } from "@/lib/propModel/confidence";
+import type { LegFacts } from "@/lib/props/parlayFinder";
 
 /** A hit-rate window: the last 5, 10 or 20 games, or this season (the last 12 months where a sport has no season). */
 export type BuilderWindow = "l5" | "l10" | "l20" | "season";
@@ -37,6 +39,10 @@ export interface BuilderLeg {
   startsAt: string;
   href: string;
   kind: BuilderKind;
+  /** Props: confidence in ARCHR's read of this leg, computed when the pool is built (lib/propModel/confidence). */
+  confidence?: CompactConfidence;
+  /** While the pool is built only: the facts the grade reads (lib/pools/confidence), dropped before storing. */
+  facts?: LegFacts & { projectedMinutes?: number | null };
   /** Props: the stat's short label ("PTS"), for the stat tiles (lib/props/statTiles, keyed "nba:PTS"). Missing on game lines, and on legs cached before the field existed. */
   stat?: string;
   /** "Jaylen Brown Over 14.5 PTS", "Celtics ML", "Celtics −3.5", "Over 221.5". */

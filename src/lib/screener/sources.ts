@@ -83,6 +83,7 @@ function fromFinderLeg(
     edge: edgeOf(l.modelProb, l.priceAmerican),
     rates: screenRates(l.logs, l.side, l.point, season),
     ...roleRatesOf(l, season),
+    ...(l.facts ? { facts: l.facts } : {}),
     ...(ctx.minutes !== undefined && ctx.minutes !== null ? { minutes: Math.round(ctx.minutes * 10) / 10 } : {}),
   };
 }

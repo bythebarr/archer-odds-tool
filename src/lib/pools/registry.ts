@@ -6,6 +6,8 @@ import { mlbScreener, nbaScreener, nflScreener, soccerScreener, tennisScreener, 
 import type { ScreenerProp } from "@/lib/screener/types";
 import { BUILDER_CHUNKS, BUILDER_CHUNK_ROWS, buildPoolSlice, POOL_SOURCES, type PoolSource } from "@/lib/builder/pool";
 import { chunkRows } from "./snapshot";
+import { poolConfidence, recordOf } from "./confidence";
+import { getReportedBlendVerdicts } from "@/lib/queries/modelTrust";
 import { SCREENER_CHUNKS, SCREENER_CHUNK_ROWS, SCREENER_SPORTS, type ScreenerSport } from "@/lib/screener/pool";
 
 const SCREENER_BUILD: Record<ScreenerSport, () => Promise<ScreenerProp[]>> = {
@@ -27,7 +29,24 @@ export const POOLS: Record<string, Build> = {
     SCREENER_SPORTS.map(({ key }) => [
       screenerPoolKey(key),
       async () => {
-        const rows = await SCREENER_BUILD[key]();
+        const [built, verdicts] = await Promise.all([SCREENER_BUILD[key](), getReportedBlendVerdicts()]);
+        const rows = built.map(({ facts, ...r }) => ({
+          ...r,
+          confidence: poolConfidence(
+            {
+              sport: r.sport,
+              statKey: r.stat,
+              archr: r.archr,
+              priceAmerican: r.priceAmerican,
+              rate: recordOf(r.rates.l10, r.rates.szn),
+              fallbackGames: r.rates.szn[1] + r.rates.last[1],
+              alt: !r.main,
+              projectedMinutes: r.minutes ?? null,
+              facts,
+            },
+            verdicts
+          ),
+        }));
         return {
           main: chunkRows(rows.filter((p) => p.main), SCREENER_CHUNK_ROWS, SCREENER_CHUNKS),
           alt: chunkRows(rows.filter((p) => !p.main), SCREENER_CHUNK_ROWS, SCREENER_CHUNKS),
@@ -36,7 +55,35 @@ export const POOLS: Record<string, Build> = {
     ])
   ),
   ...Object.fromEntries(
-    POOL_SOURCES.map((s) => [builderPoolKey(s), async () => ({ all: chunkRows(await buildPoolSlice(s), BUILDER_CHUNK_ROWS, BUILDER_CHUNKS) })])
+    POOL_SOURCES.map((s) => [
+      builderPoolKey(s),
+      async () => {
+        const [built, verdicts] = await Promise.all([buildPoolSlice(s), getReportedBlendVerdicts()]);
+        const legs = built.map(({ facts, ...l }) =>
+          l.kind !== "prop"
+            ? l
+            : {
+                ...l,
+                confidence: poolConfidence(
+                  {
+                    sport: l.sport,
+                    // Prop leg ids are "<sport>:prop:<player>:<stat>:<side>:<point>".
+                    statKey: l.id.split(":")[3] ?? "",
+                    archr: l.archr,
+                    priceAmerican: l.priceAmerican,
+                    rate: recordOf(l.rates.l10, l.rates.season),
+                    fallbackGames: l.rates.season[1],
+                    alt: false,
+                    projectedMinutes: facts?.projectedMinutes ?? null,
+                    facts,
+                  },
+                  verdicts
+                ),
+              }
+        );
+        return { all: chunkRows(legs, BUILDER_CHUNK_ROWS, BUILDER_CHUNKS) };
+      },
+    ])
   ),
 };
 

@@ -1,5 +1,8 @@
 "use client";
 
+import { confidenceOf } from "@/lib/propModel/confidence";
+import { nflPriceReasons } from "@/lib/nfl/priceReasons";
+import { ConfidencePanel } from "@/components/props/ConfidencePanel";
 import Link from "next/link";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import type { NflPropStat } from "@/generated/prisma/client";
@@ -401,6 +404,36 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
     modelProb: m ? (side === "over" ? m.probOver : m.probUnder) : null,
     logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, team: l.team, value: !stat.available || stat.available(l) ? stat.value(l) : null })),
   };
+  // Confidence: how far to trust ARCHR's read of this bet, and why (lib/propModel/confidence).
+  const recordSplit = s?.splits.find((x) => x.key === "l10" && x.rate.sampleSize >= 5) ?? s?.splits.find((x) => x.key === "season");
+  const quote = side === "over" ? s?.over : s?.under;
+  const confidence = m && s
+    ? confidenceOf({
+        archr: side === "over" ? m.probOver : m.probUnder,
+        marketChance: m.market ? (side === "over" ? m.market.probOver : 1 - m.market.probOver) : null,
+        priceAmerican: s.projected ? null : (quote?.priceAmerican ?? null),
+        rate: recordSplit ? [recordSplit.rate.hits, recordSplit.rate.sampleSize] : [0, 0],
+        sampleGames: m.projection.games,
+        blendVerdict: blendVerdicts[prop.stat] ?? null,
+        injury: player.injury?.level ?? null,
+        alt: point !== main,
+      })
+    : null;
+  const priceReasons = m
+    ? nflPriceReasons({
+        side,
+        statShort: stat.shortLabel,
+        opponent: player.opponent?.abbreviation ?? null,
+        position: player.position,
+        matchupFactor: m.projection.matchupFactor,
+        volumeFactor: m.projection.env.volumeFactor,
+        scriptFactor: m.projection.env.scriptFactor,
+        spread: m.projection.env.spread,
+        absence: m.projection.absence,
+        mean: m.projection.mean,
+        def,
+      })
+    : [];
   const volOf = (l: NflLogPoint) => (player.position === "QB" ? l.passAttempts : player.position === "RB" ? l.rushAttempts : l.targets);
 
   return (
@@ -538,6 +571,8 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
           )}
         </ProjectionCard>
       )}
+
+      <ConfidencePanel c={confidence} reasons={priceReasons} sideLabel={`${sideLabelsOf(stat)[side === "over" ? 0 : 1]}${stat.shape === "anytime" ? "" : ` ${point}`} ${stat.shortLabel}`} />
 
       {altRows.length > 1 && (
         <AltLinesTable

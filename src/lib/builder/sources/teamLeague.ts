@@ -75,6 +75,7 @@ function propLeg(sport: BuilderLeagueSport, l: FinderLeg, season: number, event:
     edge: edgeOf(l.modelProb, l.priceAmerican),
     rates: ratesOf(outcomes, season),
     ...roleRatesOf(l, season),
+    ...(l.facts ? { facts: { ...l.facts, projectedMinutes: l.tonight?.minutes ?? null } } : {}),
   };
 }
 

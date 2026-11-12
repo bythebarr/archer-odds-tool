@@ -118,7 +118,7 @@ function rate(s: PropSummary, key: "l5" | "l10" | "season" | "h2h"): [number, nu
   return [r.hits, r.sampleSize];
 }
 
-function reasonsFor(
+export function reasonsFor(
   s: PropSummary,
   side: PropDirection,
   stat: NbaPropStatDef,

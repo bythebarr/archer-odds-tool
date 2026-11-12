@@ -75,6 +75,12 @@ export function nflFinderLegs(
           priceAmerican: best?.priceAmerican ?? null,
           bookName: best?.bookName ?? null,
           logs: legLogs,
+          facts: {
+            market: s?.model?.market ? (side === "over" ? s.model.market.probOver : 1 - s.model.market.probOver) : null,
+            injury: player.injury?.level ?? null,
+            games: s?.model?.projection.games ?? playerLogs.length,
+            recentMinutes: null,
+          },
         });
       }
     }

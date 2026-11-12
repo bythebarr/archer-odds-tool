@@ -59,6 +59,15 @@ export interface Confidence {
   factors: ConfidenceFactor[];
 }
 
+/**
+ * Whether scripts/backtest-confidence has shown higher grades are where ARCHR's
+ * read holds up. Until it has, every surface marks the grade unproven. The
+ * 2026-11-12 run (700 NBA sides at closing prices) did NOT show it: grade B
+ * was no more accurate than C and D, and its edge bets didn't pay more. Flip
+ * only on a VALIDATED verdict.
+ */
+export const CONFIDENCE_VALIDATED = false;
+
 /** Where every bet starts: neither trusted nor doubted. */
 export const BASE = 55;
 export const GRADE_CUTS: [ConfidenceGrade, number][] = [
@@ -146,4 +155,19 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
 export function confidenceSummary(c: Confidence): string {
   const moved = c.factors.filter((x) => x.effect !== 0).sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect));
   return `Confidence ${c.grade} (${c.score}/100)${moved.length ? ": " + moved.slice(0, 3).map((x) => x.text.split(":")[0]).join("; ") : ""}`;
+}
+
+/** The grade as a board row carries it: the full factors live on the player sheet. */
+export interface CompactConfidence {
+  grade: ConfidenceGrade;
+  score: number;
+  /** The factors that moved it most, in a line: the row's tooltip. */
+  why: string;
+}
+
+export function compactConfidence(c: Confidence | null): CompactConfidence | undefined {
+  if (!c) return undefined;
+  const moved = c.factors.filter((x) => x.effect !== 0).sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect));
+  const why = moved.length ? moved.slice(0, 3).map((x) => `${x.effect > 0 ? "+" : "−"}${Math.abs(x.effect)} ${x.text.split(":")[0]}`).join(" · ") : "Nothing moved it either way";
+  return { grade: c.grade, score: c.score, why };
 }

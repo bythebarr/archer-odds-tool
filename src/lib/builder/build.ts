@@ -12,14 +12,13 @@
 import { americanToDecimal, decimalToAmerican } from "@/lib/odds/americanOdds";
 import type { BuilderLeg, BuilderWindow } from "./types";
 import { sameGameCorrelationFactor } from "./correlation";
-import { trustedRelativeEdge } from "./conservative";
 import { cautiousEdge } from "@/lib/propModel/canonical";
 import { statShown } from "@/lib/props/statTiles";
 
 /** A leg's CAUTIOUS edge over a window — the canonical ranking signal (see lib/propModel/canonical); null without a price or a read. (Historical name kept for callers.) */
 export const legConservativeEdge = (l: BuilderLeg, w: BuilderWindow) => cautiousEdge(l.archr, l.rates[w], l.priceAmerican, l.roleRates?.[w]);
 
-export type BuilderSort = "archr" | "edge" | "cedge" | "hit";
+export type BuilderSort = "archr" | "edge" | "conf" | "hit";
 
 export interface BuilderOptions {
   /** Sports to draw from; empty = every sport. */
@@ -108,7 +107,8 @@ export function qualifies(l: BuilderLeg, o: BuilderOptions): boolean {
 export function scoreOf(l: BuilderLeg, o: BuilderOptions): number {
   const [h, n] = l.rates[o.window];
   if (o.sort === "edge") return trustedEdge(l) ?? -1;
-  if (o.sort === "cedge") return trustedRelativeEdge(legConservativeEdge(l, o.window)) ?? -1;
+  // Confidence (lib/propModel/confidence), which the cautious read now feeds; game lines carry none and sort last.
+  if (o.sort === "conf") return l.confidence ? l.confidence.score / 100 : -1;
   if (o.sort === "archr") return l.archr ?? floor(h, n) - 0.5;
   return floor(h, n);
 }
