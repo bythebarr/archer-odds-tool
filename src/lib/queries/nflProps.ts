@@ -27,8 +27,8 @@ import type { NflPropStat } from "@/generated/prisma/client";
 import { getConsensusGameLines } from "./gameLines";
 import { getNflModelTotals } from "./gameModel";
 import { getCalibrationFactors, getModelWeights } from "./modelWeights";
-import { getReportedBlendVerdicts } from "./modelTrust";
-import { blendVerdictsByStat } from "@/lib/props/provenance";
+import { getReportedBlendVerdicts, getReportedGraded } from "./modelTrust";
+import { blendGradedByStat, blendVerdictsByStat } from "@/lib/props/provenance";
 import { eventPropBoard, eventPropPostedLines, type PostedLine } from "./eventPropLines";
 import { NFL_STAT_BY_KEY } from "@/lib/odds/espnProps";
 import { espnTeamCode } from "@/lib/logos";
@@ -86,6 +86,8 @@ export interface NflPropsSlate {
   calibrationFactors: Record<string, number>;
   /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
   blendVerdicts: Record<string, string>;
+  /** Stat → outcomes its blend card was graded on (for the track-record chip). */
+  blendGraded: Record<string, number>;
   /** Team abbreviation → its offense and defense this season from the play-by-play, with league ranks. */
   teams: Record<string, NflTeamContext>;
   lastPolledAt: string | null;
@@ -393,7 +395,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
   // Every number the books have hung on these games (ESPN's DraftKings feed carries NFL numbers, rarely their prices).
   const board = (await eventPropBoard(listed.map((g) => g.id), NFL_STAT_BY_KEY)).filter((r) => r.athleteId);
   const games = dedupeGames(listed, new Set(board.map((r) => r.eventRef)));
-  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, absenceImpacts: {}, lines: {}, modelLines: {}, weather: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, teams: {}, lastPolledAt: null };
+  const empty: NflPropsSlate = { season, games: [], players: {}, logs: {}, usage: {}, props: [], defense: { season, fromLastSeason: false, teams: {} }, absences: {}, absenceImpacts: {}, lines: {}, modelLines: {}, weather: {}, teamPoints: {}, modelWeights: {}, calibrationFactors: {}, blendVerdicts: {}, blendGraded: {}, teams: {}, lastPolledAt: null };
   if (games.length === 0) return empty;
 
   const slateGames: SlateGame[] = games.flatMap((g) => {
@@ -540,7 +542,7 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     nflTeamPoints(games.flatMap((g) => [g.homeTeam, g.awayTeam].filter((t) => t !== null)), now),
     getModelWeights("nfl"),
     getCalibrationFactors("nfl-props"),
-    getReportedBlendVerdicts(),
+    Promise.all([getReportedBlendVerdicts(), getReportedGraded()]),
     prisma.gameWeather.findMany({
       where: { gameId: { in: slateGames.map((g) => g.id) } },
       select: { gameId: true, windMph: true, precipProb: true, temperatureF: true },
@@ -603,7 +605,8 @@ export const getNflPropsSlate = cache(async (now: Date = new Date()): Promise<Nf
     teamPoints,
     modelWeights,
     calibrationFactors,
-    blendVerdicts: blendVerdictsByStat("nfl", blendReports),
+    blendVerdicts: blendVerdictsByStat("nfl", blendReports[0]),
+    blendGraded: blendGradedByStat("nfl", blendReports[1]),
     teams,
     lastPolledAt: lastPolledAt?.toISOString() ?? null,
   };

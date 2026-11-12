@@ -527,7 +527,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         chance is its ARCHR chance, and its edge is ARCHR edge. Legs whose price is far longer than their cautious read (more than +50% cautious
         edge) are left out: that gap is a price that doesn&apos;t belong to the line. Each prop leg also carries a Confidence grade (A–D): how far to trust its
         ARCHR chance and edge, from the stat&apos;s report card, his history, whether his record backs the price, how far ARCHR sits from the books,
-        his minutes and injury tags. Hover it for what moved it. It&apos;s unproven until the backtest shows higher grades win more. Research only.
+        his minutes and injury tags. Hover it for what moved it. Research only.
       </p>
         </>
       )}

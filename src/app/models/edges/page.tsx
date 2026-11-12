@@ -35,7 +35,7 @@ function Row({ s }: { s: SegmentStats }) {
       <td className="py-2 pr-2">
         <p className="font-medium text-foreground">{s.label}</p>
         <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${v.tone}`} title={v.note}>
-          {s.verdict}
+          {s.verdict === "unproven" ? "no clear signal" : s.verdict}
         </span>
       </td>
       <td className="px-2 py-2 text-right font-mono">{s.n.toLocaleString()}</td>

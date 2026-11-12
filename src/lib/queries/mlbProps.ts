@@ -15,8 +15,8 @@ import { parkFactors, parkRatesFromSums } from "@/lib/mlb/parkFactors";
 import { MLB_PROP_STATS, packMlbLog, type MlbChartLog, type MlbRole, type PackedMlbLog } from "@/lib/mlb/propsSlate";
 import type { PropQuote } from "@/lib/nba/propsMath";
 import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
-import { getReportedBlendVerdicts } from "./modelTrust";
-import { blendVerdictsByStat } from "@/lib/props/provenance";
+import { getReportedBlendVerdicts, getReportedGraded } from "./modelTrust";
+import { blendGradedByStat, blendVerdictsByStat } from "@/lib/props/provenance";
 import type { StatDistribution } from "@/lib/propModel/distribution";
 
 /** Batters with at least this many of the team's last ten games are listed when no lineup is posted. */
@@ -75,6 +75,8 @@ export interface MlbPropsSlate {
   logs: Record<string, PackedMlbLog[]>;
   /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
   blendVerdicts: Record<string, string>;
+  /** Stat → outcomes its blend card was graded on (for the track-record chip). */
+  blendGraded: Record<string, number>;
 }
 
 const hand = (h: string | null | undefined): "L" | "R" | null => (h === "L" || h === "R" ? h : null);
@@ -120,7 +122,7 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
       lineupSlots: true,
     },
   });
-  const empty: MlbPropsSlate = { date, season, games: [], players: {}, props: [], logs: {}, blendVerdicts: {} };
+  const empty: MlbPropsSlate = { date, season, games: [], players: {}, props: [], logs: {}, blendVerdicts: {}, blendGraded: {} };
   if (!games.length) return empty;
 
   // Who plays: the posted lineup, else every batter with a regular role over the team's last ten games.
@@ -293,7 +295,7 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
     outLogs[e.playerId] = logs.map(packMlbLog);
   }
 
-  const blendReports = await getReportedBlendVerdicts();
+  const blendReports = await Promise.all([getReportedBlendVerdicts(), getReportedGraded()]);
 
   return {
     date,
@@ -302,7 +304,8 @@ export const getMlbPropsSlate = cache(async (dateParam: string | null = null, no
     players: outPlayers,
     props: outProps,
     logs: outLogs,
-    blendVerdicts: blendVerdictsByStat("mlb", blendReports),
+    blendVerdicts: blendVerdictsByStat("mlb", blendReports[0]),
+    blendGraded: blendGradedByStat("mlb", blendReports[1]),
   };
 });
 

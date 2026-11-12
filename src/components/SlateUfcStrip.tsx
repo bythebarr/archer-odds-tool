@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { SlateItem } from "@/lib/queries/slate";
 import type { FinishMethod } from "@/lib/ufc/finishMath";
 import { FighterBadge } from "./FighterBadge";
-import { UnprovenModelBadge } from "./UnprovenModelBadge";
+import { TrackRecordChip } from "./TrackRecordChip";
 
 /** Compact "how it ends" label + accent, matching the bout page's finish card and the old Lines board. */
 const METHOD_LEAN_META: Record<FinishMethod, { label: string; color: string }> = {
@@ -70,10 +70,13 @@ function UfcRow({ item }: { item: SlateItem }) {
 export function SlateUfcStrip({
   items,
   modelVerdict,
+  modelGraded,
 }: {
   items: SlateItem[];
   /** The UFC model's calibration verdict — the whole strip is one model's output, so the badge rides the section. */
   modelVerdict?: string | null;
+  /** Outcomes the UFC model's report card was graded on. */
+  modelGraded?: number;
 }) {
   if (items.length === 0) return null;
 
@@ -94,7 +97,7 @@ export function SlateUfcStrip({
       </p>
       {modelVerdict !== undefined && (
         <div className="px-2 pt-1.5">
-          <UnprovenModelBadge verdict={modelVerdict} />
+          <TrackRecordChip verdict={modelVerdict} graded={modelGraded} />
         </div>
       )}
       <div className="mt-2 divide-y divide-border/50">

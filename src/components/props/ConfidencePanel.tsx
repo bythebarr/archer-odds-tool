@@ -4,7 +4,7 @@
  * read against everything the price is weighing. Plain components (no hooks).
  */
 import Link from "next/link";
-import { CONFIDENCE_VALIDATED, type CompactConfidence, type Confidence, type ConfidenceGrade } from "@/lib/propModel/confidence";
+import { CONFIDENCE_TRACK_RECORD, CONFIDENCE_VALIDATED, type CompactConfidence, type Confidence, type ConfidenceGrade } from "@/lib/propModel/confidence";
 
 const GRADE_TONE: Record<ConfidenceGrade, string> = {
   A: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/40 dark:text-emerald-300",
@@ -17,16 +17,15 @@ const GRADE_WORDS: Record<ConfidenceGrade, string> = {
   A: "High: the read rests on solid ground",
   B: "Good: mostly solid, with a caveat or two",
   C: "Mixed: weigh the reasons below before trusting the number",
-  D: "Low: too much here the model can't see or hasn't proven",
+  D: "Low: too much here the model can't see or back up",
 };
 
-const UNPROVEN_NOTE = "Unproven grade: not yet shown to separate winners from losers on past closing prices.";
 
 /** The grade as a small chip (boards, leg rows). */
 export function ConfidenceChip({ c }: { c: Confidence | CompactConfidence | null | undefined }) {
   if (!c) return <span className="font-mono text-[11px] text-muted-foreground">—</span>;
   const why = "why" in c ? c.why : null;
-  const title = [`Confidence ${c.grade} (${c.score}/100)`, why, CONFIDENCE_VALIDATED ? null : UNPROVEN_NOTE].filter(Boolean).join(" · ");
+  const title = [`Confidence ${c.grade} (${c.score}/100)`, why, CONFIDENCE_VALIDATED ? null : CONFIDENCE_TRACK_RECORD].filter(Boolean).join(" · ");
   return (
     <span title={title} className={`inline-flex min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold ring-1 ${GRADE_TONE[c.grade]}`}>
       {c.grade}
@@ -60,7 +59,7 @@ export function ConfidencePanel({ c, reasons = [], sideLabel }: { c: Confidence 
             {c.score}/100. How far to trust ARCHR&apos;s chance and edge on this bet, not a chance itself.
           </p>
           {!CONFIDENCE_VALIDATED && (
-            <p className="mt-1 inline-block rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">{UNPROVEN_NOTE}</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Track record: {CONFIDENCE_TRACK_RECORD}</p>
           )}
         </div>
       </div>

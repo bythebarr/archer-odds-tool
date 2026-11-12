@@ -13,7 +13,7 @@ import { DateNav } from "@/components/DateNav";
 import { InfoTip } from "@/components/InfoTip";
 import { SportRail } from "@/components/SportRail";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
-import { getReportedVerdicts } from "@/lib/queries/modelTrust";
+import { getReportedGraded, getReportedVerdicts } from "@/lib/queries/modelTrust";
 import { trustVerdict } from "@/lib/engine";
 
 // Fed by the daily result/schedule syncs, so the board changes day to day —
@@ -57,10 +57,10 @@ export default async function SlatePage({
 
   // Only fetch the active tab's data — the tabs are independent queries. The
   // Value tab also pulls the day's UFC bouts for the strip beside the pool.
-  const [pool, ufcStrip, verdicts] =
+  const [pool, ufcStrip, verdicts, graded] =
     tab === "value"
-      ? await Promise.all([getOddsPoolForDate(date), getUfcSlateItems(date), getReportedVerdicts()])
-      : [null, null, null];
+      ? await Promise.all([getOddsPoolForDate(date), getUfcSlateItems(date), getReportedVerdicts(), getReportedGraded()])
+      : [null, null, null, null];
   // The same verdicts the trust gate reads — used only for provenance badges.
   const verdictOf = (sportKey: string) => (verdicts ? trustVerdict(sportKey, verdicts) : null);
   // Only MLB has prop data today; getPropBoard is sport-agnostic (see board.ts).
@@ -127,11 +127,12 @@ export default async function SlatePage({
       <div className="mt-8">
         {tab === "value" ? (
           <>
-            <SlateUfcStrip items={ufcStrip!} modelVerdict={verdictOf("ufc")} />
+            <SlateUfcStrip items={ufcStrip!} modelVerdict={verdictOf("ufc")} modelGraded={graded?.ufc} />
             <OddsPoolBoard
               pool={pool!}
               freshness={freshness}
               modelVerdicts={{ mlb: verdictOf("mlb"), tennis: verdictOf("tennis"), soccer: verdictOf("soccer") }}
+              modelGraded={graded ?? undefined}
             />
           </>
         ) : (

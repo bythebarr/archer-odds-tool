@@ -15,9 +15,9 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import { parseStatList, statTiles } from "@/lib/props/statTiles";
 import { StatTileLinks } from "@/components/props/StatTiles";
 import { ConfidenceChip } from "@/components/props/ConfidencePanel";
-import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
-import { getReportedBlendVerdicts } from "@/lib/queries/modelTrust";
-import { propBlendVerdict, propIsUnproven } from "@/lib/props/provenance";
+import { TrackRecordChip } from "@/components/TrackRecordChip";
+import { getReportedBlendVerdicts, getReportedGraded } from "@/lib/queries/modelTrust";
+import { blendCardKey, propBlendVerdict, propIsUnproven } from "@/lib/props/provenance";
 
 export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>> & {
   /** Stats switched off on the stat tiles (lib/props/statTiles): comma-separated or repeated. */
@@ -125,7 +125,7 @@ function sideText(p: ScreenerProp): string {
 
 export async function PropsScreener({ params, basePath, sport = null, keep = {} }: { params: ScreenerParams; basePath: string; sport?: ScreenerSport | null; keep?: Record<string, string> }) {
   const read = readFilters(params, sport);
-  const [pool, blendVerdicts] = await Promise.all([getScreenerPool(read.sport, !read.mainOnly), getReportedBlendVerdicts()]);
+  const [pool, blendVerdicts, graded] = await Promise.all([getScreenerPool(read.sport, !read.mainOnly), getReportedBlendVerdicts(), getReportedGraded()]);
   // A game, team or stat left over from another sport would screen everything out: drop it.
   const scoped: ScreenFilters = {
     ...read,
@@ -386,7 +386,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                       </Link>
                       <span className="ml-1.5 text-muted-foreground">{sideText(p)}</span>
                       {!p.main && <span className="ml-1.5 rounded bg-muted px-1 text-[10px] text-muted-foreground">alt</span>}
-                      {propIsUnproven(p, blendVerdicts) && <UnprovenModelBadge verdict={propBlendVerdict(p.sport, p.stat, blendVerdicts)} className="ml-1.5" />}
+                      {propIsUnproven(p, blendVerdicts) && <TrackRecordChip verdict={propBlendVerdict(p.sport, p.stat, blendVerdicts)} graded={graded[blendCardKey(p.sport, p.stat)]} className="ml-1.5" />}
                       <span className="block text-[11px] text-muted-foreground">
                         {p.league} · {p.team ? `${p.team} vs ${p.opponent}` : `vs ${p.opponent}`} · {p.game}
                       </span>
@@ -422,7 +422,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus — and ARCHR&apos;s edge is that chance against the best price. Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. The grade is unproven until the backtest shows higher grades win more. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, an &quot;Unproven model&quot; badge rides on the row until that blend earns a passing grade on /models. Click a column to sort by it. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus — and ARCHR&apos;s edge is that chance against the best price. Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, a chip on the row shows that blend&apos;s track record from /models (e.g. &quot;Even with baseline · 412 graded&quot;) until it earns a passing grade. Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

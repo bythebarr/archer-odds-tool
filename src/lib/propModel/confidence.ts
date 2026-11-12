@@ -80,12 +80,17 @@ export interface Confidence {
 
 /**
  * Whether scripts/backtest-confidence has shown higher grades are where ARCHR's
- * read holds up. Until it has, every surface marks the grade unproven. The
- * 2026-11-12 run (700 NBA sides at closing prices) did NOT show it: grade B
- * was no more accurate than C and D, and its edge bets didn't pay more. Flip
- * only on a VALIDATED verdict.
+ * read holds up. Until it has, every surface shows the grade's track record
+ * (CONFIDENCE_TRACK_RECORD) beside it. The 2026-11-12 runs (700 NBA sides at
+ * closing prices) returned DATA REQUIRED: after the audit reweight only 79
+ * sides graded A or B, short of the 100 a verdict needs. Flip only on a
+ * VALIDATED verdict.
  */
 export const CONFIDENCE_VALIDATED = false;
+
+/** What the grade's weights rest on, and where its own check stands — shown with every grade until it's validated. */
+export const CONFIDENCE_TRACK_RECORD =
+  "Weights set from an audit of 5,347 graded live leans; the closing-price check needs 100+ A/B sides and has 79 so far.";
 
 /** Where every bet starts: neither trusted nor doubted. */
 export const BASE = 55;
@@ -114,7 +119,7 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
   // 1. Track record: has this stat's blend earned a passing report card on real closing prices?
   if (c.blendVerdict === undefined) add("track", 0, "This sport's props come from their own projection model; there's no blend report card to lean on yet.");
   else if (c.blendVerdict === "trusted") add("track", 10, "ARCHR's numbers for this stat have a passing report card on real closing prices.");
-  else add("track", -5, "ARCHR's numbers for this stat haven't earned a passing report card yet (Unproven).");
+  else add("track", -5, "ARCHR's numbers for this stat haven't earned a passing report card yet (see /models for its record).");
 
   // 2. How much history the projection rests on.
   if (c.sampleGames < 5) add("sample", -20, `Only ${c.sampleGames} games of history: the projection leans on league averages.`);

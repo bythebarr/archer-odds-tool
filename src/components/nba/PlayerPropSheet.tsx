@@ -6,7 +6,7 @@ import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { NBA_ALT_COLUMNS, altLinePointsNba, altLineRows, booksAtPoint, propConsensusPoint, summarizeProp, twoSidedAt, type GameLogPoint, type PropModel, type SlateProp } from "@/lib/nba/propsMath";
 import { fairPrice } from "@/lib/odds/marketValue";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
+import { TrackRecordChip } from "@/components/TrackRecordChip";
 import type { ProjectionContext } from "@/lib/nba/projection";
 import type { SlatePlayer } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
@@ -25,7 +25,7 @@ import { reasonsFor } from "@/lib/nba/standouts";
 import { ConfidencePanel } from "@/components/props/ConfidencePanel";
 
 /** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
-function ProjectionPanel({ model, point, side, statShort, milestone = false, blendVerdict }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean; blendVerdict?: string | null }) {
+function ProjectionPanel({ model, point, side, statShort, milestone = false, blendVerdict, blendGraded }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean; blendVerdict?: string | null; blendGraded?: number }) {
   const p = model.projection;
   const ev = side === "over" ? model.evOver : model.evUnder;
   const mult = (x: number) => `×${x.toFixed(2)}`;
@@ -58,7 +58,7 @@ function ProjectionPanel({ model, point, side, statShort, milestone = false, ble
           until he has 5 games of his own.
         </p>
       )}
-      <UnprovenModelBadge verdict={blendVerdict} className="mt-3" />
+      <TrackRecordChip verdict={blendVerdict} graded={blendGraded} className="mt-3" />
       <BlendLine model={model} side={side} />
       <SeasonMixLine seasons={p.seasons} />
       <EnvLine
@@ -103,6 +103,7 @@ export function PlayerPropSheet({
   modelWeights,
   calibrationFactors,
   blendVerdicts,
+  blendGraded = {},
   initialStat,
   side: initialSide,
   startLabel,
@@ -122,8 +123,10 @@ export function PlayerPropSheet({
   modelWeights: Record<string, number>;
   /** Stat → the backtest's fitted calibration factor. */
   calibrationFactors: Record<string, number>;
-  /** Stat → the market-blend report card's verdict (absent stat = no card = unproven). */
+  /** Stat → the market-blend report card's verdict (absent stat = no card). */
   blendVerdicts: Record<string, string>;
+  /** Stat → outcomes that card was graded on. */
+  blendGraded?: Record<string, number>;
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;
@@ -278,7 +281,7 @@ export function PlayerPropSheet({
         </p>
       )}
 
-      {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} blendVerdict={blendVerdicts[prop.stat]} />}
+      {summary?.model && <ProjectionPanel model={summary.model} point={point} side={side} statShort={statDef.shortLabel} milestone={!!statDef.milestone} blendVerdict={blendVerdicts[prop.stat]} blendGraded={blendGraded[prop.stat]} />}
 
       <ConfidencePanel c={confidence} reasons={priceReasons} sideLabel={`${statDef.milestone ? (side === "over" ? "Yes" : "No") : side === "over" ? "Over" : "Under"} ${point} ${statDef.shortLabel}`} />
 

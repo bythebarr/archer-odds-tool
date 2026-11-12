@@ -1,40 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { UNPROVEN_MODEL_BADGE, isUnprovenVerdict, unprovenBadgeLabel } from "./modelBadge";
+import { isUnprovenVerdict, trackRecordLabel } from "./modelBadge";
 
-/**
- * The badge predicate (Prompt 5). Proven is opt-in: only a `trusted`
- * calibration verdict clears a model; every other grade — and a model with
- * no status at all — is unproven and gets the badge.
- */
+/** Passing is opt-in: only a `trusted` verdict clears a model; a missing status never does. */
 describe("isUnprovenVerdict", () => {
-  it("treats only a trusted verdict as proven", () => {
+  it("treats only a trusted verdict as passing", () => {
     expect(isUnprovenVerdict("trusted")).toBe(false);
-  });
-  it("treats every non-passing grade as unproven", () => {
-    expect(isUnprovenVerdict("marginal")).toBe(true);
-    expect(isUnprovenVerdict("unproven")).toBe(true);
-    expect(isUnprovenVerdict("thin")).toBe(true);
-  });
-  it("treats a missing status as unproven", () => {
-    expect(isUnprovenVerdict(null)).toBe(true);
-    expect(isUnprovenVerdict(undefined)).toBe(true);
+    for (const v of ["marginal", "unproven", "thin", null, undefined]) expect(isUnprovenVerdict(v)).toBe(true);
   });
 });
 
-describe("unprovenBadgeLabel", () => {
-  it("badges an unproven model", () => {
-    expect(unprovenBadgeLabel("marginal")).toBe(UNPROVEN_MODEL_BADGE);
-    expect(unprovenBadgeLabel("unproven")).toBe(UNPROVEN_MODEL_BADGE);
-    expect(unprovenBadgeLabel("thin")).toBe(UNPROVEN_MODEL_BADGE);
+describe("trackRecordLabel", () => {
+  it("shows nothing for a trusted model", () => {
+    expect(trackRecordLabel("trusted", 900)).toBeNull();
   });
-  it("badges a model with no status", () => {
-    expect(unprovenBadgeLabel(null)).toBe(UNPROVEN_MODEL_BADGE);
-    expect(unprovenBadgeLabel(undefined)).toBe(UNPROVEN_MODEL_BADGE);
+  it("states the report card's standing and graded count", () => {
+    expect(trackRecordLabel("thin", 38)).toBe("Early record · 38 graded");
+    expect(trackRecordLabel("marginal", 1412)).toBe("Even with baseline · 1,412 graded");
+    expect(trackRecordLabel("unproven", 412)).toBe("Not ahead of baseline · 412 graded");
   });
-  it("badges nothing for a proven model", () => {
-    expect(unprovenBadgeLabel("trusted")).toBeNull();
+  it("leaves the count off when it isn't known, and says when there's no card", () => {
+    expect(trackRecordLabel("marginal")).toBe("Even with baseline");
+    expect(trackRecordLabel(null)).toBe("Not graded yet");
+    expect(trackRecordLabel(undefined, 50)).toBe("Not graded yet");
   });
-  it("uses the approved badge copy", () => {
-    expect(UNPROVEN_MODEL_BADGE).toBe("Unproven model — small sample");
+  it("never says unproven", () => {
+    for (const v of ["marginal", "unproven", "thin", null]) expect(trackRecordLabel(v, 10)!.toLowerCase()).not.toContain("unproven");
   });
 });

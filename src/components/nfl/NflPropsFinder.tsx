@@ -21,7 +21,7 @@ import type { NflTeamContext } from "@/lib/nfl/teamContext";
 import { Logo } from "@/components/Logo";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import { UnprovenModelBadge } from "@/components/UnprovenModelBadge";
+import { TrackRecordChip } from "@/components/TrackRecordChip";
 import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
 import type { NflProjectionContext } from "@/lib/nfl/projection";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
@@ -83,7 +83,7 @@ function DefChip({ defense, player, stat, side }: { defense: NflDefenseTable; pl
   );
 }
 
-function NflCard({ s, player, game, side, stat, defense, blendVerdict, onOpen }: { s: NflPropSummary; player: NflSlatePlayer; game?: SlateGame; side: PropDirection; stat: NflPropStatDef; defense: NflDefenseTable; blendVerdict?: string | null; onOpen: () => void }) {
+function NflCard({ s, player, game, side, stat, defense, blendVerdict, blendGraded, onOpen }: { s: NflPropSummary; player: NflSlatePlayer; game?: SlateGame; side: PropDirection; stat: NflPropStatDef; defense: NflDefenseTable; blendVerdict?: string | null; blendGraded?: number; onOpen: () => void }) {
   const best = side === "over" ? s.over : s.under;
   const other = side === "over" ? s.under : s.over;
   const value = side === "over" ? s.value.over : s.value.under;
@@ -99,7 +99,7 @@ function NflCard({ s, player, game, side, stat, defense, blendVerdict, onOpen }:
       badges={
         <>
           <InjuryBadge injury={player.injury} />
-          {s.model && <UnprovenModelBadge verdict={blendVerdict} />}
+          {s.model && <TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
         </>
       }
       teamLogo={player.team?.logoUrl}
@@ -366,7 +366,7 @@ function TeamPanel({ team, opponent, teams, position }: { team: string | undefin
   );
 }
 
-function Sheet({ player, props, logs, volume, season, projection, modelWeights, calibrationFactors, blendVerdicts, defense, teams, initialStat, side: initialSide, startLabel, parlay, onAddLeg, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; calibrationFactors: Record<string, number>; blendVerdicts: Record<string, string>; defense: NflDefenseTable; teams: Record<string, NflTeamContext>; initialStat: NflPropStat; side: PropDirection; startLabel: string; parlay: ParlayLeg[]; onAddLeg: (leg: ParlayLeg) => void; onClose: () => void }) {
+function Sheet({ player, props, logs, volume, season, projection, modelWeights, calibrationFactors, blendVerdicts, blendGraded = {}, defense, teams, initialStat, side: initialSide, startLabel, parlay, onAddLeg, onClose }: { player: NflSlatePlayer; props: NflSlateProp[]; logs: NflLogPoint[]; volume: TeamVolume[]; season: number; projection: NflProjectionContext; modelWeights: Record<string, number>; calibrationFactors: Record<string, number>; blendVerdicts: Record<string, string>; blendGraded?: Record<string, number>; defense: NflDefenseTable; teams: Record<string, NflTeamContext>; initialStat: NflPropStat; side: PropDirection; startLabel: string; parlay: ParlayLeg[]; onAddLeg: (leg: ParlayLeg) => void; onClose: () => void }) {
   const [statKey, setStatKey] = useState(initialStat);
   const [side, setSide] = useState(initialSide);
   const xtd = useMemo(() => advancedWindow(logs.slice(0, 8)), [logs]);
@@ -544,7 +544,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
             </>
           }
         >
-          <UnprovenModelBadge verdict={blendVerdicts[prop.stat]} className="mt-3" />
+          <TrackRecordChip verdict={blendVerdicts[prop.stat]} graded={blendGraded[prop.stat]} className="mt-3" />
           <BlendLine model={m} side={side} />
           <SeasonMixLine seasons={m.projection.seasons} digits={stat.shape === "yards" ? 0 : stat.shape === "anytime" ? 2 : 1} />
           <EnvLine
@@ -718,7 +718,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           {summaries.map((s, i) => (
             <Fragment key={s.playerId}>
               {s.projected && !s.postedBook && posted > 0 && (i === 0 || !summaries[i - 1]!.projected || !!summaries[i - 1]!.postedBook) && <ProjectedDivider />}
-              <NflCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} blendVerdict={slate.blendVerdicts[statKey]} onOpen={() => setOpen(s.playerId)} />
+              <NflCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} blendVerdict={slate.blendVerdicts[statKey]} blendGraded={slate.blendGraded?.[statKey]} onOpen={() => setOpen(s.playerId)} />
             </Fragment>
           ))}
         </ul>
@@ -736,6 +736,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           modelWeights={slate.modelWeights}
           calibrationFactors={slate.calibrationFactors}
           blendVerdicts={slate.blendVerdicts}
+          blendGraded={slate.blendGraded}
           defense={slate.defense}
           teams={slate.teams ?? {}}
           initialStat={statKey}
