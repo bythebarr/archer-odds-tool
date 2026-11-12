@@ -199,6 +199,9 @@ export function PlayerPropSheet({
       injury: player.injury?.level ?? null,
       minutes: { projected: m.projection.minutes, recent: summary.avgMinutesL5 },
       alt: point !== main,
+      z: ((m.projection.mean - point) / Math.max(m.projection.sd, 1e-6)) * (over ? 1 : -1),
+      side,
+      sport: "nba",
     });
   }, [summary, side, blendVerdicts, prop.stat, player.injury?.level, point, main]);
   const priceReasons = useMemo(() => (summary ? reasonsFor(summary, side, statDef, player, logs, season, null) : []), [summary, side, statDef, player, logs, season]);

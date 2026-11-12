@@ -39,6 +39,9 @@ export function poolConfidence(r: RowForConfidence, verdicts: ReportedVerdicts) 
       injury: r.facts?.injury ?? null,
       minutes: r.projectedMinutes ? { projected: r.projectedMinutes, recent: r.facts?.recentMinutes ?? null } : null,
       alt: r.alt,
+      z: r.facts?.z ?? null,
+      side: r.facts?.side,
+      sport: r.sport,
     })
   );
 }

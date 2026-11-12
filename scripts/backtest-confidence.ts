@@ -33,7 +33,7 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const v = validateConfidence(sides.map((s) => ({ archr: s.pBlend, marketChance: s.marketChance, priceAmerican: s.priceAmerican, rate: s.rate, sampleGames: s.sampleGames, minutes: s.minutes, won: s.won })));
+  const v = validateConfidence(sides.map((s) => ({ archr: s.pBlend, marketChance: s.marketChance, priceAmerican: s.priceAmerican, rate: s.rate, sampleGames: s.sampleGames, minutes: s.minutes, z: s.z, side: s.side, sport: "nba", won: s.won })));
   console.log(`\nNBA props, both sides of each closing consensus line: ${v.n} graded sides`);
   console.log("Not reconstructable, left neutral: report-card verdict at the time, injury tags, alt rungs.\n");
   console.log("By grade:");

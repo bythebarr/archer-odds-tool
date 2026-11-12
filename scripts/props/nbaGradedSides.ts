@@ -39,6 +39,8 @@ export interface GradedSide {
   won: 0 | 1;
   /** ET date of the game. */
   date: string;
+  /** (projection − line) / its spread, toward this side. */
+  z: number;
 }
 
 export function closingQuotes<T extends { playerId: string; stat: string; bookKey: string; side: string; point: number; priceAmerican: number; polledAt: Date }>(
@@ -129,6 +131,7 @@ export async function gradedNbaSides(closing: Map<string, GameLines>, baselines:
           minutes,
           won,
           date: etDateOf(g.scheduledStartUtc),
+          z: ((proj.mean - point) / Math.max(proj.sd, 1e-6)) * (side === "over" ? 1 : -1),
         });
       }
     }

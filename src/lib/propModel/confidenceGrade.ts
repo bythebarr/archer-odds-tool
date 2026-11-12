@@ -24,6 +24,9 @@ export interface ConfidenceSample {
   rate: Rate;
   sampleGames: number;
   minutes?: ConfidenceInput["minutes"];
+  z?: number | null;
+  side?: "over" | "under";
+  sport?: string;
   won: 0 | 1;
 }
 
@@ -78,7 +81,7 @@ function stats(label: string, rows: ConfidenceSample[]): GradeStats {
 }
 
 export function gradeOfSample(s: ConfidenceSample): ConfidenceGrade {
-  return confidenceOf({ archr: s.archr, marketChance: s.marketChance, priceAmerican: s.priceAmerican, rate: s.rate, sampleGames: s.sampleGames, minutes: s.minutes ?? null })!.grade;
+  return confidenceOf({ archr: s.archr, marketChance: s.marketChance, priceAmerican: s.priceAmerican, rate: s.rate, sampleGames: s.sampleGames, minutes: s.minutes ?? null, z: s.z ?? null, side: s.side, sport: s.sport })!.grade;
 }
 
 export function validateConfidence(samples: ConfidenceSample[]): ConfidenceValidation {

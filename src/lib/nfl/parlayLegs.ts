@@ -80,6 +80,8 @@ export function nflFinderLegs(
             injury: player.injury?.level ?? null,
             games: s?.model?.projection.games ?? playerLogs.length,
             recentMinutes: null,
+            z: s?.model ? ((s.model.projection.mean - point) / Math.max(s.model.projection.sd, 1e-6)) * (side === "over" ? 1 : -1) : null,
+            side,
           },
         });
       }

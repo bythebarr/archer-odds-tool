@@ -15,8 +15,22 @@
  * The cautious read (the record-backed check, lib/propModel/cautiousRead) is
  * one factor here, not a column of its own.
  *
- * The thresholds are a prior written down in one place, not a fit:
- * scripts/backtest-confidence.ts grades them on real closing prices. Pure.
+ * The points come from the factor audit (scripts/audit-factors.ts, run
+ * 2026-11-12 over 5,347 live tracked NBA prop leans plus the NBA and NFL
+ * prop backtests at closing prices). What held up there:
+ *
+ *   - Projection distance from the line (|z|) matters most: leans where it
+ *     barely cleared the line returned −18.6% on 1,614 bets (both date halves
+ *     agreed), leans where it sat far off it +11.8% on 205.
+ *   - ARCHR runs high on alt lines (+11.6 pts), overs (+8.1, NBA) and long
+ *     prices (+11.4).
+ *   - A record that agrees with ARCHR does NOT add confidence: those bets ran
+ *     23 pts high in the NFL backtest (both halves). A hot streak is already in
+ *     the price. The old cautious edge's bonus is gone; the record is context.
+ *   - Disagreeing with the books by 8–15 pts was ARCHR's best range live
+ *     (+6.5%, the close moved its way); past 15 pts it was its worst.
+ *
+ * scripts/backtest-confidence.ts re-grades the result. Pure.
  */
 import { cautiousEdge } from "./canonical";
 import type { Rate } from "@/lib/builder/types";
@@ -42,10 +56,15 @@ export interface ConfidenceInput {
   minutes?: { projected: number; recent: number | null } | null;
   /** An alt rung rather than the book's main line. */
   alt?: boolean;
+  /** How far the projection sits from the line, in its own spread: (mean − line) / sd. Null without a projection. */
+  z?: number | null;
+  /** Which side, and the sport: NBA overs have run high. */
+  side?: "over" | "under";
+  sport?: string;
 }
 
 export interface ConfidenceFactor {
-  key: "track" | "sample" | "record" | "market" | "minutes" | "injury" | "line" | "price";
+  key: "track" | "sample" | "record" | "market" | "distance" | "side" | "minutes" | "injury" | "line" | "price";
   /** Points this factor moved the score (0 = context only). */
   effect: number;
   /** One plain sentence: what was found and why it matters. */
@@ -109,9 +128,9 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
     const cautious = cautiousEdge(c.archr, c.rate, c.priceAmerican);
     const modelLikes = c.archr > priceChance;
     if (cautious !== null && cautious >= 0 && modelLikes)
-      add("record", 10, `Record backs it: ${hits}/${games} here, and even read cautiously the price (${pct(priceChance)}) undervalues it.`);
+      add("record", 0, `Record agrees: ${hits}/${games} here against the ${pct(priceChance)} the price implies. Context, not a plus: the books price streaks in, and bets like this have run high.`);
     else if (modelLikes && recordRate < priceChance - 0.1)
-      add("record", -15, `Record doesn't back it: ${hits}/${games} here against the ${pct(priceChance)} the price implies. Only the model likes it.`);
+      add("record", -5, `Record doesn't back it: ${hits}/${games} here against the ${pct(priceChance)} the price implies. Only the model likes it.`);
     else if (!modelLikes && recordRate >= priceChance + 0.1)
       add("record", 0, `Hot record (${hits}/${games}), but the books have priced it in: at ${pct(priceChance)} implied, ARCHR (${pct(c.archr)}) sees no value left.`);
     else add("record", 0, `Record ${hits}/${games} here, close to what the price implies (${pct(priceChance)}).`);
@@ -122,10 +141,21 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
     const gap = c.archr - books;
     const vs = c.marketChance !== null ? "the books' no-vig chance" : "the chance the price implies";
     if (gap > 0.15) add("market", -15, `ARCHR is ${pts(gap)} above ${vs}: gaps this big are usually news the model hasn't seen (injury, role, rest).`);
-    else if (gap > 0.08) add("market", -5, `ARCHR is ${pts(gap)} above ${vs}: a real disagreement, worth a second look.`);
+    else if (gap > 0.08) add("market", 5, `ARCHR is ${pts(gap)} above ${vs}: a real disagreement, the range where its reads have held up best.`);
     else if (gap < -0.15) add("market", 0, `ARCHR is ${pts(gap)} below ${vs}: the books like this side far more than ARCHR does.`);
     else add("market", 0, `ARCHR is within ${pts(Math.max(Math.abs(gap), 0.01))} of ${vs}.`);
   }
+
+  // 4b. Distance from the line: a projection that barely clears it is mostly vig; one far off it is where edges have held.
+  if (c.z !== undefined && c.z !== null) {
+    const z = Math.abs(c.z);
+    if (z < 0.35) add("distance", -10, `The projection barely clears the line (${z.toFixed(2)} of a typical swing): bets this close have mostly paid the vig.`);
+    else if (z >= 0.75) add("distance", 10, `The projection sits well off the line (${z.toFixed(2)} of a typical swing): where ARCHR's edges have held up.`);
+    else add("distance", 0, `The projection sits ${z.toFixed(2)} of a typical swing from the line.`);
+  }
+
+  // 4c. NBA overs have run high.
+  if (c.sport === "nba" && c.side === "over") add("side", -5, "NBA overs: ARCHR's chances on overs have run high, so this side gets less benefit of the doubt.");
 
   // 5. Minutes (NBA): a role in flux or a small role widens everything.
   if (c.minutes) {
@@ -142,10 +172,11 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
   else if (tag) add("injury", -5, `Listed ${tag}.`);
 
   // 7. Alt rungs are the model's weak spot (the tail of the distribution).
-  if (c.alt) add("line", -5, "An alt line, not the book's main number: the tails of a projection are its least reliable part.");
+  if (c.alt) add("line", -10, "An alt line, not the book's main number: ARCHR's chances on alt rungs have run well high.");
 
   // 8. A number with no price yet can't be checked against a book.
   if (c.priceAmerican === null) add("price", -10, "No book has priced this yet: there's no price to measure the edge against.");
+  else if (c.priceAmerican >= 130) add("price", -5, `A long price (+${c.priceAmerican}): ARCHR's chances on long shots have run high.`);
 
   const score = Math.max(0, Math.min(100, BASE + f.reduce((s, x) => s + x.effect, 0)));
   return { score, grade: gradeOf(score), factors: f };

@@ -78,6 +78,8 @@ export function nbaFinderLegs(slate: WireNbaPropsSlate, logs: Record<string, Gam
             injury: player.injury?.level ?? null,
             games: summary?.model?.projection.games ?? playerLogs.length,
             recentMinutes: summary?.avgMinutesL5 ?? null,
+            z: summary?.model ? ((summary.model.projection.mean - point) / Math.max(summary.model.projection.sd, 1e-6)) * (side === "over" ? 1 : -1) : null,
+            side,
           },
         });
       }

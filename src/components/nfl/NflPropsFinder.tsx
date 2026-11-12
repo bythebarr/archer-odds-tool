@@ -417,6 +417,9 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
         blendVerdict: blendVerdicts[prop.stat] ?? null,
         injury: player.injury?.level ?? null,
         alt: point !== main,
+        z: ((m.projection.mean - point) / Math.max(m.projection.sd, 1e-6)) * (side === "over" ? 1 : -1),
+        side,
+        sport: "nfl",
       })
     : null;
   const priceReasons = m

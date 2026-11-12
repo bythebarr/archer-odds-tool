@@ -51,6 +51,9 @@ export interface LegFacts {
   games: number;
   /** NBA: his recent minutes average. */
   recentMinutes: number | null;
+  /** (projection − line) / its spread, toward this side; null without a projection. */
+  z?: number | null;
+  side?: "over" | "under";
 }
 
 export interface FinderOptions {
