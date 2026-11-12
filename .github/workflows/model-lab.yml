@@ -31,6 +31,7 @@ on:
           - backtest:nba-minutes
           - backtest:nba-standouts
           - backtest:cautious-edge
+          - backtest:confidence
           - report:tracking
           - backtest:nfl-props
           - backtest:props-market

@@ -1,13 +1,5 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
-import { etDateOf } from "@/lib/dateEt";
-import { NBA_PROP_STATS } from "@/lib/nba/propStats";
-import { CALIBRATION_SHRINK, projectProp, rawOver } from "@/lib/nba/projection";
-import type { GameLogPoint, PropQuote } from "@/lib/nba/propsMath";
-import { propConsensusPoint, twoSidedAt } from "@/lib/nba/propsMath";
-import { shrinkLogit } from "@/lib/propModel/distribution";
-import { NO_LINES, type GameLines } from "@/lib/propModel/environment";
-import { DEFAULT_MODEL_WEIGHT, blendWithMarket, marketRead } from "@/lib/propModel/market";
 import {
   MIN_GATE_SAMPLES,
   cautiousVerdict,
@@ -17,10 +9,10 @@ import {
   type CautiousGradeSample,
   type ProbScore,
 } from "@/lib/propModel/cautiousGrade";
-import { roleWeightedRecord, EVIDENCE_PRIOR_GAMES, type TonightRole } from "@/lib/propModel/cautiousRead";
+import { EVIDENCE_PRIOR_GAMES } from "@/lib/propModel/cautiousRead";
 import { CAUTIOUS_READ_MODE } from "@/lib/propModel/canonical";
-import { projectNbaMinutes } from "@/lib/nba/minutes";
-import { closingGameLines, teamBaselinesByGame, type TeamBaseline } from "./props/history";
+import { closingGameLines, teamBaselinesByGame } from "./props/history";
+import { gradedNbaSides, type GradedSide } from "./props/nbaGradedSides";
 
 /**
  * Grade the haircut (One Number, Step 2): on every graded NBA prop with
@@ -54,100 +46,6 @@ import { closingGameLines, teamBaselinesByGame, type TeamBaseline } from "./prop
  * exits non-zero — never a fabricated or green result.
  * NFL collection is the follow-on (same shape as gradedNfl there).
  */
-
-function closingQuotes<T extends { playerId: string; stat: string; bookKey: string; side: string; point: number; priceAmerican: number; polledAt: Date }>(
-  snaps: T[],
-  start: Date
-): Map<string, PropQuote[]> {
-  const latest = new Map<string, T>();
-  for (const s of snaps) {
-    if (s.polledAt >= start) continue;
-    const k = `${s.playerId}|${s.stat}|${s.bookKey}|${s.side}|${s.point}`;
-    const prev = latest.get(k);
-    if (!prev || s.polledAt > prev.polledAt) latest.set(k, s);
-  }
-  const out = new Map<string, PropQuote[]>();
-  for (const s of latest.values()) {
-    const k = `${s.playerId}|${s.stat}`;
-    const list = out.get(k) ?? [];
-    list.push({ bookKey: s.bookKey, bookName: s.bookKey, side: s.side === "under" ? "under" : "over", point: s.point, priceAmerican: s.priceAmerican });
-    out.set(k, list);
-  }
-  return out;
-}
-
-interface GradedCautious extends CautiousGradeSample {
-  stat: string;
-  side: "over" | "under";
-}
-
-async function gradedNba(closing: Map<string, GameLines>, baselines: Map<string, { home: TeamBaseline | null; away: TeamBaseline | null }>): Promise<GradedCautious[]> {
-  const games = await prisma.game.findMany({
-    where: { sport: "nba", status: "final", nbaPropSnapshots: { some: {} } },
-    select: { id: true, scheduledStartUtc: true },
-  });
-  const out: GradedCautious[] = [];
-  for (const g of games) {
-    const snaps = await prisma.nbaPropSnapshot.findMany({ where: { gameId: g.id } });
-    const quotes = closingQuotes(snaps.map((s) => ({ ...s, playerId: s.nbaPlayerId })), g.scheduledStartUtc);
-    const playerIds = [...new Set(snaps.map((s) => s.nbaPlayerId))];
-    const logs = await prisma.nbaPlayerGameLog.findMany({
-      where: { nbaPlayerId: { in: playerIds }, gameDate: { lte: g.scheduledStartUtc }, minutes: { gt: 0 } },
-      orderBy: { gameDate: "desc" },
-    });
-    for (const [key, qs] of quotes) {
-      const [playerId, statKey] = key.split("|");
-      const stat = NBA_PROP_STATS.find((s) => s.key === statKey);
-      const mine = logs.filter((l) => l.nbaPlayerId === playerId);
-      const tonight = mine.find((l) => l.gameId === g.id);
-      if (!stat || !tonight) continue;
-      const point = propConsensusPoint(qs);
-      if (point === null) continue;
-      const market = marketRead(twoSidedAt(qs, point));
-      if (!market) continue;
-      const history: GameLogPoint[] = mine
-        .filter((l) => l.gameId !== g.id && l.gameDate < g.scheduledStartUtc)
-        .map((l) => ({ ...l, date: etDateOf(l.gameDate), opponent: "" }));
-      const base = baselines.get(g.id);
-      const proj = projectProp(history, stat, {
-        defense: { season: 0, fromLastSeason: false, teams: {} },
-        opponent: null,
-        positionGroup: null,
-        lines: closing.get(g.id) ?? NO_LINES,
-        isHome: tonight.isHome,
-        baselineTotal: (tonight.isHome ? base?.home : base?.away)?.combined ?? null,
-        season: tonight.season,
-      });
-      if (!proj) continue;
-      const actual = stat.value(tonight);
-      if (actual === point) continue; // push
-      const pModel = shrinkLogit(rawOver(proj, point), CALIBRATION_SHRINK);
-      const pOver = blendWithMarket(pModel, market.probOver, DEFAULT_MODEL_WEIGHT);
-      // That night's expected role, from prior games only (no lineups stored historically).
-      const m = projectNbaMinutes(history, { date: etDateOf(g.scheduledStartUtc) });
-      const role: TonightRole | null = m ? { minutes: m.minutes, starter: m.role === null ? null : m.role === "starter" } : null;
-      const record = history.map((l) => ({ value: stat.value(l), minutes: l.minutes, starter: l.starter }));
-      for (const side of ["over", "under"] as const) {
-        // The screener's record: the player's last 10 games before tonight, at this line, on this side.
-        const rate = roleWeightedRecord(record, side, point, null, 10);
-        const roleRate = role ? roleWeightedRecord(record, side, point, role, 10) : null;
-        // The best closing price on this side at this line — the price the cautious edge reads against.
-        const prices = qs.filter((q) => q.point === point && q.side === side).map((q) => q.priceAmerican);
-        const won = (side === "over" ? actual > point : actual < point) ? 1 : 0;
-        out.push({
-          stat: statKey,
-          side,
-          pBlend: side === "over" ? pOver : 1 - pOver,
-          rate,
-          roleRate,
-          priceAmerican: prices.length ? Math.max(...prices) : null,
-          won,
-        });
-      }
-    }
-  }
-  return out;
-}
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const scoreLine = (name: string, s: ProbScore) =>
@@ -184,10 +82,10 @@ function dataRequired(why: string) {
 }
 
 async function main() {
-  let graded: GradedCautious[];
+  let graded: GradedSide[];
   try {
     const [closing, baselines] = await Promise.all([closingGameLines("nba"), teamBaselinesByGame("nba", 30)]);
-    graded = await gradedNba(closing, baselines);
+    graded = await gradedNbaSides(closing, baselines);
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     dataRequired("the database could not be read from here");
