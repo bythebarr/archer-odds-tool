@@ -26,6 +26,8 @@ export interface PricedProp {
   weightFitted: boolean;
   probOver: number;
   probUnder: number;
+  /** NBA: the blend before the side correction (propModel/sideCalibration); absent where none applied. */
+  uncorrectedProbOver?: number;
   /** EV of the best price on each side at the blended probability. */
   evOver: number | null;
   evUnder: number | null;

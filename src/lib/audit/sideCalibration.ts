@@ -33,24 +33,12 @@ export interface SideSample {
   date: string;
 }
 
-export interface SideFit {
-  k: number;
-  delta: number;
-}
-
-export const IDENTITY: SideFit = { k: 1, delta: 0 };
+export { IDENTITY, correctOver, type SideFit } from "@/lib/propModel/sideCalibration";
+import { IDENTITY, correctOver, type SideFit } from "@/lib/propModel/sideCalibration";
 
 const clamp = (p: number) => Math.min(1 - 1e-6, Math.max(1e-6, p));
-const logit = (p: number) => Math.log(clamp(p) / (1 - clamp(p)));
-const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
-
-/** The corrected chance of the over. */
-export function correctOver(pOver: number, mOver: number | null, f: SideFit): number {
-  const anchor = mOver === null ? 0 : logit(mOver);
-  return sigmoid(anchor + f.k * (logit(pOver) - anchor) + f.delta);
-}
 
 export interface SideStats {
   n: number;

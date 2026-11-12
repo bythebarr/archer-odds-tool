@@ -27,6 +27,7 @@
  * tracks hits; the size of the gap alone doesn't.
  */
 import { americanToDecimal } from "@/lib/odds/americanOdds";
+import { NBA_ALT_FIT, correctSide } from "@/lib/propModel/sideCalibration";
 import { NBA_PROP_STAT_BY_KEY, type NbaPropStatDef } from "./propStats";
 import { summarizeProp, type GameLogPoint, type PropContext, type PropSummary } from "./propsMath";
 import { nbaProjectionContext } from "./slateContext";
@@ -223,9 +224,14 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
     const z = (proj.mean - main) / proj.sd;
     const side: PropDirection = z >= 0 ? "over" : "under";
     const s = side === "over" ? base : summarizeProp(prop, playerLogs, stat, "under", context, main)!;
-    const rawChance = side === "over" ? base.model.probOver : base.model.probUnder;
+    // rawChance: the blend before the side correction (what the standout bar and alt overstatement were tuned on).
+    const uncorrectedOver = base.model.uncorrectedProbOver ?? base.model.probOver;
+    const rawChance = side === "over" ? uncorrectedOver : 1 - uncorrectedOver;
     const market = base.model.market ? (side === "over" ? base.model.market.probOver : 1 - base.model.market.probOver) : null;
-    const chance = calibrateStandout(rawChance, market);
+    // The chance shown: the side-corrected blend where the books have a market (fit:side-calibration found the
+    // same correction for this number as for the blend, so it supersedes STANDOUT_EDGE_SHRINK there); else the old shrink.
+    const chance = base.model.uncorrectedProbOver !== undefined ? (side === "over" ? base.model.probOver : base.model.probUnder) : calibrateStandout(rawChance, market);
+    const overstated = rawChance - calibrateStandout(rawChance, market);
     const l10 = rate(s, "l10");
     if (!opts.all && !isStandout(z, rawChance, l10)) continue;
     const quote = side === "over" ? s.over : s.under;
@@ -237,9 +243,11 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
       if (side === "over" ? point <= main : point >= main) continue;
       const at = summarizeProp(prop, playerLogs, stat, side, context, point);
       const q = side === "over" ? at?.over : at?.under;
-      const rawAt = at?.model ? (side === "over" ? at.model.probOver : at.model.probUnder) : null;
-      // Alt rungs are one-sided (no market to shrink toward): take off the same overstatement as at the main line.
-      const c = rawAt === null ? null : Math.max(0, rawAt - (rawChance - chance));
+      const atOver = at?.model ? (at.model.uncorrectedProbOver ?? at.model.probOver) : null;
+      const rawAt = atOver === null ? null : side === "over" ? atOver : 1 - atOver;
+      // Alt rungs are one-sided (no market to shrink toward): take off the main line's overstatement, then the
+      // alt-rung correction fit:side-calibration found (ARCHR ran 11 pts high on rungs).
+      const c = rawAt === null ? null : correctSide(Math.max(0, rawAt - overstated), null, side, NBA_ALT_FIT);
       if (!at || !q || c === null || c < MIN_ALT_CHANCE) continue;
       // A price far longer than the chance says isn't value, it's a price that doesn't belong to the rung.
       if ((relativeEdge(c, q.priceAmerican) ?? 0) > MAX_TRUSTED_RELATIVE_EDGE) continue;
