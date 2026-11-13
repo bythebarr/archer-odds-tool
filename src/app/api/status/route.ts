@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getComputeBudget } from "@/lib/ops/computeBudget";
+import { poolHealth } from "@/lib/pools/status";
 
 /**
  * Public, read-only cron health check — no CRON_SECRET required, unlike
@@ -22,9 +23,11 @@ export async function GET() {
     // (Decision 10). Derived from the report rows themselves: the newest
     // row's stamp is the last run; its sample data-as-of says whether the
     // graded data is actually moving.
-    const [latestReport, latestPerModel] = await Promise.all([
+    const [latestReport, latestPerModel, poolRows] = await Promise.all([
       prisma.modelReport.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
       prisma.modelReport.findMany({ distinct: ["model"], orderBy: [{ model: "asc" }, { createdAt: "desc" }], select: { model: true, extra: true } }),
+      // The pre-built leg pools (lib/pools): every row's stamps, never its data (a hundred-odd small rows).
+      prisma.poolSnapshot.findMany({ select: { key: true, builtAt: true, buildingSince: true, error: true, rows: true } }),
     ]);
     const modelLab = {
       lastRunAt: latestReport?.createdAt.toISOString() ?? null,
@@ -34,7 +37,10 @@ export async function GET() {
         return typeof d === "string" && (acc === null || d > acc) ? d : acc;
       }, null),
     };
-    return Response.json({ compute, jobs, modelLab });
+    // Each screener / parlay-builder pool: built when, how old, claim, last error (a pool that
+    // stops rebuilding otherwise shows only as yesterday's slate on the screener).
+    const pools = poolHealth(poolRows);
+    return Response.json({ compute, jobs, modelLab, pools });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return Response.json({ compute, error: message }, { status: 503 });
