@@ -10,8 +10,9 @@ import Link from "next/link";
 import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { FilterPanel } from "@/components/screener/FilterPanel";
 import { getScreenerPool, SCREENER_SPORTS, type ScreenerSport } from "@/lib/screener/pool";
-import { DEFAULT_FILTERS, SCREEN_WINDOWS, barsOf, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
-import { formatAmerican } from "@/lib/odds/americanOdds";
+import { DEFAULT_FILTERS, SCREEN_WINDOWS, barsOf, edgePoints, propHref, screen, type Rate, type ScreenFilters, type ScreenSort, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
+import { americanToImpliedProbability, formatAmerican } from "@/lib/odds/americanOdds";
+import { staleDate } from "@/lib/odds/bookVsArchr";
 import { parseStatList, statTiles } from "@/lib/props/statTiles";
 import { StatTileLinks } from "@/components/props/StatTiles";
 import { ConfidenceChip } from "@/components/props/ConfidencePanel";
@@ -34,7 +35,7 @@ const PRICES = [-1000, -500, -300, -200, -150, -110, 100, 150, 200, 300];
 const SORTS: { key: ScreenSort; label: string }[] = [
   ...SCREEN_WINDOWS.map((w) => ({ key: w.key as ScreenSort, label: `${w.label} rate` })),
   { key: "archr", label: "ARCHR chance" },
-  { key: "edge", label: "ARCHR edge" },
+  { key: "edge", label: "ARCHR edge (pts)" },
   { key: "conf", label: "Confidence" },
   { key: "minutes", label: "Projected minutes (NBA)" },
   { key: "price", label: "Longest price" },
@@ -107,6 +108,42 @@ function SortHead({ href, active, children, className = "" }: { href: string; ac
         {active && <span aria-hidden>↓</span>}
       </Link>
     </th>
+  );
+}
+
+/**
+ * The headline edge, first column: ARCHR's chance minus the price's implied
+ * chance, in percentage points ("+21.6 pts"). The relative edge (return per
+ * unit, which runs to four digits on a long shot) is in the tooltip only.
+ */
+function EdgeCell({ p }: { p: ScreenerProp }) {
+  const pts = edgePoints(p);
+  if (pts === null) return <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">—</td>;
+  const v = pts * 100;
+  const tone = v >= 5 ? "text-emerald-600 dark:text-emerald-400" : v > 0 ? "text-foreground" : "text-muted-foreground";
+  const title = `ARCHR ${pct(p.archr!)} vs the price's implied ${pct(americanToImpliedProbability(p.priceAmerican!))}${p.edge !== null ? ` · return ${p.edge >= 0 ? "+" : ""}${(p.edge * 100).toFixed(1)}% per unit staked` : ""}`;
+  return (
+    <td className={`px-3 py-2 text-right font-mono text-[13px] font-bold tabular-nums ${tone}`} title={title}>
+      {v >= 0 ? "+" : "−"}
+      {Math.abs(v).toFixed(1)}
+      <span className="ml-0.5 font-sans text-[10px] font-semibold text-muted-foreground">pts</span>
+    </td>
+  );
+}
+
+/** The best price and its book; a stale price is greyed and dated in plain words, and only the price. */
+function PriceCell({ p }: { p: ScreenerProp }) {
+  const stale = p.priceAmerican !== null ? staleDate(p.polledAt) : null;
+  return (
+    <td className="px-2 py-2 text-right font-mono">
+      {p.priceAmerican !== null ? <span className={stale ? "text-muted-foreground" : ""}>{formatAmerican(p.priceAmerican)}</span> : <span className="font-sans text-[11px] text-muted-foreground">line only</span>}
+      {p.bookName ? (
+        <span className="block font-sans text-[10px] text-muted-foreground">{p.bookName}</span>
+      ) : (
+        p.priceAmerican === null && <span className="block font-sans text-[10px] text-muted-foreground">no price yet</span>
+      )}
+      {stale && <span className="block whitespace-nowrap font-sans text-[10px] text-muted-foreground">price from {stale}</span>}
+    </td>
   );
 }
 
@@ -295,7 +332,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
               <select name="edge" defaultValue={f.minEdge === null ? "any" : String(f.minEdge)} className={selectClass}>
                 {EDGES.map((e) => (
                   <option key={e} value={e}>
-                    {e === "any" ? "Any" : `+${Math.round(Number(e) * 100)}%`}
+                    {e === "any" ? "Any" : `+${Math.round(Number(e) * 100)} pts`}
                   </option>
                 ))}
               </select>
@@ -354,9 +391,12 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
           </div>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-xl border border-border">
-            <table className="w-full min-w-[840px] text-left text-xs">
+            <table className="w-full min-w-[900px] text-left text-xs">
               <thead className="bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  <SortHead href={sortHref("edge")} active={f.sort === "edge"} className="px-3 text-right">
+                    <span title="ARCHR's chance minus the chance the price implies, in percentage points. Hover a row for the return per unit.">Edge</span>
+                  </SortHead>
                   <th className="px-3 py-2 font-semibold">Player · prop</th>
                   <SortHead href={sortHref("price")} active={f.sort === "price"} className="px-2 text-right">
                     Price
@@ -380,6 +420,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
               <tbody className="divide-y divide-border">
                 {results.slice(0, ROWS).map((p) => (
                   <tr key={p.id} className="bg-card">
+                    <EdgeCell p={p} />
                     <td className="px-3 py-2">
                       <Link href={propHref(p)} className="font-semibold text-foreground hover:underline">
                         {p.player}
@@ -391,25 +432,12 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                         {p.league} · {p.team ? `${p.team} vs ${p.opponent}` : `vs ${p.opponent}`} · {p.game}
                       </span>
                     </td>
-                    <td className="px-2 py-2 text-right font-mono">
-                      {p.priceAmerican !== null ? formatAmerican(p.priceAmerican) : <span className="font-sans text-[11px] text-muted-foreground">line only</span>}
-                      {p.bookName ? (
-                        <span className="block font-sans text-[10px] text-muted-foreground">{p.bookName}</span>
-                      ) : (
-                        p.priceAmerican === null && <span className="block font-sans text-[10px] text-muted-foreground">no price yet</span>
-                      )}
-                    </td>
+                    <PriceCell p={p} />
                     {SCREEN_WINDOWS.map((w) => (
                       <RateCell key={w.key} rate={p.rates[w.key]} bar={bars[w.key]} />
                     ))}
                     <td className="px-2 py-2 text-center font-mono text-[11px]">
                       {p.archr !== null ? pct(p.archr) : "—"}
-                      {p.edge !== null && p.priceAmerican !== null && (
-                        <span className={`block text-[10px] ${p.edge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                          {p.edge > 0 ? "+" : ""}
-                          {(p.edge * 100).toFixed(1)}%
-                        </span>
-                      )}
                     </td>
                     <ConfidenceCell p={p} />
                     <td className="px-2 py-2 text-center font-mono text-[11px] text-foreground">{p.minutes !== undefined ? p.minutes.toFixed(1) : <span className="text-muted-foreground">—</span>}</td>
@@ -422,7 +450,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus; for NBA, then corrected for running high on the side it leans (overs and alt lines most), a fix checked on thousands of tracked picks it wasn&apos;t fitted on — and ARCHR&apos;s edge is that chance against the best price. Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, a chip on the row shows that blend&apos;s track record from /models (e.g. &quot;Even with baseline · 412 graded&quot;) until it earns a passing grade. Click a column to sort by it. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus; for NBA, then corrected for running high on the side it leans (overs and alt lines most), a fix checked on thousands of tracked picks it wasn&apos;t fitted on — and ARCHR&apos;s edge (the first column) is that chance minus the chance the best price implies, in percentage points; hover it for the return per unit staked. A price from a feed that has stopped updating is greyed and dated (&quot;price from Nov 1&quot;). Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, a chip on the row shows that blend&apos;s track record from /models (e.g. &quot;Even with baseline · 412 graded&quot;) until it earns a passing grade. Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

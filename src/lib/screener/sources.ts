@@ -59,7 +59,7 @@ function fromFinderLeg(
   sport: "nba" | "nfl",
   l: FinderLeg,
   season: number,
-  ctx: { game: string; startsAt: string; opponent: string; main: number | null; stat: string; minutes?: number | null }
+  ctx: { game: string; startsAt: string; opponent: string; main: number | null; stat: string; minutes?: number | null; polledAt?: string | null }
 ): ScreenerProp {
   const yes = l.sideLabel === "Yes";
   return {
@@ -85,6 +85,7 @@ function fromFinderLeg(
     ...roleRatesOf(l, season),
     ...(l.facts ? { facts: l.facts } : {}),
     ...(ctx.minutes !== undefined && ctx.minutes !== null ? { minutes: Math.round(ctx.minutes * 10) / 10 } : {}),
+    ...(ctx.polledAt && l.priceAmerican !== null ? { polledAt: ctx.polledAt } : {}),
   };
 }
 
@@ -102,6 +103,7 @@ export async function nbaScreener(): Promise<ScreenerProp[]> {
     nbaFinderLegs(slate, logs, g.id, { shortestPrice: SHORTEST }).map((l) => {
       const player = slate.players[l.group.split(":")[0]!];
       return fromFinderLeg("nba", l, slate.season, {
+        polledAt: slate.lastPolledAt,
         game: `${g.away.abbreviation} @ ${g.home.abbreviation}`,
         startsAt: g.startUtc,
         opponent: player?.opponent?.abbreviation ?? "",
@@ -126,6 +128,7 @@ export async function nflScreener(): Promise<ScreenerProp[]> {
     nflFinderLegs(slate, logs, g.id, { shortestPrice: SHORTEST, posted }).map((l) => {
       const player = slate.players[l.group.split(":")[0]!];
       return fromFinderLeg("nfl", l, slate.season, {
+        polledAt: slate.lastPolledAt,
         game: `${g.away.abbreviation} @ ${g.home.abbreviation}`,
         startsAt: g.startUtc,
         opponent: player?.opponent?.abbreviation ?? "",

@@ -23,20 +23,38 @@ export function isUnprovenVerdict(verdict: string | null | undefined): boolean {
 }
 
 /**
+ * A report card's graded count and which side of the no-skill baseline its
+ * Brier score landed on. The "marginal" verdict covers a band on both sides
+ * of the baseline; a card inside it but worse than the baseline is labeled
+ * "Not ahead of baseline", never "Even with baseline". Display only: the
+ * verdict itself (and everything that reads it) is unchanged.
+ */
+export interface GradedCard {
+  n: number;
+  belowBaseline: boolean;
+}
+
+export function gradedCard(r: { n: number; brier: number; baseRateBrier: number }): GradedCard {
+  return { n: r.n, belowBaseline: r.brier > r.baseRateBrier };
+}
+
+/**
  * The track-record chip for a model without a passing grade: what its
  * /models report card actually shows, and how many outcomes it was graded on
  * (`graded`, when known). Null for a trusted model — nothing to flag.
  *
- *   no card   "Not graded yet"
- *   thin      "Early record · 38 graded"
- *   marginal  "Even with baseline · 412 graded"
- *   unproven  "Not ahead of baseline · 412 graded"
+ *   no card                       "Not graded yet"
+ *   thin                          "Early record · 38 graded"
+ *   marginal, at/above baseline   "Even with baseline · 412 graded"
+ *   marginal below, or unproven   "Not ahead of baseline · 412 graded"
  */
-export function trackRecordLabel(verdict: string | null | undefined, graded?: number | null): string | null {
+export function trackRecordLabel(verdict: string | null | undefined, graded?: number | GradedCard | null): string | null {
   if (!isUnprovenVerdict(verdict)) return null;
-  const count = typeof graded === "number" && graded > 0 ? ` · ${graded.toLocaleString("en-US")} graded` : "";
+  const n = typeof graded === "number" ? graded : graded?.n;
+  const below = typeof graded === "object" && graded !== null && graded.belowBaseline;
+  const count = typeof n === "number" && n > 0 ? ` · ${n.toLocaleString("en-US")} graded` : "";
   if (verdict === "thin") return `Early record${count}`;
-  if (verdict === "marginal") return `Even with baseline${count}`;
+  if (verdict === "marginal") return below ? `Not ahead of baseline${count}` : `Even with baseline${count}`;
   if (verdict === "unproven") return `Not ahead of baseline${count}`;
   if (verdict == null) return "Not graded yet";
   return `Report card: ${verdict}${count}`;

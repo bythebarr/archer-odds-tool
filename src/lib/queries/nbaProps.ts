@@ -1,3 +1,4 @@
+import type { GradedCard } from "@/lib/modelBadge";
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { etDateOf, etDayBoundsUtc } from "@/lib/dateEt";
@@ -78,7 +79,7 @@ export interface NbaPropsSlate {
   /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
   blendVerdicts: Record<string, string>;
   /** Stat → outcomes its blend card was graded on (for the track-record chip). */
-  blendGraded: Record<string, number>;
+  blendGraded: Record<string, GradedCard>;
   /** Position group → stat → league per-minute rate: the prior for players with only a few games (rookies). */
   positionRates: Record<string, Record<string, number>>;
   /** Team abbreviation → the ET dates it played in the last few weeks (back-to-backs, the games a player missed). */

@@ -1,5 +1,6 @@
 "use client";
 
+import type { GradedCard } from "@/lib/modelBadge";
 import Link from "next/link";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import type { MlbPropStat } from "@/lib/mlb/propProjection";
@@ -111,7 +112,7 @@ function rowFor(prop: MlbSlateProp, stat: MlbPropStatDef, side: PropDirection, p
   };
 }
 
-function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendGraded, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; logs: MlbChartLog[]; season: number; startUtc?: string; blendVerdict?: string | null; blendGraded?: number; onOpen: () => void }) {
+function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendGraded, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; logs: MlbChartLog[]; season: number; startUtc?: string; blendVerdict?: string | null; blendGraded?: GradedCard; onOpen: () => void }) {
   const { player, priced } = row;
   const chance = side === "over" ? priced.probOver : priced.probUnder;
   const ev = side === "over" ? priced.evOver : priced.evUnder;
@@ -179,7 +180,7 @@ function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendG
   );
 }
 
-function Sheet({ player, props, logs, season, initialStat, side: initialSide, startLabel, blendVerdicts, blendGraded = {}, onClose }: { player: MlbPropsPlayer; props: MlbSlateProp[]; logs: MlbChartLog[]; season: number; initialStat: MlbPropStat; side: PropDirection; startLabel: string; blendVerdicts: Record<string, string>; blendGraded?: Record<string, number>; onClose: () => void }) {
+function Sheet({ player, props, logs, season, initialStat, side: initialSide, startLabel, blendVerdicts, blendGraded = {}, onClose }: { player: MlbPropsPlayer; props: MlbSlateProp[]; logs: MlbChartLog[]; season: number; initialStat: MlbPropStat; side: PropDirection; startLabel: string; blendVerdicts: Record<string, string>; blendGraded?: Record<string, GradedCard>; onClose: () => void }) {
   const offered = MLB_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
   const [statKey, setStatKey] = useState<MlbPropStat>(props.some((p) => p.stat === initialStat) ? initialStat : offered[0]!.key);
   const [side, setSide] = useState(initialSide);

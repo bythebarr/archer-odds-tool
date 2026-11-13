@@ -1,3 +1,4 @@
+import type { GradedCard } from "@/lib/modelBadge";
 import Link from "next/link";
 import type { SlateItem } from "@/lib/queries/slate";
 import type { FinishMethod } from "@/lib/ufc/finishMath";
@@ -76,7 +77,7 @@ export function SlateUfcStrip({
   /** The UFC model's calibration verdict — the whole strip is one model's output, so the badge rides the section. */
   modelVerdict?: string | null;
   /** Outcomes the UFC model's report card was graded on. */
-  modelGraded?: number;
+  modelGraded?: GradedCard;
 }) {
   if (items.length === 0) return null;
 

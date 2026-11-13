@@ -14,10 +14,18 @@ export const dynamic = "force-dynamic";
 
 const VERDICT: Record<string, { label: string; tone: string; note: string }> = {
   trusted: { label: "Trusted", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", note: "Beats the no-skill baseline by a real margin." },
-  marginal: { label: "Marginal", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300", note: "Close to coin-flip skill: honest, but no clear edge yet." },
-  unproven: { label: "Not ahead of baseline", tone: "bg-red-500/15 text-red-700 dark:text-red-300", note: "Not beating the baseline yet." },
-  thin: { label: "Thin sample", tone: "bg-muted text-muted-foreground", note: "Not enough history to grade." },
+  marginal: { label: "Even with baseline", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300", note: "About level with the no-skill baseline: honest, but no clear edge yet." },
+  unproven: { label: "Not ahead of baseline", tone: "bg-red-500/15 text-red-700 dark:text-red-300", note: "Not beating the no-skill baseline." },
+  thin: { label: "Early record", tone: "bg-muted text-muted-foreground", note: "Not enough graded outcomes yet to call it." },
 };
+
+/**
+ * The card's standing as shown: the verdict, except a "marginal" card whose
+ * Brier is worse than the baseline reads as "Not ahead of baseline" (the
+ * marginal band straddles the baseline). Display only; the stored verdict and
+ * everything that reads it are unchanged.
+ */
+const shownVerdict = (c: ModelCard) => (c.verdict === "marginal" && c.brier > c.baseRateBrier ? "unproven" : VERDICT[c.verdict] ? c.verdict : "thin");
 
 const SPORT_ORDER = ["nba", "nfl", "nhl", "ufc", "mlb", "tennis", "soccer", "f1"];
 /** "nba-props:points" and "market-blend:nba:points" both file under NBA. */
@@ -52,7 +60,7 @@ function Calibration({ buckets }: { buckets: ModelCard["buckets"] }) {
 }
 
 function Card({ c }: { c: ModelCard }) {
-  const v = VERDICT[c.verdict] ?? VERDICT.thin;
+  const v = VERDICT[shownVerdict(c)];
   const skill = c.baseRateBrier - c.brier; // positive = better than no-skill
   const trend = c.previousBrier === null ? null : c.previousBrier - c.brier;
   const maeGain = c.projectionMae !== null && c.baselineMae ? 1 - c.projectionMae / c.baselineMae : null;
@@ -74,6 +82,7 @@ function Card({ c }: { c: ModelCard }) {
         </div>
         <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${v.tone}`} title={v.note}>
           {v.label}
+          {c.verdict !== "trusted" && <span className="font-semibold normal-case tracking-normal"> · {c.n.toLocaleString("en-US")} graded</span>}
         </span>
       </div>
       {c.source === "forward-tracking" && (
@@ -163,7 +172,7 @@ export default async function ModelsPage() {
   const bySport = new Map<string, ModelCard[]>();
   for (const c of cards) bySport.set(sportOf(c.model), [...(bySport.get(sportOf(c.model)) ?? []), c]);
   const sports = [...bySport.keys()].sort((a, b) => (SPORT_ORDER.indexOf(a) + 1 || 99) - (SPORT_ORDER.indexOf(b) + 1 || 99));
-  const counts = Object.fromEntries(Object.keys(VERDICT).map((k) => [k, cards.filter((c) => c.verdict === k).length]));
+  const counts = Object.fromEntries(Object.keys(VERDICT).map((k) => [k, cards.filter((c) => shownVerdict(c) === k).length]));
   // Run date vs data date, page-wide (Decision 10): the lab can re-run on
   // schedule while the graded data stands still — both dates print.
   const lastRun = cards.length ? new Date(Math.max(...cards.map((c) => c.runAt.getTime()))) : null;
