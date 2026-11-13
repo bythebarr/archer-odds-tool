@@ -4,7 +4,7 @@
  * read against everything the price is weighing. Plain components (no hooks).
  */
 import Link from "next/link";
-import { CONFIDENCE_TRACK_RECORD, CONFIDENCE_VALIDATED, type CompactConfidence, type Confidence, type ConfidenceGrade } from "@/lib/propModel/confidence";
+import { CONFIDENCE_TRACK_RECORD, CONFIDENCE_VALIDATED, gradeLabel, type CompactConfidence, type Confidence, type ConfidenceGrade } from "@/lib/propModel/confidence";
 
 const GRADE_TONE: Record<ConfidenceGrade, string> = {
   A: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/40 dark:text-emerald-300",
@@ -25,10 +25,10 @@ const GRADE_WORDS: Record<ConfidenceGrade, string> = {
 export function ConfidenceChip({ c }: { c: Confidence | CompactConfidence | null | undefined }) {
   if (!c) return <span className="font-mono text-[11px] text-muted-foreground">—</span>;
   const why = "why" in c ? c.why : null;
-  const title = [`Confidence ${c.grade} (${c.score}/100)`, why, CONFIDENCE_VALIDATED ? null : CONFIDENCE_TRACK_RECORD].filter(Boolean).join(" · ");
+  const title = [`Confidence ${gradeLabel(c)} (score out of 100)`, why, CONFIDENCE_VALIDATED ? null : CONFIDENCE_TRACK_RECORD].filter(Boolean).join(" · ");
   return (
-    <span title={title} className={`inline-flex min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold ring-1 ${GRADE_TONE[c.grade]}`}>
-      {c.grade}
+    <span title={title} className={`inline-flex min-w-6 items-center justify-center whitespace-nowrap rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold ring-1 ${GRADE_TONE[c.grade]}`}>
+      {c.grade} <span className="ml-1 font-semibold opacity-80">{c.score}</span>
     </span>
   );
 }
@@ -51,12 +51,18 @@ export function ConfidencePanel({ c, reasons = [], sideLabel }: { c: Confidence 
   return (
     <section className="rounded-xl border border-border bg-card p-3">
       <div className="flex items-start gap-3">
-        <span className={`inline-flex size-11 shrink-0 items-center justify-center rounded-xl font-display text-2xl font-extrabold ring-1 ${GRADE_TONE[c.grade]}`}>{c.grade}</span>
+        <span
+          aria-label={`Confidence ${gradeLabel(c)}`}
+          className={`inline-flex h-11 shrink-0 items-baseline justify-center gap-1 rounded-xl px-2.5 pt-1.5 font-display font-extrabold ring-1 ${GRADE_TONE[c.grade]}`}
+        >
+          <span className="text-2xl leading-none">{c.grade}</span>
+          <span className="text-base leading-none opacity-80">{c.score}</span>
+        </span>
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Confidence · {sideLabel}</p>
           <p className="text-sm font-semibold text-foreground">{GRADE_WORDS[c.grade]}</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {c.score}/100. How far to trust ARCHR&apos;s chance and edge on this bet, not a chance itself.
+            Score out of 100: how far to trust ARCHR&apos;s chance and edge on this bet, not a chance itself.
           </p>
           {!CONFIDENCE_VALIDATED && (
             <p className="mt-1 text-[10px] text-muted-foreground">Track record: {CONFIDENCE_TRACK_RECORD}</p>

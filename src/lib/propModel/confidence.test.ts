@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BASE, confidenceOf, confidenceSummary, gradeOf, type ConfidenceInput } from "./confidence";
+import { BASE, confidenceOf, confidenceSummary, gradeLabel, gradeOf, type ConfidenceInput } from "./confidence";
 
 const solid: ConfidenceInput = {
   archr: 0.6,
@@ -86,6 +86,8 @@ describe("confidenceOf", () => {
     expect(gradeOf(74)).toBe("B");
     expect(gradeOf(BASE)).toBe("C");
     expect(gradeOf(44)).toBe("D");
-    expect(confidenceSummary(confidenceOf(solid)!)).toMatch(/^Confidence A/);
+    const c = confidenceOf(solid)!;
+    expect(confidenceSummary(c)).toMatch(new RegExp(`^Confidence A ${c.score}`));
+    expect(gradeLabel({ grade: "B", score: 69 })).toBe("B 69");
   });
 });

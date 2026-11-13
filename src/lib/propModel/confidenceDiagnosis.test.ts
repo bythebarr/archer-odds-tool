@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { confidenceOf, type ConfidenceInput } from "./confidence";
-import { biggestCost, ceiling, factorSummary, gradeCounts, gradesChangedWithout, maxPossible, outcomeTables, scoreHistogram } from "./confidenceDiagnosis";
+import { boardGradeCounts, biggestCost, ceiling, factorSummary, gradeCounts, gradesChangedWithout, maxPossible, outcomeTables, scoreHistogram } from "./confidenceDiagnosis";
 
 const solid: ConfidenceInput = {
   archr: 0.6,
@@ -47,5 +47,11 @@ describe("confidence diagnosis", () => {
     expect(t.grades.map((g) => g.n)).toEqual([1, 2, 0, 0]);
     expect(t.buckets.map((b) => b.label)).toEqual(["60–64", "80–84"]);
     expect(t.grades[0].edgeBets).toBe(1);
+  });
+});
+
+describe("board grade counts", () => {
+  it("counts the grades rows already carry and skips ungraded rows", () => {
+    expect(boardGradeCounts([{ confidence: { grade: "B" } }, { confidence: { grade: "D" } }, { confidence: { grade: "D" } }, {}])).toEqual({ A: 0, B: 1, C: 0, D: 2, total: 3 });
   });
 });

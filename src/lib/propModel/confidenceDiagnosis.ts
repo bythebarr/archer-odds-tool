@@ -15,6 +15,25 @@ export function gradeCounts(cs: Confidence[]): Record<ConfidenceGrade, number> {
   return out;
 }
 
+export interface BoardGradeCounts {
+  A: number;
+  B: number;
+  C: number;
+  D: number;
+  total: number;
+}
+
+/** Rows per grade on a board whose rows already carry their grade (the screener pools); ungraded rows are left out. */
+export function boardGradeCounts(rows: { confidence?: { grade: ConfidenceGrade } | null }[]): BoardGradeCounts {
+  const out = { A: 0, B: 0, C: 0, D: 0, total: 0 };
+  for (const r of rows) {
+    if (!r.confidence) continue;
+    out[r.confidence.grade]++;
+    out.total++;
+  }
+  return out;
+}
+
 /** Scores in 5-point buckets ("60–64"), low to high, empty buckets left out. */
 export function scoreHistogram(scores: number[]): { bucket: string; lo: number; n: number }[] {
   const by = new Map<number, number>();
