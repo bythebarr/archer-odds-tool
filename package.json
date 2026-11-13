@@ -35,6 +35,7 @@
     "backtest:confidence": "tsx scripts/backtest-confidence.ts",
     "audit:factors": "tsx scripts/audit-factors.ts",
     "fit:side-calibration": "tsx scripts/fit-side-calibration.ts",
+    "backtest:soft-book-lag": "tsx scripts/backtest-soft-book-lag.ts",
     "migrate:status": "bash scripts/migrate-direct.sh prisma migrate status || true",
     "migrate:resolve-nhl": "bash scripts/migrate-resolve-nhl.sh",
     "migrate:inspect": "tsx scripts/migrate-inspect.ts",
