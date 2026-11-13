@@ -1,5 +1,6 @@
 "use client";
 
+import type { GradedCard } from "@/lib/modelBadge";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
@@ -25,7 +26,7 @@ import { reasonsFor } from "@/lib/nba/standouts";
 import { ConfidencePanel } from "@/components/props/ConfidencePanel";
 
 /** ARCHR's projection for this prop: the number, each side's chance at this line, model EV, and what built it. */
-function ProjectionPanel({ model, point, side, statShort, milestone = false, blendVerdict, blendGraded }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean; blendVerdict?: string | null; blendGraded?: number }) {
+function ProjectionPanel({ model, point, side, statShort, milestone = false, blendVerdict, blendGraded }: { model: PropModel; point: number; side: PropDirection; statShort: string; milestone?: boolean; blendVerdict?: string | null; blendGraded?: GradedCard }) {
   const p = model.projection;
   const ev = side === "over" ? model.evOver : model.evUnder;
   const mult = (x: number) => `×${x.toFixed(2)}`;
@@ -126,7 +127,7 @@ export function PlayerPropSheet({
   /** Stat → the market-blend report card's verdict (absent stat = no card). */
   blendVerdicts: Record<string, string>;
   /** Stat → outcomes that card was graded on. */
-  blendGraded?: Record<string, number>;
+  blendGraded?: Record<string, GradedCard>;
   initialStat: NbaPropStat;
   side: PropDirection;
   startLabel: string;

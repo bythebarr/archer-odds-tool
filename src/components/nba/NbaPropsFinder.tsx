@@ -1,5 +1,6 @@
 "use client";
 
+import type { GradedCard } from "@/lib/modelBadge";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { nbaProjectionContext } from "@/lib/nba/slateContext";
 import { formatAmerican } from "@/lib/odds/americanOdds";
@@ -63,7 +64,7 @@ function NbaCard({
   /** The blend card's verdict for this stat (absent stat = no card). */
   blendVerdict?: string | null;
   /** Outcomes that card was graded on. */
-  blendGraded?: number;
+  blendGraded?: GradedCard;
   onOpen: () => void;
 }) {
   const best = side === "over" ? summary.over : summary.under;

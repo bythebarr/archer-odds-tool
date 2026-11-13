@@ -6,6 +6,7 @@
  * where books have posted. Lines and chances are priced in the browser from the
  * distribution, so the sheet can move along the ladder.
  */
+import type { GradedCard } from "@/lib/modelBadge";
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { etDayBoundsUtc, etDateOf, shiftEtDate, todayEt } from "@/lib/dateEt";
@@ -76,7 +77,7 @@ export interface MlbPropsSlate {
   /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
   blendVerdicts: Record<string, string>;
   /** Stat → outcomes its blend card was graded on (for the track-record chip). */
-  blendGraded: Record<string, number>;
+  blendGraded: Record<string, GradedCard>;
 }
 
 const hand = (h: string | null | undefined): "L" | "R" | null => (h === "L" || h === "R" ? h : null);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FILTERS, mainPoint, screen, screenRates, type ScreenerProp } from "./types";
+import { DEFAULT_FILTERS, edgePoints, mainPoint, screen, screenRates, type ScreenerProp } from "./types";
 
 const prop = (id: string, over: Partial<ScreenerProp> = {}): ScreenerProp => ({
   id,
@@ -67,8 +67,9 @@ describe("screen", () => {
     const priced = [prop("short", { priceAmerican: -600 }), prop("plus", { priceAmerican: 150, edge: 0.9 }), prop("mid", { priceAmerican: -150, archr: 0.7, edge: 0.1 })];
     expect(screen(priced, { ...DEFAULT_FILTERS, shortest: -300, longest: 100 }).map((p) => p.id)).toEqual(["mid"]);
     expect(screen(priced, { ...DEFAULT_FILTERS, minArchr: 0.6 }).map((p) => p.id)).toEqual(["mid"]);
-    // A +90% edge is the model misreading the rung: not counted.
-    expect(screen(priced, { ...DEFAULT_FILTERS, minEdge: 0.05 }).map((p) => p.id)).toEqual(["mid", "short"]);
+    // The edge bar is in points: "mid" is 70% vs −150's 60% (+10 pts); "short" is 55% vs −600's 86% (−31 pts).
+    // A +90% relative edge is the model misreading the rung: not counted.
+    expect(screen(priced, { ...DEFAULT_FILTERS, minEdge: 0.05 }).map((p) => p.id)).toEqual(["mid"]);
     expect(screen(pool, { ...DEFAULT_FILTERS, sort: "last" })[0].id).toBe("hot");
   });
 });
@@ -117,5 +118,15 @@ describe("screen: confidence sort", () => {
       prop("a", { confidence: { grade: "A", score: 80, why: "" } }),
     ];
     expect(screen(pool, { ...DEFAULT_FILTERS, sort: "conf" }).map((p) => p.id)).toEqual(["a", "c", "none"]);
+  });
+});
+
+describe("edgePoints", () => {
+  it("is ARCHR's chance minus the price's implied chance, in points, bounded", () => {
+    expect(edgePoints({ archr: 0.7, priceAmerican: -150 })).toBeCloseTo(0.1, 6);
+    // A long shot: +1500% relative is a modest points edge.
+    expect(edgePoints({ archr: 0.2, priceAmerican: 1400 })).toBeCloseTo(0.2 - 100 / 1500, 6);
+    expect(edgePoints({ archr: null, priceAmerican: -110 })).toBeNull();
+    expect(edgePoints({ archr: 0.5, priceAmerican: null })).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import type { GradedCard } from "@/lib/modelBadge";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { OddsPool, OddsPlay, MarketKind } from "@/lib/queries/oddsPool";
@@ -118,7 +119,7 @@ function PlayRow({
   /** The model's calibration verdict (reported first, baked fallback) — drives the provenance badge. */
   modelVerdict: string | null;
   /** Outcomes that model's report card was graded on. */
-  modelGraded?: number;
+  modelGraded?: GradedCard;
 }) {
   const matchup =
     play.away.meta && play.home.meta ? `${play.away.meta} @ ${play.home.meta}` : `${play.away.name} @ ${play.home.name}`;
@@ -202,7 +203,7 @@ export function OddsPoolBoard({
   /** Per-sport calibration verdicts for provenance badges on model-priced rows. */
   modelVerdicts?: Record<string, string | null>;
   /** Model key → outcomes its latest report card was graded on. */
-  modelGraded?: Record<string, number>;
+  modelGraded?: Record<string, GradedCard>;
 }) {
   const [sport, setSport] = useState<SlateSport | "all">("all");
   const [kind, setKind] = useState<MarketKind | "all">("all");
