@@ -54,7 +54,7 @@ export default async function NbaGamePage({
       readPropsPrefs(query),
     ]);
     propsPanel = slate.props.some((p) => slate.players[p.playerId]?.gameId === gameId) ? (
-      <NbaPropsFinder slate={toWireSlate(slate)} initial={prefs} initialGame={gameId} lockGame />
+      <NbaPropsFinder slate={toWireSlate(slate)} initial={prefs} initialGame={gameId} lockGame frozen={await getFrozenPrices()} />
     ) : (
       <p className="mt-8 text-center text-sm text-muted-foreground">
         No player props posted for this game yet. Books usually post them the morning of the game.

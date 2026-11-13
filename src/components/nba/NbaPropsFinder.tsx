@@ -2,24 +2,20 @@
 
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { nbaProjectionContext } from "@/lib/nba/slateContext";
-import { formatAmerican } from "@/lib/odds/americanOdds";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { PROPS_PREFS_COOKIE, type PropsPrefs } from "@/lib/nba/propsPrefsShared";
 import { sortSummaries, summarizeProp, unpackLog, type GameLogPoint, type PropSort, type PropSummary } from "@/lib/nba/propsMath";
 import type { SlateGame, SlatePlayer, WireNbaPropsSlate } from "@/lib/queries/nbaProps";
 import type { PropDirection } from "@/lib/props/tally";
 import type { NbaPropStat } from "@/generated/prisma/client";
-import { Logo } from "@/components/Logo";
-import { ArchrLineChip, BestPriceChip, EmptyList, GameChips, ListNote, ModelChip, ProjectedDivider, PropCard, PropsControls } from "@/components/props/kit";
-import { HitMeter, formatRate, rateTone } from "./HitMeter";
+import { EmptyList, GameChips, ListNote, ProjectedDivider, PropEdgeCard, PropsControls } from "@/components/props/kit";
 import { PlayerPropSheet } from "./PlayerPropSheet";
 import { ParlayTray } from "@/components/props/Parlay";
 import { addLeg, type ParlayLeg } from "@/lib/props/parlay";
-import { MatchupChip } from "./Matchup";
-import { EvTag } from "@/components/EvTag";
+import type { FrozenPrices } from "@/lib/queries/oddsFeed";
+import { trackRecordLabel } from "@/lib/modelBadge";
+import { nbaSummaryConfidence } from "@/lib/propModel/summaryConfidence";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import { TrackRecordChip } from "@/components/TrackRecordChip";
-import type { DefenseTable } from "@/lib/nba/matchup";
 import type { NbaPropStatDef } from "@/lib/nba/propStats";
 
 
@@ -37,21 +33,15 @@ function startLabel(iso: string): string {
   );
 }
 
-/** The model must clear a wider bar than the market read: it's one opinion against the whole market. */
-const MODEL_EV_FLAG = 0.03;
-
-/** Below this many games this season, the card shows last season's rate beside it. */
-const EARLY_SEASON_GAMES = 10;
-
 function NbaCard({
   summary,
   player,
   game,
   side,
   stat,
-  defense,
   blendVerdict,
   blendGraded,
+  frozen,
   onOpen,
 }: {
   summary: PropSummary;
@@ -59,105 +49,42 @@ function NbaCard({
   game: SlateGame | undefined;
   side: PropDirection;
   stat: NbaPropStatDef;
-  defense: DefenseTable;
   /** The blend card's verdict for this stat (absent stat = no card). */
   blendVerdict?: string | null;
   /** Outcomes that card was graded on. */
   blendGraded?: number;
+  frozen?: FrozenPrices;
   onOpen: () => void;
 }) {
   const best = side === "over" ? summary.over : summary.under;
-  const other = side === "over" ? summary.under : summary.over;
   const value = side === "over" ? summary.value.over : summary.value.under;
-  const statShort = stat.shortLabel;
-  const rates = summary.hitRates;
-  // The card's split strip: short form, this season, and head-to-head when they've met (every window is in the sheet).
-  // While this season is only a handful of games, last season rides along so a 3-for-3 start
-  // isn't the only "season" number on the card.
-  const earlySeason = rates.season.sampleSize < EARLY_SEASON_GAMES && rates.lastSeason.sampleSize > 0;
-  const cardSplits = summary.splits.filter(
-    (sp) =>
-      (earlySeason ? ["l5", "season", "lastSeason"] : ["l3", "l5", "season"]).includes(sp.key) ||
-      (sp.key === "h2h" && sp.rate.sampleSize > 0)
-  );
   const m = summary.model;
-  const modelProb = m ? (side === "over" ? m.probOver : m.probUnder) : null;
   const modelEv = m ? (side === "over" ? m.evOver : m.evUnder) : null;
+  const priced = !summary.projected && !!best;
+  // The edge: ARCHR's, else the books' own no-vig EV on rows ARCHR doesn't price; none on a line with no price.
+  const edge = !priced ? null : modelEv !== null ? modelEv : (value?.ev ?? null);
+  const matchup = player.opponent ? `${player.team?.abbreviation ?? ""} ${player.venue === "home" ? "vs" : "@"} ${player.opponent.abbreviation}`.trim() : game ? `${game.away.abbreviation} @ ${game.home.abbreviation}` : null;
   return (
-    <PropCard
-      onOpen={onOpen}
+    <PropEdgeCard
+      onSelect={onOpen}
       headshot={[player.headshotUrl]}
       name={player.name}
-      badges={
-        <>
-          <InjuryBadge injury={player.injury} />
-          {summary.model && <TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
-        </>
-      }
       teamLogo={player.team?.logoUrl}
       teamAbbr={player.team?.abbreviation}
-      sub={
+      label={
         <>
-          {player.opponent ? (
-            <>
-              {player.venue === "home" ? "vs" : "@"}
-              <Logo sources={[player.opponent.logoUrl]} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
-              {player.opponent.abbreviation}
-            </>
-          ) : (
-            game && `${game.away.abbreviation} @ ${game.home.abbreviation}`
-          )}
-          {game && <span>· {startLabel(game.startUtc)}</span>}
-          {summary.avgMinutesL5 !== null && <span className="hidden sm:inline">· {Math.round(summary.avgMinutesL5)} min</span>}
+          {player.name} {side === "over" ? "Over" : "Under"} {summary.point} {stat.shortLabel}
+          <InjuryBadge injury={player.injury} />
         </>
       }
-      value={summary.point}
-      unit={statShort}
-      under={
-        summary.model ? (
-          <>
-            proj <span className="font-mono font-semibold text-foreground">{summary.model.projection.mean.toFixed(1)}</span>
-            {summary.avgL10 !== null && <> · avg {summary.avgL10.toFixed(1)}</>}
-          </>
-        ) : summary.avgL10 !== null ? (
-          <>avg {summary.avgL10.toFixed(1)} L10</>
-        ) : null
-      }
-      meter={<HitMeter recent={summary.recent} rate={rates.l10} />}
-      price={
-        <>
-          {summary.projected ? <ArchrLineChip /> : <EvTag value={value} />}
-          {summary.projected ? null : best ? (
-            <BestPriceChip sideLabel={side === "over" ? "O" : "U"} price={best.priceAmerican} bookKey={best.bookKey} bookName={best.bookName} />
-          ) : (
-            <span className="text-xs text-muted-foreground">no {side}</span>
-          )}
-          {other && (
-            <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
-              {side === "over" ? "U" : "O"} <span className="font-mono">{formatAmerican(other.priceAmerican)}</span>
-            </span>
-          )}
-        </>
-      }
-      strip={cardSplits.map((sp) => (
-        <span key={sp.key}>
-          {sp.label} <span className={`font-mono font-semibold ${rateTone(sp.rate)}`}>{formatRate(sp.rate)}</span>
-          {/* A season window can be a few games or eighty: say which. */}
-          {(sp.key === "season" || sp.key === "lastSeason") && sp.rate.sampleSize > 0 && (
-            <span className="font-mono text-[10px] text-muted-foreground"> {sp.rate.hits}/{sp.rate.sampleSize}</span>
-          )}
-        </span>
-      ))}
-      stripRight={
-        <>
-          {!summary.projected && modelProb !== null && <ModelChip prob={modelProb} edge={modelEv !== null && modelEv >= MODEL_EV_FLAG} />}
-          <MatchupChip defense={defense} opponent={player.opponent?.abbreviation} stat={stat} side={side} group={player.positionGroup} />
-          <span className={summary.projected ? "hidden" : "hidden sm:inline"}>
-            {summary.booksAtLine} book{summary.booksAtLine === 1 ? "" : "s"}
-            {summary.points.length > 1 && ` · ${summary.points.length - 1} alt`}
-          </span>
-        </>
-      }
+      edge={edge}
+      edgeBasis={modelEv !== null ? "archr" : "market"}
+      chance={m ? { label: "ARCHR", value: side === "over" ? m.probOver : m.probUnder } : null}
+      price={priced ? best!.priceAmerican : null}
+      book={priced ? { key: best!.bookKey, name: best!.bookName } : null}
+      confidence={nbaSummaryConfidence(summary, side, { blendVerdict: blendVerdict ?? null, injury: player.injury?.level ?? null, alt: false })}
+      frozen={priced ? frozen : null}
+      whisper={[summary.projected ? "ARCHR's own line, no book line yet" : null, matchup, game ? startLabel(game.startUtc) : null, m ? trackRecordLabel(blendVerdict, blendGraded) : null].filter(Boolean).join(" · ")}
     />
   );
 }
@@ -172,12 +99,15 @@ export function NbaPropsFinder({
   initial,
   initialGame,
   lockGame = false,
+  frozen = null,
 }: {
   slate: WireNbaPropsSlate;
   initial: PropsPrefs;
   initialGame: string | null;
   /** On a game page: stay on that game, with no game strip and no URL rewriting. */
   lockGame?: boolean;
+  /** Set while the odds feed is frozen: prices grey out, dated. */
+  frozen?: FrozenPrices;
 }) {
   const [prefs, setPrefs] = useState<PropsPrefs>(initial);
   const [gameId, setGameId] = useState<string | null>(initialGame);
@@ -289,9 +219,9 @@ export function NbaPropsFinder({
               game={gameById.get(slate.players[s.playerId].gameId)}
               side={prefs.side}
               stat={statDef}
-              defense={slate.defense}
               blendVerdict={slate.blendVerdicts[prefs.stat]}
               blendGraded={slate.blendGraded?.[prefs.stat]}
+              frozen={frozen}
               onOpen={() => setOpen(s.playerId)}
             />
             </Fragment>

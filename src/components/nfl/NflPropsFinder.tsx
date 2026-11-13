@@ -1,6 +1,7 @@
 "use client";
 
-import { confidenceOf } from "@/lib/propModel/confidence";
+import { nflSummaryConfidence } from "@/lib/propModel/summaryConfidence";
+
 import { nflPriceReasons } from "@/lib/nfl/priceReasons";
 import { ConfidencePanel } from "@/components/props/ConfidencePanel";
 import Link from "next/link";
@@ -19,33 +20,31 @@ import { usageGames, usageWindow, type TeamVolume, type UsageWindow } from "@/li
 import { advancedWindow, type AdvancedWindow } from "@/lib/nfl/advanced";
 import type { NflTeamContext } from "@/lib/nfl/teamContext";
 import { Logo } from "@/components/Logo";
-import { EvTag } from "@/components/EvTag";
+import type { FrozenPrices } from "@/lib/queries/oddsFeed";
+import { trackRecordLabel } from "@/lib/modelBadge";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TrackRecordChip } from "@/components/TrackRecordChip";
 import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
 import type { NflProjectionContext } from "@/lib/nfl/projection";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
-import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
+import { formatRate } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { AltLinesTable } from "@/components/props/AltLinesTable";
 import { ParlayButton, ParlayTray } from "@/components/props/Parlay";
 import { addLeg, type ParlayLeg } from "@/lib/props/parlay";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import {
-  ArchrLineChip,
-  BestPriceChip,
   BooksTable,
   EmptyList,
   GameChips,
   LinePicker,
   ListNote,
   MatchupFacts,
-  ModelChip,
   PlayerSheet,
   ProjectedDivider,
   ProjectedNote,
   ProjectionCard,
-  PropCard,
+  PropEdgeCard,
   PropsControls,
   RecentGames,
   SheetFooter,
@@ -58,7 +57,6 @@ const SORTS: { key: NflPropSort; label: string }[] = [
   { key: "model", label: "Model edge" },
   { key: "price", label: "Best price" },
 ];
-const MODEL_EV_FLAG = 0.03;
 
 /** "DraftKings" → "DK" for the chips. */
 const bookShort = (name: string) => (name === "DraftKings" ? "DK" : name === "FanDuel" ? "FD" : name);
@@ -67,98 +65,46 @@ function kickoff(iso: string): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(iso));
 }
 const sideLabelsOf = (stat: NflPropStatDef): [string, string] => (stat.shape === "anytime" ? ["Yes", "No"] : ["Over", "Under"]);
-const short = (stat: NflPropStatDef, side: PropDirection) => (stat.shape === "anytime" ? (side === "over" ? "Yes" : "No") : side === "over" ? "O" : "U");
 const digits = (stat: NflPropStatDef) => (stat.shape === "yards" ? 0 : 1);
 
-function DefChip({ defense, player, stat, side }: { defense: NflDefenseTable; player: NflSlatePlayer; stat: NflPropStatDef; side: PropDirection }) {
-  const m = player.opponent ? nflStatMatchup(defense, player.opponent.abbreviation, stat, player.position) : null;
-  if (!m) return null;
-  const g = matchupGrade(m.rank, m.of, side);
-  const tone = g === "great" || g === "good" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : g === "neutral" ? "bg-muted text-foreground" : "bg-red-500/10 text-red-700 dark:text-red-300";
-  return (
-    <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${tone}`} title={`${player.opponent?.abbreviation} allows ${m.perGame.toFixed(1)} per game to ${m.position}s`}>
-      <span className="text-[10px] font-semibold uppercase opacity-70">Def v {m.position}</span>
-      <span className="font-mono font-semibold">{ordinal(m.rank)}</span>
-    </span>
-  );
-}
-
-function NflCard({ s, player, game, side, stat, defense, blendVerdict, blendGraded, onOpen }: { s: NflPropSummary; player: NflSlatePlayer; game?: SlateGame; side: PropDirection; stat: NflPropStatDef; defense: NflDefenseTable; blendVerdict?: string | null; blendGraded?: number; onOpen: () => void }) {
+function NflCard({ s, player, game, side, stat, blendVerdict, blendGraded, frozen, onOpen }: { s: NflPropSummary; player: NflSlatePlayer; game?: SlateGame; side: PropDirection; stat: NflPropStatDef; blendVerdict?: string | null; blendGraded?: number; frozen?: FrozenPrices; onOpen: () => void }) {
   const best = side === "over" ? s.over : s.under;
-  const other = side === "over" ? s.under : s.over;
   const value = side === "over" ? s.value.over : s.value.under;
   const m = s.model;
-  const ev = m ? (side === "over" ? m.evOver : m.evUnder) : null;
-  const strip = s.splits.filter((x) => ["l3", "l5", "season"].includes(x.key) || (x.key === "h2h" && x.rate.sampleSize > 0));
+  const modelEv = m ? (side === "over" ? m.evOver : m.evUnder) : null;
+  const priced = !s.projected && !!best;
+  // The edge: ARCHR's, else the books' own no-vig EV on rows ARCHR doesn't price; none on a line with no price.
+  const edge = !priced ? null : modelEv !== null ? modelEv : (value?.ev ?? null);
+  const what = stat.shape === "anytime" ? `${side === "over" ? "Yes" : "No"} ${stat.label}` : `${side === "over" ? "Over" : "Under"} ${s.point} ${stat.shortLabel}`;
+  const matchup = player.opponent ? `${player.team?.abbreviation ?? ""} ${player.venue === "home" ? "vs" : "@"} ${player.opponent.abbreviation}`.trim() : null;
   return (
-    <PropCard
-      onOpen={onOpen}
+    <PropEdgeCard
+      onSelect={onOpen}
       headshot={[player.headshotUrl]}
       name={player.name}
-      tag={player.position}
-      badges={
-        <>
-          <InjuryBadge injury={player.injury} />
-          {s.model && <TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
-        </>
-      }
       teamLogo={player.team?.logoUrl}
       teamAbbr={player.team?.abbreviation}
-      sub={
+      label={
         <>
-          {player.opponent && (
-            <>
-              {player.venue === "home" ? "vs" : "@"}
-              <Logo sources={[player.opponent.logoUrl]} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
-              {player.opponent.abbreviation}
-            </>
-          )}
-          {game && <span>· {kickoff(game.startUtc)}</span>}
+          {player.name} {what}
+          <InjuryBadge injury={player.injury} />
         </>
       }
-      value={stat.shape === "anytime" ? (m ? `${Math.round(m.probOver * 100)}%` : "TD") : s.point}
-      unit={stat.shape === "anytime" ? "TD" : stat.shortLabel}
-      under={
-        m ? (
-          <>
-            proj <span className="font-mono font-semibold text-foreground">{m.projection.mean.toFixed(stat.shape === "anytime" ? 2 : digits(stat))}</span>
-            {s.avg !== null && <> · avg {s.avg.toFixed(digits(stat))}</>}
-          </>
-        ) : s.avg !== null ? (
-          <>avg {s.avg.toFixed(digits(stat))} L5</>
-        ) : null
-      }
-      meter={<HitMeter recent={s.recent.slice(0, 5)} rate={s.l5} window="L5" slots={5} />}
-      price={
-        <>
-          {s.postedBook ? <ArchrLineChip label={`${bookShort(s.postedBook)} line`} note="no price yet" /> : s.projected ? <ArchrLineChip /> : <EvTag value={value} />}
-          {s.projected ? null : best ? (
-            <BestPriceChip sideLabel={short(stat, side)} price={best.priceAmerican} bookKey={best.bookKey} bookName={best.bookName} />
-          ) : (
-            <span className="text-xs text-muted-foreground">no {side}</span>
-          )}
-          {other && !s.projected && (
-            <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
-              {short(stat, side === "over" ? "under" : "over")} <span className="font-mono">{other.priceAmerican > 0 ? `+${other.priceAmerican}` : other.priceAmerican}</span>
-            </span>
-          )}
-        </>
-      }
-      strip={strip.map((x) => (
-        <span key={x.key}>
-          {x.label} <span className={`font-mono font-semibold ${rateTone(x.rate)}`}>{formatRate(x.rate)}</span>
-        </span>
-      ))}
-      stripRight={
-        <>
-          {(!s.projected || s.postedBook) && m && <ModelChip prob={side === "over" ? m.probOver : m.probUnder} edge={ev !== null && ev >= MODEL_EV_FLAG} />}
-          <DefChip defense={defense} player={player} stat={stat} side={side} />
-          <span className={s.projected ? "hidden" : "hidden sm:inline"}>
-            {s.booksAtLine} book{s.booksAtLine === 1 ? "" : "s"}
-            {s.points.length > 1 && ` · ${s.points.length - 1} alt`}
-          </span>
-        </>
-      }
+      edge={edge}
+      edgeBasis={modelEv !== null ? "archr" : "market"}
+      chance={m ? { label: "ARCHR", value: side === "over" ? m.probOver : m.probUnder } : null}
+      price={priced ? best!.priceAmerican : null}
+      book={priced ? { key: best!.bookKey, name: best!.bookName } : null}
+      confidence={nflSummaryConfidence(s, side, { blendVerdict: blendVerdict ?? null, injury: player.injury?.level ?? null, alt: false })}
+      frozen={priced ? frozen : null}
+      whisper={[
+        s.postedBook ? `${bookShort(s.postedBook)} line, no price yet` : s.projected ? "ARCHR's own line, no book line yet" : null,
+        matchup,
+        game ? kickoff(game.startUtc) : null,
+        m ? trackRecordLabel(blendVerdict, blendGraded) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
     />
   );
 }
@@ -405,23 +351,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
     logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, team: l.team, value: !stat.available || stat.available(l) ? stat.value(l) : null })),
   };
   // Confidence: how far to trust ARCHR's read of this bet, and why (lib/propModel/confidence).
-  const recordSplit = s?.splits.find((x) => x.key === "l10" && x.rate.sampleSize >= 5) ?? s?.splits.find((x) => x.key === "season");
-  const quote = side === "over" ? s?.over : s?.under;
-  const confidence = m && s
-    ? confidenceOf({
-        archr: side === "over" ? m.probOver : m.probUnder,
-        marketChance: m.market ? (side === "over" ? m.market.probOver : 1 - m.market.probOver) : null,
-        priceAmerican: s.projected ? null : (quote?.priceAmerican ?? null),
-        rate: recordSplit ? [recordSplit.rate.hits, recordSplit.rate.sampleSize] : [0, 0],
-        sampleGames: m.projection.games,
-        blendVerdict: blendVerdicts[prop.stat] ?? null,
-        injury: player.injury?.level ?? null,
-        alt: point !== main,
-        z: ((m.projection.mean - point) / Math.max(m.projection.sd, 1e-6)) * (side === "over" ? 1 : -1),
-        side,
-        sport: "nfl",
-      })
-    : null;
+  const confidence = s ? nflSummaryConfidence(s, side, { blendVerdict: blendVerdicts[prop.stat] ?? null, injury: player.injury?.level ?? null, alt: point !== main }) : null;
   const priceReasons = m
     ? nflPriceReasons({
         side,
@@ -642,7 +572,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
  * The NFL props finder: the week's props arrive once and every control — stat,
  * side, sort, game, search — recomputes in the browser.
  */
-export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: { slate: Omit<NflPropsSlate, "logs"> & { logs: Record<string, PackedNflLog[]> }; initialGame?: string | null; lockGame?: boolean }) {
+export function NflPropsFinder({ slate, initialGame = null, lockGame = false, frozen = null }: { slate: Omit<NflPropsSlate, "logs"> & { logs: Record<string, PackedNflLog[]> }; initialGame?: string | null; lockGame?: boolean; frozen?: FrozenPrices }) {
   const [statKey, setStatKey] = useState<NflPropStat>("passYards");
   const [side, setSide] = useState<PropDirection>("over");
   const [sort, setSort] = useState<NflPropSort>("hitRate");
@@ -718,7 +648,7 @@ export function NflPropsFinder({ slate, initialGame = null, lockGame = false }: 
           {summaries.map((s, i) => (
             <Fragment key={s.playerId}>
               {s.projected && !s.postedBook && posted > 0 && (i === 0 || !summaries[i - 1]!.projected || !!summaries[i - 1]!.postedBook) && <ProjectedDivider />}
-              <NflCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} defense={slate.defense} blendVerdict={slate.blendVerdicts[statKey]} blendGraded={slate.blendGraded?.[statKey]} onOpen={() => setOpen(s.playerId)} />
+              <NflCard s={s} player={slate.players[s.playerId]} game={gameById.get(slate.players[s.playerId].gameId)} side={side} stat={stat} blendVerdict={slate.blendVerdicts[statKey]} blendGraded={slate.blendGraded?.[statKey]} frozen={frozen} onOpen={() => setOpen(s.playerId)} />
             </Fragment>
           ))}
         </ul>

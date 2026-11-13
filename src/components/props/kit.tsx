@@ -17,7 +17,7 @@ import { Logo } from "@/components/Logo";
 import { BookBadge } from "@/components/BookBadge";
 import { EvTag } from "@/components/EvTag";
 import { ScrollRow } from "@/components/ScrollRow";
-import { CANONICAL_NUMBERS } from "@/lib/propModel/canonical";
+import { EdgeLineRow, type EdgeLineRowProps } from "@/components/book/EdgeLineRow";
 
 export const initials = (name: string) =>
   name
@@ -226,19 +226,6 @@ export function ArchrLineChip({ label, price, note }: { label?: string; price?: 
   );
 }
 
-/** ARCHR chance on the chosen side (the blend, the one probability), volt when it sees an edge at the best price. */
-export function ModelChip({ prob, edge }: { prob: number; edge: boolean }) {
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 ${edge ? "bg-brand text-brand-foreground" : "bg-muted"}`}
-      title={CANONICAL_NUMBERS.archrChance.blurb}
-    >
-      <span className={`text-[10px] font-semibold uppercase ${edge ? "" : "text-muted-foreground"}`}>{CANONICAL_NUMBERS.archrChance.shortLabel}</span>
-      <span className={`font-mono font-semibold ${edge ? "" : "text-foreground"}`}>{Math.round(prob * 100)}%</span>
-    </span>
-  );
-}
-
 /**
  * The prop card: headshot with team badge, name and matchup, the line with the
  * projection under it; the L10 meter with the price; a strip of splits with
@@ -325,6 +312,33 @@ export function PropCard({
         )}
         {footer}
       </button>
+    </li>
+  );
+}
+
+/**
+ * A finder card, edge first: the shared EdgeLineRow (edge, then the prop with
+ * ARCHR chance and the best price, then the quiet confidence marker) with the
+ * player's headshot leading. One number at rest; the record, the hit meter,
+ * the matchup and the factors live on the player sheet it opens.
+ */
+export function PropEdgeCard({ headshot, name, teamLogo, teamAbbr, ...row }: Omit<EdgeLineRowProps, "leading" | "className"> & { headshot: string[]; name: string; teamLogo?: string | null; teamAbbr?: string }) {
+  return (
+    <li className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-foreground/15">
+      <EdgeLineRow
+        {...row}
+        className="py-3"
+        leading={
+          <span className="relative block">
+            <Logo sources={headshot} alt={name} fallbackText={initials(name)} size={36} fit="cover" />
+            {(teamLogo || teamAbbr) && (
+              <span className="absolute -bottom-1 -right-1">
+                <Logo sources={teamLogo ? [teamLogo] : []} alt={teamAbbr ?? ""} fallbackText={teamAbbr ?? ""} size={16} />
+              </span>
+            )}
+          </span>
+        }
+      />
     </li>
   );
 }

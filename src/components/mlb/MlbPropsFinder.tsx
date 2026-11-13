@@ -22,27 +22,26 @@ import { isBettableBook } from "@/lib/odds/bestPrice";
 import { tallyPropHits, type PropDirection } from "@/lib/props/tally";
 import type { PricedProp } from "@/lib/propModel/price";
 import { Logo } from "@/components/Logo";
-import { EvTag } from "@/components/EvTag";
-import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
+import type { FrozenPrices } from "@/lib/queries/oddsFeed";
+import { trackRecordLabel } from "@/lib/modelBadge";
+import { confidenceOf } from "@/lib/propModel/confidence";
+import { formatRate } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { BlendLine } from "@/components/props/ModelPieces";
 import { TrackRecordChip } from "@/components/TrackRecordChip";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import {
-  ArchrLineChip,
-  BestPriceChip,
   BooksTable,
   EmptyList,
   GameChips,
   LinePicker,
   ListNote,
   MatchupFacts,
-  ModelChip,
   PlayerSheet,
   ProjectedDivider,
   ProjectedNote,
   ProjectionCard,
-  PropCard,
+  PropEdgeCard,
   PropsControls,
   RecentGames,
   SheetFooter,
@@ -57,7 +56,6 @@ const SORTS: { key: Sort; label: string }[] = [
   { key: "value", label: "Market value" },
   { key: "price", label: "Best price" },
 ];
-const MODEL_EV_FLAG = 0.03;
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 const fair = (p: number) => formatAmerican(Math.round(decimalToAmerican(1 / Math.min(0.995, Math.max(0.005, p)))));
@@ -111,70 +109,53 @@ function rowFor(prop: MlbSlateProp, stat: MlbPropStatDef, side: PropDirection, p
   };
 }
 
-function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendGraded, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; logs: MlbChartLog[]; season: number; startUtc?: string; blendVerdict?: string | null; blendGraded?: number; onOpen: () => void }) {
+function MlbCard({ row, stat, side, startUtc, blendVerdict, blendGraded, frozen, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; startUtc?: string; blendVerdict?: string | null; blendGraded?: number; frozen?: FrozenPrices; onOpen: () => void }) {
   const { player, priced } = row;
   const chance = side === "over" ? priced.probOver : priced.probUnder;
-  const ev = side === "over" ? priced.evOver : priced.evUnder;
+  const modelEv = side === "over" ? priced.evOver : priced.evUnder;
   const best = side === "over" ? row.over : row.under;
-  const other = side === "over" ? row.under : row.over;
-  const splits = mlbSplits(logs, stat, row.point, side, { season, venue: player.venue, opponent: player.opponent.abbreviation, hand: player.opposingHand });
-  const strip = splits.filter((x) => ["l5", "season", "hand"].includes(x.key) || (x.key === "h2h" && x.rate.sampleSize > 0));
+  const value = side === "over" ? row.value.over : row.value.under;
+  const isPriced = !row.projected && !!best;
+  // The edge: ARCHR's, else the books' own no-vig EV; none on a line with no price.
+  const edge = !isPriced ? null : modelEv !== null ? modelEv : (value?.ev ?? null);
+  // The grade from the card's own numbers (no projection spread on MLB, so no distance factor), as the screener grades MLB.
+  const confidence = confidenceOf({
+    archr: chance,
+    marketChance: priced.market ? (side === "over" ? priced.market.probOver : 1 - priced.market.probOver) : null,
+    priceAmerican: isPriced ? best!.priceAmerican : null,
+    rate: [row.l10.hits, row.l10.sampleSize],
+    sampleGames: row.prop.projection.games,
+    blendVerdict: blendVerdict ?? null,
+    alt: false,
+    z: null,
+    side,
+    sport: "mlb",
+  });
+  const role = player.role === "pitcher" ? "SP" : player.battingOrder ? `#${player.battingOrder}` : null;
   return (
-    <PropCard
-      onOpen={onOpen}
+    <PropEdgeCard
+      onSelect={onOpen}
       headshot={[player.headshotUrl]}
       name={player.name}
-      badges={<TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
-      tag={player.role === "pitcher" ? "SP" : player.battingOrder ? `#${player.battingOrder}` : undefined}
       teamLogo={player.team.logoUrl}
       teamAbbr={player.team.abbreviation}
-      sub={
-        <>
-          {player.venue === "home" ? "vs" : "@"}
-          <Logo sources={player.opponent.logoUrl ? [player.opponent.logoUrl] : []} alt={player.opponent.name} fallbackText={player.opponent.abbreviation} size={14} />
-          {player.opponent.abbreviation}
-          {player.role === "batter" && player.opposingStarter && <span className="truncate">· vs {player.opposingStarter.split(" ").at(-1)} ({player.opposingHand ?? "?"})</span>}
-          {startUtc && <span className="shrink-0">· {firstPitch(startUtc)}</span>}
-        </>
-      }
-      value={row.point}
-      unit={stat.shortLabel}
-      under={
-        <>
-          proj <span className="font-mono font-semibold text-foreground">{row.prop.projection.mean.toFixed(stat.key === "outsRecorded" ? 1 : 2)}</span>
-          {row.avgL10 !== null && <> · avg {row.avgL10.toFixed(1)}</>}
-        </>
-      }
-      meter={<HitMeter recent={row.recent} rate={row.l10} />}
-      price={
-        <>
-          {row.projected ? <ArchrLineChip label={`${side === "over" ? "O" : "U"} ${pct(chance)}`} price={fair(chance)} /> : <EvTag value={side === "over" ? row.value.over : row.value.under} />}
-          {row.projected ? null : best ? (
-            <BestPriceChip sideLabel={side === "over" ? "O" : "U"} price={best.priceAmerican} bookKey={best.bookKey} bookName={best.bookName} />
-          ) : (
-            <span className="text-xs text-muted-foreground">no {side}</span>
-          )}
-          {other && !row.projected && (
-            <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
-              {side === "over" ? "U" : "O"} <span className="font-mono">{formatAmerican(other.priceAmerican)}</span>
-            </span>
-          )}
-        </>
-      }
-      strip={strip.map((x) => (
-        <span key={`${x.key}${x.label}`}>
-          {x.label} <span className={`font-mono font-semibold ${rateTone(x.rate)}`}>{formatRate(x.rate)}</span>
-        </span>
-      ))}
-      stripRight={
-        <>
-          {!row.projected && <ModelChip prob={chance} edge={ev !== null && ev >= MODEL_EV_FLAG} />}
-          <span className={row.projected ? "hidden" : "hidden sm:inline"}>
-            {row.booksAtLine} book{row.booksAtLine === 1 ? "" : "s"}
-            {row.points.length > 1 && ` · ${row.points.length - 1} alt`}
-          </span>
-        </>
-      }
+      label={`${player.name} ${side === "over" ? "Over" : "Under"} ${row.point} ${stat.shortLabel}`}
+      edge={edge}
+      edgeBasis={modelEv !== null ? "archr" : "market"}
+      chance={{ label: "ARCHR", value: chance }}
+      price={isPriced ? best!.priceAmerican : null}
+      book={isPriced ? { key: best!.bookKey, name: best!.bookName } : null}
+      confidence={confidence}
+      frozen={isPriced ? frozen : null}
+      whisper={[
+        row.projected ? "ARCHR's own line, no book line yet" : null,
+        role,
+        `${player.team.abbreviation} ${player.venue === "home" ? "vs" : "@"} ${player.opponent.abbreviation}`,
+        startUtc ? firstPitch(startUtc) : null,
+        trackRecordLabel(blendVerdict, blendGraded),
+      ]
+        .filter(Boolean)
+        .join(" · ")}
     />
   );
 }
@@ -326,7 +307,7 @@ function Sheet({ player, props, logs, season, initialStat, side: initialSide, st
  * chance at the books' line (or its own line before they post). Controls
  * recompute in the browser; tap a player for his sheet.
  */
-export function MlbPropsFinder({ slate }: { slate: MlbPropsSlate }) {
+export function MlbPropsFinder({ slate, frozen = null }: { slate: MlbPropsSlate; frozen?: FrozenPrices }) {
   const [statKey, setStatKey] = useState<MlbPropStat>("hits");
   const [side, setSide] = useState<PropDirection>("over");
   const [sort, setSort] = useState<Sort>("hitRate");
@@ -399,7 +380,7 @@ export function MlbPropsFinder({ slate }: { slate: MlbPropsSlate }) {
           {rows.map((r, i) => (
             <Fragment key={r.player.id}>
               {r.projected && posted > 0 && (i === 0 || !rows[i - 1]!.projected) && <ProjectedDivider />}
-              <MlbCard row={r} stat={stat} side={side} logs={logs[r.player.id] ?? []} season={slate.season} startUtc={gameById.get(r.player.gameId)?.startUtc} blendVerdict={slate.blendVerdicts[statKey]} blendGraded={slate.blendGraded?.[statKey]} onOpen={() => setOpen(r.player.id)} />
+              <MlbCard row={r} stat={stat} side={side} startUtc={gameById.get(r.player.gameId)?.startUtc} blendVerdict={slate.blendVerdicts[statKey]} blendGraded={slate.blendGraded?.[statKey]} frozen={frozen} onOpen={() => setOpen(r.player.id)} />
             </Fragment>
           ))}
         </ul>

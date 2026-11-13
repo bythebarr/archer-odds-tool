@@ -1,5 +1,7 @@
 "use client";
 
+import { nbaSummaryConfidence } from "@/lib/propModel/summaryConfidence";
+
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { NBA_PROP_STATS, NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
@@ -20,7 +22,6 @@ import { AltLinesTable } from "@/components/props/AltLinesTable";
 import { ParlayButton } from "@/components/props/Parlay";
 import type { ParlayLeg } from "@/lib/props/parlay";
 import type { DefenseTable } from "@/lib/nba/matchup";
-import { confidenceOf } from "@/lib/propModel/confidence";
 import { reasonsFor } from "@/lib/nba/standouts";
 import { ConfidencePanel } from "@/components/props/ConfidencePanel";
 
@@ -185,28 +186,10 @@ export function PlayerPropSheet({
   };
 
   // Confidence: how far to trust ARCHR's read of this bet, and why (lib/propModel/confidence).
-  const confidence = useMemo(() => {
-    const m = summary?.model;
-    if (!summary || !m) return null;
-    const over = side === "over";
-    const l10 = summary.hitRates.l10;
-    const rec = l10.sampleSize >= 5 ? l10 : summary.hitRates.season;
-    const quote = over ? summary.over : summary.under;
-    return confidenceOf({
-      archr: over ? m.probOver : m.probUnder,
-      marketChance: m.market ? (over ? m.market.probOver : 1 - m.market.probOver) : null,
-      priceAmerican: summary.projected ? null : (quote?.priceAmerican ?? null),
-      rate: [rec.hits, rec.sampleSize],
-      sampleGames: m.projection.games,
-      blendVerdict: blendVerdicts[prop.stat] ?? null,
-      injury: player.injury?.level ?? null,
-      minutes: { projected: m.projection.minutes, recent: summary.avgMinutesL5 },
-      alt: point !== main,
-      z: ((m.projection.mean - point) / Math.max(m.projection.sd, 1e-6)) * (over ? 1 : -1),
-      side,
-      sport: "nba",
-    });
-  }, [summary, side, blendVerdicts, prop.stat, player.injury?.level, point, main]);
+  const confidence = useMemo(
+    () => (summary ? nbaSummaryConfidence(summary, side, { blendVerdict: blendVerdicts[prop.stat] ?? null, injury: player.injury?.level ?? null, alt: point !== main }) : null),
+    [summary, side, blendVerdicts, prop.stat, player.injury?.level, point, main]
+  );
   const priceReasons = useMemo(() => (summary ? reasonsFor(summary, side, statDef, player, logs, season, null) : []), [summary, side, statDef, player, logs, season]);
 
   const statsOffered = NBA_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));

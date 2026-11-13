@@ -1,3 +1,4 @@
+import { getFrozenPrices } from "@/lib/queries/oddsFeed";
 import type { Metadata } from "next";
 import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
@@ -70,7 +71,7 @@ export default async function NbaPropsPage({
         </div>
       ) : (
         <>
-          <NbaPropsFinder slate={toWireSlate(slate)} initial={prefs} initialGame={initialGame} />
+          <NbaPropsFinder slate={toWireSlate(slate)} initial={prefs} initialGame={initialGame} frozen={await getFrozenPrices()} />
           <div className="mt-6">
             <FreshnessStamp freshness={freshness} />
           </div>

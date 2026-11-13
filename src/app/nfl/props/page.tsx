@@ -1,3 +1,4 @@
+import { getFrozenPrices } from "@/lib/queries/oddsFeed";
 import type { Metadata } from "next";
 import { getNflPropsSlate } from "@/lib/queries/nflProps";
 import { getFeedFreshness } from "@/lib/freshness";
@@ -47,7 +48,7 @@ export default async function NflPropsPage({ searchParams }: { searchParams: Pro
         </div>
       ) : (
         <>
-          <NflPropsFinder slate={slate} />
+          <NflPropsFinder slate={slate} frozen={await getFrozenPrices()} />
           <div className="mt-6">
             <FreshnessStamp freshness={freshness} />
           </div>

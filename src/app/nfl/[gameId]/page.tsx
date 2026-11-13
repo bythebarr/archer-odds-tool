@@ -49,7 +49,7 @@ export default async function NflGamePage({
   if (tab === "props") {
     const slate = await getNflPropsSlate();
     propsPanel = slate.props.some((p) => slate.players[p.playerId]?.gameId === gameId) ? (
-      <NflPropsFinder slate={slate} initialGame={gameId} lockGame />
+      <NflPropsFinder slate={slate} initialGame={gameId} lockGame frozen={await getFrozenPrices()} />
     ) : (
       <p className="mt-8 text-center text-sm text-muted-foreground">
         No player props posted for this game yet. Books usually post them a few days before kickoff.

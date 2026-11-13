@@ -1,3 +1,4 @@
+import { getFrozenPrices } from "@/lib/queries/oddsFeed";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getMlbPropsSlate, mlbPropDates } from "@/lib/queries/mlbProps";
@@ -63,7 +64,7 @@ export default async function MlbPropsPage({ searchParams }: { searchParams: Pro
           </EmptyState>
         </div>
       ) : (
-        <MlbPropsFinder key={slate.date} slate={slate} />
+        <MlbPropsFinder key={slate.date} slate={slate} frozen={await getFrozenPrices()} />
       )}
     </SportPage>
   );
