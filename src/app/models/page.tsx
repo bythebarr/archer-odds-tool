@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { getModelCards, type ModelCard } from "@/lib/queries/modelReports";
+import { getScreenerPool } from "@/lib/screener/pool";
+import { boardGradeCounts, type BoardGradeCounts } from "@/lib/propModel/confidenceDiagnosis";
 import { ArchrMark } from "@/components/brand/ArchrMark";
 
 export const metadata: Metadata = {
@@ -145,8 +147,18 @@ function Card({ c }: { c: ModelCard }) {
  * Every ARCHR model's report card, from the latest Model lab run: graded on
  * games it had never seen, with nothing from after the game leaking in.
  */
+/**
+ * Tonight's board by Confidence grade: the grades the screener pools already
+ * carry (lib/pools), counted — nothing is re-graded here. Main lines only.
+ */
+async function boardGrades(): Promise<{ sport: string; counts: BoardGradeCounts }[]> {
+  const sports = ["nba", "nfl"] as const;
+  const pools = await Promise.all(sports.map((s) => getScreenerPool(s, false).catch(() => [])));
+  return sports.map((sport, i) => ({ sport, counts: boardGradeCounts(pools[i]) })).filter((b) => b.counts.total > 0);
+}
+
 export default async function ModelsPage() {
-  const cards = await getModelCards();
+  const [cards, board] = await Promise.all([getModelCards(), boardGrades().catch(() => [])]);
   const bySport = new Map<string, ModelCard[]>();
   for (const c of cards) bySport.set(sportOf(c.model), [...(bySport.get(sportOf(c.model)) ?? []), c]);
   const sports = [...bySport.keys()].sort((a, b) => (SPORT_ORDER.indexOf(a) + 1 || 99) - (SPORT_ORDER.indexOf(b) + 1 || 99));
@@ -190,6 +202,19 @@ export default async function ModelsPage() {
           </p>
         )}
       </div>
+
+      {board.length > 0 && (
+        <p className="mt-4 rounded-xl border border-border bg-card px-3 py-2.5 text-xs leading-relaxed text-muted-foreground" data-testid="board-grades">
+          <span className="font-semibold text-foreground">Confidence on tonight&apos;s board</span> (main lines, as graded on the screener):{" "}
+          {board.map((b, i) => (
+            <span key={b.sport} className="whitespace-nowrap font-mono tabular-nums text-foreground">
+              {i > 0 && " · "}
+              {b.sport.toUpperCase()} A {b.counts.A} · B {b.counts.B} · C {b.counts.C} · D {b.counts.D}
+            </span>
+          ))}
+          . An A (75+) needs a stat whose report card above has passed; without one, the most a prop can score is 70.
+        </p>
+      )}
 
       {cards.length === 0 ? (
         <div className="mt-6 rounded-xl border border-dashed border-border p-6 text-center">

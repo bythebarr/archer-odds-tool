@@ -187,10 +187,13 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
   return { score, grade: gradeOf(score), factors: f };
 }
 
+/** How a grade is shown everywhere: the letter, then the 0–100 score ("B 69"), so a 69 B reads apart from a 60 B. */
+export const gradeLabel = (c: { grade: ConfidenceGrade; score: number }): string => `${c.grade} ${c.score}`;
+
 /** One-line summary of the grade, for a tooltip. */
 export function confidenceSummary(c: Confidence): string {
   const moved = c.factors.filter((x) => x.effect !== 0).sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect));
-  return `Confidence ${c.grade} (${c.score}/100)${moved.length ? ": " + moved.slice(0, 3).map((x) => x.text.split(":")[0]).join("; ") : ""}`;
+  return `Confidence ${gradeLabel(c)}${moved.length ? ": " + moved.slice(0, 3).map((x) => x.text.split(":")[0]).join("; ") : ""}`;
 }
 
 /** The grade as a board row carries it: the full factors live on the player sheet. */
