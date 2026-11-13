@@ -26,7 +26,8 @@ describe("continuous confidence (diagnosis only)", () => {
     expect(distanceEffect(Z_DEGENERATE + 0.1)!.degenerate).toBe(true);
     const live = confidenceOf({ ...base, z: 499421.22 })!;
     const cont = continuousConfidenceOf({ ...base, z: 499421.22 }, null)!;
-    expect(live.factors.find((f) => f.key === "distance")!.effect).toBe(10);
+    // The live scorer carries the same guard since the scoring change (#126).
+    expect(live.factors.find((f) => f.key === "distance")!.effect).toBe(0);
     expect(cont.factors.find((f) => f.key === "distance")!.effect).toBe(0);
   });
 
