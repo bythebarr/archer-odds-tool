@@ -29,6 +29,13 @@ describe("oddsFeedState", () => {
     expect(s).toMatchObject({ frozen: true, reason: "odds quota is used up" });
   });
 
+  it("dates frozen prices from the last real poll even when every paid job is now blocked", () => {
+    const blocked = "blocked: low-credits (last known remaining 17; floor is 20)";
+    const s = oddsFeedState([row("poll-odds-nba", 12 * 24 + 14, blocked), row("poll-odds-nfl", 12 * 24 + 4.3, blocked), row("credits-guardrail", 1, blocked)], now);
+    expect(s.frozen).toBe(true);
+    expect(pricesFromLabel(s.pricesAsOf!)).toBe("Nov 1");
+  });
+
   it("frozen with no paid poll on record", () => {
     expect(oddsFeedState([], now)).toMatchObject({ frozen: true, pricesAsOf: null });
   });
