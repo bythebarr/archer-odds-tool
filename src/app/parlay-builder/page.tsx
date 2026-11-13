@@ -1,5 +1,3 @@
-import { getFrozenPrices, type FrozenPrices } from "@/lib/queries/oddsFeed";
-import { EdgeLineRow } from "@/components/book/EdgeLineRow";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getBuilderPool } from "@/lib/builder/pool";
@@ -19,6 +17,7 @@ import { AutoSubmitForm } from "@/components/screener/AutoSubmitForm";
 import { scopeOptions } from "@/lib/builder/scope";
 import { parseStatList, statTiles } from "@/lib/props/statTiles";
 import { StatTileLinks } from "@/components/props/StatTiles";
+import { ConfidenceChip } from "@/components/props/ConfidencePanel";
 
 /** A render that runs this long has stalled (pools are pre-built: lib/pools): end it rather than let stalled calls pile up. */
 export const maxDuration = 60;
@@ -114,26 +113,47 @@ function Row({ title, children }: { title: string; children: React.ReactNode }) 
   );
 }
 
-/** One leg, edge first: ARCHR edge, then the leg with ARCHR chance and the best price, then confidence. The record lives on the player sheet. */
-function LegRow({ l, frozen }: { l: BuilderLeg; frozen: FrozenPrices }) {
+function LegRow({ l, window, prob }: { l: BuilderLeg; window: BuilderWindow; prob?: number }) {
+  const [h, n] = l.rates[window];
   return (
-    <li>
-      <EdgeLineRow
-        label={l.label}
-        edge={l.priceAmerican !== null ? l.edge : null}
-        chance={{ label: "ARCHR", value: l.archr }}
-        price={l.priceAmerican}
-        book={l.bookName ? { name: l.bookName } : null}
-        confidence={l.confidence}
-        frozen={frozen}
-        whisper={`${l.league} · ${l.eventLabel} · ${startLabel(l.startsAt)}`}
-        href={l.href}
-      />
+    <li className="flex items-start justify-between gap-3 px-3 py-2 text-xs">
+      <div className="min-w-0">
+        <p className="truncate">
+          <span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">{l.league}</span>
+          <Link href={l.href} className="font-semibold text-foreground hover:underline">
+            {l.label}
+          </Link>
+        </p>
+        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          {l.eventLabel} · {startLabel(l.startsAt)}
+        </p>
+      </div>
+      <div className="shrink-0 text-right font-mono">
+        <p className="text-foreground">
+          {l.priceAmerican !== null ? formatAmerican(l.priceAmerican) : "—"}
+          {l.bookName && <span className="ml-1 font-sans text-[10px] text-muted-foreground">{l.bookName}</span>}
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {h}/{n}
+          {l.archr !== null && <> · ARCHR {pct(l.archr)}</>}
+          {prob !== undefined && (
+            <span title={CAUTIOUS_NOTE}>
+              {" "}
+              · caut. {pct(prob)}
+            </span>
+          )}
+        </p>
+        {l.confidence && (
+          <p className="mt-0.5 flex items-center justify-end gap-1 font-sans text-[10px] text-muted-foreground">
+            Conf. <ConfidenceChip c={l.confidence} />
+          </p>
+        )}
+      </div>
     </li>
   );
 }
 
-function ParlayCard({ p, index, frozen }: { p: BuiltParlay; index: number; frozen: FrozenPrices }) {
+function ParlayCard({ p, window, index }: { p: BuiltParlay; window: BuilderWindow; index: number }) {
   return (
     <li className="rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-3 pt-3">
@@ -158,14 +178,14 @@ function ParlayCard({ p, index, frozen }: { p: BuiltParlay; index: number; froze
       </div>
       <ul className="mt-2 divide-y divide-border border-t border-border">
         {p.legs.map((l) => (
-          <LegRow key={l.id} l={l} frozen={frozen} />
+          <LegRow key={l.id} l={l} window={window} />
         ))}
       </ul>
     </li>
   );
 }
 
-function OptimizedCard({ p, index, target, frozen }: { p: OptimizedParlay; index: number; target: number; frozen: FrozenPrices }) {
+function OptimizedCard({ p, window, index, target }: { p: OptimizedParlay; window: BuilderWindow; index: number; target: number }) {
   // EDGE comes from ARCHR chance only (lib/propModel/canonical); the cautious product ranks, it isn't priced.
   const edge = edgeFromChance(p.archr, p.priceAmerican);
   return (
@@ -199,7 +219,7 @@ function OptimizedCard({ p, index, target, frozen }: { p: OptimizedParlay; index
       </div>
       <ul className="mt-2 divide-y divide-border border-t border-border">
         {p.legs.map((l) => (
-          <LegRow key={l.id} l={l} frozen={frozen} />
+          <LegRow key={l.id} l={l} window={window} prob={l.prob} />
         ))}
       </ul>
     </li>
@@ -217,7 +237,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
   const params = await searchParams;
   await refreshOnView([["sync-injuries", 20], ["espn-props", 30], ["espn-odds", 30]]);
   const o = readOptions(params);
-  const [pool, frozen] = await Promise.all([getBuilderPool(), getFrozenPrices()]);
+  const pool = await getBuilderPool();
   // The Game and Team menus; a pick that's no longer on the board (or outside the sports chosen) is dropped.
   const scope = scopeOptions(pool, o.sports, o.game);
   if (o.game && !scope.games.some((g) => g.id === o.game)) o.game = undefined;
@@ -470,7 +490,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
           ) : (
             <ul className="mt-3 flex flex-col gap-3">
               {optimized.parlays.map((p, i) => (
-                <OptimizedCard key={p.legs.map((l) => l.id).join("|")} p={p} index={i} target={o.pay} frozen={frozen} />
+                <OptimizedCard key={p.legs.map((l) => l.id).join("|")} p={p} window={o.window} index={i} target={o.pay} />
               ))}
             </ul>
           )}
@@ -489,7 +509,7 @@ export default async function ParlayBuilderPage({ searchParams }: { searchParams
         ) : (
           <ul className="mt-3 flex flex-col gap-3">
             {parlays.map((p, i) => (
-              <ParlayCard key={p.legs.map((l) => l.id).join("|")} p={p} index={i} frozen={frozen} />
+              <ParlayCard key={p.legs.map((l) => l.id).join("|")} p={p} window={o.window} index={i} />
             ))}
           </ul>
         )}

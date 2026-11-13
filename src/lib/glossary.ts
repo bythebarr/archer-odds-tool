@@ -202,26 +202,6 @@ export const GLOSSARY: GlossaryEntry[] = [
     category: "model",
   },
   {
-    id: "report-card",
-    term: "Report card: Trusted, Marginal, Thin, Not graded yet",
-    short: "Every model's standing on /models, in four words. Trusted: beats a no-skill baseline by a real margin on games it never saw. Marginal: graded, but not beating that baseline by a real margin (some sit below it; its card says how far). Thin: too few graded outcomes to judge. Not graded yet: no report card at all.",
-    long: "A chip like \"Marginal · 412 graded\" on a row is that model's standing and how many outcomes it was graded on. Only Trusted earns a bet a place on the card.",
-    category: "model",
-  },
-  {
-    id: "confidence-grade",
-    term: "Confidence (A–D and 0–100)",
-    short: "How far to trust ARCHR's chance and edge on one bet, not a chance itself: B · 62 reads grade B, 62 out of 100. The player sheet lists every factor that moved it.",
-    long: "Grades are not yet validated: until settled bets show higher grades win more, they're marked with a dotted underline.",
-    category: "model",
-  },
-  {
-    id: "frozen-prices",
-    term: "Prices from (a date)",
-    short: "The multi-book odds feed isn't updating, so the prices and edges shown are from that date and greyed out. A greyed edge is history, not a bet you can take now.",
-    category: "odds",
-  },
-  {
     id: "era",
     term: "ERA",
     short: "Earned run average — the runs a pitcher allows per 9 innings. Lower is better.",

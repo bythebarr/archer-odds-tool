@@ -6,11 +6,11 @@ import { Logo } from "@/components/Logo";
 import { InfoTip } from "@/components/InfoTip";
 import type { PropBoard as PropBoardData, PropBoardRow, PropLineCells } from "@/lib/props/boardTypes";
 import type { PropHitRateResult } from "@/lib/props/hitRate";
+import type { PropProjection } from "@/lib/props/projection";
 import type { FeedFreshness } from "@/lib/freshness";
 import { CANONICAL_NUMBERS } from "@/lib/propModel/canonical";
 import { EmptyState } from "@/components/EmptyState";
 import { FreshnessStamp } from "@/components/FreshnessStamp";
-import { EdgeLineList, EdgeLineRow } from "@/components/book/EdgeLineRow";
 
 function cellsForLine(row: PropBoardRow, line: number): PropLineCells | undefined {
   return row.lines.find((l) => l.line === line);
@@ -20,9 +20,54 @@ function pct(r: PropHitRateResult | null | undefined): number | null {
   return r && r.hitRate !== null ? r.hitRate : null;
 }
 
+/** Color by strength — the % itself carries the info, so color is a redundant cue only. */
+function rateClass(hitRate: number | null): string {
+  if (hitRate === null) return "text-muted-foreground/50";
+  if (hitRate >= 0.7) return "text-emerald-600 dark:text-emerald-400 font-semibold";
+  if (hitRate >= 0.55) return "text-foreground";
+  return "text-muted-foreground";
+}
 
+function RateCell({ result }: { result: PropHitRateResult | null | undefined }) {
+  const rate = pct(result);
+  if (rate === null) {
+    return <span className="tabular-nums text-muted-foreground/50">—</span>;
+  }
+  return (
+    <span className="inline-flex flex-col items-end leading-tight">
+      <span className={`tabular-nums text-sm ${rateClass(rate)}`}>{Math.round(rate * 100)}%</span>
+      <span className="tabular-nums text-[10px] text-muted-foreground/70">
+        {result!.hits}/{result!.sampleSize}
+      </span>
+    </span>
+  );
+}
 
+/** Color the projection by its GAP over the field's rate — that's the signal, not the raw %. */
+function projClass(gap: number | null): string {
+  if (gap === null) return "text-muted-foreground/50";
+  if (gap >= 0.08) return "text-emerald-600 dark:text-emerald-400 font-semibold";
+  if (gap >= 0.03) return "text-foreground font-medium";
+  if (gap <= -0.03) return "text-rose-500/80 dark:text-rose-400/80";
+  return "text-muted-foreground";
+}
 
+/** The hit-rate projection cell (lib/props/projection): next-game probability regressed from the season record, + its gap vs the field's rate (a record-vs-record difference — no price involved, so it is NOT an edge in ARCHR's sense). NOT ARCHR chance — see canonical.ts. */
+function ProjCell({ projection }: { projection: PropProjection | null | undefined }) {
+  if (!projection) {
+    return <span className="tabular-nums text-muted-foreground/50">—</span>;
+  }
+  const gap = projection.edgeVsBase; // a probability gap vs the field's rate, not a priced edge
+  return (
+    <span className="inline-flex flex-col items-end leading-tight">
+      <span className={`tabular-nums text-sm ${projClass(gap)}`}>{Math.round(projection.probability * 100)}%</span>
+      <span className="tabular-nums text-[10px] text-muted-foreground/70">
+        {gap >= 0 ? "+" : ""}
+        {Math.round(gap * 100)} vs field rate
+      </span>
+    </span>
+  );
+}
 
 const PROJ_SORT_KEY = "__proj";
 
@@ -160,42 +205,75 @@ export function PropBoard({
           Hit rates are built from the day&apos;s player game logs.
         </EmptyState>
       ) : (
-        <>
-          <nav aria-label="Sort" className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="font-semibold uppercase tracking-wide text-muted-foreground">Sort</span>
-            {[{ key: PROJ_SORT_KEY, label: CANONICAL_NUMBERS.hitRateProjection.shortLabel }, ...board.columns].map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                onClick={() => setSortCol(c.key)}
-                aria-pressed={sortCol === c.key}
-                className={`rounded-full px-2.5 py-1 font-semibold transition-colors ${sortCol === c.key ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground"}`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </nav>
-          <EdgeLineList className="mt-2">
-            {rows.map(({ row, projection }) => (
-              <EdgeLineRow
-                key={row.id}
-                leading={
-                  <Logo
-                    sources={row.entityImageUrl ? [row.entityImageUrl] : []}
-                    alt={row.entityName}
-                    fallbackText={row.entityName.split(" ").map((p) => p[0]).slice(0, 2).join("")}
-                    size={28}
-                  />
-                }
-                label={`${row.entityName} Over ${activeLine} ${activeStat?.label ?? ""}`.trim()}
-                edge={null}
-                chance={{ label: CANONICAL_NUMBERS.hitRateProjection.shortLabel, value: projection?.probability ?? null }}
-                whisper={[row.meta, "no book price yet, so no edge"].filter(Boolean).join(" · ")}
-                href={row.sport === "mlb" ? `/props/${row.entityId}` : undefined}
-              />
-            ))}
-          </EdgeLineList>
-        </>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[560px] border-collapse text-right">
+            <thead>
+              <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                <th className="py-2 pr-2 text-left font-medium">Player</th>
+                <th
+                  className="px-2 py-2 font-semibold text-foreground"
+                  title="Hit-rate projection: a separate engine — next-game hit probability regressed from the player's season record toward the field (backtested, unlike raw recent hit-rate). It is NOT ARCHR chance: no market blend and no book price go into it."
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSortCol(PROJ_SORT_KEY)}
+                    className={`hover:text-foreground ${sortCol === PROJ_SORT_KEY ? "text-foreground underline decoration-dotted underline-offset-4" : ""}`}
+                  >
+                    {CANONICAL_NUMBERS.hitRateProjection.shortLabel}
+                  </button>
+                </th>
+                {board.columns.map((c) => (
+                  <th key={c.key} className="px-2 py-2 font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setSortCol(c.key)}
+                      className={`hover:text-foreground ${sortCol === c.key ? "text-foreground underline decoration-dotted underline-offset-4" : ""}`}
+                    >
+                      {c.label}
+                    </button>
+                  </th>
+                ))}
+                <th className="px-2 py-2 font-medium" title="Live-odds EV lights up here once paid props coverage is on">
+                  EV
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ row, cells, projection }, i) => (
+                <tr key={row.id} className="border-b border-border/40 hover:bg-accent/40">
+                  <td className="py-2 pr-2 text-left">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-4 shrink-0 tabular-nums text-xs text-muted-foreground/60">{i + 1}</span>
+                      <Logo
+                        sources={row.entityImageUrl ? [row.entityImageUrl] : []}
+                        alt={row.entityName}
+                        fallbackText={row.entityName.split(" ").map((p) => p[0]).slice(0, 2).join("")}
+                        size={30}
+                      />
+                      <span className="flex flex-col leading-tight">
+                        <span className="text-sm font-medium text-foreground">{row.entityName}</span>
+                        {row.meta && <span className="text-[11px] text-muted-foreground">{row.meta}</span>}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2">
+                    <ProjCell projection={projection} />
+                  </td>
+                  {board.columns.map((c) => (
+                    <td key={c.key} className="px-2 py-2">
+                      <RateCell result={cells?.[c.key]} />
+                    </td>
+                  ))}
+                  <td className="px-2 py-2">
+                    <span className="tabular-nums text-xs text-muted-foreground/40" title="Paid props-odds EV coming">
+                      —
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

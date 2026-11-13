@@ -14,7 +14,6 @@ import { InfoTip } from "@/components/InfoTip";
 import { SportRail } from "@/components/SportRail";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 import { getReportedGraded, getReportedVerdicts } from "@/lib/queries/modelTrust";
-import { getFrozenPrices } from "@/lib/queries/oddsFeed";
 import { trustVerdict } from "@/lib/engine";
 
 // Fed by the daily result/schedule syncs, so the board changes day to day —
@@ -58,7 +57,6 @@ export default async function SlatePage({
 
   // Only fetch the active tab's data — the tabs are independent queries. The
   // Value tab also pulls the day's UFC bouts for the strip beside the pool.
-  const frozen = await getFrozenPrices();
   const [pool, ufcStrip, verdicts, graded] =
     tab === "value"
       ? await Promise.all([getOddsPoolForDate(date), getUfcSlateItems(date), getReportedVerdicts(), getReportedGraded()])
@@ -135,7 +133,6 @@ export default async function SlatePage({
               freshness={freshness}
               modelVerdicts={{ mlb: verdictOf("mlb"), tennis: verdictOf("tennis"), soccer: verdictOf("soccer") }}
               modelGraded={graded ?? undefined}
-              frozen={frozen}
             />
           </>
         ) : (
