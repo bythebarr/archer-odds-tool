@@ -54,9 +54,7 @@ const GRACE_MINUTES = determineTier(null).intervalMinutes;
 
 export function oddsFeedState(rows: PollRow[], now: Date = new Date()): OddsFeedState {
   const paid = rows.filter((r) => (PAID_ODDS_JOBS as readonly string[]).includes(r.jobName));
-  // A blocked job keeps lastPolledAt at its last real poll (pollingPolicy stamps only the status), so it dates the prices; a
-  // job whose last run errored is left out.
-  const ok = paid.filter((r) => !r.lastStatus.toLowerCase().startsWith("error"));
+  const ok = paid.filter((r) => !r.lastStatus.toLowerCase().startsWith("error") && !r.lastStatus.toLowerCase().startsWith("blocked"));
   const pricesAsOf = ok.length ? new Date(Math.max(...ok.map((r) => r.lastPolledAt.getTime()))) : null;
 
   const guardrail = rows.find((r) => r.jobName === CREDITS_GUARDRAIL_JOB);
