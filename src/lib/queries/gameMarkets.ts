@@ -25,11 +25,12 @@ export async function getGameOffers(sport: "nba" | "nfl", gameId: string, mainLi
       bookKey: r.bookKey,
       bookName: r.book.displayName,
       priceAmerican: r.priceAmerican,
+      polledAt: r.polledAt.toISOString(),
     })),
     ...mainLines.flatMap((l): LineQuote[] => {
       const kind = MAIN_KIND[l.marketType];
       if (!kind || l.isAlternate) return [];
-      return [{ period: "game", kind, side: l.side, team: "", point: l.point ?? 0, bookKey: l.bookKey, bookName: l.bookName, priceAmerican: l.priceAmerican }];
+      return [{ period: "game", kind, side: l.side, team: "", point: l.point ?? 0, bookKey: l.bookKey, bookName: l.bookName, priceAmerican: l.priceAmerican, polledAt: l.polledAt.toISOString() }];
     }),
   ];
   return buildOffers(

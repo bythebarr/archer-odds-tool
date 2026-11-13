@@ -104,10 +104,10 @@ export default async function SportBoardPage({ params }: { params: Promise<{ spo
                 All {b.league.upcoming} ›
               </Link>
             </div>
-            <AllSportListHeader threeWay={threeWay} noSpread={noSpread} />
+            <AllSportListHeader threeWay={threeWay} noSpread={noSpread} vs />
             <div className="space-y-2">
               {b.events.slice(0, 6).map((e) => (
-                <AllSportEventRow key={e.id} event={e} sport={sport} threeWay={threeWay} noSpread={noSpread} />
+                <AllSportEventRow key={e.id} event={e} sport={sport} threeWay={threeWay} noSpread={noSpread} vs />
               ))}
             </div>
           </section>
