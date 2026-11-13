@@ -46,6 +46,12 @@ async function main() {
     console.log(`     error ${m.error ?? "none"}`);
     console.log(`     chunks ${chunks.length} (rows ${chunks.reduce((a, c) => a + c.rows, 0)}; newest chunk ${chunkBuilt.length ? age(new Date(Math.max(...chunkBuilt)), now) : "—"})`);
     console.log(`     game dates (ET) in its rows: ${[...dates].sort().map(([d, n]) => `${d}:${n}`).join(" ") || "—"}`);
+    // Pages read each chunk through unstable_cache, whose entries are capped at 2 MB on Vercel.
+    const sizes = chunks
+      .map((c) => ({ key: c.key.slice(key.length + 1), mb: Buffer.byteLength(JSON.stringify(c.data ?? null)) / 1_048_576 }))
+      .filter((c) => c.mb > 0.01)
+      .sort((a, b) => a.key.localeCompare(b.key));
+    console.log(`     chunk sizes: ${sizes.map((c) => `${c.key} ${c.mb.toFixed(2)} MB${c.mb > 2 ? " (OVER the 2 MB cache cap)" : ""}`).join(" · ") || "all empty"}`);
   }
 
   console.log("\n═══ 2. Builds, timed with no deadline (nothing written) ═══");
