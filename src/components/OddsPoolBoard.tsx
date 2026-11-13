@@ -1,20 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import type { OddsPool, OddsPlay, MarketKind } from "@/lib/queries/oddsPool";
 import type { SlateSport } from "@/lib/queries/slate";
 import { CompetitorAvatar } from "./dashboard/CompetitorAvatar";
 import { Logo } from "./Logo";
-import { BookBadge } from "./BookBadge";
 import { playerLogoSources } from "@/lib/logos";
 import { decimalToAmerican, formatAmerican } from "@/lib/odds/americanOdds";
-import { formatEv, evColorClass } from "@/lib/odds/format";
 import { InfoTip } from "./InfoTip";
 import { useSlip, buildSlipPickId, type SlipPick, type SlipSport } from "@/lib/slip/SlipContext";
 import type { FeedFreshness } from "@/lib/freshness";
 import { EmptyState } from "./EmptyState";
-import { TrackRecordChip } from "./TrackRecordChip";
+import { trackRecordLabel } from "@/lib/modelBadge";
+import type { FrozenPrices } from "@/lib/queries/oddsFeed";
+import { EdgeLineRow } from "./book/EdgeLineRow";
 import { FreshnessStamp } from "./FreshnessStamp";
 // Sport label/icon comes from the shared client-safe meta list (the ONE source),
 // so this board's chips can't drift from nav/the Slate.
@@ -96,13 +95,9 @@ function SlipToggle({ play }: { play: OddsPlay }) {
 
 type Lens = "market" | "model";
 
-const VALUE_TITLE: Record<Lens, string> = {
-  market: "EV of this price vs the de-vigged market consensus",
-  model: "EV of this price vs the ARCHR Edge model's own probability",
-};
 const EMPTY_TITLE: Record<Lens, string> = {
-  market: "Three-way market — no fair-price value yet",
-  model: "No ARCHR Edge model for this play — MLB game lines only",
+  market: "three-way market, no fair price yet",
+  model: "no ARCHR read on this play",
 };
 
 function PlayRow({
@@ -111,83 +106,55 @@ function PlayRow({
   lens,
   modelVerdict,
   modelGraded,
+  frozen,
 }: {
   play: OddsPlay;
   value: number | null;
   lens: Lens;
-  /** The model's calibration verdict (reported first, baked fallback) — drives the provenance badge. */
+  /** The model's calibration verdict (reported first, baked fallback): its report card rides in the whisper line. */
   modelVerdict: string | null;
   /** Outcomes that model's report card was graded on. */
   modelGraded?: number;
+  frozen: FrozenPrices;
 }) {
   const matchup =
     play.away.meta && play.home.meta ? `${play.away.meta} @ ${play.home.meta}` : `${play.away.name} @ ${play.home.name}`;
+  const leading =
+    play.kind === "prop" ? (
+      <Logo
+        sources={[play.playerImageUrl ?? "", ...playerLogoSources(play.playerName ?? "")].filter(Boolean)}
+        alt={play.playerName ?? play.selectionLabel}
+        fallbackText={initials(play.playerName ?? "")}
+        size={24}
+      />
+    ) : (
+      <span className="flex items-center -space-x-1.5">
+        <span className={play.backed === null || play.backed === "away" ? "" : "opacity-40 grayscale"}>
+          <CompetitorAvatar sport={play.sport} side={play.away} size={20} />
+        </span>
+        <span className={play.backed === null || play.backed === "home" ? "" : "opacity-40 grayscale"}>
+          <CompetitorAvatar sport={play.sport} side={play.home} size={20} />
+        </span>
+      </span>
+    );
+  // The chance behind the edge: EV = chance × decimal − 1, so chance = (EV + 1) / decimal.
+  const chance = value === null ? null : (value + 1) / play.bestDecimal;
+  const provenance = lens === "model" && play.modelEv !== null ? trackRecordLabel(modelVerdict, modelGraded) : null;
   return (
-    <div className="group flex items-center gap-2.5 rounded-md pl-2 pr-1 transition-colors hover:bg-accent/50">
-      <Link href={play.href} className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5">
-        {play.kind === "prop" ? (
-        <span className="shrink-0">
-          <Logo
-            sources={[play.playerImageUrl ?? "", ...playerLogoSources(play.playerName ?? "")].filter(Boolean)}
-            alt={play.playerName ?? play.selectionLabel}
-            fallbackText={initials(play.playerName ?? "")}
-            size={24}
-          />
-        </span>
-      ) : (
-        <span className="flex shrink-0 items-center -space-x-1.5">
-          <span className={play.backed === null || play.backed === "away" ? "" : "opacity-40 grayscale"}>
-            <CompetitorAvatar sport={play.sport} side={play.away} size={20} />
-          </span>
-          <span className={play.backed === null || play.backed === "home" ? "" : "opacity-40 grayscale"}>
-            <CompetitorAvatar sport={play.sport} side={play.home} size={20} />
-          </span>
-        </span>
-      )}
-
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-foreground">{play.selectionLabel}</span>
-          <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-            <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-semibold uppercase tracking-wide">
-              {KIND_LABEL[play.kind]}
-            </span>
-            {lens === "model" && play.modelEv !== null && <TrackRecordChip verdict={modelVerdict} graded={modelGraded} />}
-            <span className="truncate">
-              {matchup} · {timeLabel(play.startUtc)}
-            </span>
-          </span>
-        </span>
-
-        <span className="w-[84px] shrink-0 text-right" title={`Best price — ${play.bestBookName}${play.booksCount > 1 ? ` (best of ${play.booksCount} books)` : ""}`}>
-          <span className="flex items-center justify-end gap-1">
-            <BookBadge bookKey={play.bestBookKey} bookName={play.bestBookName} size={14} />
-            <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
-              {formatAmerican(play.bestPrice)}
-            </span>
-          </span>
-          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{play.bestBookName}</span>
-        </span>
-
-        <span className="flex w-12 shrink-0 justify-end">
-          {value !== null && value > 0 ? (
-            <span
-              className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-400"
-              title={VALUE_TITLE[lens]}
-            >
-              {formatEv(value)}
-            </span>
-          ) : (
-            <span
-              className={`px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums ${evColorClass(value)}`}
-              title={value === null ? EMPTY_TITLE[lens] : VALUE_TITLE[lens]}
-            >
-              {value === null ? "—" : formatEv(value)}
-            </span>
-          )}
-        </span>
-      </Link>
-      <SlipToggle play={play} />
-    </div>
+    <EdgeLineRow
+      className="rounded-md transition-colors hover:bg-accent/50"
+      leading={leading}
+      label={play.selectionLabel}
+      edge={value}
+      edgeBasis={lens === "model" ? "archr" : "market"}
+      chance={{ label: lens === "model" ? "ARCHR" : "Fair", value: chance }}
+      price={play.bestPrice}
+      book={{ key: play.bestBookKey, name: play.bestBookName }}
+      frozen={frozen}
+      whisper={[value === null ? EMPTY_TITLE[lens] : null, KIND_LABEL[play.kind], matchup, timeLabel(play.startUtc), provenance].filter(Boolean).join(" · ")}
+      href={play.href}
+      action={<SlipToggle play={play} />}
+    />
   );
 }
 
@@ -196,6 +163,7 @@ export function OddsPoolBoard({
   freshness,
   modelVerdicts,
   modelGraded,
+  frozen = null,
 }: {
   pool: OddsPool;
   freshness?: FeedFreshness;
@@ -203,6 +171,8 @@ export function OddsPoolBoard({
   modelVerdicts?: Record<string, string | null>;
   /** Model key → outcomes its latest report card was graded on. */
   modelGraded?: Record<string, number>;
+  /** Set while the odds feed is frozen: rows grey their edges and date them. */
+  frozen?: FrozenPrices;
 }) {
   const [sport, setSport] = useState<SlateSport | "all">("all");
   const [kind, setKind] = useState<MarketKind | "all">("all");
@@ -447,6 +417,7 @@ export function OddsPoolBoard({
                 lens={lens}
                 modelVerdict={modelVerdicts?.[play.sport] ?? null}
                 modelGraded={modelGraded?.[play.sport]}
+                frozen={frozen}
               />
             ))}
           </div>

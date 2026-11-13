@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { MarketType } from "@/generated/prisma/client";
 import { getLeagueDays, getLeagueEvents, type EventPrice } from "@/lib/queries/lobby";
 import { getValueNbaProps } from "@/lib/queries/nbaProps";
@@ -10,9 +9,10 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import type { SlipSport } from "@/lib/slip/SlipContext";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
-import { BookBadge } from "@/components/BookBadge";
-import { EvTag } from "@/components/EvTag";
-import { PriceButton } from "./PriceButton";
+import { americanToDecimal } from "@/lib/odds/americanOdds";
+import { getFrozenPrices } from "@/lib/queries/oddsFeed";
+import { EdgeLineList, EdgeLineRow } from "./EdgeLineRow";
+import { SlipAddButton } from "./SlipAddButton";
 
 /** One flagged price on the board: a game line or moneyline that goes straight to the slip, or a prop that opens its sheet. */
 type ValuePlay =
@@ -109,7 +109,7 @@ async function collectValuePlays(today: string, limit: number): Promise<ValuePla
         kind: "prop",
         key: `${p.playerId}:${p.stat}:${p.side}`,
         label: `${p.playerName} ${p.side === "over" ? "O" : "U"} ${p.point} ${p.statShort}`,
-        sub: `${p.matchup} · ${p.hits}/${p.sample} L10`,
+        sub: p.matchup,
         href: `/nba/${p.gameId}?tab=props&stat=${p.stat}&side=${p.side}`,
         price: p.priceAmerican,
         bookKey: p.bookKey,
@@ -130,10 +130,13 @@ export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: 
   // site (both prop slates). A failure here renders nothing and logs —
   // the same pattern as the all-sports section — instead of blanking
   // the whole lobby behind the root error screen.
-  const plays = await collectValuePlays(today, limit).catch((err) => {
-    console.error("[home] value board failed", err);
-    return [] as ValuePlay[];
-  });
+  const [plays, frozen] = await Promise.all([
+    collectValuePlays(today, limit).catch((err) => {
+      console.error("[home] value board failed", err);
+      return [] as ValuePlay[];
+    }),
+    getFrozenPrices(),
+  ]);
 
   if (plays.length === 0) return null;
   return (
@@ -145,41 +148,38 @@ export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: 
           </span>
           <div>
             <h2 className="font-display text-xl font-extrabold uppercase italic leading-none tracking-tight text-foreground">Best value</h2>
-            <p className="mt-1 text-[11px] text-muted-foreground">Prices beating the market&apos;s no-vig fair price</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">Prices beating the market&apos;s no-vig fair price, biggest edge first</p>
           </div>
         </div>
       </div>
-      <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-        {plays.map((p) => (
-          <li key={p.key} className="flex items-center gap-3 px-3 py-2.5">
-            <Glyph name={p.kind === "prop" ? "props" : p.sport} className="size-5 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-semibold text-foreground">{p.label}</p>
-              <p className="truncate text-[11px] text-muted-foreground">{p.sub}</p>
-            </div>
-            {p.kind === "line" ? (
-              <div className="w-[4.75rem] shrink-0 pt-1.5">
-                <PriceButton
-                  price={p.price}
-                  label={p.buttonLabel}
-                  sport={p.sport}
-                  matchId={p.matchId}
-                  matchLabel={p.matchLabel}
-                  marketType={p.marketType}
-                  side={p.side}
-                  selectionLabel={p.label}
-                />
-              </div>
-            ) : (
-              <Link href={p.href} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-muted px-2 py-1.5 hover:bg-muted-foreground/15">
-                <EvTag value={{ ev: p.ev, fairAmerican: p.fairAmerican, booksUsed: p.booksUsed }} />
-                <span className="font-mono text-[13px] font-semibold text-foreground">{formatAmerican(p.price)}</span>
-                <BookBadge bookKey={p.bookKey} bookName={BOOK_NAMES[p.bookKey] ?? p.bookKey} size={18} />
-              </Link>
-            )}
-          </li>
-        ))}
-      </ul>
+      <EdgeLineList>
+        {plays.map((p) => {
+          const price = p.kind === "line" ? p.price.priceAmerican : p.price;
+          const book = p.kind === "line" ? { key: p.price.bookKey, name: p.price.bookName } : { key: p.bookKey, name: BOOK_NAMES[p.bookKey] ?? p.bookKey };
+          return (
+            <EdgeLineRow
+              key={p.key}
+              leading={<Glyph name={p.kind === "prop" ? "props" : p.sport} className="size-5 text-muted-foreground" />}
+              label={p.label}
+              edge={p.ev}
+              edgeBasis="market"
+              chance={{ label: "Fair", value: (p.ev + 1) / americanToDecimal(price) }}
+              price={price}
+              book={book}
+              frozen={frozen}
+              whisper={p.sub}
+              href={p.kind === "prop" ? p.href : undefined}
+              action={
+                p.kind === "line" ? (
+                  <SlipAddButton
+                    line={{ sport: p.sport, matchId: p.matchId, matchLabel: p.matchLabel, selectionLabel: p.label, marketType: p.marketType, side: p.side, point: p.price.point, bookKey: p.price.bookKey, bookName: p.price.bookName, priceAmerican: p.price.priceAmerican, ev: p.ev }}
+                  />
+                ) : undefined
+              }
+            />
+          );
+        })}
+      </EdgeLineList>
     </section>
   );
 }

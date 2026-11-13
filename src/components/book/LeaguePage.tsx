@@ -1,3 +1,4 @@
+import { getFrozenPrices } from "@/lib/queries/oddsFeed";
 import { getLeagueDays, getLeagueEvents } from "@/lib/queries/lobby";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { sportMetaByKey } from "@/lib/engine/sportsMeta";
@@ -49,7 +50,7 @@ export async function LeaguePage({ sport, dateParam }: { sport: TeamLeagueSport;
   const today = todayEt();
   const [days, freshness] = await Promise.all([getLeagueDays(sport, today), getFeedFreshness(FEED[sport])]);
   const date = dateParam && isValidEtDate(dateParam) ? dateParam : (days[0] ?? today);
-  const events = await getLeagueEvents(sport, date);
+  const [events, frozen] = await Promise.all([getLeagueEvents(sport, date), getFrozenPrices()]);
   const label = sportMetaByKey[sport].label;
 
   return (
@@ -77,7 +78,7 @@ export async function LeaguePage({ sport, dateParam }: { sport: TeamLeagueSport;
             <EventListHeader />
             <div className="flex flex-col gap-2.5">
               {events.map((e) => (
-                <EventRow key={e.id} event={e} sport={sport} />
+                <EventRow key={e.id} event={e} sport={sport} frozen={frozen} />
               ))}
             </div>
           </div>

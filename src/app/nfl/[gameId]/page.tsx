@@ -1,3 +1,4 @@
+import { getFrozenPrices } from "@/lib/queries/oddsFeed";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTeamGameWithLines } from "@/lib/queries/teamLeagueGames";
@@ -66,7 +67,7 @@ export default async function NflGamePage({
       modelPanel={modelView ? <TeamBreakdown sport="nfl" view={modelView} /> : null}
       marketBoard={
         offers.length > 0 ? (
-          <GameMarketBoard offers={offers} teams={{ home: team(result.game.homeTeam), away: team(result.game.awayTeam) }} sport="nfl" matchId={gameId} />
+          <GameMarketBoard offers={offers} teams={{ home: team(result.game.homeTeam), away: team(result.game.awayTeam) }} sport="nfl" matchId={gameId} frozen={await getFrozenPrices()} />
         ) : undefined
       }
       sport="nfl"

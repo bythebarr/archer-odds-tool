@@ -1,3 +1,4 @@
+import { getFrozenPrices } from "@/lib/queries/oddsFeed";
 import type { Metadata } from "next";
 import { cache } from "react";
 import Link from "next/link";
@@ -64,7 +65,7 @@ export default async function AllSportEventPage({ params }: { params: Params }) 
           Every market
         </SectionTitle>
         {view.offers.length > 0 ? (
-          <GameMarketBoard offers={view.offers} teams={teams} sport="all" matchId={view.id} />
+          <GameMarketBoard offers={view.offers} teams={teams} sport="all" matchId={view.id} frozen={await getFrozenPrices()} />
         ) : (
           <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">No prices posted yet — books usually hang this a day or two out.</p>
         )}
