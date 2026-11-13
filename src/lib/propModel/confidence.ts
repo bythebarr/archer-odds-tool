@@ -172,8 +172,8 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
   if (c.blendVerdict === undefined) add("track", 0, "This sport's props come from their own projection model; there's no blend report card to lean on yet.");
   else if (c.blendCard) {
     const e = trackEffect(c.blendCard);
-    const skill = c.blendCard.skill * 1000;
-    add("track", e, `Report card: ${skill >= 0 ? "+" : "−"}${Math.abs(skill).toFixed(1)} skill vs no-skill on ${c.blendCard.n.toLocaleString("en-US")} graded${c.blendCard.n < TRACK_FULL_N ? ` (counts in full at ${TRACK_FULL_N})` : ""}.`);
+    const skill = Math.round(c.blendCard.skill * 10000) / 10;
+    add("track", e, `Report card: ${skill > 0 ? "+" : skill < 0 ? "−" : ""}${Math.abs(skill).toFixed(1)} skill vs no-skill on ${c.blendCard.n.toLocaleString("en-US")} graded${c.blendCard.n < TRACK_FULL_N ? ` (counts in full at ${TRACK_FULL_N})` : ""}.`);
   } else if (c.blendCard === null) add("track", -5, "No report card for this stat yet: nothing graded to lean on.");
   else if (c.blendVerdict === "trusted") add("track", 10, "ARCHR's numbers for this stat have a passing report card on real closing prices.");
   else add("track", -5, "ARCHR's numbers for this stat haven't earned a passing report card yet (see /models for its record).");

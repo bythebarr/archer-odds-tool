@@ -99,7 +99,7 @@ async function board() {
     const byStat = blendVerdictsByStat(sport, verdicts);
     const trusted = Object.entries(byStat).filter(([, v]) => v === "trusted").map(([k]) => k);
     console.log(`\n── ${sport.toUpperCase()} blend report cards: ${Object.entries(byStat).map(([k, v]) => `${k}=${v}`).join(", ") || "none saved"}`);
-    console.log(`   Highest score the rules allow: ${maxPossible(true)} with a passing (trusted) card, ${maxPossible(false)} without. Trusted stats: ${trusted.join(", ") || "NONE — so A (≥ 75) is out of reach for every " + sport.toUpperCase() + " prop"}`);
+    console.log(`   Highest score the rules allow: ${maxPossible(true)} with a passing (trusted) card, ${maxPossible(false)} without. Trusted stats: ${trusted.join(", ") || "NONE — so an A (≥ 75) needs every other factor near its best on every " + sport.toUpperCase() + " prop"}`);
     const rows = (await (sport === "nba" ? nbaScreener() : nflScreener())).filter((r) => r.archr !== null);
     const graded = rows.map((r) => {
       const input = poolConfidenceInput(
