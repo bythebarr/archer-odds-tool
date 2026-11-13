@@ -9,7 +9,10 @@ import { blendVerdictsByStat } from "@/lib/props/provenance";
 import { confidenceOf, gradeOf } from "@/lib/propModel/confidence";
 import { CUTS_LINE, biggestCost, ceiling, factorSummary, gradeCounts, gradesChangedWithout, maxPossible, outcomeTables, scoreHistogram, type BucketStats } from "@/lib/propModel/confidenceDiagnosis";
 import { closingGameLines, teamBaselinesByGame } from "./props/history";
-import { gradedNbaSides } from "./props/nbaGradedSides";
+import { gradedNbaSides, type GradedSide } from "./props/nbaGradedSides";
+import { Z_CAP, Z_DEGENERATE, biggestMovers, continuousConfidenceOf, scoreProfile, separation, tenPointBuckets, type TrackCard } from "@/lib/propModel/confidenceContinuous";
+import type { Confidence, ConfidenceInput } from "@/lib/propModel/confidence";
+import { blendCardKey } from "@/lib/props/provenance";
 
 /**
  * Grade the Confidence grade (lib/propModel/confidence): on every graded NBA
@@ -145,6 +148,95 @@ async function board() {
   }
 }
 
+
+/* ═══ CONTINUOUS-FACTOR DIAGNOSIS (no scoring change) ═══════════════════════
+ * Re-scores the same rows twice: the live factors (confidenceOf) and the
+ * continuous variant (lib/propModel/confidenceContinuous, diagnosis only).
+ * Same BASE, same cuts. Prints the score profile before vs after, the rows
+ * that move most with every factor, the z guard, and the calibration check:
+ * realized ROI by 10-point score bucket on the closing-price backtest. */
+const prof = (label: string, scores: number[]) => {
+  const p = scoreProfile(scores);
+  return `  ${label.padEnd(11)} n=${p.n} · distinct scores ${p.distinct} · max ${p.max} · A ${pct(p.share.A)} (${p.grades.A}) · B ${pct(p.share.B)} (${p.grades.B}) · C ${pct(p.share.C)} (${p.grades.C}) · D ${pct(p.share.D)} (${p.grades.D}) · A reachable: ${p.aReachable ? "YES" : "no"}`;
+};
+const dist = (scores: number[]) => {
+  const b = new Array(10).fill(0);
+  for (const s of scores) b[Math.min(9, Math.floor(s / 10))]++;
+  return "  " + b.map((n, i) => `${i * 10}s:${n}`).join(" ");
+};
+const fx = (c: Confidence) => c.factors.filter((f) => f.effect !== 0).map((f) => `${f.key} ${f.effect > 0 ? "+" : ""}${f.effect}`).join(", ") || "nothing moved";
+
+function beforeAfter(title: string, rows: { label: string; input: ConfidenceInput; card: TrackCard | null }[]) {
+  const scored = rows.flatMap((r) => {
+    const before = confidenceOf(r.input);
+    const after = continuousConfidenceOf(r.input, r.card);
+    return before && after ? [{ row: r, before, after }] : [];
+  });
+  console.log(`\n── ${title}: ${scored.length} rows`);
+  console.log(prof("Current", scored.map((x) => x.before.score)));
+  console.log(prof("Continuous", scored.map((x) => x.after.score)));
+  console.log(`  Score distribution, current:`);
+  console.log(dist(scored.map((x) => x.before.score)));
+  console.log(`  Score distribution, continuous:`);
+  console.log(dist(scored.map((x) => x.after.score)));
+  const degenerate = scored.filter((x) => x.row.input.z != null && (!Number.isFinite(x.row.input.z) || Math.abs(x.row.input.z) > Z_DEGENERATE));
+  console.log(`  z guard: ${degenerate.length} rows have |z| > ${Z_DEGENERATE} (a collapsed projection spread)${degenerate.length ? `; the current factor credits each +10 for "distance" — e.g. ${degenerate[0]!.row.label}, z ${degenerate[0]!.row.input.z}` : ""}. Continuous: no distance credit on these; |z| capped at ${Z_CAP} otherwise.`);
+  console.log(`  The five rows that move most (score current → continuous, with every factor):`);
+  for (const m of biggestMovers(scored, 5)) {
+    console.log(`   ${m.row.label}: ${m.before.grade} ${m.before.score} → ${m.after.grade} ${m.after.score} (${m.after.score - m.before.score >= 0 ? "+" : ""}${(m.after.score - m.before.score).toFixed(1)})`);
+    console.log(`     current:    ${fx(m.before)}`);
+    console.log(`     continuous: ${fx(m.after)}`);
+  }
+  return scored;
+}
+
+const bucketLine = (b: BucketStats) =>
+  `    ${b.label.padEnd(6)} n=${String(b.n).padStart(5)} · ARCHR ${pct(b.meanArchr)} vs hit ${pct(b.hitRate)} · Brier ${b.brier.toFixed(4)} · edge bets ${String(b.edgeBets).padStart(4)}, ROI ${b.edgeRoi === null ? "—" : pct(b.edgeRoi)}`;
+
+function calibration(sides: GradedSide[]) {
+  console.log(`\n\n═══ CONTINUOUS-FACTOR DIAGNOSIS (no scoring change) · same base and cuts: ${CUTS_LINE} ═══`);
+  const rows = sides.map((s) => ({
+    label: `${s.date} ${s.stat} ${s.side}${s.priceAmerican !== null ? ` @ ${s.priceAmerican}` : ""}`,
+    input: { archr: s.pBlend, marketChance: s.marketChance, priceAmerican: s.priceAmerican, rate: s.rate, sampleGames: s.sampleGames, minutes: s.minutes, z: s.z, side: s.side, sport: "nba" } as ConfidenceInput,
+    card: null,
+    won: s.won,
+  }));
+  const scored = beforeAfter("NBA closing-price backtest (report card at the time not reconstructable: track left neutral in both)", rows);
+  for (const which of ["before", "after"] as const) {
+    const outcomes = scored.map((x) => ({ score: x[which].score, archr: x.row.input.archr!, priceAmerican: x.row.input.priceAmerican, won: (x.row as (typeof rows)[number]).won }));
+    console.log(`\n  Calibration, ${which === "before" ? "CURRENT" : "CONTINUOUS"} score — realized ROI of the positive-edge bets at the closing price, by 10-point bucket:`);
+    for (const b of tenPointBuckets(outcomes)) console.log(bucketLine(b));
+    const sep = separation(outcomes);
+    console.log(`  → ${sep.verdict.toUpperCase()}: ${sep.reason}`);
+  }
+}
+
+/** Each blend card's record (skill and graded count), for the continuous track factor. */
+async function trackCards(): Promise<Map<string, TrackCard>> {
+  const rows = await prisma.modelReport.findMany({ where: { model: { startsWith: "market-blend:" } }, orderBy: { createdAt: "desc" }, distinct: ["model"], select: { model: true, n: true, brier: true, baseRateBrier: true } });
+  return new Map(rows.map((r) => [r.model, { skill: r.baseRateBrier - r.brier, n: r.n }]));
+}
+
+async function boardContinuous() {
+  const [verdicts, cards] = await Promise.all([getReportedBlendVerdicts(), trackCards()]);
+  console.log(`\n\n═══ THE FROZEN BOARD, re-scored (live screener rows; prices as the feed last polled them) ═══`);
+  console.log(`  Blend cards on file: ${[...cards].map(([k, c]) => `${k.replace("market-blend:", "")} skill ${(c.skill * 1000).toFixed(1)} on ${c.n}`).join(" · ") || "none"}`);
+  for (const sport of ["nba", "nfl"] as const) {
+    const rows = (await (sport === "nba" ? nbaScreener() : nflScreener())).filter((r) => r.archr !== null && r.main);
+    beforeAfter(
+      `${sport.toUpperCase()} main lines`,
+      rows.map((r) => ({
+        label: `${r.player} ${r.side} ${r.point} ${r.statLabel} (${r.priceAmerican ?? "no price"})`,
+        input: poolConfidenceInput(
+          { sport: r.sport, statKey: r.stat, archr: r.archr, priceAmerican: r.priceAmerican, rate: recordOf(r.rates.l10, r.rates.szn), fallbackGames: r.rates.szn[1] + r.rates.last[1], alt: !r.main, projectedMinutes: r.minutes ?? null, facts: r.facts },
+          verdicts
+        ),
+        card: cards.get(blendCardKey(r.sport, r.stat)) ?? null,
+      }))
+    );
+  }
+}
+
 async function main() {
   let sides;
   try {
@@ -163,6 +255,8 @@ async function main() {
   await live().catch((e) => console.log(`\n(live check skipped: ${e instanceof Error ? e.message : e})`));
   await frozen().catch((e) => console.log(`\n(frozen-grade section skipped: ${e instanceof Error ? e.message : e})`));
   await board().catch((e) => console.log(`\n(board diagnosis skipped: ${e instanceof Error ? e.message : e})`));
+  calibration(sides);
+  await boardContinuous().catch((e) => console.log(`\n(continuous board diagnosis skipped: ${e instanceof Error ? e.message : e})`));
   if (!ok) process.exitCode = 1;
 }
 
