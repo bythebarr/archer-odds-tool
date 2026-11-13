@@ -78,8 +78,6 @@ export interface Cell {
   late: RoiStats;
 }
 
-};
-
 const absZ = (r: ZSample) => Math.abs(r.z!);
 
 /** ROI and bets per fine |z| bucket, both halves. Halves are split over the whole set, so a bucket's halves share dates with every other bucket's. */
