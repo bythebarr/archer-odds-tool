@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getModelCards, type ModelCard } from "@/lib/queries/modelReports";
 import { getScreenerPool } from "@/lib/screener/pool";
 import { boardGradeCounts, type BoardGradeCounts } from "@/lib/propModel/confidenceDiagnosis";
+import { BoardGradesLine } from "@/components/models/BoardGradesLine";
 import { ArchrMark } from "@/components/brand/ArchrMark";
 
 export const metadata: Metadata = {
@@ -203,18 +204,7 @@ export default async function ModelsPage() {
         )}
       </div>
 
-      {board.length > 0 && (
-        <p className="mt-4 rounded-xl border border-border bg-card px-3 py-2.5 text-xs leading-relaxed text-muted-foreground" data-testid="board-grades">
-          <span className="font-semibold text-foreground">Confidence on tonight&apos;s board</span> (main lines, as graded on the screener):{" "}
-          {board.map((b, i) => (
-            <span key={b.sport} className="whitespace-nowrap font-mono tabular-nums text-foreground">
-              {i > 0 && " · "}
-              {b.sport.toUpperCase()} A {b.counts.A} · B {b.counts.B} · C {b.counts.C} · D {b.counts.D}
-            </span>
-          ))}
-          . An A (75+) needs a stat whose report card above has passed; without one, the most a prop can score is 70.
-        </p>
-      )}
+      <BoardGradesLine board={board} />
 
       {cards.length === 0 ? (
         <div className="mt-6 rounded-xl border border-dashed border-border p-6 text-center">
