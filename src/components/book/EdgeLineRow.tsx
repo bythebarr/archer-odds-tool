@@ -38,6 +38,8 @@ export interface EdgeLineRowProps {
   /** Provenance and context, one quiet line: "PHI @ BOS · 7:30 PM · Marginal · 412 graded". */
   whisper?: ReactNode;
   href?: string;
+  /** Instead of a link: open something in place (a bet sheet). Client trees only. */
+  onSelect?: () => void;
   /** A trailing control (add to slip). */
   action?: ReactNode;
   className?: string;
@@ -60,7 +62,7 @@ export function formatEdge(edge: number | null): string {
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
-export function EdgeLineRow({ label, leading, edge, edgeBasis = "archr", chance, price, book, confidence, frozen, whisper, href, action, className = "" }: EdgeLineRowProps) {
+export function EdgeLineRow({ label, leading, edge, edgeBasis = "archr", chance, price, book, confidence, frozen, whisper, href, onSelect, action, className = "" }: EdgeLineRowProps) {
   const isFrozen = Boolean(frozen);
   const numbers: ReactNode[] = [];
   if (chance) numbers.push(<span key="c">{chance.label} {chance.value === null ? "—" : pct(chance.value)}</span>);
@@ -86,7 +88,7 @@ export function EdgeLineRow({ label, leading, edge, edgeBasis = "archr", chance,
         <span className="mt-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">{isFrozen ? `from ${frozen!.asOf}` : "edge"}</span>
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-semibold leading-snug text-foreground">{label}</span>
+        <span className="line-clamp-2 block text-[15px] font-semibold leading-snug text-foreground">{label}</span>
         {numbers.length > 0 && (
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
             {numbers.flatMap((n, i) => (i ? [<span key={`s${i}`} aria-hidden>·</span>, n] : [n]))}
@@ -112,6 +114,10 @@ export function EdgeLineRow({ label, leading, edge, edgeBasis = "archr", chance,
         <Link href={href} className="flex min-w-0 flex-1 items-start gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {body}
         </Link>
+      ) : onSelect ? (
+        <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {body}
+        </button>
       ) : (
         <div className="flex min-w-0 flex-1 items-start gap-3">{body}</div>
       )}
