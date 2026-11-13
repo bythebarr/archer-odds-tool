@@ -34,6 +34,7 @@ on:
           - backtest:confidence
           - audit:factors
           - fit:side-calibration
+          - backtest:soft-book-lag
           - report:tracking
           - backtest:nfl-props
           - backtest:props-market
