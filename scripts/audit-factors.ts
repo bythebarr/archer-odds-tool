@@ -127,6 +127,7 @@ async function main() {
       if (f.kind === "prop") tags.stat = `${f.sport.toUpperCase()} ${f.stat}`;
       if (f.injury !== undefined) tags.injury = f.injury ? `tagged ${f.injury}` : "no tag";
       if (f.alt !== undefined) tags.line = f.alt ? "alt line" : "main line";
+      if (f.confidence) tags.confidence = `grade ${f.confidence.grade}`;
       if (f.standout !== undefined) tags.standout = f.standout ? "made Hottest Tonight" : "didn't";
       if (typeof f.minutes === "number") tags.minutes = minutesTag({ projected: f.minutes, recent: null });
       if (typeof f.z === "number") tags.z = Math.abs(f.z) >= 0.75 ? "projection far from line (|z| ≥ .75)" : Math.abs(f.z) >= 0.35 ? "|z| .35–.75" : "projection near line (|z| < .35)";

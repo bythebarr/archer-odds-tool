@@ -27,6 +27,7 @@ import { getGameModelView } from "@/lib/queries/gameModel";
 import { createPredictionRunBulk, type PredictionInput } from "@/lib/predictions";
 import { LEAN_FEATURE_SCHEMA, TRACKED_MODELS, type LeanFeatures } from "./types";
 import { regimeSnapshot, type RegimeSnapshot } from "./modelStamp";
+import { confidenceOf, type ConfidenceInput } from "@/lib/propModel/confidence";
 
 /** A game is captured once it starts within this many hours. */
 export const CAPTURE_HOURS = 3;
@@ -58,6 +59,12 @@ export function fairOver(quotes: { bookKey: string; side: string; point: number;
 /** De-vigs one pair of prices (the best on each side). */
 const fairPair = (a: number | null | undefined, b: number | null | undefined) => (a == null || b == null ? null : implied(a) / (implied(a) + implied(b)));
 
+/** The grade the product would show for a lean, frozen with it. */
+export function leanConfidence(input: ConfidenceInput): LeanFeatures["confidence"] {
+  const c = confidenceOf(input);
+  return c ? { grade: c.grade, score: c.score } : undefined;
+}
+
 /** NBA props: every main line the standout read prices, on its side (Hottest Tonight's call, cut or not). */
 export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, GameLogPoint[]>, gameIds: Set<string>): Lean[] {
   const quotes = new Map(slate.props.map((p) => [`${p.playerId}|${p.stat}`, p.quotes]));
@@ -69,6 +76,17 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
       return { s, marketChance };
     })
     .flatMap(({ s, marketChance }) => {
+      const player = slate.players[s.playerId];
+      const shared = {
+        sampleGames: s.hit.season[1],
+        blendVerdict: slate.blendVerdicts?.[s.stat] ?? null,
+        injury: player?.injury?.level ?? null,
+        minutes: s.minutes ? { projected: s.minutes, recent: null } : null,
+        z: s.z,
+        side: s.side,
+        sport: "nba",
+      } as const;
+      const record = (l10: [number, number]): [number, number] => (l10[1] >= 5 ? l10 : s.hit.season);
       const main: Lean = {
       eventRef: s.gameId,
       startsAt: new Date(s.startsAt),
@@ -102,6 +120,7 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
         minutes: s.minutes,
         standout: isStandout(s.z, s.rawChance, s.hit.l10),
         alt: false,
+        confidence: leanConfidence({ ...shared, archr: s.chance, marketChance, priceAmerican: s.priceAmerican, rate: record(s.hit.l10), alt: false }),
       },
       };
       if (!s.alt) return [main];
@@ -138,6 +157,7 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
           minutes: s.minutes,
           standout: isStandout(s.z, s.rawChance, s.hit.l10),
           alt: true,
+          confidence: leanConfidence({ ...shared, archr: s.alt.chance, marketChance: null, priceAmerican: s.alt.priceAmerican, rate: record(s.alt.l10), alt: true }),
         },
       };
       return [main, alt];
@@ -176,6 +196,8 @@ export function nflPropLeans(slate: NflPropsSlate, gameIds: Set<string>): Lean[]
     if (side === "over" && stat.shape === "anytime" && marketOver === null && !over.over) continue; // a Yes with no price or market: nothing to judge
     const s = side === "over" ? over : under!;
     const quote = side === "over" ? s.over : s.under;
+    const record = s.splits.find((x) => x.key === "l10" && x.rate.sampleSize >= 5) ?? s.splits.find((x) => x.key === "season");
+    const marketSide = marketOver === null ? null : side === "over" ? marketOver : 1 - marketOver;
     const label = stat.shape === "anytime" ? `${player.name} anytime TD` : `${player.name} ${side === "over" ? "Over" : "Under"} ${s.point} ${stat.shortLabel}`;
     out.push({
       eventRef: game.id,
@@ -200,6 +222,19 @@ export function nflPropLeans(slate: NflPropsSlate, gameIds: Set<string>): Lean[]
         playerId: prop.playerId,
         team: player.team?.abbreviation,
         injury: player.injury?.level ?? null,
+        confidence: leanConfidence({
+          archr: side === "over" ? m.probOver : m.probUnder,
+          marketChance: marketSide,
+          priceAmerican: quote?.priceAmerican ?? null,
+          rate: record ? [record.rate.hits, record.rate.sampleSize] : [0, 0],
+          sampleGames: m.projection.games,
+          blendVerdict: slate.blendVerdicts?.[prop.stat] ?? null,
+          injury: player.injury?.level ?? null,
+          alt: false,
+          z: ((m.projection.mean - s.point) / Math.max(m.projection.sd, 1e-6)) * (side === "over" ? 1 : -1),
+          side,
+          sport: "nfl",
+        }),
       },
     });
   }

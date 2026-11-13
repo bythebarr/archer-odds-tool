@@ -73,6 +73,9 @@ export interface LeanFeatures {
    * false for the main line. Absent on leans captured before alt tracking. */
   alt?: boolean;
   injury?: string | null;
+  /** Props: the Confidence grade (lib/propModel/confidence) as the product showed it when the lean was frozen —
+   * so the grade is checked on real games going forward, not only on replayed closing lines. */
+  confidence?: { grade: "A" | "B" | "C" | "D"; score: number };
 }
 
 export type SettleResult = "hit" | "miss" | "push" | "void";

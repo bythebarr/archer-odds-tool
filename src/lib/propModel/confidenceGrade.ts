@@ -61,7 +61,7 @@ export const MIN_EDGE_BETS = 50;
 const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 
-function stats(label: string, rows: ConfidenceSample[]): GradeStats {
+function stats(label: string, rows: { archr: number; priceAmerican: number | null; won: 0 | 1 }[]): GradeStats {
   const edge = rows.filter((r) => r.priceAmerican !== null && r.archr > implied(r.priceAmerican));
   const profits = edge.map((r) => (r.won ? americanToDecimal(r.priceAmerican!) - 1 : -1));
   const roi = mean(profits);
@@ -84,9 +84,21 @@ export function gradeOfSample(s: ConfidenceSample): ConfidenceGrade {
   return confidenceOf({ archr: s.archr, marketChance: s.marketChance, priceAmerican: s.priceAmerican, rate: s.rate, sampleGames: s.sampleGames, minutes: s.minutes ?? null, z: s.z ?? null, side: s.side, sport: s.sport })!.grade;
 }
 
+/** A side already graded: live tracked leans carry the grade the product showed when they were frozen. */
+export interface GradedSample {
+  archr: number;
+  priceAmerican: number | null;
+  won: 0 | 1;
+  grade: ConfidenceGrade;
+}
+
 export function validateConfidence(samples: ConfidenceSample[]): ConfidenceValidation {
-  const graded = samples.map((s) => ({ s, g: gradeOfSample(s) }));
-  const by = (gs: ConfidenceGrade[]) => graded.filter((x) => gs.includes(x.g)).map((x) => x.s);
+  return validateGraded(samples.map((s) => ({ archr: s.archr, priceAmerican: s.priceAmerican, won: s.won, grade: gradeOfSample(s) })));
+}
+
+/** The verdict over sides whose grade is already known (see validateConfidence for how it's judged). */
+export function validateGraded(samples: GradedSample[]): ConfidenceValidation {
+  const by = (gs: ConfidenceGrade[]) => samples.filter((x) => gs.includes(x.grade));
   const grades = (["A", "B", "C", "D"] as ConfidenceGrade[]).map((g) => stats(g, by([g])));
   const high = stats("A+B", by(["A", "B"]));
   const low = stats("C+D", by(["C", "D"]));

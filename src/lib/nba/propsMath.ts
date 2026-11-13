@@ -13,6 +13,7 @@ import { CALIBRATION_SHRINK, THIN_CALIBRATION_SHRINK, projectMilestone, projectP
 import { NBA_PROP_STAT_BY_KEY } from "./propStats";
 import type { InjuryLevel } from "@/lib/injuries/status";
 import { modelWithheld, priceProp, type PricedProp } from "@/lib/propModel/price";
+import { correctNbaPriced } from "@/lib/propModel/sideCalibration";
 import { tallyPropHits, type PropDirection, type PropHitRateResult } from "@/lib/props/tally";
 import { altLinePoints, type AltLineRow } from "@/lib/props/altLines";
 import type { NbaPropStat } from "@/generated/prisma/client";
@@ -217,7 +218,8 @@ export function summarizeProp(
   const model: PropModel | null = projection
     ? {
         projection,
-        ...priceProp({
+        // The side correction (propModel/sideCalibration): ARCHR ran high on the side it leaned, overs most.
+        ...correctNbaPriced(priceProp({
           rawProbOver: rawOver(projection, point),
           calibrationShrink: projection.thin ? THIN_CALIBRATION_SHRINK : CALIBRATION_SHRINK * (context.calibrationFactor ?? 1),
           injury: context.injury,
@@ -225,7 +227,7 @@ export function summarizeProp(
           modelWeight: context.modelWeight,
           overPrice: over?.priceAmerican ?? null,
           underPrice: under?.priceAmerican ?? null,
-        }),
+        }), over?.priceAmerican ?? null, under?.priceAmerican ?? null),
       }
     : null;
 
