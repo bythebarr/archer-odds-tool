@@ -66,6 +66,7 @@
     "diagnose:db": "tsx scripts/diagnose-db.ts",
     "diagnose:db-watch": "WATCH=1 tsx scripts/diagnose-db.ts",
     "diagnose:screener": "tsx scripts/diagnose-screener.ts",
+    "diagnose:pools": "tsx scripts/diagnose-pools.ts",
     "poll:espn-props": "tsx scripts/poll-espn-props.ts",
     "poll:espn-odds": "tsx scripts/poll-espn-odds.ts",
     "fix:ufc-duplicates:apply": "APPLY=1 tsx scripts/fix-ufc-duplicates.ts",
