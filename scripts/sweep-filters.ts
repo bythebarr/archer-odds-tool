@@ -150,7 +150,9 @@ function sweep(label: string, rows: Row[], minutes: boolean) {
   console.log(`\n  ── Walk-forward: the 10 best on the EARLIER half (${MIN_HALF_PICKS}+ picks), judged on the LATER half — ${wf.heldUp} of ${wf.picked.length} stayed positive`);
   for (const r of wf.picked) console.log(`    ${line(r)}`);
 
-  const chosen = held[0] ?? wf.picked[0];
+  // "Most accurate": the highest hit rate among the sets that held up in both halves.
+  const chosen = [...held].sort((a, b) => (b.all.hitRate ?? 0) - (a.all.hitRate ?? 0))[0] ?? wf.picked[0];
+  if (chosen) console.log(`\n  ── MOST ACCURATE (highest hit rate that held up in both halves): ${chosen.combo.label}\n    ${line(chosen)}`);
   if (chosen) {
     addOns(rows, chosen);
     byStat(rows, chosen);
