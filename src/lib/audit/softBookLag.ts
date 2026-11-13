@@ -3,8 +3,9 @@
  * Question: when Pinnacle moves and a retail ("soft") book hasn't caught up,
  * does betting the stale soft price win?
  *
- * Every poll stores every book's quote at the same `polledAt`, with each
- * book's own `sourceLastUpdate`. A lag bet fires at a poll P on side X when:
+ * Pinnacle and the retail books are polled on different schedules, so each
+ * soft quote at poll P on side X is compared with Pinnacle's latest quote at
+ * or before P (no older than PIN_MAX_AGE_MIN). A lag bet fires when:
  *
  *   1. Pinnacle MOVED toward X since its previous poll:
  *      - same number: its no-vig chance on X rose by ≥ MOVE_PROB; or
@@ -61,6 +62,7 @@ export interface LagBet {
   pointsBetter: number | null;
   /** Pinnacle's no-vig chance on the side after the move (same-number bets). */
   pinFair: number | null;
+  staleBy: StaleBy;
 }
 
 const PAIRS: Record<Market, [SideKey, SideKey]> = { h2h: ["home", "away"], spreads: ["home", "away"], totals: ["over", "under"] };
@@ -86,67 +88,95 @@ function numberMovedToward(m: Market, s: SideKey, before: number, after: number)
   return 0;
 }
 
-/** Every lag bet in one game × market, from all its pre-game quotes (Pinnacle and soft books). */
-export function findLagBets(market: Market, quotes: Quote[]): LagBet[] {
-  const polls = [...new Set(quotes.map((q) => q.polledAt.getTime()))].sort((a, b) => a - b);
-  const byPoll = new Map<number, Quote[]>();
-  for (const q of quotes) (byPoll.get(q.polledAt.getTime()) ?? byPoll.set(q.polledAt.getTime(), []).get(q.polledAt.getTime())!).push(q);
+/** Pinnacle's latest quote must be at most this old at the soft poll: an older one no longer says where the sharp market is. */
+export const PIN_MAX_AGE_MIN = 360;
 
-  const pinPolls: PinPoll[] = [];
-  for (const t of polls) {
-    const pin = byPoll.get(t)!.filter((q) => q.book === SHARP_BOOK);
-    const [a, b] = PAIRS[market];
-    const qa = pin.find((q) => q.side === a);
-    const qb = pin.find((q) => q.side === b);
-    if (!qa || !qb) continue;
-    pinPolls.push({ t, update: Math.max(qa.sourceLastUpdate.getTime(), qb.sourceLastUpdate.getTime()), quotes: new Map([[a, qa], [b, qb]]) });
+/** How a stale soft quote was established: its own update time, or the same quote already on the board before the move. */
+export type StaleBy = "own update time" | "unchanged since before the move";
+
+/** Every lag bet in one game × market, from all its pre-game quotes (Pinnacle and soft books, on any poll schedule). */
+export function findLagBets(market: Market, quotes: Quote[]): LagBet[] {
+  const [a, b] = PAIRS[market];
+  // Pinnacle polls with both sides quoted.
+  const pinByPoll = new Map<number, Map<SideKey, Quote>>();
+  for (const q of quotes.filter((x) => x.book === SHARP_BOOK)) {
+    const t = q.polledAt.getTime();
+    (pinByPoll.get(t) ?? pinByPoll.set(t, new Map()).get(t)!).set(q.side, q);
   }
+  const pinPolls: PinPoll[] = [...pinByPoll]
+    .filter(([, m]) => m.has(a) && m.has(b))
+    .sort((x, y) => x[0] - y[0])
+    .map(([t, m]) => ({ t, update: Math.max(m.get(a)!.sourceLastUpdate.getTime(), m.get(b)!.sourceLastUpdate.getTime()), quotes: m }));
+  if (pinPolls.length < 2) return [];
+
+  // Each soft book × side's quotes in time order, for the "unchanged since before the move" check.
+  const softSeries = new Map<string, Quote[]>();
+  for (const q of quotes.filter((x) => x.book !== SHARP_BOOK)) {
+    const k = `${q.book}|${q.side}`;
+    (softSeries.get(k) ?? softSeries.set(k, []).get(k)!).push(q);
+  }
+  for (const s of softSeries.values()) s.sort((x, y) => x.polledAt.getTime() - y.polledAt.getTime());
 
   const out: LagBet[] = [];
-  const taken = new Set<string>();
-  for (let i = 1; i < pinPolls.length; i++) {
-    const prev = pinPolls[i - 1];
-    const cur = pinPolls[i];
-    const moveAt = cur.update;
-    if (cur.t - moveAt < LAG_WINDOW_MIN * 60_000) continue; // too soon after the move to call anything stale
-    for (const side of PAIRS[market]) {
+  for (const series of softSeries.values()) {
+    const side = series[0].side;
+    if (side !== a && side !== b) continue;
+    for (let j = 0; j < series.length; j++) {
+      const soft = series[j];
+      const P = soft.polledAt.getTime();
+      // Pinnacle's latest poll at or before P, and the one before it.
+      let ci = -1;
+      for (let i = pinPolls.length - 1; i >= 0; i--) if (pinPolls[i].t <= P) { ci = i; break; }
+      if (ci < 1) continue;
+      const cur = pinPolls[ci];
+      const prev = pinPolls[ci - 1];
+      if (P - cur.t > PIN_MAX_AGE_MIN * 60_000) continue;
+      const moveAt = cur.update;
+      if (P - moveAt < LAG_WINDOW_MIN * 60_000) continue; // too soon after the move to call anything stale
+
       const pNow = cur.quotes.get(side)!;
       const pBefore = prev.quotes.get(side)!;
       const pOtherNow = cur.quotes.get(other(market, side))!;
       const pOtherBefore = prev.quotes.get(other(market, side))!;
       const fairNow = devigPair(pNow.price, pOtherNow.price).fairA;
-
       let kind: LagBet["kind"] | null = null;
       if (pNow.point === pBefore.point && pOtherNow.point === pOtherBefore.point) {
-        const fairBefore = devigPair(pBefore.price, pOtherBefore.price).fairA;
-        if (fairNow - fairBefore >= MOVE_PROB) kind = "price";
+        if (fairNow - devigPair(pBefore.price, pOtherBefore.price).fairA >= MOVE_PROB) kind = "price";
       } else if (pNow.point !== null && pBefore.point !== null && numberMovedToward(market, side, pBefore.point, pNow.point) > 0) {
         kind = "number";
       }
       if (!kind) continue;
 
-      for (const soft of byPoll.get(cur.t)!.filter((q) => q.book !== SHARP_BOOK && q.side === side)) {
-        const key = `${soft.book}|${side}`;
-        if (taken.has(key)) continue;
-        if (soft.sourceLastUpdate.getTime() >= moveAt) continue; // the soft book updated after the move: caught up
-        let ev: number | null = null;
-        let pointsBetter: number | null = null;
-        if (kind === "price") {
-          if (soft.point !== pNow.point) continue;
-          ev = fairNow * americanToDecimal(soft.price) - 1;
-          if (ev <= 0) continue; // the stale price is no better than Pinnacle's new fair: nothing to take
-        } else {
-          if (soft.point === null || pNow.point === null) continue;
-          pointsBetter = betterBy(market, side, soft.point, pNow.point);
-          if (pointsBetter <= 0) continue;
-          if (soft.price < pNow.price - 15) continue; // a better number bought back with a much worse price isn't stale
-        }
-        taken.add(key);
-        out.push({ book: soft.book, side, point: soft.point, price: soft.price, polledAt: soft.polledAt, lagMin: Math.round((cur.t - moveAt) / 60_000), kind, ev, pointsBetter, pinFair: kind === "price" ? fairNow : null });
+      // Has the soft book caught up? Its own update time says so when it has one; otherwise the same
+      // quote must already have been on the board before Pinnacle moved, unchanged through P.
+      const ownStamp = Math.abs(soft.sourceLastUpdate.getTime() - P) >= 1000;
+      let staleBy: StaleBy | null = null;
+      if (ownStamp) {
+        if (soft.sourceLastUpdate.getTime() < moveAt) staleBy = "own update time";
+      } else {
+        let k = j;
+        while (k > 0 && series[k - 1].point === soft.point && series[k - 1].price === soft.price) k--;
+        if (series[k].polledAt.getTime() <= moveAt) staleBy = "unchanged since before the move";
       }
+      if (!staleBy) continue;
+
+      let ev: number | null = null;
+      let pointsBetter: number | null = null;
+      if (kind === "price") {
+        if (soft.point !== pNow.point) continue;
+        ev = fairNow * americanToDecimal(soft.price) - 1;
+        if (ev <= 0) continue; // the stale price is no better than Pinnacle's new fair: nothing to take
+      } else {
+        if (soft.point === null || pNow.point === null) continue;
+        pointsBetter = betterBy(market, side, soft.point, pNow.point);
+        if (pointsBetter <= 0) continue;
+        if (soft.price < pNow.price - 15) continue; // a better number bought back with a much worse price isn't stale
+      }
+      out.push({ book: soft.book, side, point: soft.point, price: soft.price, polledAt: soft.polledAt, lagMin: Math.round((P - moveAt) / 60_000), kind, ev, pointsBetter, pinFair: kind === "price" ? fairNow : null, staleBy });
+      break; // one bet per game × market × side × book: the first poll it fires
     }
   }
-  return out;
+  return out.sort((x, y) => x.polledAt.getTime() - y.polledAt.getTime());
 }
 
 /** Settles a bet from the final score at the bet's own number (hit / miss / push). */

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import {
   LAG_WINDOW_MIN,
+  PIN_MAX_AGE_MIN,
   MIN_VERDICT,
   MOVE_PROB,
   SHARP_BOOK,
@@ -30,8 +31,10 @@ import {
  * a cross-check where the numbers match. Closing-line value is read against
  * GameClosingLine at the same number.
  *
- * If the snapshots can't establish lag (too few Pinnacle rows, no per-book
- * update times, no polls where Pinnacle and a soft book overlap, no settled
+ * Pinnacle and the retail books are polled on different schedules, so each
+ * soft quote is judged against Pinnacle's latest quote before it. If the
+ * snapshots can't establish lag (too few Pinnacle rows, no per-book update
+ * times, no soft quote with a recent Pinnacle quote before it, no settled
  * games), prints DATA REQUIRED with what's missing and exits non-zero.
  * Run from the Model lab (script: backtest:soft-book-lag).
  */
@@ -91,25 +94,32 @@ async function main() {
   const window = Number.isFinite(minPolled) ? `${new Date(minPolled).toISOString().slice(0, 16)}Z → ${new Date(maxPolled).toISOString().slice(0, 16)}Z` : "no snapshots";
   console.log(`Snapshot window (pre-game, main lines, settled games): ${window}`);
   console.log(`Rows: Pinnacle ${pinRows} · soft books ${softRows} (${SOFT_BOOKS.join(", ")})`);
-  console.log(`Rows whose book update time equals the poll time (no per-book timestamp): Pinnacle ${pinSameStamp}/${pinRows} · soft ${softSameStamp}/${softRows}`);
+  console.log(`Rows whose book update time equals the poll time (no per-book timestamp; soft rows like this are judged by an unchanged quote instead): Pinnacle ${pinSameStamp}/${pinRows} · soft ${softSameStamp}/${softRows}`);
 
-  // Overlap: polls where Pinnacle quotes both sides of a market and a soft book quotes it too.
+  // Overlap: soft quotes with a two-sided Pinnacle quote on the same game and market at or before them, within PIN_MAX_AGE_MIN.
   let overlap = 0;
   for (const byMarket of quotesByGame.values())
-    for (const quotes of byMarket.values()) {
-      const polls = new Map<number, Set<string>>();
-      for (const q of quotes) (polls.get(q.polledAt.getTime()) ?? polls.set(q.polledAt.getTime(), new Set()).get(q.polledAt.getTime())!).add(q.book);
-      for (const books of polls.values()) if (books.has(SHARP_BOOK) && [...books].some((b) => b !== SHARP_BOOK)) overlap++;
+    for (const [market, quotes] of byMarket) {
+      const [sa, sb] = market === "totals" ? ["over", "under"] : ["home", "away"];
+      const pinPolls = [...new Set(quotes.filter((q) => q.book === SHARP_BOOK).map((q) => q.polledAt.getTime()))]
+        .filter((t) => quotes.some((q) => q.book === SHARP_BOOK && q.side === sa && q.polledAt.getTime() === t) && quotes.some((q) => q.book === SHARP_BOOK && q.side === sb && q.polledAt.getTime() === t))
+        .sort((x, y) => x - y);
+      if (!pinPolls.length) continue;
+      for (const q of quotes) {
+        if (q.book === SHARP_BOOK) continue;
+        const t = q.polledAt.getTime();
+        const latest = pinPolls.filter((p) => p <= t).at(-1);
+        if (latest !== undefined && t - latest <= PIN_MAX_AGE_MIN * 60_000) overlap++;
+      }
     }
-  console.log(`Polls where Pinnacle and at least one soft book quote the same game and market: ${overlap}`);
+  console.log(`Soft quotes with a two-sided Pinnacle quote on the same game and market at most ${PIN_MAX_AGE_MIN / 60} h before them: ${overlap}`);
 
   const missing: string[] = [];
   if (games.length === 0) missing.push("no games with a final score");
   if (pinRows < MIN_PIN_ROWS) missing.push(`only ${pinRows} pre-game Pinnacle main-line quotes in the window (needs ${MIN_PIN_ROWS}+)`);
   if (pinRows > 0 && pinSameStamp / pinRows > 0.99) missing.push("Pinnacle rows carry no update time of their own (sourceLastUpdate equals polledAt), so its moves can't be timed");
-  if (softRows > 0 && softSameStamp / softRows > 0.99) missing.push("soft-book rows carry no update time of their own (sourceLastUpdate equals polledAt), so staleness can't be told apart from a fresh quote");
   if (softRows === 0) missing.push("no soft-book quotes in the window");
-  if (overlap === 0) missing.push("no poll where Pinnacle and a soft book quote the same game and market");
+  if (overlap === 0) missing.push(`no soft-book quote has a two-sided Pinnacle quote on the same game and market within ${PIN_MAX_AGE_MIN / 60} h before it`);
   if (missing.length) return dataRequired(missing);
 
   const closes = await prisma.gameClosingLine.findMany({ where: { gameId: { in: [...quotesByGame.keys()] } }, select: { gameId: true, marketType: true, side: true, point: true, priceAmerican: true } });
@@ -145,7 +155,7 @@ async function main() {
   }
 
   console.log(`\nMethod: Pinnacle moves toward a side when its no-vig chance rises ≥ ${(MOVE_PROB * 100).toFixed(1)} pts at the same number (≈5 cents at −110), or the number moves against the side.`);
-  console.log(`A soft quote is stale when its own last update is before Pinnacle's move and the poll is ≥ ${LAG_WINDOW_MIN} min after the move; it must still beat Pinnacle's new terms. One bet per game × market × side × book, 1 unit at the stale price.`);
+  console.log(`Each soft quote is judged against Pinnacle's latest quote at or before it (at most ${PIN_MAX_AGE_MIN / 60} h old, older no longer says where the sharp market is). It is stale when the poll is ≥ ${LAG_WINDOW_MIN} min after Pinnacle's move and its own update time is before the move, or (rows with no update time of their own) the same quote was already on the board before the move, unchanged since; it must still beat Pinnacle's new terms. One bet per game × market × side × book, 1 unit at the stale price.`);
   console.log(`Soccer moneylines are left out (three-way with the draw). Settled from final scores at the bet's own number; GameOutcome cross-check where it grades the same bet: ${crossAgree}/${crossChecked} agree.`);
 
   if (!bets.length) return dataRequired(["no lag bets fired in the window: Pinnacle never moved while a soft book stayed stale on the snapshots stored"]);
@@ -161,6 +171,7 @@ async function main() {
   console.log(line(all));
   by("lag size", lagSize);
   by("minutes since Pinnacle moved", (b) => (b.lagMin < 30 ? "10–29 min" : b.lagMin < 120 ? "30–119 min" : b.lagMin < 360 ? "2–6 h" : "6 h+"));
+  by("how staleness was established", (b) => b.staleBy);
   by("book", (b) => b.book);
   by("market", (b) => b.market);
   by("sport", (b) => b.sport);

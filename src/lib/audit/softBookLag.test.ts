@@ -56,6 +56,22 @@ describe("findLagBets", () => {
     expect(findLagBets("h2h", caughtUp)).toHaveLength(0);
   });
 
+  it("compares against Pinnacle's latest earlier poll when the books are polled on their own schedule", () => {
+    const quotes = [
+      q("pinnacle", "home", null, -110, 0, -5), q("pinnacle", "away", null, -110, 0, -5),
+      q("pinnacle", "home", null, -140, 100, 60), q("pinnacle", "away", null, +120, 100, 60),
+      // FanDuel polled separately, with no update time of its own (sourceLastUpdate = polledAt):
+      q("fanduel", "home", null, -110, 30, 30), // already on the board before Pinnacle moved at minute 60
+      q("fanduel", "home", null, -110, 130, 130), // unchanged, 70 min after the move: stale
+      q("betmgm", "home", null, -110, 130, 130), // first seen after the move: can't tell it was stale
+    ];
+    const bets = findLagBets("h2h", quotes);
+    expect(bets).toHaveLength(1);
+    expect(bets[0]).toMatchObject({ book: "fanduel", staleBy: "unchanged since before the move", lagMin: 70 });
+    // Pinnacle's latest quote 7 h before the soft poll is too old to judge against.
+    expect(findLagBets("h2h", [...quotes.slice(0, 5), q("fanduel", "home", null, -110, 100 + 7 * 60, 100 + 7 * 60)].filter((x) => x.polledAt.getTime() !== min(130).getTime()))).toHaveLength(0);
+  });
+
   it("bets each book and side once, at the first poll it fires", () => {
     const quotes = [
       q("pinnacle", "home", null, -110, 0, -5), q("pinnacle", "away", null, -110, 0, -5),
@@ -77,7 +93,7 @@ describe("settle, stats, verdict", () => {
   });
 
   it("ROI with a 95% interval, CLV, and thin buckets", () => {
-    const bet = (result: "hit" | "miss" | "push"): SettledBet => ({ book: "draftkings", side: "home", point: null, price: 100, polledAt: min(0), lagMin: 30, kind: "price", ev: 0.03, pointsBetter: null, pinFair: 0.53, sport: "nba", market: "h2h", result, clv: 0.02 });
+    const bet = (result: "hit" | "miss" | "push"): SettledBet => ({ book: "draftkings", side: "home", point: null, price: 100, polledAt: min(0), lagMin: 30, kind: "price", ev: 0.03, pointsBetter: null, pinFair: 0.53, staleBy: "own update time", sport: "nba", market: "h2h", result, clv: 0.02 });
     const s = bucketStats("all", [bet("hit"), bet("hit"), bet("miss"), bet("push")]);
     expect(s.roi).toBeCloseTo(0.25);
     expect(s.hitRate).toBeCloseTo(2 / 3);
