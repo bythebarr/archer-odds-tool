@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { closingGameLines, teamBaselinesByGame } from "./props/history";
 import { gradedNbaSides } from "./props/nbaGradedSides";
 import { gradedNflSides } from "./props/nflGradedSides";
+import { leanScreenRows, type LeanScreenRow } from "./props/leanScreenRows";
+import { loadGradedLeans } from "@/lib/queries/edgeReport";
 import { edgeOf, type Rate } from "@/lib/builder/types";
 import { passes, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
 import { confidenceOf } from "@/lib/propModel/confidence";
@@ -13,16 +15,20 @@ import { MIN_HALF_PICKS, PRICE_FLOOR, comboGrid, evaluate, pickStats, splitDate,
  * screener's filters — a record bar on the L3…last-season windows, ARCHR's
  * chance, the edge, side, the long end of the price range and (NBA) projected
  * minutes — with the −200 price floor always on, run through the screener's own
- * `passes` over every graded NBA and NFL prop side with stored closing quotes
- * (rebuilt from prior games only, as the factor audit). For each: hit rate,
+ * `passes` over every settled NBA and NFL prop lean (pick tracking: ARCHR's side
+ * at each main line, priced at capture), with the screener's records rebuilt
+ * from the player's prior games (scripts/props/leanScreenRows). The
+ * closing-price backtests (both sides of every line, prior games only) are a
+ * cross-check; they cover only the slates whose prop quotes are still stored.
+ * For each: hit rate,
  * flat-stake ROI at the closing price, picks left per slate day, both date
  * halves. Then the filters the screener can't set yet, tried on top of the
  * chosen set. Read-only. Run from the Model lab (script: sweep:filters).
  */
 interface Row extends SweepRow {
   /** Not screener filters (yet): for the add-on section. */
-  z: number;
-  market: number;
+  z: number | null;
+  market: number | null;
   games: number;
   roleL10: Rate | null;
   confidence: number | null;
@@ -62,14 +68,41 @@ function toRow(sport: "nba" | "nfl", i: number, s: { stat: string; side: "over" 
   return { prop, won: s.won, date: s.date, z: s.z, market: s.marketChance, games: s.sampleGames, roleL10: s.roleRate ?? null, confidence: conf?.score ?? null };
 }
 
+/** A settled lean as the screener would have shown it: its side at the main line, the price at capture. */
+function leanRow(i: number, l: LeanScreenRow): Row {
+  const prop: ScreenerProp = {
+    id: `${l.sport}:lean:${i}`,
+    sport: l.sport,
+    league: l.sport.toUpperCase(),
+    gameId: `${l.sport}:lean`,
+    game: "",
+    startsAt: l.date,
+    team: "",
+    opponent: "",
+    player: "",
+    stat: l.stat,
+    statLabel: l.stat,
+    side: l.side,
+    point: l.point,
+    main: true,
+    priceAmerican: l.price,
+    bookName: null,
+    archr: l.prob,
+    edge: edgeOf(l.prob, l.price),
+    rates: l.rates,
+    ...(l.minutes !== null ? { minutes: Math.round(l.minutes * 10) / 10 } : {}),
+  };
+  return { prop, won: l.won, date: l.date, z: l.z, market: l.market, games: l.games, roleL10: null, confidence: l.confidence };
+}
+
 /** Filters the screener can't set today, each tried on top of a chosen set. */
 const ADD_ONS: { label: string; keep: (r: Row) => boolean }[] = [
-  { label: "|z| ≥ 0.75 (projection well off the line)", keep: (r) => Math.abs(r.z) >= 0.75 && Math.abs(r.z) <= 6 },
-  { label: "ARCHR within 8 pts of the books", keep: (r) => Math.abs((r.prop.archr ?? 0) - r.market) <= 0.08 },
-  { label: "ARCHR 3–15 pts above the books", keep: (r) => (r.prop.archr ?? 0) - r.market > 0.03 && (r.prop.archr ?? 0) - r.market <= 0.15 },
+  { label: "|z| ≥ 0.75 (projection well off the line)", keep: (r) => r.z !== null && Math.abs(r.z) >= 0.75 && Math.abs(r.z) <= 6 },
+  { label: "ARCHR within 8 pts of the books", keep: (r) => r.market !== null && Math.abs((r.prop.archr ?? 0) - r.market) <= 0.08 },
+  { label: "ARCHR 3–15 pts above the books", keep: (r) => r.market !== null && (r.prop.archr ?? 0) - r.market > 0.03 && (r.prop.archr ?? 0) - r.market <= 0.15 },
   { label: "20+ games of history", keep: (r) => r.games >= 20 },
   { label: "role-weighted L10 ≥ 60% (NBA)", keep: (r) => r.roleL10 !== null && r.roleL10[1] > 0 && r.roleL10[0] / r.roleL10[1] >= 0.6 },
-  { label: "Confidence ≥ 60 (B or better; no report-card factor)", keep: (r) => (r.confidence ?? 0) >= 60 },
+  { label: "Confidence ≥ 60 (B or better)", keep: (r) => (r.confidence ?? 0) >= 60 },
 ];
 
 /** The rows a combination keeps: the screener's own `passes`. */
@@ -141,13 +174,27 @@ async function main() {
     failures.push(`NFL backtest: ${e instanceof Error ? e.message : e}`);
   }
 
-  console.log("FILTER SWEEP — the props screener's own filters, price floor −200 always on, over graded NBA + NFL prop sides at closing prices");
-  console.log("hit = share of picks that cashed · ROI = flat stakes at the closing price [95%] · /day = picks left per slate day · early/late = the two date halves");
-  if (rows.nba.length) sweep("NBA props (backtest, closing prices)", rows.nba, true);
-  if (rows.nfl.length) sweep("NFL props (backtest, closing prices)", rows.nfl, false);
-  if (rows.nba.length && rows.nfl.length) sweep("NBA + NFL props pooled", [...rows.nba, ...rows.nfl], false);
+  // The main source: every settled prop lean, its screener records rebuilt from prior games.
+  const leans: { nba: Row[]; nfl: Row[] } = { nba: [], nfl: [] };
+  try {
+    const built = await leanScreenRows(await loadGradedLeans(240));
+    leans.nba = built.nba.map((l, i) => leanRow(i, l));
+    leans.nfl = built.nfl.map((l, i) => leanRow(i, l));
+  } catch (e) {
+    failures.push(`Tracked leans: ${e instanceof Error ? e.message : e}`);
+  }
+
+  console.log("FILTER SWEEP — the props screener's own filters, price floor −200 always on");
+  console.log("hit = share of picks that cashed · ROI = flat stakes at the price [95%] · /day = picks left per slate day · early/late = the two date halves");
+  console.log("Main source: tracked leans (ARCHR's side at each main line, priced at capture, settled), records rebuilt from prior games.");
+  if (leans.nba.length) sweep("NBA props · tracked leans (live, price at capture)", leans.nba, true);
+  if (leans.nfl.length) sweep("NFL props · tracked leans (live, price at capture)", leans.nfl, false);
+  if (leans.nba.length && leans.nfl.length) sweep("NBA + NFL props · tracked leans pooled", [...leans.nba, ...leans.nfl], false);
+  console.log("\n\nCross-check: the closing-price backtests (both sides of every line, but only the slates whose prop quotes are still stored)");
+  if (rows.nba.length) sweep("NBA props · backtest (closing prices)", rows.nba, true);
+  if (rows.nfl.length) sweep("NFL props · backtest (closing prices)", rows.nfl, false);
   for (const f of failures) console.log(`  (skipped) ${f}`);
-  if (!rows.nba.length && !rows.nfl.length) process.exitCode = 1;
+  if (!rows.nba.length && !rows.nfl.length && !leans.nba.length && !leans.nfl.length) process.exitCode = 1;
 }
 
 main()
