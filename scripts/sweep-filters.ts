@@ -180,6 +180,12 @@ async function main() {
     const built = await leanScreenRows(await loadGradedLeans(240));
     leans.nba = built.nba.map((l, i) => leanRow(i, l));
     leans.nfl = built.nfl.map((l, i) => leanRow(i, l));
+    for (const sport of ["nba", "nfl"] as const) {
+      const a = built.account[sport];
+      console.log(
+        `${sport.toUpperCase()} leans: ${a.settled} settled main-line props · dropped ${a.noPrice} with no price, ${a.noPlayer} with no player, ${a.noHistory} with no prior games · kept ${a.kept} · lowest ARCHR chance kept ${a.minProb === null ? "—" : `${(a.minProb * 100).toFixed(1)}%`} · ${a.graded} carry their Confidence grade`
+      );
+    }
   } catch (e) {
     failures.push(`Tracked leans: ${e instanceof Error ? e.message : e}`);
   }

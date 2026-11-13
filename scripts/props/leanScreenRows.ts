@@ -39,21 +39,48 @@ export interface LeanScreenRow {
 }
 
 /** The rows for a sport's leans whose player and stat the logs know. */
-function rowsFor(sport: "nba" | "nfl", leans: GradedLean[], valueOf: (stat: string, raw: unknown) => number | null, rawByPlayer: Map<string, unknown[]>): LeanScreenRow[] {
+/** Why leans didn't make it into the sweep, per sport. */
+export interface LeanAccount {
+  settled: number;
+  noPrice: number;
+  noPlayer: number;
+  noHistory: number;
+  kept: number;
+  /** The lowest ARCHR chance among the kept leans (is "ARCHR's side" always 50%+?). */
+  minProb: number | null;
+  /** Kept leans that carry the Confidence grade they were shown with. */
+  graded: number;
+}
+
+function rowsFor(sport: "nba" | "nfl", leans: GradedLean[], valueOf: (stat: string, raw: unknown) => number | null, rawByPlayer: Map<string, unknown[]>, account: LeanAccount): LeanScreenRow[] {
   const out: LeanScreenRow[] = [];
+  account.settled = leans.length;
   for (const l of leans) {
     const f = l.features;
-    if (f.playerId === undefined || f.point === null || f.price === null) continue;
+    if (f.price === null) {
+      account.noPrice++;
+      continue;
+    }
+    if (f.playerId === undefined || f.point === null) {
+      account.noPlayer++;
+      continue;
+    }
     const raws = rawByPlayer.get(f.playerId) ?? [];
     const dated = raws as { gameDate: Date; season: number }[];
     const day = etDateOf(l.startsAt);
     // Prior games only: strictly before the game's ET date.
     const prior = dated.filter((r) => etDateOf(r.gameDate) < day).sort((a, b) => b.gameDate.getTime() - a.gameDate.getTime());
-    if (!prior.length) continue;
+    if (!prior.length) {
+      account.noHistory++;
+      continue;
+    }
     const own = dated.find((r) => etDateOf(r.gameDate) === day);
     const season = own?.season ?? prior[0]!.season;
     const values = prior.map((r) => ({ season: r.season, value: valueOf(f.stat, r) }));
-    if (values.every((v) => v.value === null)) continue;
+    if (values.every((v) => v.value === null)) {
+      account.noHistory++;
+      continue;
+    }
     const side = f.side === "under" ? "under" : "over";
     out.push({
       sport,
@@ -72,10 +99,15 @@ function rowsFor(sport: "nba" | "nfl", leans: GradedLean[], valueOf: (stat: stri
       date: day,
     });
   }
+  account.kept = out.length;
+  account.minProb = out.length ? Math.min(...out.map((r) => r.prob)) : null;
+  account.graded = out.filter((r) => r.confidence !== null).length;
   return out;
 }
 
-export async function leanScreenRows(leans: GradedLean[]): Promise<{ nba: LeanScreenRow[]; nfl: LeanScreenRow[] }> {
+const emptyAccount = (): LeanAccount => ({ settled: 0, noPrice: 0, noPlayer: 0, noHistory: 0, kept: 0, minProb: null, graded: 0 });
+
+export async function leanScreenRows(leans: GradedLean[]): Promise<{ nba: LeanScreenRow[]; nfl: LeanScreenRow[]; account: { nba: LeanAccount; nfl: LeanAccount } }> {
   const props = leans.filter((l) => l.features.kind === "prop" && !l.features.alt && (l.result === "hit" || l.result === "miss"));
   const nbaLeans = props.filter((l) => l.features.sport === "nba");
   const nflLeans = props.filter((l) => l.features.sport === "nfl");
@@ -99,5 +131,6 @@ export async function leanScreenRows(leans: GradedLean[]): Promise<{ nba: LeanSc
     return !s.available || s.available(line) ? s.value(line) : null;
   };
 
-  return { nba: rowsFor("nba", nbaLeans, nbaValue, nbaBy), nfl: rowsFor("nfl", nflLeans, nflValue, nflBy) };
+  const account = { nba: emptyAccount(), nfl: emptyAccount() };
+  return { nba: rowsFor("nba", nbaLeans, nbaValue, nbaBy, account.nba), nfl: rowsFor("nfl", nflLeans, nflValue, nflBy, account.nfl), account };
 }
