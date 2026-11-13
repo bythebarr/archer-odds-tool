@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { getLeagueDays, getLeagueEvents } from "@/lib/queries/lobby";
+import { getEventArchr, getPropArchr, propArchrOf, ufcArchrRedProb } from "@/lib/queries/archrLines";
 import { getTopNbaProps } from "@/lib/queries/nbaProps";
 import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
@@ -66,6 +67,18 @@ async function LeagueSection({ sport, today }: { sport: TeamLeagueSport; today: 
     return [];
   });
   if (events.length === 0) return null;
+  const shown = events.slice(0, LOBBY_GAMES);
+  // ARCHR's line beside the book's: the game model's read where it has one (NBA, NFL), else none.
+  const archr = await Promise.all(
+    shown.map((e) =>
+      sport === "nhl"
+        ? null
+        : getEventArchr(sport, e.id).catch((err) => {
+            console.error(`[home] ARCHR line failed for ${e.id}`, err);
+            return null;
+          })
+    )
+  );
   const meta = sportMetaByKey[sport];
   return (
     <section>
@@ -76,10 +89,10 @@ async function LeagueSection({ sport, today }: { sport: TeamLeagueSport; today: 
         href={`/${sport}?date=${day}`}
         cta="See all"
       />
-      <EventListHeader />
+      <EventListHeader vs />
       <div className="flex flex-col gap-2.5">
-        {events.slice(0, LOBBY_GAMES).map((e) => (
-          <EventRow key={e.id} event={e} sport={sport} />
+        {shown.map((e, i) => (
+          <EventRow key={e.id} event={e} sport={sport} archr={archr[i]} />
         ))}
       </div>
     </section>
@@ -111,10 +124,10 @@ async function AllSportsSection() {
                 See all ›
               </Link>
             </div>
-            <AllSportListHeader threeWay={b.threeWay} noSpread={noSpread} />
+            <AllSportListHeader threeWay={b.threeWay} noSpread={noSpread} vs />
             <div className="flex flex-col gap-2.5">
               {b.events.map((e) => (
-                <AllSportEventRow key={e.id} event={e} sport={b.sport.key} threeWay={b.threeWay} noSpread={noSpread} />
+                <AllSportEventRow key={e.id} event={e} sport={b.sport.key} threeWay={b.threeWay} noSpread={noSpread} vs />
               ))}
             </div>
           </section>
@@ -136,10 +149,13 @@ async function NbaPropsSection({ today }: { today: string }) {
       })
     : [];
   if (props.length === 0) return null;
+  // ARCHR's chance for the same prop, from the screener pool (null: no read, the book shows alone).
+  const archrMap = await getPropArchr("nba").catch(() => new Map<string, number>());
+  const withArchr = props.map((p) => ({ ...p, archr: propArchrOf(archrMap, p.playerName, p.stat, p.side, p.point) }));
   return (
     <section>
       <SectionHeader icon="props" title="Top NBA props" subtitle="Cleared the line in 8+ of the last 10" href={`/nba/props?date=${day}`} cta="All props" />
-      <TopPropsStrip props={props} />
+      <TopPropsStrip props={withArchr} />
     </section>
   );
 }
@@ -150,6 +166,10 @@ async function UfcSection() {
     return [] as Awaited<ReturnType<typeof listUpcomingUfcEvents>>;
   });
   if (!event || event.bouts.length === 0) return null;
+  // ARCHR's chance per bout, as the bout page reads it (null: no read, the book shows alone).
+  const archrRed = Object.fromEntries(
+    await Promise.all(event.bouts.slice(0, 5).map(async (b) => [b.id, await ufcArchrRedProb(b.id).catch(() => null)] as const))
+  );
   return (
     <section>
       <SectionHeader
@@ -159,7 +179,7 @@ async function UfcSection() {
         href={`/ufc?event=${event.id}`}
         cta="Full card"
       />
-      <UfcCardSections event={event} upcoming limit={5} />
+      <UfcCardSections event={event} upcoming limit={5} archrRed={archrRed} />
     </section>
   );
 }

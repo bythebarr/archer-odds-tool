@@ -19,6 +19,8 @@ export interface UfcCornerBestLine {
   bookKey: string;
   /** This price against the rest of the market's fair price (see marketValue); null when too few books. */
   value: PriceValue | null;
+  /** When this price was polled (ISO); absent where the reader didn't select it. */
+  polledAt?: string;
 }
 
 export interface UfcBoutOddsSummary {
@@ -38,12 +40,12 @@ export interface UfcBoutOddsSummary {
  * books only, like every other board: a sharp reference book is priced from,
  * never pointed at.
  */
-function bestLine(rows: { priceAmerican: number; bookKey: string }[]): UfcCornerBestLine | null {
+function bestLine(rows: { priceAmerican: number; bookKey: string; polledAt?: Date }[]): UfcCornerBestLine | null {
   let best: UfcCornerBestLine | null = null;
   for (const r of rows) {
     if (!isBettableBook(r.bookKey)) continue;
     if (best === null || americanToDecimal(r.priceAmerican) > americanToDecimal(best.priceAmerican)) {
-      best = { priceAmerican: r.priceAmerican, bookKey: r.bookKey, value: null };
+      best = { priceAmerican: r.priceAmerican, bookKey: r.bookKey, value: null, ...(r.polledAt ? { polledAt: r.polledAt.toISOString() } : {}) };
     }
   }
   return best;
@@ -58,7 +60,7 @@ export async function getBestLinesForBouts(
 
   const rows = await prisma.ufcBoutOdds.findMany({
     where: { boutId: { in: boutIds } },
-    select: { boutId: true, bookKey: true, corner: true, priceAmerican: true },
+    select: { boutId: true, bookKey: true, corner: true, priceAmerican: true, polledAt: true },
   });
 
   const byBout = new Map<string, typeof rows>();

@@ -3,10 +3,14 @@ import type { LeagueEventRow, EventTeam } from "@/lib/queries/lobby";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { Logo } from "@/components/Logo";
 import { formatAmerican } from "@/lib/odds/americanOdds";
+import type { EventArchr } from "@/lib/queries/archrLines";
+import type { ArchrLine } from "@/lib/odds/bookVsArchr";
 import { PriceButton } from "./PriceButton";
 
 /** The shared grid template: team column, then Spread · Total · Moneyline. */
 export const EVENT_GRID = "grid grid-cols-[minmax(0,1fr)_4.25rem_4.25rem_4.25rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem]";
+/** The book-vs-ARCHR grid: a little wider, for "DK O 224.5" over "ARCHR 228.1". */
+export const VS_GRID = "grid grid-cols-[minmax(0,1fr)_4.75rem_4.75rem_4.75rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_6rem_6rem_6rem]";
 
 function startLabel(iso: string, status: string): string {
   if (status === "live") return "LIVE";
@@ -16,9 +20,9 @@ function startLabel(iso: string, status: string): string {
 }
 
 /** Column labels, shown once above a list of rows. */
-export function EventListHeader() {
+export function EventListHeader({ vs = false }: { vs?: boolean }) {
   return (
-    <div className={`${EVENT_GRID} px-3 pb-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground`}>
+    <div className={`${vs ? VS_GRID : EVENT_GRID} px-3 pb-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground`}>
       <span />
       <span>Spread</span>
       <span>Total</span>
@@ -44,7 +48,11 @@ function TeamCell({ team, href }: { team: EventTeam; href: string }) {
  * then away over home, each with its best Spread, Total and Moneyline. Team
  * names open the game; prices go to the Slip.
  */
-export function EventRow({ event, sport }: { event: LeagueEventRow; sport: TeamLeagueSport }) {
+export function EventRow({ event, sport, archr }: { event: LeagueEventRow; sport: TeamLeagueSport; archr?: EventArchr | null }) {
+  // Book line vs ARCHR line when the caller read ARCHR's numbers (null: no read, the book shows alone).
+  const vs = archr !== undefined;
+  const grid = vs ? VS_GRID : EVENT_GRID;
+  const archrOf = (line: ArchrLine | null) => (vs ? { vs: { archr: line } } : {});
   const matchLabel = `${event.away.abbreviation} @ ${event.home.abbreviation}`;
   const common = { sport, matchId: event.id, matchLabel } as const;
   const live = event.status === "live";
@@ -65,18 +73,20 @@ export function EventRow({ event, sport }: { event: LeagueEventRow; sport: TeamL
           const total = side === "away" ? event.total.over : event.total.under;
           const totalSide = side === "away" ? "over" : "under";
           return (
-            <div key={side} className={`${EVENT_GRID} items-center`}>
+            <div key={side} className={`${grid} items-center`}>
               <TeamCell team={team} href={event.href} />
               <PriceButton
                 {...common}
+                {...archrOf(archr ? { kind: "spread", point: archr.spread[side] } : null)}
                 price={spread}
-                label={spread?.point != null ? formatAmerican(spread.point) : undefined}
+                label={!vs && spread?.point != null ? formatAmerican(spread.point) : undefined}
                 marketType="spreads"
                 side={side}
                 selectionLabel={`${team.name} ${spread?.point != null ? formatAmerican(spread.point) : ""}`.trim()}
               />
               <PriceButton
                 {...common}
+                {...archrOf(archr ? { kind: "total", point: archr.total, side: totalSide } : null)}
                 price={total}
                 label={total?.point != null ? `${side === "away" ? "O" : "U"} ${total.point}` : undefined}
                 marketType="totals"
@@ -85,6 +95,7 @@ export function EventRow({ event, sport }: { event: LeagueEventRow; sport: TeamL
               />
               <PriceButton
                 {...common}
+                {...archrOf(archr?.ml[side] != null ? { kind: "price", american: archr.ml[side]! } : null)}
                 price={event.moneyline[side]}
                 marketType="h2h"
                 side={side}

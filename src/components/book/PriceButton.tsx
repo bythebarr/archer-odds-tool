@@ -1,11 +1,25 @@
 "use client";
 
 import type { MarketType } from "@/generated/prisma/client";
-import { formatAmerican } from "@/lib/odds/americanOdds";
+import { formatAmerican, formatSpreadPoint } from "@/lib/odds/americanOdds";
 import { buildSlipPickId, useSlip, type SlipSport } from "@/lib/slip/SlipContext";
 import { BookBadge } from "@/components/BookBadge";
 import type { EventPrice } from "@/lib/queries/lobby";
 import { EV_FLAG } from "@/lib/odds/marketValue";
+import { bookShort, formatArchrLine, lineTone, staleDate, type ArchrLine, type LineTone } from "@/lib/odds/bookVsArchr";
+
+/** Green when the book beats ARCHR's fair line, red when it's worse. */
+export const TONE_CLASS: Record<LineTone, string> = {
+  value: "text-emerald-600 dark:text-emerald-400",
+  worse: "text-red-600 dark:text-red-400",
+  even: "text-foreground",
+};
+
+/** The book's side of the cell: the number being compared (spread/total point, else the price). */
+function bookLineText(price: EventPrice, label: string | undefined): string {
+  if (price.point === null) return formatAmerican(price.priceAmerican);
+  return label ?? formatSpreadPoint(price.point);
+}
 
 /**
  * One sportsbook-style price cell: the number on top, the best price below, the
@@ -21,6 +35,7 @@ export function PriceButton({
   marketType,
   side,
   selectionLabel,
+  vs,
 }: {
   price: EventPrice | null;
   /** The line as shown on the button, e.g. "+3.5" or "O 224.5"; omitted for a moneyline. */
@@ -32,8 +47,23 @@ export function PriceButton({
   side: string;
   /** How the pick reads in the Slip, e.g. "Celtics +3.5". */
   selectionLabel: string;
+  /**
+   * Book line vs ARCHR line: when set, the cell reads "DK −337" over "ARCHR −350",
+   * the book's number green/red against ARCHR's fair line, and nothing else. `archr`
+   * null shows the book alone (ARCHR has no read). Omitted: the plain price cell.
+   */
+  vs?: { archr: ArchrLine | null };
 }) {
   const { addPick, removePick, isInSlip } = useSlip();
+
+  if (vs && !price) {
+    return (
+      <div className="flex min-h-12 flex-col items-center justify-center rounded-lg bg-muted/50 px-1 py-1 text-center" aria-label="Not priced">
+        <span className="text-xs text-muted-foreground/60">—</span>
+        {vs.archr && <span className="font-mono text-[10.5px] leading-tight text-muted-foreground">ARCHR {formatArchrLine(vs.archr)}</span>}
+      </div>
+    );
+  }
 
   if (!price) {
     return (
@@ -47,6 +77,52 @@ export function PriceButton({
   const inSlip = isInSlip(id);
   // A price that beats the rest of the market's fair price by more than the noise floor.
   const ev = price.value && price.value.ev >= EV_FLAG ? price.value.ev : null;
+
+  const onClick = () =>
+    inSlip
+      ? removePick(id)
+      : addPick({
+          id,
+          sport,
+          matchId,
+          matchLabel,
+          selectionLabel,
+          marketType,
+          point: price.point,
+          bookKey: price.bookKey,
+          bookName: price.bookName,
+          priceAmerican: price.priceAmerican,
+          addedAt: Date.now(),
+        });
+
+  if (vs) {
+    const tone = lineTone(price, vs.archr);
+    const stale = staleDate(price.polledAt);
+    const archrText = vs.archr ? formatArchrLine(vs.archr) : null;
+    const abbr = bookShort(price.bookKey, price.bookName);
+    return (
+      <button
+        type="button"
+        aria-pressed={inSlip}
+        aria-label={`${selectionLabel}: ${price.bookName} ${bookLineText(price, label)}${price.point !== null ? ` at ${formatAmerican(price.priceAmerican)}` : ""}${archrText ? `, ARCHR ${archrText}` : ""}${stale ? `, price from ${stale}` : ""}`}
+        onClick={onClick}
+        className={`flex min-h-12 flex-col items-center justify-center rounded-lg px-1 py-1 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          inSlip ? "archr-pop bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted-foreground/15"
+        }`}
+      >
+        <span className={`whitespace-nowrap font-mono text-[11.5px] font-semibold leading-tight ${inSlip || !tone ? "" : TONE_CLASS[tone]}`}>
+          {abbr} {bookLineText(price, label)}
+        </span>
+        {price.point !== null && (
+          <span className={`whitespace-nowrap font-mono text-[10.5px] leading-tight ${inSlip ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{formatAmerican(price.priceAmerican)}</span>
+        )}
+        {stale && <span className={`whitespace-nowrap text-[9px] leading-tight ${inSlip ? "text-primary-foreground/80" : "text-muted-foreground"}`}>price from {stale}</span>}
+        {archrText && (
+          <span className={`whitespace-nowrap font-mono text-[10.5px] leading-tight ${inSlip ? "text-primary-foreground/80" : "text-muted-foreground"}`}>ARCHR {archrText}</span>
+        )}
+      </button>
+    );
+  }
 
   return (
     <button

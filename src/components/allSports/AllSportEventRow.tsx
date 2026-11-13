@@ -3,6 +3,7 @@ import type { BoardEvent, BoardSide } from "@/lib/queries/allSports";
 import type { EventPrice } from "@/lib/queries/lobby";
 import { PriceButton } from "@/components/book/PriceButton";
 import { Logo } from "@/components/Logo";
+import type { ArchrLine } from "@/lib/odds/bookVsArchr";
 
 const initials = (name: string) =>
   name
@@ -62,14 +63,26 @@ function ArchrCell({ href, top, value }: { href: string; top?: string; value: st
 }
 
 export const TWO_WAY_GRID = "grid grid-cols-[minmax(0,1fr)_4.25rem_4.25rem_4.25rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem]";
+/** Book-vs-ARCHR cells run a little wider ("DK O 2.5" over "ARCHR 2.7"). */
+const VS_TWO_WAY_GRID = "grid grid-cols-[minmax(0,1fr)_4.75rem_4.75rem_4.75rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_6rem_6rem_6rem]";
+const VS_NO_SPREAD_GRID = "grid grid-cols-[minmax(0,1fr)_4.75rem_4.75rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]";
+const VS_THREE_WAY_GRID = "grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.5rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_6rem_6rem_6rem]";
+const gridOf = (threeWay: boolean, noSpread: boolean, vs: boolean) =>
+  threeWay ? (vs ? VS_THREE_WAY_GRID : THREE_WAY_GRID) : noSpread ? (vs ? VS_NO_SPREAD_GRID : NO_SPREAD_GRID) : vs ? VS_TWO_WAY_GRID : TWO_WAY_GRID;
+
+/** ARCHR's price for a side: its priced (blended) fair where the books post both sides, else the model's own. */
+function archrPrice(s: BoardSide | null, own: number | null | undefined): ArchrLine | null {
+  const american = s?.fairAmerican ?? own ?? null;
+  return american !== null ? { kind: "price", american } : null;
+}
 /** Sports with no handicap posted (most one-on-one matches): total and money only, more room for names. */
 export const NO_SPREAD_GRID = "grid grid-cols-[minmax(0,1fr)_4.6rem_4.6rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem]";
 export const THREE_WAY_GRID = "grid grid-cols-[minmax(0,1fr)_3.9rem_3.9rem_3.9rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem]";
 
 /** Column labels for a list of rows. */
-export function AllSportListHeader({ threeWay, noSpread = false }: { threeWay: boolean; noSpread?: boolean }) {
+export function AllSportListHeader({ threeWay, noSpread = false, vs = false }: { threeWay: boolean; noSpread?: boolean; vs?: boolean }) {
   return (
-    <div className={`${threeWay ? THREE_WAY_GRID : noSpread ? NO_SPREAD_GRID : TWO_WAY_GRID} px-3 pb-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground`}>
+    <div className={`${gridOf(threeWay, noSpread, vs)} px-3 pb-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground`}>
       <span />
       {(threeWay ? ["1", "X", "2"] : noSpread ? ["Total", "Money"] : ["Spread", "Total", "Money"]).map((h) => (
         <span key={h}>{h}</span>
@@ -83,7 +96,7 @@ export function AllSportListHeader({ threeWay, noSpread = false }: { threeWay: b
  * (away over home: spread, total, money); three-way sports (soccer) list home
  * first with 1 · X · 2. Prices go to the Slip; names open the full breakdown.
  */
-export function AllSportEventRow({ event, sport, threeWay, noSpread = false }: { event: BoardEvent; sport: string; threeWay: boolean; noSpread?: boolean }) {
+export function AllSportEventRow({ event, sport, threeWay, noSpread = false, vs = false }: { event: BoardEvent; sport: string; threeWay: boolean; noSpread?: boolean; /** Book line vs ARCHR line in every priced cell. */ vs?: boolean }) {
   const href = `/sports/${sport}/event/${encodeURIComponent(event.id)}`;
   const matchLabel = threeWay ? `${event.home} v ${event.away}` : `${event.away} @ ${event.home}`;
   const common = { sport: "all" as const, matchId: event.id, matchLabel };
@@ -91,6 +104,7 @@ export function AllSportEventRow({ event, sport, threeWay, noSpread = false }: {
   // No book has posted: ARCHR's own prices hold the cells until one does.
   const priced = event.ml.home !== null || event.ml.away !== null || event.spread.home !== null || event.total.over !== null;
   const a = event.archr;
+  const cmp = (line: ArchrLine | null) => (vs ? { vs: { archr: line } } : {});
   const head = (
     <div className="flex items-center justify-between px-3 pb-1.5 pt-2.5 text-[11px]">
       <span className={live ? "font-bold text-red-600 dark:text-red-400" : "font-medium text-muted-foreground"}>{startLabel(event.startsAt, event.status)}</span>
@@ -104,16 +118,16 @@ export function AllSportEventRow({ event, sport, threeWay, noSpread = false }: {
     return (
       <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         {head}
-        <div className={`${THREE_WAY_GRID} items-center px-3 pb-3`}>
+        <div className={`${gridOf(true, false, vs)} items-center px-3 pb-3`}>
           <div className="space-y-2">
             <Team name={event.home} logo={event.homeLogo} href={href} score={event.homeScore} />
             <Team name={event.away} logo={event.awayLogo} href={href} score={event.awayScore} />
           </div>
           {priced ? (
             <>
-              <PriceButton {...common} price={asPrice(event.ml.home)} marketType="h2h" side="home" selectionLabel={`${event.home} to win`} />
-              <PriceButton {...common} price={asPrice(event.ml.draw)} marketType="h2h" side="draw" selectionLabel="Draw" />
-              <PriceButton {...common} price={asPrice(event.ml.away)} marketType="h2h" side="away" selectionLabel={`${event.away} to win`} />
+              <PriceButton {...common} {...cmp(archrPrice(event.ml.home, a?.fair.home))} price={asPrice(event.ml.home)} marketType="h2h" side="home" selectionLabel={`${event.home} to win`} />
+              <PriceButton {...common} {...cmp(archrPrice(event.ml.draw, a?.fair.draw))} price={asPrice(event.ml.draw)} marketType="h2h" side="draw" selectionLabel="Draw" />
+              <PriceButton {...common} {...cmp(archrPrice(event.ml.away, a?.fair.away))} price={asPrice(event.ml.away)} marketType="h2h" side="away" selectionLabel={`${event.away} to win`} />
             </>
           ) : (
             <>
@@ -136,13 +150,13 @@ export function AllSportEventRow({ event, sport, threeWay, noSpread = false }: {
           const spread = event.spread[side];
           const total = side === "away" ? event.total.over : event.total.under;
           return (
-            <div key={side} className={`${noSpread ? NO_SPREAD_GRID : TWO_WAY_GRID} items-center`}>
+            <div key={side} className={`${gridOf(false, noSpread, vs)} items-center`}>
               <Team name={name} logo={side === "home" ? event.homeLogo : event.awayLogo} href={href} score={side === "home" ? event.homeScore : event.awayScore} />
               {priced ? (
                 <>
-                  {!noSpread && <PriceButton {...common} price={asPrice(spread)} label={spread?.label} marketType="spreads" side={side} selectionLabel={`${name} ${spread?.label ?? ""}`.trim()} />}
-                  <PriceButton {...common} price={asPrice(total)} label={total?.label} marketType="totals" side={side === "away" ? "over" : "under"} selectionLabel={total ? `${total.label.startsWith("O") ? "Over" : "Under"} ${total.point}` : "Total"} />
-                  <PriceButton {...common} price={asPrice(event.ml[side])} marketType="h2h" side={side} selectionLabel={`${name} ML`} />
+                  {!noSpread && <PriceButton {...common} {...cmp(a?.spread != null ? { kind: "spread", point: side === "home" ? a.spread : -a.spread } : null)} price={asPrice(spread)} label={vs ? undefined : spread?.label} marketType="spreads" side={side} selectionLabel={`${name} ${spread?.label ?? ""}`.trim()} />}
+                  <PriceButton {...common} {...cmp(a?.total != null ? { kind: "total", point: a.total, side: side === "away" ? "over" : "under" } : null)} price={asPrice(total)} label={total?.label} marketType="totals" side={side === "away" ? "over" : "under"} selectionLabel={total ? `${total.label.startsWith("O") ? "Over" : "Under"} ${total.point}` : "Total"} />
+                  <PriceButton {...common} {...cmp(archrPrice(event.ml[side], side === "home" ? a?.fair.home : a?.fair.away))} price={asPrice(event.ml[side])} marketType="h2h" side={side} selectionLabel={`${name} ML`} />
                 </>
               ) : (
                 <>

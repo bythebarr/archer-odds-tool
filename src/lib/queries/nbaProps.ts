@@ -522,6 +522,7 @@ export async function getValueNbaProps(dateEt: string, limit = 6): Promise<Value
         priceAmerican: best.priceAmerican,
         bookKey: best.bookKey,
         bookName: best.bookName,
+        polledAt: slate.lastPolledAt,
         ev: value.ev,
         fairAmerican: value.fairAmerican,
         booksUsed: value.booksUsed,
@@ -548,6 +549,8 @@ export interface TopProp {
   priceAmerican: number;
   bookKey: string;
   bookName: string;
+  /** When the slate's prop prices were last polled (ISO), for dating a stale price. */
+  polledAt: string | null;
 }
 
 /** Stats eligible for the lobby's "top props" strip — the markets members shop most. */
@@ -585,6 +588,7 @@ export async function getTopNbaProps(dateEt: string, limit = 8): Promise<TopProp
         priceAmerican: best.priceAmerican,
         bookKey: best.bookKey,
         bookName: best.bookName,
+        polledAt: slate.lastPolledAt,
       });
     }
   }

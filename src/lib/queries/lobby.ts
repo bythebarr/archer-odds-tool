@@ -27,6 +27,8 @@ export interface EventPrice {
   bookName: string;
   /** This price against the rest of the market's fair price; null when too few books price both sides. */
   value: PriceValue | null;
+  /** When this price was polled (ISO), for dating a stale price; absent where the source doesn't carry it. */
+  polledAt?: string;
 }
 
 export interface LeagueEventRow {
@@ -75,6 +77,7 @@ function best(lines: GameLineRow[], market: GameLineRow["marketType"], side: str
     bookKey: line.bookKey,
     bookName: line.bookName,
     value: valueOf(pairsFor(lines, market, side, line.point), "A", line.priceAmerican, line.bookKey),
+    polledAt: line.polledAt.toISOString(),
   };
 }
 
