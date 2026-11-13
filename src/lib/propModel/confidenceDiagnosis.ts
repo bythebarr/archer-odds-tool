@@ -55,10 +55,15 @@ export function ceiling(c: Confidence): number {
   return Math.min(100, BASE + c.factors.filter((f) => f.effect > 0).reduce((s, f) => s + f.effect, 0));
 }
 
-/** The largest score the rules can give at all, given whether the stat's report card passed. */
+/**
+ * The largest score the rules can give at all, given whether the stat's report
+ * card passed. Track is continuous now: a passing card can reach +10 once it
+ * has graded 500+ outcomes; a card short of a pass sits inside the trust
+ * margin (skill under +2), so its track tops out near +2.
+ */
 export function maxPossible(trusted: boolean | undefined): number {
-  // track (+10 trusted, −5 otherwise, 0 without a card) + sample (+5) + market gap (+5) + distance (+10)
-  const track = trusted === undefined ? 0 : trusted ? 10 : -5;
+  // track + sample (+5) + market gap (+5) + distance (+10)
+  const track = trusted === undefined ? 0 : trusted ? 10 : 2;
   return BASE + track + 5 + 5 + 10;
 }
 

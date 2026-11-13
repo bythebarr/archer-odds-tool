@@ -30,6 +30,23 @@
  *   - Disagreeing with the books by 8–15 pts was ARCHR's best range live
  *     (+6.5%, the close moved its way); past 15 pts it was its worst.
  *
+ * CONTINUOUS FACTORS (2026-11-13, after docs/confidence-continuous-diagnosis.md).
+ * Distance, market gap, sample and track used to move in steps, which piled
+ * the board onto a dozen scores. They are now straight lines through the
+ * same anchors, keeping each factor's range:
+ *
+ *   distance  −10 at |z| ≤ 0.15, 0 at 0.55, +10 at ≥ 0.95. |z| above
+ *             Z_DEGENERATE is a collapsed projection spread (yes/no props),
+ *             not distance: no credit, and the reason says so. Capped at Z_CAP.
+ *   market    0 at a 3-pt gap, +5 at 11.5, 0 at 15, −15 by 18 (the old cliff
+ *             at 15, ramped over 3 pts).
+ *   sample    −20 at ≤ 2 games, −10 at 7.5, 0 at 15, +5 at ≥ 30.
+ *   track     the report card's own record: its skill (Brier points ×1000,
+ *             clamped −5..+10), weighted by how many outcomes graded it (full
+ *             at 500), with the rest of the weight on −5 — so a thin card still
+ *             costs, and only a long, good record earns the full +10. No card
+ *             −5; a sport the blend doesn't price 0.
+ *
  * scripts/backtest-confidence.ts re-grades the result. Pure.
  */
 import { cautiousEdge } from "./canonical";
@@ -50,6 +67,12 @@ export interface ConfidenceInput {
   sampleGames: number;
   /** The blend report card's verdict for this stat ("trusted" is proven); undefined for sports the blend doesn't price. */
   blendVerdict?: string | null;
+  /**
+   * That card's record: skill (base-rate Brier − Brier, positive = better than
+   * no skill) and outcomes graded. Null: no card. Omitted with a verdict: the
+   * verdict word alone (+10 trusted, −5 otherwise), for callers without the record.
+   */
+  blendCard?: { skill: number; n: number } | null;
   /** Injury tag: "probable", "questionable", "doubtful", "day-to-day"…; null when clear. */
   injury?: string | null;
   /** NBA: projected minutes tonight, and his recent average (null when unknown). */
@@ -90,7 +113,7 @@ export const CONFIDENCE_VALIDATED = false;
 
 /** What the grade's weights rest on, and where its own check stands — shown with every grade until it's validated. */
 export const CONFIDENCE_TRACK_RECORD =
-  "Weights set from an audit of 5,347 graded live leans; the closing-price check needs 100+ A/B sides and has 79 so far.";
+  "Factor anchors set from an audit of 5,347 graded live leans, scored continuously since Nov 13; the closing-price check hasn't shown higher scores earning more yet.";
 
 /** Where every bet starts: neither trusted nor doubted. */
 export const BASE = 55;
@@ -100,6 +123,35 @@ export const GRADE_CUTS: [ConfidenceGrade, number][] = [
   ["C", 45],
   ["D", -Infinity],
 ];
+
+/** |z| beyond this is a collapsed projection spread, not distance. */
+export const Z_DEGENERATE = 6;
+/** Within range, |z| is capped here before it scores. */
+export const Z_CAP = 2.5;
+/** Outcomes graded for a report card's record to count in full. */
+export const TRACK_FULL_N = 500;
+
+/** Straight lines between anchor points, flat past the ends. */
+export function interp(x: number, points: [number, number][]): number {
+  if (x <= points[0]![0]) return points[0]![1];
+  for (let i = 1; i < points.length; i++) {
+    const [x1, y1] = points[i]!;
+    const [x0, y0] = points[i - 1]!;
+    if (x <= x1) return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+  }
+  return points[points.length - 1]![1];
+}
+const round1 = (x: number) => Math.round(x * 10) / 10;
+
+export const distanceEffect = (absZ: number) => round1(interp(Math.min(absZ, Z_CAP), [[0.15, -10], [0.55, 0], [0.95, 10]]));
+export const marketEffect = (gap: number) => round1(interp(gap, [[0.03, 0], [0.115, 5], [0.15, 0], [0.18, -15]]));
+export const sampleEffect = (games: number) => round1(interp(games, [[2, -20], [7.5, -10], [15, 0], [30, 5]]));
+/** The card's record, weighted by its sample, the rest of the weight on −5. */
+export function trackEffect(card: { skill: number; n: number }): number {
+  const w = Math.min(1, Math.max(0, card.n) / TRACK_FULL_N);
+  const record = Math.max(-5, Math.min(10, card.skill * 1000));
+  return round1(w * record + (1 - w) * -5);
+}
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const pts = (x: number) => `${Math.round(Math.abs(x) * 100)} pts`;
@@ -118,14 +170,19 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
 
   // 1. Track record: has this stat's blend earned a passing report card on real closing prices?
   if (c.blendVerdict === undefined) add("track", 0, "This sport's props come from their own projection model; there's no blend report card to lean on yet.");
+  else if (c.blendCard) {
+    const e = trackEffect(c.blendCard);
+    const skill = c.blendCard.skill * 1000;
+    add("track", e, `Report card: ${skill >= 0 ? "+" : "−"}${Math.abs(skill).toFixed(1)} skill vs no-skill on ${c.blendCard.n.toLocaleString("en-US")} graded${c.blendCard.n < TRACK_FULL_N ? ` (counts in full at ${TRACK_FULL_N})` : ""}.`);
+  } else if (c.blendCard === null) add("track", -5, "No report card for this stat yet: nothing graded to lean on.");
   else if (c.blendVerdict === "trusted") add("track", 10, "ARCHR's numbers for this stat have a passing report card on real closing prices.");
   else add("track", -5, "ARCHR's numbers for this stat haven't earned a passing report card yet (see /models for its record).");
 
-  // 2. How much history the projection rests on.
-  if (c.sampleGames < 5) add("sample", -20, `Only ${c.sampleGames} games of history: the projection leans on league averages.`);
-  else if (c.sampleGames < 10) add("sample", -10, `${c.sampleGames} games of history: a thin base for a projection.`);
-  else if (c.sampleGames >= 30) add("sample", 5, `${c.sampleGames} games of history behind the projection.`);
-  else add("sample", 0, `${c.sampleGames} games of history behind the projection.`);
+  // 2. How much history the projection rests on (linear in games).
+  {
+    const e = sampleEffect(c.sampleGames);
+    add("sample", e, c.sampleGames < 10 ? `Only ${c.sampleGames} games of history: the projection leans on league averages.` : `${c.sampleGames} games of history behind the projection.`);
+  }
 
   // 3. The record check (the cautious read): does his record at this line back the price, or only the model?
   if (priceChance !== null && games >= 5) {
@@ -141,12 +198,13 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
     else add("record", 0, `Record ${hits}/${games} here, close to what the price implies (${pct(priceChance)}).`);
   } else if (games < 5) add("record", -5, `Only ${games} recent games at this line: no record to check the read against.`);
 
-  // 4. Disagreement with the books: a big gap is more often missing information than value.
+  // 4. Disagreement with the books: a real disagreement is ARCHR's best range; a big gap is more often missing information than value.
   if (books !== null) {
     const gap = c.archr - books;
     const vs = c.marketChance !== null ? "the books' no-vig chance" : "the chance the price implies";
-    if (gap > 0.15) add("market", -15, `ARCHR is ${pts(gap)} above ${vs}: gaps this big are usually news the model hasn't seen (injury, role, rest).`);
-    else if (gap > 0.08) add("market", 5, `ARCHR is ${pts(gap)} above ${vs}: a real disagreement, the range where its reads have held up best.`);
+    const e = marketEffect(gap);
+    if (gap > 0.15) add("market", e, `ARCHR is ${pts(gap)} above ${vs}: gaps this big are usually news the model hasn't seen (injury, role, rest).`);
+    else if (e > 0) add("market", e, `ARCHR is ${pts(gap)} above ${vs}: a real disagreement, the range where its reads have held up best.`);
     else if (gap < -0.15) add("market", 0, `ARCHR is ${pts(gap)} below ${vs}: the books like this side far more than ARCHR does.`);
     else add("market", 0, `ARCHR is within ${pts(Math.max(Math.abs(gap), 0.01))} of ${vs}.`);
   }
@@ -154,9 +212,14 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
   // 4b. Distance from the line: a projection that barely clears it is mostly vig; one far off it is where edges have held.
   if (c.z !== undefined && c.z !== null) {
     const z = Math.abs(c.z);
-    if (z < 0.35) add("distance", -10, `The projection barely clears the line (${z.toFixed(2)} of a typical swing): bets this close have mostly paid the vig.`);
-    else if (z >= 0.75) add("distance", 10, `The projection sits well off the line (${z.toFixed(2)} of a typical swing): where ARCHR's edges have held up.`);
-    else add("distance", 0, `The projection sits ${z.toFixed(2)} of a typical swing from the line.`);
+    if (!Number.isFinite(z) || z > Z_DEGENERATE) add("distance", 0, "Distance not scored: this projection has no real spread (a yes/no stat), so how far it sits from the line can't be measured.");
+    else {
+      const e = distanceEffect(z);
+      const shown = Math.min(z, Z_CAP).toFixed(2);
+      if (e < 0) add("distance", e, `The projection sits close to the line (${shown} of a typical swing): bets this close have mostly paid the vig.`);
+      else if (e > 0) add("distance", e, `The projection sits off the line (${shown} of a typical swing): where ARCHR's edges have held up.`);
+      else add("distance", 0, `The projection sits ${shown} of a typical swing from the line.`);
+    }
   }
 
   // 4c. NBA overs have run high.
@@ -183,7 +246,7 @@ export function confidenceOf(c: ConfidenceInput): Confidence | null {
   if (c.priceAmerican === null) add("price", -10, "No book has priced this yet: there's no price to measure the edge against.");
   else if (c.priceAmerican >= 130) add("price", -5, `A long price (+${c.priceAmerican}): ARCHR's chances on long shots have run high.`);
 
-  const score = Math.max(0, Math.min(100, BASE + f.reduce((s, x) => s + x.effect, 0)));
+  const score = Math.max(0, Math.min(100, Math.round(BASE + f.reduce((s, x) => s + x.effect, 0))));
   return { score, grade: gradeOf(score), factors: f };
 }
 

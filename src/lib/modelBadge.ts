@@ -32,11 +32,16 @@ export function isUnprovenVerdict(verdict: string | null | undefined): boolean {
 export interface GradedCard {
   n: number;
   belowBaseline: boolean;
+  /** Base-rate Brier minus Brier: positive = better than no skill (the Confidence track factor reads it). */
+  skill: number;
 }
 
 export function gradedCard(r: { n: number; brier: number; baseRateBrier: number }): GradedCard {
-  return { n: r.n, belowBaseline: r.brier > r.baseRateBrier };
+  return { n: r.n, belowBaseline: r.brier > r.baseRateBrier, skill: r.baseRateBrier - r.brier };
 }
+
+/** A card as the Confidence track factor reads it; null when the stat has no card. */
+export const blendCardOf = (g: GradedCard | null | undefined): { skill: number; n: number } | null => (g ? { skill: g.skill, n: g.n } : null);
 
 /**
  * The track-record chip for a model without a passing grade: what its

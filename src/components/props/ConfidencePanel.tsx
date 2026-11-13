@@ -21,14 +21,33 @@ const GRADE_WORDS: Record<ConfidenceGrade, string> = {
 };
 
 
-/** The grade as a small chip (boards, leg rows). */
-export function ConfidenceChip({ c }: { c: Confidence | CompactConfidence | null | undefined }) {
+/** "412 graded" for the stat's report card; null without a card or a count. */
+export const gradedLabel = (graded: number | null | undefined) => (typeof graded === "number" && graded > 0 ? `${graded.toLocaleString("en-US")} graded` : null);
+
+/**
+ * The grade as a small chip (boards, leg rows): the letter and the precise
+ * score, then how many outcomes the stat's report card has graded ("C 67 · 412
+ * graded"). The score and the count carry the track record; there is no
+ * separate verdict stamp.
+ */
+export function ConfidenceChip({ c, graded, stacked = false }: { c: Confidence | CompactConfidence | null | undefined; graded?: number | null; stacked?: boolean }) {
   if (!c) return <span className="font-mono text-[11px] text-muted-foreground">—</span>;
   const why = "why" in c ? c.why : null;
-  const title = [`Confidence ${gradeLabel(c)} (score out of 100)`, why, CONFIDENCE_VALIDATED ? null : CONFIDENCE_TRACK_RECORD].filter(Boolean).join(" · ");
-  return (
+  const g = gradedLabel(graded);
+  const title = [`Confidence ${gradeLabel(c)} (score out of 100)`, g ? `report card: ${g}` : null, why, CONFIDENCE_VALIDATED ? null : CONFIDENCE_TRACK_RECORD].filter(Boolean).join(" · ");
+  const chip = (
     <span title={title} className={`inline-flex min-w-6 items-center justify-center whitespace-nowrap rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold ring-1 ${GRADE_TONE[c.grade]}`}>
       {c.grade} <span className="ml-1 font-semibold opacity-80">{c.score}</span>
+    </span>
+  );
+  if (!g) return chip;
+  return (
+    <span className={`inline-flex ${stacked ? "flex-col items-center gap-0.5" : "items-center gap-1"}`}>
+      {chip}
+      <span className="whitespace-nowrap font-mono text-[10px] text-muted-foreground">
+        {stacked ? "" : "· "}
+        {g}
+      </span>
     </span>
   );
 }
@@ -44,8 +63,9 @@ export interface PriceReason {
  * it (and the ones that didn't, as context), and what the projection itself
  * weighed — the minutes, the matchup, the game script, the form.
  */
-export function ConfidencePanel({ c, reasons = [], sideLabel }: { c: Confidence | null; reasons?: PriceReason[]; sideLabel: string }) {
+export function ConfidencePanel({ c, reasons = [], sideLabel, graded }: { c: Confidence | null; reasons?: PriceReason[]; sideLabel: string; /** Outcomes the stat's report card graded. */ graded?: number | null }) {
   if (!c) return null;
+  const g = gradedLabel(graded);
   const moved = c.factors.filter((f) => f.effect !== 0).sort((a, b) => b.effect - a.effect);
   const context = c.factors.filter((f) => f.effect === 0);
   return (
@@ -59,7 +79,10 @@ export function ConfidencePanel({ c, reasons = [], sideLabel }: { c: Confidence 
           <span className="text-base leading-none opacity-80">{c.score}</span>
         </span>
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Confidence · {sideLabel}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Confidence · {sideLabel}
+            {g && <span className="normal-case tracking-normal"> · {c.score} · {g}</span>}
+          </p>
           <p className="text-sm font-semibold text-foreground">{GRADE_WORDS[c.grade]}</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             Score out of 100: how far to trust ARCHR&apos;s chance and edge on this bet, not a chance itself.

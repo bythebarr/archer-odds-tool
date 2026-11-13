@@ -1,9 +1,9 @@
 "use client";
+import { nflSummaryConfidence } from "@/lib/propModel/summaryConfidence";
 
 import type { GradedCard } from "@/lib/modelBadge";
-import { confidenceOf } from "@/lib/propModel/confidence";
 import { nflPriceReasons } from "@/lib/nfl/priceReasons";
-import { ConfidencePanel } from "@/components/props/ConfidencePanel";
+import { ConfidenceChip, ConfidencePanel } from "@/components/props/ConfidencePanel";
 import Link from "next/link";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import type { NflPropStat } from "@/generated/prisma/client";
@@ -22,7 +22,6 @@ import type { NflTeamContext } from "@/lib/nfl/teamContext";
 import { Logo } from "@/components/Logo";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import { TrackRecordChip } from "@/components/TrackRecordChip";
 import { BlendLine, EnvLine, SeasonMixLine, signed } from "@/components/props/ModelPieces";
 import type { NflProjectionContext } from "@/lib/nfl/projection";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
@@ -100,7 +99,11 @@ function NflCard({ s, player, game, side, stat, defense, blendVerdict, blendGrad
       badges={
         <>
           <InjuryBadge injury={player.injury} />
-          {s.model && <TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
+          {s.model && (
+            <span className="ml-1.5 inline-flex align-middle">
+              <ConfidenceChip c={nflSummaryConfidence(s, side, { blendVerdict: blendVerdict ?? null, blendGraded, injury: player.injury?.level ?? null, alt: false })} graded={blendGraded?.n} />
+            </span>
+          )}
         </>
       }
       teamLogo={player.team?.logoUrl}
@@ -406,23 +409,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
     logs: logs.map((l) => ({ date: l.date, opponent: l.opponent, isHome: l.isHome, season: l.season, team: l.team, value: !stat.available || stat.available(l) ? stat.value(l) : null })),
   };
   // Confidence: how far to trust ARCHR's read of this bet, and why (lib/propModel/confidence).
-  const recordSplit = s?.splits.find((x) => x.key === "l10" && x.rate.sampleSize >= 5) ?? s?.splits.find((x) => x.key === "season");
-  const quote = side === "over" ? s?.over : s?.under;
-  const confidence = m && s
-    ? confidenceOf({
-        archr: side === "over" ? m.probOver : m.probUnder,
-        marketChance: m.market ? (side === "over" ? m.market.probOver : 1 - m.market.probOver) : null,
-        priceAmerican: s.projected ? null : (quote?.priceAmerican ?? null),
-        rate: recordSplit ? [recordSplit.rate.hits, recordSplit.rate.sampleSize] : [0, 0],
-        sampleGames: m.projection.games,
-        blendVerdict: blendVerdicts[prop.stat] ?? null,
-        injury: player.injury?.level ?? null,
-        alt: point !== main,
-        z: ((m.projection.mean - point) / Math.max(m.projection.sd, 1e-6)) * (side === "over" ? 1 : -1),
-        side,
-        sport: "nfl",
-      })
-    : null;
+  const confidence = s ? nflSummaryConfidence(s, side, { blendVerdict: blendVerdicts[prop.stat] ?? null, blendGraded: blendGraded[prop.stat], injury: player.injury?.level ?? null, alt: point !== main }) : null;
   const priceReasons = m
     ? nflPriceReasons({
         side,
@@ -545,7 +532,6 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
             </>
           }
         >
-          <TrackRecordChip verdict={blendVerdicts[prop.stat]} graded={blendGraded[prop.stat]} className="mt-3" />
           <BlendLine model={m} side={side} />
           <SeasonMixLine seasons={m.projection.seasons} digits={stat.shape === "yards" ? 0 : stat.shape === "anytime" ? 2 : 1} />
           <EnvLine
@@ -576,7 +562,7 @@ function Sheet({ player, props, logs, volume, season, projection, modelWeights, 
         </ProjectionCard>
       )}
 
-      <ConfidencePanel c={confidence} reasons={priceReasons} sideLabel={`${sideLabelsOf(stat)[side === "over" ? 0 : 1]}${stat.shape === "anytime" ? "" : ` ${point}`} ${stat.shortLabel}`} />
+      <ConfidencePanel c={confidence} graded={blendGraded[prop.stat]?.n} reasons={priceReasons} sideLabel={`${sideLabelsOf(stat)[side === "over" ? 0 : 1]}${stat.shape === "anytime" ? "" : ` ${point}`} ${stat.shortLabel}`} />
 
       {altRows.length > 1 && (
         <AltLinesTable

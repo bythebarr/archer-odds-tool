@@ -7,7 +7,7 @@ import type { ScreenerProp } from "@/lib/screener/types";
 import { BUILDER_CHUNKS, BUILDER_CHUNK_ROWS, buildPoolSlice, POOL_SOURCES, type PoolSource } from "@/lib/builder/pool";
 import { chunkRows } from "./snapshot";
 import { poolConfidence, recordOf } from "./confidence";
-import { getReportedBlendVerdicts } from "@/lib/queries/modelTrust";
+import { getReportedBlendVerdicts, getReportedGraded } from "@/lib/queries/modelTrust";
 import { SCREENER_CHUNKS, SCREENER_CHUNK_ROWS, SCREENER_SPORTS, type ScreenerSport } from "@/lib/screener/pool";
 
 const SCREENER_BUILD: Record<ScreenerSport, () => Promise<ScreenerProp[]>> = {
@@ -29,7 +29,7 @@ export const POOLS: Record<string, Build> = {
     SCREENER_SPORTS.map(({ key }) => [
       screenerPoolKey(key),
       async () => {
-        const [built, verdicts] = await Promise.all([SCREENER_BUILD[key](), getReportedBlendVerdicts()]);
+        const [built, verdicts, graded] = await Promise.all([SCREENER_BUILD[key](), getReportedBlendVerdicts(), getReportedGraded()]);
         const rows = built.map(({ facts, ...r }) => ({
           ...r,
           confidence: poolConfidence(
@@ -44,7 +44,8 @@ export const POOLS: Record<string, Build> = {
               projectedMinutes: r.minutes ?? null,
               facts,
             },
-            verdicts
+            verdicts,
+            graded
           ),
         }));
         return {
@@ -58,7 +59,7 @@ export const POOLS: Record<string, Build> = {
     POOL_SOURCES.map((s) => [
       builderPoolKey(s),
       async () => {
-        const [built, verdicts] = await Promise.all([buildPoolSlice(s), getReportedBlendVerdicts()]);
+        const [built, verdicts, graded] = await Promise.all([buildPoolSlice(s), getReportedBlendVerdicts(), getReportedGraded()]);
         const legs = built.map(({ facts, ...l }) =>
           l.kind !== "prop"
             ? l
@@ -77,7 +78,8 @@ export const POOLS: Record<string, Build> = {
                     projectedMinutes: facts?.projectedMinutes ?? null,
                     facts,
                   },
-                  verdicts
+                  verdicts,
+                  graded
                 ),
               }
         );

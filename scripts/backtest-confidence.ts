@@ -2,7 +2,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { MIN_EDGE_BETS, MIN_POOLED, validateConfidence, validateGraded, type ConfidenceValidation, type GradeStats } from "@/lib/propModel/confidenceGrade";
 import { loadGradedLeans } from "@/lib/queries/edgeReport";
-import { getReportedBlendVerdicts } from "@/lib/queries/modelTrust";
+import { getReportedBlendVerdicts, getReportedGraded } from "@/lib/queries/modelTrust";
 import { nbaScreener, nflScreener } from "@/lib/screener/sources";
 import { poolConfidenceInput, recordOf } from "@/lib/pools/confidence";
 import { blendVerdictsByStat } from "@/lib/props/provenance";
@@ -93,7 +93,7 @@ async function frozen() {
 
 /** The live board, graded exactly as the screener pools grade it, with every factor. */
 async function board() {
-  const verdicts = await getReportedBlendVerdicts();
+  const [verdicts, cards] = await Promise.all([getReportedBlendVerdicts(), getReportedGraded()]);
   console.log(`\n\n═══ LIVE BOARD DIAGNOSIS (graded as the screener grades it) · cuts: ${CUTS_LINE} ═══`);
   for (const sport of ["nba", "nfl"] as const) {
     const byStat = blendVerdictsByStat(sport, verdicts);
@@ -104,7 +104,8 @@ async function board() {
     const graded = rows.map((r) => {
       const input = poolConfidenceInput(
         { sport: r.sport, statKey: r.stat, archr: r.archr, priceAmerican: r.priceAmerican, rate: recordOf(r.rates.l10, r.rates.szn), fallbackGames: r.rates.szn[1] + r.rates.last[1], alt: !r.main, projectedMinutes: r.minutes ?? null, facts: r.facts },
-        verdicts
+        verdicts,
+        cards
       );
       return { r, input, c: confidenceOf(input)! };
     });
