@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { SPORTS } from "@/lib/engine";
 import type { ReportedVerdicts } from "@/lib/engine";
+import { gradedCard, type GradedCard } from "@/lib/modelBadge";
 
 /**
  * Each sport model's verdict from its latest /models report card. The sport
@@ -43,11 +44,11 @@ export async function getReportedBlendVerdicts(): Promise<ReportedVerdicts> {
  * keyed like the verdict maps (sport key, or `market-blend:<sport>:<stat>`).
  * Display only: it fills the track-record chips' counts.
  */
-export async function getReportedGraded(): Promise<Record<string, number>> {
+export async function getReportedGraded(): Promise<Record<string, GradedCard>> {
   const rows = await prisma.modelReport.findMany({
     orderBy: { createdAt: "desc" },
     distinct: ["model"],
-    select: { model: true, n: true },
+    select: { model: true, n: true, brier: true, baseRateBrier: true },
   });
-  return Object.fromEntries(rows.map((r) => [r.model, r.n]));
+  return Object.fromEntries(rows.map((r) => [r.model, gradedCard(r)]));
 }

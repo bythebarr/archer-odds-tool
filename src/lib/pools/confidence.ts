@@ -6,7 +6,8 @@
  * verdicts.
  */
 import type { ReportedVerdicts } from "@/lib/engine/trust";
-import { BLEND_PRICED_PROP_SPORTS, propBlendVerdict } from "@/lib/props/provenance";
+import { BLEND_PRICED_PROP_SPORTS, blendCardKey, propBlendVerdict } from "@/lib/props/provenance";
+import { blendCardOf, type GradedCard } from "@/lib/modelBadge";
 import { compactConfidence, confidenceOf, type ConfidenceInput } from "@/lib/propModel/confidence";
 import type { Rate } from "@/lib/builder/types";
 import type { LegFacts } from "@/lib/props/parlayFinder";
@@ -28,14 +29,18 @@ export interface RowForConfidence {
 }
 
 /** The grade's inputs for a pool row (exported so diagnostics grade rows exactly as the pools do). */
-export function poolConfidenceInput(r: RowForConfidence, verdicts: ReportedVerdicts): ConfidenceInput {
+/** `graded`: each card's record (getReportedGraded); omitted, the track factor reads the verdict word alone. */
+export function poolConfidenceInput(r: RowForConfidence, verdicts: ReportedVerdicts, graded?: Record<string, GradedCard>): ConfidenceInput {
+  const blend = BLEND_PRICED_PROP_SPORTS.has(r.sport);
   return {
     archr: r.archr,
     marketChance: r.facts?.market ?? null,
     priceAmerican: r.priceAmerican,
     rate: r.rate,
     sampleGames: r.facts?.games ?? r.fallbackGames,
-    blendVerdict: BLEND_PRICED_PROP_SPORTS.has(r.sport) ? propBlendVerdict(r.sport, r.statKey, verdicts) : undefined,
+    blendVerdict: blend ? propBlendVerdict(r.sport, r.statKey, verdicts) : undefined,
+    // The card's own record for the continuous track factor (null: no card for this stat).
+    blendCard: blend && graded ? blendCardOf(graded[blendCardKey(r.sport, r.statKey)]) : undefined,
     injury: r.facts?.injury ?? null,
     minutes: r.projectedMinutes ? { projected: r.projectedMinutes, recent: r.facts?.recentMinutes ?? null } : null,
     alt: r.alt,
@@ -45,8 +50,8 @@ export function poolConfidenceInput(r: RowForConfidence, verdicts: ReportedVerdi
   };
 }
 
-export function poolConfidence(r: RowForConfidence, verdicts: ReportedVerdicts) {
-  return compactConfidence(confidenceOf(poolConfidenceInput(r, verdicts)));
+export function poolConfidence(r: RowForConfidence, verdicts: ReportedVerdicts, graded?: Record<string, GradedCard>) {
+  return compactConfidence(confidenceOf(poolConfidenceInput(r, verdicts, graded)));
 }
 
 /** A record window, falling back to the longer one when it holds fewer than 5 games. */

@@ -55,7 +55,7 @@ export function MlbBoard({ gamesWithLines, hitRatesByTeam, archerProbByGame, arc
       </div>
 
       {view === "games" ? (
-        <GamesScheduleView gamesWithLines={gamesWithLines} />
+        <GamesScheduleView gamesWithLines={gamesWithLines} archerProbByGame={archerProbByGame} archerRunsByGame={archerRunsByGame} />
       ) : (
         <SlateLinesView
           gamesWithLines={gamesWithLines}

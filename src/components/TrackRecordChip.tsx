@@ -1,4 +1,4 @@
-import { trackRecordLabel } from "@/lib/modelBadge";
+import { trackRecordLabel, type GradedCard } from "@/lib/modelBadge";
 
 /**
  * The track-record chip on a play priced by a model without a passing
@@ -14,7 +14,7 @@ export function TrackRecordChip({
 }: {
   verdict: string | null | undefined;
   /** Outcomes the model's latest report card graded, when known. */
-  graded?: number | null;
+  graded?: number | GradedCard | null;
   className?: string;
 }) {
   const label = trackRecordLabel(verdict, graded);

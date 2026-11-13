@@ -7,6 +7,7 @@ import { SportCarousel } from "@/components/book/SportCarousel";
 import { LeagueHeader } from "@/components/book/LeaguePage";
 import { SportTabs } from "@/components/book/SportTabs";
 import { UfcCardSections, UfcEventHero, formatFightDate } from "@/components/book/UfcFightCard";
+import { ufcArchrRedBatch } from "@/lib/queries/archrLines";
 import { EmptyState } from "@/components/EmptyState";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
 import { ScrollRow } from "@/components/ScrollRow";
@@ -120,7 +121,7 @@ export default async function UfcPage({ searchParams }: { searchParams: Promise<
             <UfcEventHero event={event} />
           </div>
           <div className="mt-6">
-            <UfcCardSections event={event} upcoming />
+            <UfcCardSections event={event} upcoming archrRed={await ufcArchrRedBatch(event.bouts.map((b) => b.id))} />
           </div>
           <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
             Best moneyline across bettable books; the dot on each price is the book. Tap a price to add it to your slip,

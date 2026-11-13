@@ -1,4 +1,5 @@
 import { getLeagueDays, getLeagueEvents } from "@/lib/queries/lobby";
+import { getEventArchrBatch, type EventArchr } from "@/lib/queries/archrLines";
 import { todayEt, isValidEtDate } from "@/lib/dateEt";
 import { sportMetaByKey } from "@/lib/engine/sportsMeta";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
@@ -50,6 +51,14 @@ export async function LeaguePage({ sport, dateParam }: { sport: TeamLeagueSport;
   const [days, freshness] = await Promise.all([getLeagueDays(sport, today), getFeedFreshness(FEED[sport])]);
   const date = dateParam && isValidEtDate(dateParam) ? dateParam : (days[0] ?? today);
   const events = await getLeagueEvents(sport, date);
+  // ARCHR's line beside the book's, from the game model (one batched read per page). NHL has no game model: the book shows alone.
+  const archr: Map<string, EventArchr | null> =
+    sport === "nhl"
+      ? new Map()
+      : await getEventArchrBatch(sport, events.map((e) => e.id)).catch((err) => {
+          console.error(`[league] ARCHR lines failed for ${sport}`, err);
+          return new Map<string, EventArchr | null>();
+        });
   const label = sportMetaByKey[sport].label;
 
   return (
@@ -74,16 +83,17 @@ export async function LeaguePage({ sport, dateParam }: { sport: TeamLeagueSport;
       ) : (
         <>
           <div className="mt-5">
-            <EventListHeader />
+            <EventListHeader vs />
             <div className="flex flex-col gap-2.5">
               {events.map((e) => (
-                <EventRow key={e.id} event={e} sport={sport} />
+                <EventRow key={e.id} event={e} sport={sport} archr={archr.get(e.id) ?? null} />
               ))}
             </div>
           </div>
           <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-            Best price across bettable books at the main line. The icon on each price is the book that has it; tap a price to add it
-            to your slip, or a team for every market and book.
+            Best price across bettable books at the main line, with ARCHR&apos;s own line under it: its fair price on the moneyline, its
+            projected spread and total. The book&apos;s number is green when it beats ARCHR&apos;s line, red when it doesn&apos;t. Tap a price to add it to
+            your slip, or a team for every market and book.
           </p>
           <div className="mt-3">
             <FreshnessStamp freshness={freshness} />

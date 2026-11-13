@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fairAmericanOf, formatArchrLine, lineTone, staleDate } from "./bookVsArchr";
+import { eventArchrOf, fairAmericanOf, formatArchrLine, lineTone, staleDate } from "./bookVsArchr";
 
 describe("bookVsArchr", () => {
   it("prices ARCHR's chance as a fair American price", () => {
@@ -44,5 +44,12 @@ describe("bookVsArchr", () => {
     expect(staleDate("2026-11-13T12:00:00Z", now)).toBeNull();
     expect(staleDate("2026-11-01T22:00:00Z", now)).toBe("Nov 1");
     expect(staleDate(null, now)).toBeNull();
+  });
+
+  it("reads a game-model view as ARCHR's lines: blended moneyline where priced, the model's own otherwise", () => {
+    const priced = eventArchrOf({ fairSpread: -5.5, fairTotal: 228, pHomeWin: 0.7, markets: [{ market: "ml", probA: 0.75 }] });
+    expect(priced).toEqual({ spread: { home: -5.5, away: 5.5 }, total: 228, ml: { home: -300, away: 300 } });
+    const unpriced = eventArchrOf({ fairSpread: 2, fairTotal: 44.5, pHomeWin: 0.5, markets: [] });
+    expect(unpriced.ml).toEqual({ home: 100, away: 100 });
   });
 });

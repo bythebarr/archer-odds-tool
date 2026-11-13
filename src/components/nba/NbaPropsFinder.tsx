@@ -1,5 +1,6 @@
 "use client";
 
+import type { GradedCard } from "@/lib/modelBadge";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { nbaProjectionContext } from "@/lib/nba/slateContext";
 import { formatAmerican } from "@/lib/odds/americanOdds";
@@ -18,7 +19,8 @@ import { addLeg, type ParlayLeg } from "@/lib/props/parlay";
 import { MatchupChip } from "./Matchup";
 import { EvTag } from "@/components/EvTag";
 import { InjuryBadge } from "@/components/InjuryBadge";
-import { TrackRecordChip } from "@/components/TrackRecordChip";
+import { ConfidenceChip } from "@/components/props/ConfidencePanel";
+import { nbaSummaryConfidence } from "@/lib/propModel/summaryConfidence";
 import type { DefenseTable } from "@/lib/nba/matchup";
 import type { NbaPropStatDef } from "@/lib/nba/propStats";
 
@@ -63,7 +65,7 @@ function NbaCard({
   /** The blend card's verdict for this stat (absent stat = no card). */
   blendVerdict?: string | null;
   /** Outcomes that card was graded on. */
-  blendGraded?: number;
+  blendGraded?: GradedCard;
   onOpen: () => void;
 }) {
   const best = side === "over" ? summary.over : summary.under;
@@ -91,7 +93,11 @@ function NbaCard({
       badges={
         <>
           <InjuryBadge injury={player.injury} />
-          {summary.model && <TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
+          {summary.model && (
+            <span className="ml-1.5 inline-flex align-middle">
+              <ConfidenceChip c={nbaSummaryConfidence(summary, side, { blendVerdict: blendVerdict ?? null, blendGraded, injury: player.injury?.level ?? null, alt: false })} graded={blendGraded?.n} />
+            </span>
+          )}
         </>
       }
       teamLogo={player.team?.logoUrl}

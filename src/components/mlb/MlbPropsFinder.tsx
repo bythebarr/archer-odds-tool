@@ -1,5 +1,6 @@
 "use client";
 
+import type { GradedCard } from "@/lib/modelBadge";
 import Link from "next/link";
 import { Fragment, useCallback, useMemo, useState } from "react";
 import type { MlbPropStat } from "@/lib/mlb/propProjection";
@@ -26,7 +27,8 @@ import { EvTag } from "@/components/EvTag";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { BlendLine } from "@/components/props/ModelPieces";
-import { TrackRecordChip } from "@/components/TrackRecordChip";
+import { ConfidenceChip, ConfidencePanel } from "@/components/props/ConfidencePanel";
+import { mlbConfidence } from "@/lib/propModel/summaryConfidence";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import {
   ArchrLineChip,
@@ -111,7 +113,7 @@ function rowFor(prop: MlbSlateProp, stat: MlbPropStatDef, side: PropDirection, p
   };
 }
 
-function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendGraded, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; logs: MlbChartLog[]; season: number; startUtc?: string; blendVerdict?: string | null; blendGraded?: number; onOpen: () => void }) {
+function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendGraded, onOpen }: { row: Row; stat: MlbPropStatDef; side: PropDirection; logs: MlbChartLog[]; season: number; startUtc?: string; blendVerdict?: string | null; blendGraded?: GradedCard; onOpen: () => void }) {
   const { player, priced } = row;
   const chance = side === "over" ? priced.probOver : priced.probUnder;
   const ev = side === "over" ? priced.evOver : priced.evUnder;
@@ -124,7 +126,14 @@ function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendG
       onOpen={onOpen}
       headshot={[player.headshotUrl]}
       name={player.name}
-      badges={<TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
+      badges={
+        <span className="ml-1.5 inline-flex align-middle">
+          <ConfidenceChip
+            c={mlbConfidence({ priced, side, priceAmerican: row.projected ? null : (best?.priceAmerican ?? null), l10: row.l10, games: row.prop.projection.games, blendVerdict: blendVerdict ?? null, blendGraded, alt: false })}
+            graded={blendGraded?.n}
+          />
+        </span>
+      }
       tag={player.role === "pitcher" ? "SP" : player.battingOrder ? `#${player.battingOrder}` : undefined}
       teamLogo={player.team.logoUrl}
       teamAbbr={player.team.abbreviation}
@@ -179,7 +188,7 @@ function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendG
   );
 }
 
-function Sheet({ player, props, logs, season, initialStat, side: initialSide, startLabel, blendVerdicts, blendGraded = {}, onClose }: { player: MlbPropsPlayer; props: MlbSlateProp[]; logs: MlbChartLog[]; season: number; initialStat: MlbPropStat; side: PropDirection; startLabel: string; blendVerdicts: Record<string, string>; blendGraded?: Record<string, number>; onClose: () => void }) {
+function Sheet({ player, props, logs, season, initialStat, side: initialSide, startLabel, blendVerdicts, blendGraded = {}, onClose }: { player: MlbPropsPlayer; props: MlbSlateProp[]; logs: MlbChartLog[]; season: number; initialStat: MlbPropStat; side: PropDirection; startLabel: string; blendVerdicts: Record<string, string>; blendGraded?: Record<string, GradedCard>; onClose: () => void }) {
   const offered = MLB_PROP_STATS.filter((s) => props.some((p) => p.stat === s.key));
   const [statKey, setStatKey] = useState<MlbPropStat>(props.some((p) => p.stat === initialStat) ? initialStat : offered[0]!.key);
   const [side, setSide] = useState(initialSide);
@@ -282,9 +291,14 @@ function Sheet({ player, props, logs, season, initialStat, side: initialSide, st
           </>
         }
       >
-        <TrackRecordChip verdict={blendVerdicts[statKey]} graded={blendGraded[statKey]} className="mt-3" />
         <BlendLine model={priced} side={side} />
       </ProjectionCard>
+
+      <ConfidencePanel
+        c={mlbConfidence({ priced, side, priceAmerican: row.projected ? null : ((side === "over" ? row.over : row.under)?.priceAmerican ?? null), l10: row.l10, games: proj.games, blendVerdict: blendVerdicts[statKey] ?? null, blendGraded: blendGraded[statKey], alt: point !== main })}
+        graded={blendGraded[statKey]?.n}
+        sideLabel={`${side === "over" ? "Over" : "Under"} ${point} ${stat.shortLabel}`}
+      />
 
       <SheetSection title="Hit rates">
         <SplitGrid splits={splits} />

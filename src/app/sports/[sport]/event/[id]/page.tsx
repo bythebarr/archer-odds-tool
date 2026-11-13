@@ -64,7 +64,7 @@ export default async function AllSportEventPage({ params }: { params: Params }) 
           Every market
         </SectionTitle>
         {view.offers.length > 0 ? (
-          <GameMarketBoard offers={view.offers} teams={teams} sport="all" matchId={view.id} />
+          <GameMarketBoard offers={view.offers} teams={teams} sport="all" matchId={view.id} archr={view.archr ? { spread: view.archr.spread, total: view.archr.total } : null} />
         ) : (
           <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">No prices posted yet — books usually hang this a day or two out.</p>
         )}

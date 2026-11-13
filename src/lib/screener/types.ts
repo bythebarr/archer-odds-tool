@@ -52,6 +52,8 @@ export interface ScreenerProp {
   leagueSlug?: string;
   /** NBA: ARCHR's projected minutes tonight (lib/nba/minutes). */
   minutes?: number;
+  /** When this row's price was polled (ISO, the slate's latest prop poll), for dating a stale price. Absent where the source doesn't carry it. */
+  polledAt?: string;
   /** Confidence in ARCHR's read of this prop, computed when the pool is built (lib/propModel/confidence). */
   confidence?: CompactConfidence;
   /** While the pool is built only: the facts the grade reads (lib/pools/confidence); dropped before storing. */
@@ -123,6 +125,7 @@ export interface ScreenFilters {
   minArchr: number;
   /** NBA: projected minutes at least this (0 = any); props without a minutes projection drop out when it's set. */
   minMinutes: number;
+  /** ARCHR edge at least this many percentage points (0.03 = +3 pts); null = any. */
   minEdge: number | null;
   /** Price range, American; null = open. */
   shortest: number | null;
@@ -152,6 +155,23 @@ export const DEFAULT_FILTERS: ScreenFilters = {
 /** An edge past this is the props model misreading an alt rung, not value (see the parlay builder). */
 const MAX_TRUSTED_EDGE = 0.5;
 
+/** The chance an American price implies (vig in). */
+const impliedOf = (american: number) => (american > 0 ? 100 / (american + 100) : -american / (-american + 100));
+
+/**
+ * The headline edge, in percentage POINTS: ARCHR's chance minus the chance the
+ * best price implies (0.216 = +21.6 pts), bounded −1..+1. The relative edge
+ * (`edge`, return per unit staked, which runs to +1500% on a long shot) stays
+ * in the tooltip. Null without a price or a read. Display and screening only.
+ */
+export function edgePoints(p: Pick<ScreenerProp, "archr" | "priceAmerican">): number | null {
+  if (p.archr === null || p.priceAmerican === null) return null;
+  return Math.max(-1, Math.min(1, p.archr - impliedOf(p.priceAmerican)));
+}
+
+/** The points edge where the relative edge is believable (the same alt-rung guard as before), else null. */
+const trustedPoints = (p: ScreenerProp) => (p.edge !== null && p.edge <= MAX_TRUSTED_EDGE ? edgePoints(p) : null);
+
 const rateOf = ([h, n]: Rate) => (n ? h / n : -1);
 
 /** Each window's bar: the larger of its own and the all-windows bar. */
@@ -179,7 +199,10 @@ export function passes(p: ScreenerProp, f: ScreenFilters): boolean {
   }
   if (f.minArchr > 0 && (p.archr === null || p.archr < f.minArchr)) return false;
   if (f.minMinutes > 0 && (p.minutes === undefined || p.minutes < f.minMinutes)) return false;
-  if (f.minEdge !== null && (p.edge === null || p.edge > MAX_TRUSTED_EDGE || p.edge < f.minEdge)) return false;
+  if (f.minEdge !== null) {
+    const pts = trustedPoints(p);
+    if (pts === null || pts < f.minEdge) return false;
+  }
   if (f.shortest !== null && (p.priceAmerican === null || p.priceAmerican < f.shortest)) return false;
   if (f.longest !== null && (p.priceAmerican === null || p.priceAmerican > f.longest)) return false;
   return true;
@@ -187,7 +210,7 @@ export function passes(p: ScreenerProp, f: ScreenFilters): boolean {
 
 function sortValue(p: ScreenerProp, s: ScreenSort): number {
   if (s === "archr") return p.archr ?? -1;
-  if (s === "edge") return p.edge !== null && p.edge <= MAX_TRUSTED_EDGE ? p.edge : -1;
+  if (s === "edge") return trustedPoints(p) ?? -Infinity;
   if (s === "price") return p.priceAmerican ?? -Infinity;
   if (s === "minutes") return p.minutes ?? -Infinity;
   // Confidence (lib/propModel/confidence): the cautious read is one of its factors now.

@@ -12,7 +12,8 @@ export function BoardGradesLine({ board }: { board: { sport: string; counts: Boa
           {b.sport.toUpperCase()} A {b.counts.A} · B {b.counts.B} · C {b.counts.C} · D {b.counts.D}
         </span>
       ))}
-      . An A (75+) needs a stat whose report card above has passed; without one, the most a prop can score is 70.
+      . The score weighs each stat&apos;s report card by its actual record and how many outcomes graded it, so a card above with a long,
+      passing record lifts its props most; without a passing card, an A (75+) needs every other factor near its best (the most is 77).
     </p>
   );
 }

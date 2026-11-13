@@ -4,6 +4,7 @@
  * their players, two seasons of game logs (packed for the wire), the current
  * lines, and the defense-by-position table.
  */
+import type { GradedCard } from "@/lib/modelBadge";
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
@@ -87,7 +88,7 @@ export interface NflPropsSlate {
   /** Stat → the market-blend report card's verdict (stats without a card are absent, and read as unproven). */
   blendVerdicts: Record<string, string>;
   /** Stat → outcomes its blend card was graded on (for the track-record chip). */
-  blendGraded: Record<string, number>;
+  blendGraded: Record<string, GradedCard>;
   /** Team abbreviation → its offense and defense this season from the play-by-play, with league ranks. */
   teams: Record<string, NflTeamContext>;
   lastPolledAt: string | null;

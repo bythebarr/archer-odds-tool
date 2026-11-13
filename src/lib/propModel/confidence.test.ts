@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BASE, confidenceOf, confidenceSummary, gradeLabel, gradeOf, type ConfidenceInput } from "./confidence";
+import { BASE, Z_DEGENERATE, confidenceOf, confidenceSummary, distanceEffect, gradeLabel, gradeOf, marketEffect, sampleEffect, trackEffect, type ConfidenceInput } from "./confidence";
 
 const solid: ConfidenceInput = {
   archr: 0.6,
@@ -10,7 +10,7 @@ const solid: ConfidenceInput = {
   blendVerdict: "trusted",
   injury: null,
   minutes: { projected: 34, recent: 33.5 },
-  z: 0.9,
+  z: 1.0,
   side: "under",
   sport: "nba",
 };
@@ -89,5 +89,41 @@ describe("confidenceOf", () => {
     const c = confidenceOf(solid)!;
     expect(confidenceSummary(c)).toMatch(new RegExp(`^Confidence A ${c.score}`));
     expect(gradeLabel({ grade: "B", score: 69 })).toBe("B 69");
+  });
+
+  it("continuous factors: straight lines through the old anchors", () => {
+    expect(distanceEffect(0.1)).toBe(-10);
+    expect(distanceEffect(0.55)).toBe(0);
+    expect(distanceEffect(0.75)).toBe(5);
+    expect(distanceEffect(3)).toBe(10);
+    expect(marketEffect(0.115)).toBe(5);
+    expect(marketEffect(0.15)).toBe(0);
+    expect(marketEffect(0.165)).toBe(-7.5);
+    expect(marketEffect(0.25)).toBe(-15);
+    expect(sampleEffect(1)).toBe(-20);
+    expect(sampleEffect(22.5)).toBe(2.5);
+    expect(sampleEffect(80)).toBe(5);
+  });
+
+  it("a collapsed projection spread (yes/no props) earns no distance credit", () => {
+    const c = confidenceOf({ ...solid, z: -465369.5 })!;
+    const d = c.factors.find((f) => f.key === "distance")!;
+    expect(d.effect).toBe(0);
+    expect(d.text).toContain("no real spread");
+    expect(confidenceOf({ ...solid, z: Z_DEGENERATE + 1 })!.factors.find((f) => f.key === "distance")!.effect).toBe(0);
+  });
+
+  it("track reads the card's record, weighted by how much it has graded; a thin card still costs", () => {
+    expect(trackEffect({ skill: 0.012, n: 2400 })).toBe(10);
+    expect(trackEffect({ skill: 0, n: 0 })).toBe(-5);
+    expect(trackEffect({ skill: 0.0155, n: 50 })).toBe(-3.5); // 10% weight on +10, 90% on −5
+    expect(trackEffect({ skill: -0.02, n: 900 })).toBe(-5);
+    const c = confidenceOf({ ...solid, blendVerdict: "thin", blendCard: { skill: 0.0155, n: 50 } })!;
+    expect(c.factors.find((f) => f.key === "track")!.effect).toBe(-3.5);
+    expect(confidenceOf({ ...solid, blendVerdict: null, blendCard: null })!.factors.find((f) => f.key === "track")!.effect).toBe(-5);
+  });
+
+  it("scores are whole numbers", () => {
+    expect(Number.isInteger(confidenceOf({ ...solid, z: 0.8, sampleGames: 21 })!.score)).toBe(true);
   });
 });
