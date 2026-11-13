@@ -30,6 +30,8 @@ export interface NflGradedSide {
   sampleGames: number;
   won: 0 | 1;
   date: string;
+  /** (projection − line) / its spread, toward this side (as the live sheet computes it). */
+  z: number;
 }
 
 export async function gradedNflSides(closing: Map<string, GameLines>, baselines: Map<string, { home: TeamBaseline | null; away: TeamBaseline | null }>): Promise<NflGradedSide[]> {
@@ -93,6 +95,7 @@ export async function gradedNflSides(closing: Map<string, GameLines>, baselines:
           sampleGames: history.length,
           won: (side === "over" ? actual > point : actual < point) ? 1 : 0,
           date: etDateOf(g.scheduledStartUtc),
+          z: ((proj.mean - point) / Math.max(proj.sd, 1e-6)) * (side === "over" ? 1 : -1),
         });
       }
     }
