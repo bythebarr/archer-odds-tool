@@ -18,6 +18,7 @@ import { DEFAULT_MODEL_WEIGHT, blendWithMarket, marketRead } from "@/lib/propMod
 import type { Rate } from "@/lib/builder/types";
 import { closingQuotes } from "./nbaGradedSides";
 import type { TeamBaseline } from "./history";
+import { screenRates, type ScreenWindow } from "@/lib/screener/types";
 
 export interface NflGradedSide {
   stat: string;
@@ -27,6 +28,10 @@ export interface NflGradedSide {
   priceAmerican: number | null;
   /** Last 8 games at this line, on this side. */
   rate: Rate;
+  /** Every screener window at this line and side, from prior games only (a game the stat isn't on the box score doesn't count). */
+  rates: Record<ScreenWindow, Rate>;
+  /** The consensus line. */
+  point: number;
   sampleGames: number;
   won: 0 | 1;
   date: string;
@@ -82,6 +87,7 @@ export async function gradedNflSides(closing: Map<string, GameLines>, baselines:
       if (actual === point) continue;
       const pOver = blendWithMarket(shrinkLogit(nflRawOver(proj, point), NFL_CALIBRATION_SHRINK), market.probOver, DEFAULT_MODEL_WEIGHT);
       const recent = history.filter((l) => !stat.available || stat.available(l)).slice(0, 8).map((l) => stat.value(l));
+      const screenLogs = history.map((l) => ({ season: l.season, value: !stat.available || stat.available(l) ? stat.value(l) : null }));
       for (const side of ["over", "under"] as const) {
         const hits = recent.filter((v) => (side === "over" ? v > point : v < point)).length;
         const prices = qs.filter((q) => q.point === point && q.side === side).map((q) => q.priceAmerican);
@@ -92,6 +98,8 @@ export async function gradedNflSides(closing: Map<string, GameLines>, baselines:
           marketChance: side === "over" ? market.probOver : 1 - market.probOver,
           priceAmerican: prices.length ? Math.max(...prices) : null,
           rate: [hits, recent.length],
+          rates: screenRates(screenLogs, side, point, tonight.season),
+          point,
           sampleGames: history.length,
           won: (side === "over" ? actual > point : actual < point) ? 1 : 0,
           date: etDateOf(g.scheduledStartUtc),

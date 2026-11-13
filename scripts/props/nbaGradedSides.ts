@@ -20,6 +20,7 @@ import { roleWeightedRecord, type TonightRole } from "@/lib/propModel/cautiousRe
 import { projectNbaMinutes } from "@/lib/nba/minutes";
 import type { Rate } from "@/lib/builder/types";
 import type { TeamBaseline } from "./history";
+import { screenRates, type ScreenWindow } from "@/lib/screener/types";
 
 export interface GradedSide {
   stat: string;
@@ -29,6 +30,10 @@ export interface GradedSide {
   /** The books' no-vig chance for this side at the close. */
   marketChance: number;
   rate: Rate;
+  /** Every screener window at this line and side (L3…last season), from prior games only, as the screener counts them. */
+  rates: Record<ScreenWindow, Rate>;
+  /** The consensus line. */
+  point: number;
   roleRate: Rate | null;
   /** Best closing price on this side; null when only the other side was posted. */
   priceAmerican: number | null;
@@ -112,6 +117,7 @@ export async function gradedNbaSides(closing: Map<string, GameLines>, baselines:
       const record = history.map((l) => ({ value: stat.value(l), minutes: l.minutes, starter: l.starter }));
       const recentMinutes = history.slice(0, 10);
       const minutes = m ? { projected: m.minutes, recent: recentMinutes.length ? recentMinutes.reduce((a, l) => a + l.minutes, 0) / recentMinutes.length : null } : null;
+      const screenLogs = history.map((l) => ({ season: l.season, value: stat.value(l) }));
       for (const side of ["over", "under"] as const) {
         // The screener's record: the player's last 10 games before tonight, at this line, on this side.
         const rate = roleWeightedRecord(record, side, point, null, 10);
@@ -125,6 +131,8 @@ export async function gradedNbaSides(closing: Map<string, GameLines>, baselines:
           pBlend: side === "over" ? pOver : 1 - pOver,
           marketChance: side === "over" ? market.probOver : 1 - market.probOver,
           rate,
+          rates: screenRates(screenLogs, side, point, tonight.season),
+          point,
           roleRate,
           priceAmerican: prices.length ? Math.max(...prices) : null,
           sampleGames: history.length,
