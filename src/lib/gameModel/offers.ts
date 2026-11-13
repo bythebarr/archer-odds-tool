@@ -23,6 +23,8 @@ export interface LineQuote {
   bookKey: string;
   bookName: string;
   priceAmerican: number;
+  /** When this quote was polled (ISO), for dating a stale price; absent where the source doesn't carry it. */
+  polledAt?: string;
 }
 
 export interface BookPrice {
@@ -30,6 +32,7 @@ export interface BookPrice {
   bookName: string;
   priceAmerican: number;
   bettable: boolean;
+  polledAt?: string;
 }
 
 export interface OfferSide {
@@ -132,7 +135,7 @@ export function buildOffers(quotes: LineQuote[], modelIn: LeagueGameModel | Offe
     for (const q of qs) {
       const books = bySide.get(q.side) ?? new Map<string, BookPrice>();
       // One price per book per side (the latest quote wins on a duplicate).
-      books.set(q.bookKey, { bookKey: q.bookKey, bookName: q.bookName, priceAmerican: q.priceAmerican, bettable: isBettableBook(q.bookKey) });
+      books.set(q.bookKey, { bookKey: q.bookKey, bookName: q.bookName, priceAmerican: q.priceAmerican, bettable: isBettableBook(q.bookKey), ...(q.polledAt ? { polledAt: q.polledAt } : {}) });
       bySide.set(q.side, books);
     }
     const twoWay = first.kind !== "ml" || !bySide.has("draw");

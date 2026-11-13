@@ -79,10 +79,10 @@ export default async function LeaguePageAll({ params }: { params: Params }) {
           return (
             <section key={day} className="mt-6">
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{dayLabel(list[0]!.startsAt)}</h2>
-              <AllSportListHeader threeWay={threeWay} noSpread={noSpread} />
+              <AllSportListHeader threeWay={threeWay} noSpread={noSpread} vs />
               <div className="space-y-2">
                 {list.map((e) => (
-                  <AllSportEventRow key={e.id} event={e} sport={sport} threeWay={threeWay} noSpread={noSpread} />
+                  <AllSportEventRow key={e.id} event={e} sport={sport} threeWay={threeWay} noSpread={noSpread} vs />
                 ))}
               </div>
             </section>

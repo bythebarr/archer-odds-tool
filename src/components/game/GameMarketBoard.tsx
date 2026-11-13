@@ -8,6 +8,14 @@ import { Logo } from "@/components/Logo";
 import { BetSheet } from "./BetSheet";
 import { PERIOD_LABEL, signedLine, type TeamNames } from "./labels";
 import { ScrollRow } from "@/components/ScrollRow";
+import { VsCellBody, VsEmptyCell, vsAriaLabel } from "@/components/book/BookVsArchr";
+import type { ArchrLine } from "@/lib/odds/bookVsArchr";
+
+/** ARCHR's own full-game numbers for the game-line grid: the home team's projected spread and the projected total (null: no read). */
+export interface BoardArchr {
+  spread: number | null;
+  total: number | null;
+}
 
 type Section = "popular" | "game" | "alt" | "teamTotals" | "h1" | "h2" | "quarters";
 
@@ -52,6 +60,34 @@ function Cell({ offer, side, top, onPick }: { offer: Offer | null; side: string;
   );
 }
 
+/**
+ * A game-line cell, book line over ARCHR line ("DK +3.5" over "ARCHR +5.2"):
+ * the book's number green when it beats ARCHR's line, red when it's worse, its
+ * price under a spread or total, the price's own date when stale. Two numbers,
+ * nothing else. Taps open the bet sheet like every other cell.
+ */
+function VsCell({ offer, side, label, archr, onPick }: { offer: Offer | null; side: string; label?: string; archr: ArchrLine | null; onPick: (o: Offer, side: string) => void }) {
+  const s: OfferSide | undefined = offer?.sides.find((x) => x.side === side);
+  if (!offer || !s?.best) return <VsEmptyCell archr={archr} />;
+  const price = { priceAmerican: s.best.priceAmerican, bookKey: s.best.bookKey, bookName: s.best.bookName, point: offer.kind === "ml" ? null : s.point, polledAt: s.best.polledAt ?? null };
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(offer, side)}
+      className="flex min-h-12 flex-col items-center justify-center rounded-lg bg-muted px-1 py-1 text-center transition-colors hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={vsAriaLabel(label ?? side, price, archr, label)}
+    >
+      <VsCellBody price={price} archr={archr} label={label} />
+    </button>
+  );
+}
+
+/** ARCHR's moneyline: its fair price on the side (the blended chance the bet sheet prices with). */
+const mlArchr = (offer: Offer | null, side: string): ArchrLine | null => {
+  const f = offer?.sides.find((x) => x.side === side)?.fairAmerican;
+  return f != null ? { kind: "price", american: f } : null;
+};
+
 function TeamCell({ team }: { team: BoardTeams["home"] }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -62,7 +98,11 @@ function TeamCell({ team }: { team: BoardTeams["home"] }) {
 }
 
 /** Spread / Total / Moneyline for one period, two team rows — the sportsbook grid. */
-function LinesGrid({ offers, period, teams, onPick }: { offers: Offer[]; period: string; teams: BoardTeams; onPick: (o: Offer, s: string) => void }) {
+function LinesGrid({ offers, period, teams, onPick, archr }: { offers: Offer[]; period: string; teams: BoardTeams; onPick: (o: Offer, s: string) => void; archr?: BoardArchr | null }) {
+  // Book line vs ARCHR line when the page read ARCHR's numbers. Its projected spread and total are full-game numbers:
+  // a half or quarter shows the book's spread and total alone, and ARCHR's fair price on the moneyline.
+  const vs = archr !== undefined;
+  const full = period === "game" ? archr : null;
   const pick = (kind: string) => mainOffer(offers.filter((o) => o.period === period && o.kind === kind && o.team === ""));
   const spread = pick("spread");
   const total = pick("total");
@@ -72,7 +112,7 @@ function LinesGrid({ offers, period, teams, onPick }: { offers: Offer[]; period:
   const sideOf = (o: Offer | null, side: string) => o?.sides.find((s) => s.side === side);
   return (
     <div className="rounded-xl border border-border bg-card p-3">
-      <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.5rem] items-center gap-1.5">
+      <div className={`grid items-center gap-1.5 ${vs ? "grid-cols-[minmax(0,1fr)_4.75rem_4.75rem_4.75rem] sm:grid-cols-[minmax(0,1fr)_6rem_6rem_6rem]" : "grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.5rem]"}`}>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{PERIOD_LABEL[period]}</span>
         {["Spread", "Total", "Money"].map((h) => (
           <span key={h} className="text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{h}</span>
@@ -80,9 +120,25 @@ function LinesGrid({ offers, period, teams, onPick }: { offers: Offer[]; period:
         {(["away", "home"] as const).map((t) => (
           <div key={t} className="contents">
             <TeamCell team={teams[t]} />
-            <Cell offer={spread} side={t} top={sideOf(spread, t) ? signedLine(sideOf(spread, t)!.point) : undefined} onPick={onPick} />
-            <Cell offer={total} side={t === "away" ? "over" : "under"} top={total ? `${t === "away" ? "O" : "U"} ${total.line}` : undefined} onPick={onPick} />
-            <Cell offer={ml} side={t} onPick={onPick} />
+            {vs ? (
+              <>
+                <VsCell offer={spread} side={t} archr={full?.spread != null ? { kind: "spread", point: t === "home" ? full.spread : -full.spread } : null} onPick={onPick} />
+                <VsCell
+                  offer={total}
+                  side={t === "away" ? "over" : "under"}
+                  label={total ? `${t === "away" ? "O" : "U"} ${total.line}` : undefined}
+                  archr={full?.total != null ? { kind: "total", point: full.total, side: t === "away" ? "over" : "under" } : null}
+                  onPick={onPick}
+                />
+                <VsCell offer={ml} side={t} archr={mlArchr(ml, t)} onPick={onPick} />
+              </>
+            ) : (
+              <>
+                <Cell offer={spread} side={t} top={sideOf(spread, t) ? signedLine(sideOf(spread, t)!.point) : undefined} onPick={onPick} />
+                <Cell offer={total} side={t === "away" ? "over" : "under"} top={total ? `${t === "away" ? "O" : "U"} ${total.line}` : undefined} onPick={onPick} />
+                <Cell offer={ml} side={t} onPick={onPick} />
+              </>
+            )}
           </div>
         ))}
         {draw && (
@@ -90,7 +146,7 @@ function LinesGrid({ offers, period, teams, onPick }: { offers: Offer[]; period:
             <span className="text-sm font-semibold text-muted-foreground">Draw</span>
             <span />
             <span />
-            <Cell offer={ml} side="draw" onPick={onPick} />
+            {vs ? <VsCell offer={ml} side="draw" archr={mlArchr(ml, "draw")} onPick={onPick} /> : <Cell offer={ml} side="draw" onPick={onPick} />}
           </div>
         )}
       </div>
@@ -179,7 +235,20 @@ function TeamTotals({ offers, period, teams, onPick }: { offers: Offer[]; period
  * price and a volt tag where the model sees an edge. Tapping any price opens the
  * bet sheet: every book's price on it and the model's read.
  */
-export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Offer[]; teams: BoardTeams; sport: SlipSport; matchId: string }) {
+export function GameMarketBoard({
+  offers,
+  teams,
+  sport,
+  matchId,
+  archr,
+}: {
+  offers: Offer[];
+  teams: BoardTeams;
+  sport: SlipSport;
+  matchId: string;
+  /** ARCHR's full-game spread and total: the game-line grids read book line vs ARCHR line (null: no read; omitted: the plain grid). */
+  archr?: BoardArchr | null;
+}) {
   const [picked, setPicked] = useState<{ id: string; side: string } | null>(null);
   const onPick = useCallback((o: Offer, side: string) => setPicked({ id: o.id, side }), []);
   const close = useCallback(() => setPicked(null), []);
@@ -224,10 +293,10 @@ export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Off
       )}
 
       <div className="mt-3 space-y-3">
-        {(section === "popular" || section === "game") && <LinesGrid offers={offers} period="game" teams={teams} onPick={onPick} />}
+        {(section === "popular" || section === "game") && <LinesGrid offers={offers} period="game" teams={teams} onPick={onPick} archr={archr} />}
         {(section === "popular" || section === "game") && <Specials offers={offers} teams={teams} onPick={onPick} />}
         {section === "popular" && <TeamTotals offers={offers} period="game" teams={teams} onPick={onPick} />}
-        {section === "popular" && <LinesGrid offers={offers} period="h1" teams={teams} onPick={onPick} />}
+        {section === "popular" && <LinesGrid offers={offers} period="h1" teams={teams} onPick={onPick} archr={archr} />}
         {section === "alt" && (
           <>
             <Ladder title="Alternate spread" offers={of("game", "spread")} kind="spread" teams={teams} onPick={onPick} />
@@ -245,14 +314,14 @@ export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Off
         )}
         {(section === "h1" || section === "h2") && (
           <>
-            <LinesGrid offers={offers} period={section} teams={teams} onPick={onPick} />
+            <LinesGrid offers={offers} period={section} teams={teams} onPick={onPick} archr={archr} />
             <TeamTotals offers={offers} period={section} teams={teams} onPick={onPick} />
           </>
         )}
         {section === "quarters" &&
           ["q1", "q2", "q3", "q4"].map((q) => (
             <div key={q} className="space-y-3">
-              <LinesGrid offers={offers} period={q} teams={teams} onPick={onPick} />
+              <LinesGrid offers={offers} period={q} teams={teams} onPick={onPick} archr={archr} />
               <TeamTotals offers={offers} period={q} teams={teams} onPick={onPick} />
             </div>
           ))}

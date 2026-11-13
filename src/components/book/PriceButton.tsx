@@ -1,25 +1,13 @@
 "use client";
 
 import type { MarketType } from "@/generated/prisma/client";
-import { formatAmerican, formatSpreadPoint } from "@/lib/odds/americanOdds";
+import { formatAmerican } from "@/lib/odds/americanOdds";
 import { buildSlipPickId, useSlip, type SlipSport } from "@/lib/slip/SlipContext";
 import { BookBadge } from "@/components/BookBadge";
 import type { EventPrice } from "@/lib/queries/lobby";
 import { EV_FLAG } from "@/lib/odds/marketValue";
-import { bookShort, formatArchrLine, lineTone, staleDate, type ArchrLine, type LineTone } from "@/lib/odds/bookVsArchr";
-
-/** Green when the book beats ARCHR's fair line, red when it's worse. */
-export const TONE_CLASS: Record<LineTone, string> = {
-  value: "text-emerald-600 dark:text-emerald-400",
-  worse: "text-red-600 dark:text-red-400",
-  even: "text-foreground",
-};
-
-/** The book's side of the cell: the number being compared (spread/total point, else the price). */
-function bookLineText(price: EventPrice, label: string | undefined): string {
-  if (price.point === null) return formatAmerican(price.priceAmerican);
-  return label ?? formatSpreadPoint(price.point);
-}
+import type { ArchrLine } from "@/lib/odds/bookVsArchr";
+import { VsCellBody, VsEmptyCell, vsAriaLabel } from "./BookVsArchr";
 
 /**
  * One sportsbook-style price cell: the number on top, the best price below, the
@@ -56,14 +44,7 @@ export function PriceButton({
 }) {
   const { addPick, removePick, isInSlip } = useSlip();
 
-  if (vs && !price) {
-    return (
-      <div className="flex min-h-12 flex-col items-center justify-center rounded-lg bg-muted/50 px-1 py-1 text-center" aria-label="Not priced">
-        <span className="text-xs text-muted-foreground/60">—</span>
-        {vs.archr && <span className="font-mono text-[10.5px] leading-tight text-muted-foreground">ARCHR {formatArchrLine(vs.archr)}</span>}
-      </div>
-    );
-  }
+  if (vs && !price) return <VsEmptyCell archr={vs.archr} />;
 
   if (!price) {
     return (
@@ -96,30 +77,17 @@ export function PriceButton({
         });
 
   if (vs) {
-    const tone = lineTone(price, vs.archr);
-    const stale = staleDate(price.polledAt);
-    const archrText = vs.archr ? formatArchrLine(vs.archr) : null;
-    const abbr = bookShort(price.bookKey, price.bookName);
     return (
       <button
         type="button"
         aria-pressed={inSlip}
-        aria-label={`${selectionLabel}: ${price.bookName} ${bookLineText(price, label)}${price.point !== null ? ` at ${formatAmerican(price.priceAmerican)}` : ""}${archrText ? `, ARCHR ${archrText}` : ""}${stale ? `, price from ${stale}` : ""}`}
+        aria-label={vsAriaLabel(selectionLabel, price, vs.archr, label)}
         onClick={onClick}
         className={`flex min-h-12 flex-col items-center justify-center rounded-lg px-1 py-1 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           inSlip ? "archr-pop bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted-foreground/15"
         }`}
       >
-        <span className={`whitespace-nowrap font-mono text-[11.5px] font-semibold leading-tight ${inSlip || !tone ? "" : TONE_CLASS[tone]}`}>
-          {abbr} {bookLineText(price, label)}
-        </span>
-        {price.point !== null && (
-          <span className={`whitespace-nowrap font-mono text-[10.5px] leading-tight ${inSlip ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{formatAmerican(price.priceAmerican)}</span>
-        )}
-        {stale && <span className={`whitespace-nowrap text-[9px] leading-tight ${inSlip ? "text-primary-foreground/80" : "text-muted-foreground"}`}>price from {stale}</span>}
-        {archrText && (
-          <span className={`whitespace-nowrap font-mono text-[10.5px] leading-tight ${inSlip ? "text-primary-foreground/80" : "text-muted-foreground"}`}>ARCHR {archrText}</span>
-        )}
+        <VsCellBody price={price} archr={vs.archr} label={label} selected={inSlip} />
       </button>
     );
   }

@@ -10,6 +10,8 @@ import { TeamBadge } from "./TeamBadge";
 import { BookBadge } from "./BookBadge";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BookVsArchr } from "@/components/book/BookVsArchr";
+import { fairAmericanOf, type ArchrLine } from "@/lib/odds/bookVsArchr";
 
 const SIDE_ABBR: Record<string, (g: GameSummary) => string> = {
   home: (g) => g.homeTeam.abbreviation,
@@ -30,6 +32,9 @@ interface BestSideChip {
   side: string;
   label: string;
   price: string;
+  priceAmerican: number;
+  point: number | null;
+  polledAt: Date;
   bookKey: string;
   bookName: string;
 }
@@ -63,6 +68,9 @@ function bestPricePerSide(game: GameSummary, lines: GameLineRow[], market: GameL
       side: line.side,
       label: `${SIDE_ABBR[line.side]?.(game) ?? line.side}${formatPoint(line.point, market)}`,
       price: formatAmerican(line.priceAmerican),
+      priceAmerican: line.priceAmerican,
+      point: market === "h2h" ? null : line.point,
+      polledAt: line.polledAt,
       bookKey: line.bookKey,
       bookName: line.bookName,
     }));
@@ -70,6 +78,28 @@ function bestPricePerSide(game: GameSummary, lines: GameLineRow[], market: GameL
 
 interface GamesScheduleViewProps {
   gamesWithLines: GameWithLines[];
+  /** ARCHR's win chance per game (book line vs ARCHR line on the moneyline); omitted: the plain chips. */
+  archerProbByGame?: Record<string, { home: number | null; away: number | null } | null>;
+  /** ARCHR's expected runs per game: its projected run line (away − home runs, from the home side) and total. */
+  archerRunsByGame?: Record<string, { home: number | null; away: number | null } | null>;
+}
+
+/** ARCHR's line for one chip, in the book's format; null when ARCHR has no read. */
+function archrLineFor(
+  side: string,
+  market: GameLineRow["marketType"],
+  prob: { home: number | null; away: number | null } | null | undefined,
+  runs: { home: number | null; away: number | null } | null | undefined
+): ArchrLine | null {
+  if (market === "h2h") {
+    const p = side === "home" ? prob?.home : side === "away" ? prob?.away : null;
+    const fair = fairAmericanOf(p ?? null);
+    return fair !== null ? { kind: "price", american: fair } : null;
+  }
+  if (runs?.home == null || runs?.away == null) return null;
+  if (market === "totals") return { kind: "total", point: runs.home + runs.away, side: side === "under" ? "under" : "over" };
+  const homeSpread = runs.away - runs.home;
+  return { kind: "spread", point: side === "home" ? homeSpread : -homeSpread };
 }
 
 /**
@@ -78,7 +108,8 @@ interface GamesScheduleViewProps {
  * and links into /games/[id] for the full cross-book comparison ladder. The
  * "best odds up front, click in to shop every book" default.
  */
-export function GamesScheduleView({ gamesWithLines }: GamesScheduleViewProps) {
+export function GamesScheduleView({ gamesWithLines, archerProbByGame, archerRunsByGame }: GamesScheduleViewProps) {
+  const vs = archerProbByGame !== undefined;
   const [market, setMarket] = useState<GameLineRow["marketType"]>("h2h");
 
   const chipsByGame = useMemo(
@@ -137,19 +168,31 @@ export function GamesScheduleView({ gamesWithLines }: GamesScheduleViewProps) {
                     {chips.length === 0 ? (
                       <span className="text-xs text-muted-foreground">No odds polled yet</span>
                     ) : (
-                      chips.map((chip) => (
-                        <span
-                          key={chip.side}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1"
-                        >
-                          <span className="text-xs font-medium text-muted-foreground">{chip.label}</span>
-                          <span className="font-mono text-sm font-semibold text-foreground">{chip.price}</span>
-                          <span className="inline-flex items-center gap-1 border-l border-border pl-1.5 text-[11px] text-muted-foreground">
-                            <BookBadge bookKey={chip.bookKey} bookName={chip.bookName} size={13} />
-                            {chip.bookName}
+                      chips.map((chip) =>
+                        vs ? (
+                          // Book line vs ARCHR line: "DK −150 · ARCHR −135", the book's number green/red against ARCHR's.
+                          <span key={chip.side} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1">
+                            <span className="text-xs font-medium text-muted-foreground">{SIDE_ABBR[chip.side]?.(g) ?? chip.side}</span>
+                            <BookVsArchr
+                              price={{ priceAmerican: chip.priceAmerican, bookKey: chip.bookKey, bookName: chip.bookName, point: chip.point, polledAt: chip.polledAt.toISOString() }}
+                              archr={archrLineFor(chip.side, market, archerProbByGame?.[g.id], archerRunsByGame?.[g.id])}
+                              label={chip.point === null ? undefined : formatPoint(chip.point, market).trim()}
+                            />
                           </span>
-                        </span>
-                      ))
+                        ) : (
+                          <span
+                            key={chip.side}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1"
+                          >
+                            <span className="text-xs font-medium text-muted-foreground">{chip.label}</span>
+                            <span className="font-mono text-sm font-semibold text-foreground">{chip.price}</span>
+                            <span className="inline-flex items-center gap-1 border-l border-border pl-1.5 text-[11px] text-muted-foreground">
+                              <BookBadge bookKey={chip.bookKey} bookName={chip.bookName} size={13} />
+                              {chip.bookName}
+                            </span>
+                          </span>
+                        )
+                      )
                     )}
                   </CardFooter>
                 </Card>

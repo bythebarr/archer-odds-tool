@@ -75,3 +75,23 @@ export function staleDate(polledAt: string | Date | null | undefined, now: Date 
   if (now.getTime() - t.getTime() <= PRICE_STALE_HOURS * 3_600_000) return null;
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }).format(t);
 }
+
+/** ARCHR's lines for one game, in the book's formats. */
+export interface EventArchr {
+  /** Each team's projected spread (the home number is minus the away number). */
+  spread: { home: number; away: number };
+  total: number;
+  /** Fair American price per side. */
+  ml: { home: number | null; away: number | null };
+}
+
+/**
+ * ARCHR's lines from a game-model view (the game page's model): its projected
+ * spread and total, and its moneyline chance as a fair price — the blended
+ * chance where the books price both sides, the model's own otherwise.
+ */
+export function eventArchrOf(view: { fairSpread: number; fairTotal: number; pHomeWin: number; markets: { market: string; probA: number }[] }): EventArchr {
+  const ml = view.markets.find((m) => m.market === "ml");
+  const pHome = ml ? ml.probA : view.pHomeWin;
+  return { spread: { home: view.fairSpread, away: -view.fairSpread }, total: view.fairTotal, ml: { home: fairAmericanOf(pHome), away: fairAmericanOf(1 - pHome) } };
+}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { getLeagueDays, getLeagueEvents } from "@/lib/queries/lobby";
-import { getEventArchr, getPropArchr, propArchrOf, ufcArchrRedProb } from "@/lib/queries/archrLines";
+import { getEventArchrBatch, getPropArchr, propArchrOf, ufcArchrRedBatch, type EventArchr } from "@/lib/queries/archrLines";
 import { getTopNbaProps } from "@/lib/queries/nbaProps";
 import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
@@ -68,17 +68,15 @@ async function LeagueSection({ sport, today }: { sport: TeamLeagueSport; today: 
   });
   if (events.length === 0) return null;
   const shown = events.slice(0, LOBBY_GAMES);
-  // ARCHR's line beside the book's: the game model's read where it has one (NBA, NFL), else none.
-  const archr = await Promise.all(
-    shown.map((e) =>
-      sport === "nhl"
-        ? null
-        : getEventArchr(sport, e.id).catch((err) => {
-            console.error(`[home] ARCHR line failed for ${e.id}`, err);
-            return null;
-          })
-    )
-  );
+  // ARCHR's line beside the book's: the game model's read where it has one (NBA, NFL; one batched read), else none.
+  const archrMap =
+    sport === "nhl"
+      ? new Map<string, EventArchr | null>()
+      : await getEventArchrBatch(sport, shown.map((e) => e.id)).catch((err) => {
+          console.error(`[home] ARCHR lines failed for ${sport}`, err);
+          return new Map<string, EventArchr | null>();
+        });
+  const archr = shown.map((e) => archrMap.get(e.id) ?? null);
   const meta = sportMetaByKey[sport];
   return (
     <section>
@@ -167,9 +165,7 @@ async function UfcSection() {
   });
   if (!event || event.bouts.length === 0) return null;
   // ARCHR's chance per bout, as the bout page reads it (null: no read, the book shows alone).
-  const archrRed = Object.fromEntries(
-    await Promise.all(event.bouts.slice(0, 5).map(async (b) => [b.id, await ufcArchrRedProb(b.id).catch(() => null)] as const))
-  );
+  const archrRed = await ufcArchrRedBatch(event.bouts.slice(0, 5).map((b) => b.id));
   return (
     <section>
       <SectionHeader

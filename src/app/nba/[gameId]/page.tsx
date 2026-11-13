@@ -71,7 +71,7 @@ export default async function NbaGamePage({
       modelPanel={modelView ? <TeamBreakdown sport="nba" view={modelView} /> : null}
       marketBoard={
         offers.length > 0 ? (
-          <GameMarketBoard offers={offers} teams={{ home: team(result.game.homeTeam), away: team(result.game.awayTeam) }} sport="nba" matchId={gameId} />
+          <GameMarketBoard offers={offers} teams={{ home: team(result.game.homeTeam), away: team(result.game.awayTeam) }} sport="nba" matchId={gameId} archr={modelView ? { spread: modelView.fairSpread, total: modelView.fairTotal } : null} />
         ) : undefined
       }
       sport="nba"
