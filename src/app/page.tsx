@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { getLeagueDays, getLeagueEvents } from "@/lib/queries/lobby";
-import { getTopNbaProps } from "@/lib/queries/nbaProps";
 import { listUpcomingUfcEvents } from "@/lib/queries/ufcEvents";
 import { refreshUpcomingUfcOnView } from "@/lib/ufc/refreshUpcoming";
 import { todayEt, formatEtDateLabel } from "@/lib/dateEt";
@@ -12,7 +11,13 @@ import { getHomeAllSports } from "@/lib/queries/allSports";
 import { LeagueLogo } from "@/components/allSports/LeagueLogo";
 import { AllSportEventRow, AllSportListHeader } from "@/components/allSports/AllSportEventRow";
 import { EventListHeader, EventRow } from "@/components/book/EventRow";
-import { TopPropsStrip } from "@/components/book/TopPropsStrip";
+import { EdgeLineList } from "@/components/book/EdgeLineRow";
+import { ScreenerEdgeRow } from "@/components/screener/ScreenerEdgeRow";
+import { getScreenerPool } from "@/lib/screener/pool";
+import { getFrozenPrices, type FrozenPrices } from "@/lib/queries/oddsFeed";
+import { getReportedBlendVerdicts, getReportedGraded } from "@/lib/queries/modelTrust";
+import { blendCardKey, propBlendVerdict, propIsUnproven } from "@/lib/props/provenance";
+import { trackRecordLabel } from "@/lib/modelBadge";
 import { UfcCardSections, formatFightDate } from "@/components/book/UfcFightCard";
 import { NewHerePrimer } from "@/components/dashboard/NewHerePrimer";
 import { ValueBoard } from "@/components/book/ValueBoard";
@@ -127,19 +132,40 @@ async function AllSportsSection() {
   );
 }
 
+/**
+ * Top NBA props by ARCHR edge: the screener pool's graded rows (nothing
+ * re-priced), priced and positive, biggest edge first.
+ */
 async function NbaPropsSection({ today }: { today: string }) {
   const [day] = await getLeagueDays("nba", today).catch(() => [] as string[]);
-  const props = day
-    ? await getTopNbaProps(day).catch((err) => {
-        console.error("[home] top NBA props failed", err);
-        return [];
-      })
-    : [];
+  if (!day) return null;
+  const [pool, frozen, verdicts, graded] = await Promise.all([
+    getScreenerPool("nba", false).catch((err) => {
+      console.error("[home] top NBA props failed", err);
+      return [];
+    }),
+    getFrozenPrices(),
+    getReportedBlendVerdicts().catch(() => new Map<string, string>()),
+    getReportedGraded().catch(() => ({}) as Record<string, number>),
+  ]);
+  const props = pool
+    .filter((p) => p.archr !== null && p.edge !== null && p.edge > 0 && p.priceAmerican !== null)
+    .sort((a, b) => b.edge! - a.edge!)
+    .slice(0, 6);
   if (props.length === 0) return null;
   return (
     <section>
-      <SectionHeader icon="props" title="Top NBA props" subtitle="Cleared the line in 8+ of the last 10" href={`/nba/props?date=${day}`} cta="All props" />
-      <TopPropsStrip props={props} />
+      <SectionHeader icon="props" title="Top NBA props" subtitle="Biggest ARCHR edge on tonight's board" href={`/nba/props?date=${day}`} cta="All props" />
+      <EdgeLineList>
+        {props.map((p) => (
+          <ScreenerEdgeRow
+            key={p.id}
+            p={p}
+            frozen={frozen}
+            provenance={propIsUnproven(p, verdicts) ? trackRecordLabel(propBlendVerdict(p.sport, p.stat, verdicts), graded[blendCardKey(p.sport, p.stat)]) : null}
+          />
+        ))}
+      </EdgeLineList>
     </section>
   );
 }
@@ -168,7 +194,7 @@ async function UfcSection() {
  * The lobby's banner: always ink, whatever the theme — the brand's one dark,
  * loud surface — with the mark flying off the edge behind the headline.
  */
-function LobbyHero({ dateLabel }: { dateLabel: string }) {
+function LobbyHero({ dateLabel, frozen }: { dateLabel: string; frozen: FrozenPrices }) {
   return (
     <div className="relative mt-5 overflow-hidden rounded-2xl bg-[#07080b] bg-[radial-gradient(120%_90%_at_100%_100%,rgba(200,245,58,0.16),transparent_60%)] px-5 py-5 text-[#eef0f4] ring-1 ring-white/10">
       <ArchrMark className="pointer-events-none absolute -bottom-10 -right-6 h-48 w-auto text-white/[0.07]" />
@@ -176,14 +202,30 @@ function LobbyHero({ dateLabel }: { dateLabel: string }) {
         <span className="brand-slash" aria-hidden />
         {dateLabel}
       </p>
-      <h1 className="mt-2 font-display text-[32px] font-extrabold uppercase italic leading-[0.95] tracking-tight">
-        Best line.
-        <br />
-        <span className="text-[#c8f53a]">Every book.</span>
-      </h1>
-      <p className="mt-2.5 max-w-[17rem] text-[13px] leading-snug text-[#8a90a0]">
-        Every price, every sportsbook, side by side. Tap a price to build your slip.
-      </p>
+      {frozen ? (
+        <>
+          {/* The feed isn't updating: no "best line, every book" promise on a frozen number. */}
+          <h1 className="mt-2 font-display text-[32px] font-extrabold uppercase italic leading-[0.95] tracking-tight">
+            Prices from
+            <br />
+            <span className="text-[#8a90a0]">{frozen.asOf}.</span>
+          </h1>
+          <p className="mt-2.5 max-w-[19rem] text-[13px] leading-snug text-[#8a90a0]">
+            The multi-book odds feed isn&apos;t updating. Edges below are greyed and dated: history, not bets to take now.
+          </p>
+        </>
+      ) : (
+        <>
+          <h1 className="mt-2 font-display text-[32px] font-extrabold uppercase italic leading-[0.95] tracking-tight">
+            Best line.
+            <br />
+            <span className="text-[#c8f53a]">Every book.</span>
+          </h1>
+          <p className="mt-2.5 max-w-[17rem] text-[13px] leading-snug text-[#8a90a0]">
+            Every price, every sportsbook, side by side. Edge first on every line.
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -196,11 +238,12 @@ export default async function Home() {
   // The lobby shows the UFC card, so keep the upcoming feed fresh on view.
   refreshUpcomingUfcOnView();
   const today = todayEt();
+  const frozen = await getFrozenPrices();
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-2xl px-4 pb-10 pt-5 font-sans">
       <SportCarousel />
-      <LobbyHero dateLabel={formatEtDateLabel(today)} />
+      <LobbyHero dateLabel={formatEtDateLabel(today)} frozen={frozen} />
 
       {/* Incident 2026-11-08: each section streams behind its own Suspense
           boundary. These sections aggregate the heaviest reads on the site;

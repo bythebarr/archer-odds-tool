@@ -650,7 +650,7 @@ export async function getValueNflProps(limit = 6) {
       out.push({
         key: `nfl:${prop.playerId}:${prop.stat}:${side}`,
         label: `${player.name} ${what}`,
-        sub: `${player.venue === "home" ? "vs" : "@"} ${player.opponent?.abbreviation ?? ""} · ${s.l5.hits}/${s.l5.sampleSize} L5`,
+        sub: `${player.venue === "home" ? "vs" : "@"} ${player.opponent?.abbreviation ?? ""}`,
         href: `/nfl/${player.gameId}?tab=props`,
         price: best.priceAmerican,
         bookKey: best.bookKey,
