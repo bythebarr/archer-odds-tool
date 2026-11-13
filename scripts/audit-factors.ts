@@ -5,6 +5,7 @@ import { loadGradedLeans } from "@/lib/queries/edgeReport";
 import { closingGameLines, teamBaselinesByGame } from "./props/history";
 import { gradedNbaSides } from "./props/nbaGradedSides";
 import { gradedNflSides } from "./props/nflGradedSides";
+import { MIN_HALF_BETS, Z_DEGENERATE, bucketSweep, stablePositiveFloor, thresholdSweep, type Cell, type RoiStats, type ZSample } from "@/lib/audit/zPocket";
 
 /**
  * The factor audit (lib/audit/factorAudit): where ARCHR's read holds up and
@@ -51,13 +52,37 @@ function minutesTag(m: { projected: number; recent: number | null } | null): str
   return "settled role (18–32 min)";
 }
 
+/* ═══ THE Z POCKET ═══════════════════════════════════════════════════════════
+ * Fine |z| buckets (lib/audit/zPocket): ROI and bets for ARCHR's positive-edge
+ * sides per bucket, both date halves; then every candidate floor (× ceiling)
+ * with the volume it keeps. Measures only; the gate is a separate change. */
+const roi = (r: RoiStats) => (r.roi === null ? "     —" : `${r.roi >= 0 ? "+" : ""}${(r.roi * 100).toFixed(1)}%`.padStart(7));
+const ci = (r: RoiStats) => (r.lo === null ? "" : ` [${(r.lo * 100).toFixed(0)}, ${(r.hi! * 100).toFixed(0)}]`);
+const cellLine = (c: Cell) =>
+  `    ${c.label.padEnd(16)} n=${String(c.all.n).padStart(5)} ROI ${roi(c.all)}${ci(c.all).padEnd(12)} | early n=${String(c.early.n).padStart(4)} ${roi(c.early)} | late n=${String(c.late.n).padStart(4)} ${roi(c.late)}`;
+
+function zPocket(label: string, rows: ZSample[]) {
+  const withZ = rows.filter((r) => r.z !== null);
+  console.log(`\n── ${label}: ${withZ.length} sides with a projection`);
+  if (!withZ.length) return;
+  console.log("  By |z| bucket (positive-edge bets only):");
+  const buckets = bucketSweep(withZ);
+  for (const b of buckets) console.log(cellLine(b));
+  const floor = stablePositiveFloor(buckets);
+  console.log(`  Stable floor (every bucket from here up returns ≥ 0 in both halves, ${MIN_HALF_BETS}+ bets a half): ${floor === null ? "NONE" : `|z| ≥ ${floor}`}`);
+  console.log(`  Candidate thresholds (keep floor ≤ |z| < ceiling; |z| > ${Z_DEGENERATE} always out), with the share of edge bets kept:`);
+  for (const t of thresholdSweep(withZ)) console.log(`${cellLine(t)} | keeps ${(t.kept * 100).toFixed(0).padStart(3)}%`);
+}
+
 async function main() {
   const out: { label: string; audit: FactorAudit }[] = [];
+  const pocket: { label: string; rows: ZSample[] }[] = [];
   const failures: string[] = [];
 
   try {
     const [closing, baselines] = await Promise.all([closingGameLines("nba"), teamBaselinesByGame("nba", 30)]);
     const nba = await gradedNbaSides(closing, baselines);
+    pocket.push({ label: "NBA props (backtest, closing prices)", rows: nba.map((s) => ({ p: s.pBlend, price: s.priceAmerican, won: s.won, z: s.z, date: s.date })) });
     out.push({
       label: "NBA props (backtest, closing prices)",
       audit: auditFactors(
@@ -86,6 +111,7 @@ async function main() {
   try {
     const [closing, baselines] = await Promise.all([closingGameLines("nfl"), teamBaselinesByGame("nfl", 17)]);
     const nfl = await gradedNflSides(closing, baselines);
+    pocket.push({ label: "NFL props (backtest, closing prices)", rows: nfl.map((s) => ({ p: s.pBlend, price: s.priceAmerican, won: s.won, z: s.z, date: s.date })) });
     out.push({
       label: "NFL props (backtest, closing prices)",
       audit: auditFactors(
@@ -135,6 +161,14 @@ async function main() {
       (bySegment.get(seg) ?? bySegment.set(seg, []).get(seg)!).push(s);
     }
     for (const [seg, samples] of [...bySegment].sort()) out.push({ label: `Tracked leans · ${seg} (live, captured before the game)`, audit: auditFactors(samples) });
+    for (const sport of ["nba", "nfl"] as const) {
+      const props = leans.filter((l) => l.features.sport === sport && l.features.kind === "prop" && typeof l.features.z === "number");
+      if (props.length)
+        pocket.push({
+          label: `${sport.toUpperCase()} props (tracked leans, live: price at capture, not the close)`,
+          rows: props.map((l) => ({ p: l.prob, price: l.features.price, won: l.result === "hit" ? 1 : 0, z: l.features.z as number, date: l.startsAt.toISOString().slice(0, 10) })),
+        });
+    }
     if (!leans.length) failures.push("Tracked leans: none settled yet");
   } catch (e) {
     failures.push(`Tracked leans: ${e instanceof Error ? e.message : e}`);
@@ -153,6 +187,15 @@ async function main() {
     console.log(`    ▼ ${hurts.length ? hurts.map((c) => `${c.factor}: ${c.value}`).join(" | ") : "none"}`);
   }
   for (const f of failures) console.log(`  (skipped) ${f}`);
+
+  console.log("\n\n═══ THE Z POCKET: |z| = |projection − line| / its spread · ROI on ARCHR's positive-edge sides, flat stakes, [95%] ═══");
+  const backtests = pocket.filter((p) => p.label.includes("backtest"));
+  for (const p of backtests) zPocket(p.label, p.rows);
+  if (backtests.length > 1) zPocket("NBA + NFL props pooled (backtest, closing prices)", backtests.flatMap((p) => p.rows));
+  for (const p of pocket.filter((x) => !x.label.includes("backtest"))) zPocket(p.label, p.rows);
+  const live = pocket.filter((x) => !x.label.includes("backtest"));
+  if (live.length > 1) zPocket("NBA + NFL props pooled (tracked leans, live)", live.flatMap((p) => p.rows));
+
   if (!out.some((o) => o.audit.n)) process.exitCode = 1;
 }
 
