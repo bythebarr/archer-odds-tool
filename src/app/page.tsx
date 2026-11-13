@@ -66,6 +66,7 @@ async function LeagueSection({ sport, today }: { sport: TeamLeagueSport; today: 
     return [] as string[];
   });
   if (!day) return null;
+  const frozen = await getFrozenPrices();
   const events = await getLeagueEvents(sport, day).catch((err) => {
     console.error(`[home] league events failed for ${sport}`, err);
     return [];
@@ -84,7 +85,7 @@ async function LeagueSection({ sport, today }: { sport: TeamLeagueSport; today: 
       <EventListHeader />
       <div className="flex flex-col gap-2.5">
         {events.slice(0, LOBBY_GAMES).map((e) => (
-          <EventRow key={e.id} event={e} sport={sport} />
+          <EventRow key={e.id} event={e} sport={sport} frozen={frozen} />
         ))}
       </div>
     </section>

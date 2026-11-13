@@ -3,7 +3,26 @@ import type { LeagueEventRow, EventTeam } from "@/lib/queries/lobby";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { Logo } from "@/components/Logo";
 import { formatAmerican } from "@/lib/odds/americanOdds";
+import { americanToDecimal } from "@/lib/odds/americanOdds";
+import type { FrozenPrices } from "@/lib/queries/oddsFeed";
+import type { EventPrice } from "@/lib/queries/lobby";
 import { PriceButton } from "./PriceButton";
+import { EdgeLineRow } from "./EdgeLineRow";
+
+/** The game's line with the biggest edge against the market's fair price, with how it reads. */
+function bestLine(event: LeagueEventRow): { label: string; price: EventPrice } | null {
+  const lines: { label: string; price: EventPrice | null }[] = [
+    { label: `${event.away.name} ${event.spread.away?.point != null ? formatAmerican(event.spread.away.point) : ""}`.trim(), price: event.spread.away },
+    { label: `${event.home.name} ${event.spread.home?.point != null ? formatAmerican(event.spread.home.point) : ""}`.trim(), price: event.spread.home },
+    { label: `Over ${event.total.over?.point ?? ""}`.trim(), price: event.total.over },
+    { label: `Under ${event.total.under?.point ?? ""}`.trim(), price: event.total.under },
+    { label: `${event.away.name} ML`, price: event.moneyline.away },
+    { label: `${event.home.name} ML`, price: event.moneyline.home },
+  ];
+  let best: { label: string; price: EventPrice } | null = null;
+  for (const l of lines) if (l.price?.value && (!best || l.price.value.ev > best.price.value!.ev)) best = { label: l.label, price: l.price };
+  return best;
+}
 
 /** The shared grid template: team column, then Spread · Total · Moneyline. */
 export const EVENT_GRID = "grid grid-cols-[minmax(0,1fr)_4.25rem_4.25rem_4.25rem] gap-1.5 sm:grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem]";
@@ -44,10 +63,11 @@ function TeamCell({ team, href }: { team: EventTeam; href: string }) {
  * then away over home, each with its best Spread, Total and Moneyline. Team
  * names open the game; prices go to the Slip.
  */
-export function EventRow({ event, sport }: { event: LeagueEventRow; sport: TeamLeagueSport }) {
+export function EventRow({ event, sport, frozen = null }: { event: LeagueEventRow; sport: TeamLeagueSport; frozen?: FrozenPrices }) {
   const matchLabel = `${event.away.abbreviation} @ ${event.home.abbreviation}`;
   const common = { sport, matchId: event.id, matchLabel } as const;
   const live = event.status === "live";
+  const best = bestLine(event);
   return (
     <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between px-3 pb-1.5 pt-2.5 text-[11px]">
@@ -94,6 +114,21 @@ export function EventRow({ event, sport }: { event: LeagueEventRow; sport: TeamL
           );
         })}
       </div>
+      {best && (
+        <div className="border-t border-border">
+          <EdgeLineRow
+            label={best.label}
+            edge={best.price.value!.ev}
+            edgeBasis="market"
+            chance={{ label: "Fair", value: (best.price.value!.ev + 1) / americanToDecimal(best.price.priceAmerican) }}
+            price={best.price.priceAmerican}
+            book={{ key: best.price.bookKey, name: best.price.bookName }}
+            frozen={frozen}
+            whisper="best edge in this game"
+            href={event.href}
+          />
+        </div>
+      )}
     </div>
   );
 }
