@@ -21,29 +21,6 @@ const GRADE_WORDS: Record<ConfidenceGrade, string> = {
 };
 
 
-/** Shown with every grade while the grade is unvalidated. */
-export const GRADES_NOT_VALIDATED = "grades not yet validated";
-
-/**
- * The grade as a quiet marker on a line row: "B · 62", small and muted, with
- * a dotted underline while the grade is unvalidated. The factors behind it
- * live on the player sheet; the marker's tooltip names the top ones.
- */
-export function ConfidenceMarker({ c }: { c: Confidence | CompactConfidence | null | undefined }) {
-  if (!c) return null;
-  const why = "why" in c ? c.why : null;
-  const title = [`Confidence ${c.grade} · ${c.score} of 100`, CONFIDENCE_VALIDATED ? null : GRADES_NOT_VALIDATED, why].filter(Boolean).join(" — ");
-  return (
-    <span
-      title={title}
-      aria-label={title}
-      className={`whitespace-nowrap font-mono text-[11px] font-semibold text-muted-foreground ${CONFIDENCE_VALIDATED ? "" : "underline decoration-dotted decoration-muted-foreground/60 underline-offset-[3px]"}`}
-    >
-      {c.grade} · {c.score}
-    </span>
-  );
-}
-
 /** The grade as a small chip (boards, leg rows). */
 export function ConfidenceChip({ c }: { c: Confidence | CompactConfidence | null | undefined }) {
   if (!c) return <span className="font-mono text-[11px] text-muted-foreground">—</span>;

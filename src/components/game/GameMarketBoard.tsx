@@ -3,12 +3,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { mainOffer, type Offer, type OfferSide } from "@/lib/gameModel/offers";
-import type { FrozenPrices } from "@/lib/queries/oddsFeed";
-import { EdgeLineList, EdgeLineRow } from "@/components/book/EdgeLineRow";
 import type { SlipSport } from "@/lib/slip/SlipContext";
 import { Logo } from "@/components/Logo";
 import { BetSheet } from "./BetSheet";
-import { PERIOD_LABEL, offerTitle, sideLabel, signedLine, type TeamNames } from "./labels";
+import { PERIOD_LABEL, signedLine, type TeamNames } from "./labels";
 import { ScrollRow } from "@/components/ScrollRow";
 
 type Section = "popular" | "game" | "alt" | "teamTotals" | "h1" | "h2" | "quarters";
@@ -23,61 +21,34 @@ const SECTION_LABEL: Record<Section, string> = {
   quarters: "Quarters",
 };
 
+/** A model edge worth lighting up — clear of line-timing noise after the market blend. */
+const EDGE = 0.02;
+
 export interface BoardTeams extends TeamNames {
   home: { name: string; abbreviation: string; logoUrl: string };
   away: { name: string; abbreviation: string; logoUrl: string };
 }
 
-/** One price button: the number and the best price. The edge leads the "Lines by edge" rows above the grid, not the cell. */
+/** One price button: the number, the best price, and a volt edge tag when the model likes it. */
 function Cell({ offer, side, top, onPick }: { offer: Offer | null; side: string; top?: string; onPick: (o: Offer, side: string) => void }) {
   const s: OfferSide | undefined = offer?.sides.find((x) => x.side === side);
   if (!offer || !s?.best) {
     return <div className="flex h-12 items-center justify-center rounded-lg bg-muted/50 text-xs text-muted-foreground/60">—</div>;
   }
+  const edge = s.ev !== null && s.ev >= EDGE ? s.ev : null;
   return (
     <button
       type="button"
       onClick={() => onPick(offer, side)}
-      className="relative flex h-12 flex-col items-center justify-center rounded-lg bg-muted px-1 text-center transition-colors hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`${top ?? ""} ${formatAmerican(s.best.priceAmerican)}`}
+      className={`relative flex h-12 flex-col items-center justify-center rounded-lg bg-muted px-1 text-center transition-colors hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${edge !== null ? "ring-1 ring-inset ring-brand" : ""}`}
+      aria-label={`${top ?? ""} ${formatAmerican(s.best.priceAmerican)}${edge !== null ? `, model edge ${(edge * 100).toFixed(1)} percent` : ""}`}
     >
       {top && <span className="text-[11px] font-medium leading-tight text-muted-foreground">{top}</span>}
       <span className="font-mono text-sm font-semibold leading-tight text-foreground">{formatAmerican(s.best.priceAmerican)}</span>
+      {edge !== null && (
+        <span className="absolute -right-1 -top-1.5 rounded bg-brand px-1 font-mono text-[9px] font-bold leading-[14px] text-brand-foreground">+{(edge * 100).toFixed(1)}</span>
+      )}
     </button>
-  );
-}
-
-/**
- * The game's main lines (spread, total, moneyline), every side, as edge rows,
- * biggest ARCHR edge first. Tapping one opens its bet sheet.
- */
-function LinesByEdge({ offers, teams, frozen, onPick }: { offers: Offer[]; teams: BoardTeams; frozen: FrozenPrices; onPick: (o: Offer, side: string) => void }) {
-  const mains = (["spread", "total", "ml"] as const)
-    .map((k) => mainOffer(offers.filter((o) => o.period === "game" && o.kind === k && o.team === "")))
-    .filter((o): o is Offer => o !== null);
-  const rows = mains
-    .flatMap((o) => o.sides.filter((s) => s.best).map((s) => ({ o, s })))
-    .sort((a, b) => (b.s.ev ?? -Infinity) - (a.s.ev ?? -Infinity));
-  if (!rows.length) return null;
-  return (
-    <section aria-label="Lines by edge">
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Lines by edge</p>
-      <EdgeLineList>
-        {rows.map(({ o, s }) => (
-          <EdgeLineRow
-            key={`${o.id}:${s.side}`}
-            label={sideLabel(o, s, teams)}
-            edge={s.ev}
-            chance={{ label: "ARCHR", value: s.prob }}
-            price={s.best!.priceAmerican}
-            book={{ key: s.best!.bookKey, name: s.best!.bookName }}
-            frozen={frozen}
-            whisper={s.prob === null ? `${offerTitle(o)} · no ARCHR read on this line` : offerTitle(o)}
-            onSelect={() => onPick(o, s.side)}
-          />
-        ))}
-      </EdgeLineList>
-    </section>
   );
 }
 
@@ -208,7 +179,7 @@ function TeamTotals({ offers, period, teams, onPick }: { offers: Offer[]; period
  * price and a volt tag where the model sees an edge. Tapping any price opens the
  * bet sheet: every book's price on it and the model's read.
  */
-export function GameMarketBoard({ offers, teams, sport, matchId, frozen = null }: { offers: Offer[]; teams: BoardTeams; sport: SlipSport; matchId: string; frozen?: FrozenPrices }) {
+export function GameMarketBoard({ offers, teams, sport, matchId }: { offers: Offer[]; teams: BoardTeams; sport: SlipSport; matchId: string }) {
   const [picked, setPicked] = useState<{ id: string; side: string } | null>(null);
   const onPick = useCallback((o: Offer, side: string) => setPicked({ id: o.id, side }), []);
   const close = useCallback(() => setPicked(null), []);
@@ -229,6 +200,7 @@ export function GameMarketBoard({ offers, teams, sport, matchId, frozen = null }
   const of = (period: string, kind: string, team = "") => offers.filter((o) => o.period === period && o.kind === kind && o.team === team);
   const pickedOffer = picked ? offers.find((o) => o.id === picked.id) ?? null : null;
   const matchLabel = `${teams.away.abbreviation} @ ${teams.home.abbreviation}`;
+  const edges = offers.flatMap((o) => o.sides.filter((s) => s.ev !== null && s.ev >= EDGE)).length;
 
   return (
     <div className="mt-4">
@@ -244,8 +216,14 @@ export function GameMarketBoard({ offers, teams, sport, matchId, frozen = null }
           </button>
         ))}
       </ScrollRow>
+      {edges > 0 && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          <span className="rounded bg-brand px-1 font-mono text-[10px] font-bold text-brand-foreground">+x.x</span> {`${edges} price${edges === 1 ? "" : "s"} `}where ARCHR&apos;s
+          blended chance beats the price. Tap any price to see it run against the model.
+        </p>
+      )}
+
       <div className="mt-3 space-y-3">
-        {(section === "popular" || section === "game") && <LinesByEdge offers={offers} teams={teams} frozen={frozen} onPick={onPick} />}
         {(section === "popular" || section === "game") && <LinesGrid offers={offers} period="game" teams={teams} onPick={onPick} />}
         {(section === "popular" || section === "game") && <Specials offers={offers} teams={teams} onPick={onPick} />}
         {section === "popular" && <TeamTotals offers={offers} period="game" teams={teams} onPick={onPick} />}

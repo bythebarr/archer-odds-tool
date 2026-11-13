@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
 const VERDICT: Record<string, { label: string; tone: string; note: string }> = {
   trusted: { label: "Trusted", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", note: "Beats the no-skill baseline by a real margin." },
   marginal: { label: "Marginal", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300", note: "Close to coin-flip skill: honest, but no clear edge yet." },
-  unproven: { label: "Marginal", tone: "bg-red-500/15 text-red-700 dark:text-red-300", note: "Not beating the baseline yet." },
-  thin: { label: "Thin", tone: "bg-muted text-muted-foreground", note: "Not enough history to grade." },
+  unproven: { label: "Not ahead of baseline", tone: "bg-red-500/15 text-red-700 dark:text-red-300", note: "Not beating the baseline yet." },
+  thin: { label: "Thin sample", tone: "bg-muted text-muted-foreground", note: "Not enough history to grade." },
 };
 
 const SPORT_ORDER = ["nba", "nfl", "nhl", "ufc", "mlb", "tennis", "soccer", "f1"];
@@ -237,7 +237,7 @@ export default async function ModelsPage() {
       <p className="mt-6 text-[11px] leading-relaxed text-muted-foreground">
         Anywhere a play is priced by a model without a passing grade — the Slate, the deck, props and the
         screener — it carries that model&apos;s track record from this page, e.g.{" "}
-        <span className="font-semibold text-foreground">&ldquo;Marginal · 412 graded&rdquo;</span>: where its
+        <span className="font-semibold text-foreground">&ldquo;Even with baseline · 412 graded&rdquo;</span>: where its
         report card stands and how many outcomes it was graded on. The plays stay visible; the chip is the
         reminder to lean on the market&apos;s price until the grade is earned.
       </p>

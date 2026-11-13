@@ -3,7 +3,7 @@ import { trackRecordLabel } from "@/lib/modelBadge";
 /**
  * The track-record chip on a play priced by a model without a passing
  * calibration grade: its /models standing and how many outcomes it was graded
- * on, e.g. "Marginal · 412 graded". Renders nothing for a trusted
+ * on, e.g. "Even with baseline · 412 graded". Renders nothing for a trusted
  * model. Muted on purpose — factual, not alarming; the full report card lives
  * on /models.
  */
