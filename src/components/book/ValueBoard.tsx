@@ -10,9 +10,10 @@ import { formatAmerican } from "@/lib/odds/americanOdds";
 import type { SlipSport } from "@/lib/slip/SlipContext";
 import type { TeamLeagueSport } from "@/lib/teamLeague/league";
 import { Glyph, type GlyphKey } from "@/components/brand/Glyph";
-import { BookBadge } from "@/components/BookBadge";
-import { EvTag } from "@/components/EvTag";
 import { PriceButton } from "./PriceButton";
+import { BookVsArchr } from "./BookVsArchr";
+import { getEventArchr, getPropArchr, propArchrOf, ufcArchrRedProb } from "@/lib/queries/archrLines";
+import { fairAmericanOf, type ArchrLine } from "@/lib/odds/bookVsArchr";
 
 /** One flagged price on the board: a game line or moneyline that goes straight to the slip, or a prop that opens its sheet. */
 type ValuePlay =
@@ -30,7 +31,10 @@ type ValuePlay =
       side: string;
       ev: number;
     }
-  | { kind: "prop"; key: string; label: string; sub: string; href: string; price: number; bookKey: string; ev: number; fairAmerican: number; booksUsed: number };
+  | { kind: "prop"; key: string; label: string; sub: string; href: string; price: number; bookKey: string; ev: number; fairAmerican: number; booksUsed: number; archrChance: number | null; polledAt: string | null };
+
+/** A play with ARCHR's line for the same market beside it (null: ARCHR has no read). */
+type ShownPlay = ValuePlay & { archr: ArchrLine | null };
 
 
 async function linePlays(sport: TeamLeagueSport, today: string): Promise<ValuePlay[]> {
@@ -91,14 +95,15 @@ async function ufcPlays(): Promise<ValuePlay[]> {
  * read, not a model pick: it says a price is better than where the books
  * collectively put it.
  */
-async function collectValuePlays(today: string, limit: number): Promise<ValuePlay[]> {
+async function collectValuePlays(today: string, limit: number): Promise<ShownPlay[]> {
   const [nbaDay] = await getLeagueDays("nba", today);
-  const [nba, nfl, ufc, props, nflProps] = await Promise.all([
+  const [nba, nfl, ufc, props, nflProps, nbaArchr] = await Promise.all([
     linePlays("nba", today),
     linePlays("nfl", today),
     ufcPlays(),
     nbaDay ? getValueNbaProps(nbaDay, limit) : Promise.resolve([]),
     getValueNflProps(limit),
+    getPropArchr("nba").catch(() => new Map<string, number>()),
   ]);
   const plays: ValuePlay[] = [
     ...nba,
@@ -106,6 +111,8 @@ async function collectValuePlays(today: string, limit: number): Promise<ValuePla
     ...ufc,
     ...props.map(
       (p): ValuePlay => ({
+        archrChance: propArchrOf(nbaArchr, p.playerName, p.stat, p.side, p.point),
+        polledAt: p.polledAt,
         kind: "prop",
         key: `${p.playerId}:${p.stat}:${p.side}`,
         label: `${p.playerName} ${p.side === "over" ? "O" : "U"} ${p.point} ${p.statShort}`,
@@ -118,11 +125,31 @@ async function collectValuePlays(today: string, limit: number): Promise<ValuePla
         booksUsed: p.booksUsed,
       })
     ),
-    ...nflProps.map((p): ValuePlay => ({ kind: "prop", ...p })),
+    ...nflProps.map((p): ValuePlay => ({ kind: "prop", ...p, archrChance: p.archr })),
   ]
     .sort((a, b) => b.ev - a.ev)
     .slice(0, limit);
-  return plays;
+  return Promise.all(plays.map(async (p): Promise<ShownPlay> => ({ ...p, archr: await archrLineOf(p).catch(() => null) })));
+}
+
+/** ARCHR's line for a play's market, in the book's format. */
+async function archrLineOf(p: ValuePlay): Promise<ArchrLine | null> {
+  if (p.kind === "prop") {
+    const fair = fairAmericanOf(p.archrChance);
+    return fair !== null ? { kind: "price", american: fair } : null;
+  }
+  if (p.sport === "ufc") {
+    const red = await ufcArchrRedProb(p.matchId);
+    const fair = fairAmericanOf(red === null ? null : p.side === "red" ? red : 1 - red);
+    return fair !== null ? { kind: "price", american: fair } : null;
+  }
+  if (p.sport !== "nba" && p.sport !== "nfl") return null;
+  const a = await getEventArchr(p.sport, p.matchId);
+  if (!a) return null;
+  if (p.marketType === "spreads") return { kind: "spread", point: p.side === "home" ? a.spread.home : a.spread.away };
+  if (p.marketType === "totals") return { kind: "total", point: a.total, side: p.side === "under" ? "under" : "over" };
+  const fair = p.side === "home" ? a.ml.home : a.ml.away;
+  return fair !== null ? { kind: "price", american: fair } : null;
 }
 
 export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: number }) {
@@ -132,7 +159,7 @@ export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: 
   // the whole lobby behind the root error screen.
   const plays = await collectValuePlays(today, limit).catch((err) => {
     console.error("[home] value board failed", err);
-    return [] as ValuePlay[];
+    return [] as ShownPlay[];
   });
 
   if (plays.length === 0) return null;
@@ -168,13 +195,12 @@ export async function ValueBoard({ today, limit = 8 }: { today: string; limit?: 
                   marketType={p.marketType}
                   side={p.side}
                   selectionLabel={p.label}
+                  vs={{ archr: p.archr }}
                 />
               </div>
             ) : (
-              <Link href={p.href} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-muted px-2 py-1.5 hover:bg-muted-foreground/15">
-                <EvTag value={{ ev: p.ev, fairAmerican: p.fairAmerican, booksUsed: p.booksUsed }} />
-                <span className="font-mono text-[13px] font-semibold text-foreground">{formatAmerican(p.price)}</span>
-                <BookBadge bookKey={p.bookKey} bookName={BOOK_NAMES[p.bookKey] ?? p.bookKey} size={18} />
+              <Link href={p.href} className="flex shrink-0 items-center rounded-lg bg-muted px-2 py-1.5 hover:bg-muted-foreground/15">
+                <BookVsArchr price={{ priceAmerican: p.price, bookKey: p.bookKey, bookName: BOOK_NAMES[p.bookKey], polledAt: p.polledAt }} archr={p.archr} />
               </Link>
             )}
           </li>

@@ -4,6 +4,7 @@ import { BOOK_NAMES } from "@/lib/odds/bookAllowlist";
 import { FighterBadge } from "@/components/FighterBadge";
 import { RED_CORNER, BLUE_CORNER } from "@/components/ufc/UfcWinProbabilityCard";
 import { PriceButton } from "./PriceButton";
+import { fairAmericanOf } from "@/lib/odds/bookVsArchr";
 
 /** Cito event dates are date-only values at UTC midnight — format in UTC so they don't roll back a day in ET. */
 export function formatFightDate(date: Date, withYear = false): string {
@@ -22,13 +23,18 @@ function CornerRow({
   bout,
   upcoming,
   matchLabel,
+  archrRed,
 }: {
   corner: UfcBoutCorner;
   color: string;
   bout: UfcBoutSummary;
   upcoming: boolean;
   matchLabel: string;
+  /** ARCHR's chance red wins, when the caller read it (undefined: the plain price cell; null: no read). */
+  archrRed?: number | null;
 }) {
+  const isRed = corner.id === bout.red.id;
+  const fair = archrRed == null ? null : fairAmericanOf(isRed ? archrRed : 1 - archrRed);
   const won = bout.winnerFighterId === corner.id;
   const lost = !upcoming && bout.winnerFighterId !== null && !won;
   return (
@@ -53,8 +59,9 @@ function CornerRow({
             matchId={bout.id}
             matchLabel={matchLabel}
             marketType="h2h"
-            side={corner.id === bout.red.id ? "red" : "blue"}
+            side={isRed ? "red" : "blue"}
             selectionLabel={`${corner.name} ML`}
+            {...(archrRed !== undefined ? { vs: { archr: fair !== null ? { kind: "price" as const, american: fair } : null } } : {})}
           />
         </div>
       )}
@@ -63,7 +70,7 @@ function CornerRow({
 }
 
 /** One bout as a sportsbook row: both corners with photos and records, each with its best moneyline. */
-export function UfcBoutRow({ bout, upcoming }: { bout: UfcBoutSummary; upcoming: boolean }) {
+export function UfcBoutRow({ bout, upcoming, archrRed }: { bout: UfcBoutSummary; upcoming: boolean; archrRed?: number | null }) {
   const matchLabel = `${bout.red.name} vs ${bout.blue.name}`;
   const rounds = bout.isMainEvent || bout.titleBout ? 5 : 3;
   return (
@@ -80,8 +87,8 @@ export function UfcBoutRow({ bout, upcoming }: { bout: UfcBoutSummary; upcoming:
         </Link>
       </div>
       <div className="flex flex-col gap-2">
-        <CornerRow corner={bout.red} color={RED_CORNER} bout={bout} upcoming={upcoming} matchLabel={matchLabel} />
-        <CornerRow corner={bout.blue} color={BLUE_CORNER} bout={bout} upcoming={upcoming} matchLabel={matchLabel} />
+        <CornerRow corner={bout.red} color={RED_CORNER} bout={bout} upcoming={upcoming} matchLabel={matchLabel} archrRed={archrRed} />
+        <CornerRow corner={bout.blue} color={BLUE_CORNER} bout={bout} upcoming={upcoming} matchLabel={matchLabel} archrRed={archrRed} />
       </div>
     </div>
   );
@@ -90,7 +97,7 @@ export function UfcBoutRow({ bout, upcoming }: { bout: UfcBoutSummary; upcoming:
 const SECTION_ORDER = ["Main Card", "Prelims", "Early Prelims"];
 
 /** A card's bouts grouped into Main Card / Prelims / Early Prelims when the feed says, else one list. */
-export function UfcCardSections({ event, upcoming, limit }: { event: UfcEventSummary; upcoming: boolean; limit?: number }) {
+export function UfcCardSections({ event, upcoming, limit, archrRed }: { event: UfcEventSummary; upcoming: boolean; limit?: number; archrRed?: Record<string, number | null> }) {
   const bouts = limit ? event.bouts.slice(0, limit) : event.bouts;
   const groups = new Map<string, UfcBoutSummary[]>();
   for (const b of bouts) {
@@ -119,7 +126,7 @@ export function UfcCardSections({ event, upcoming, limit }: { event: UfcEventSum
           )}
           <div className="flex flex-col gap-2.5">
             {groups.get(key)!.map((b) => (
-              <UfcBoutRow key={b.id} bout={b} upcoming={upcoming} />
+              <UfcBoutRow key={b.id} bout={b} upcoming={upcoming} {...(archrRed ? { archrRed: archrRed[b.id] ?? null } : {})} />
             ))}
           </div>
         </section>

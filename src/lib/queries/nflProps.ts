@@ -626,6 +626,10 @@ export async function getValueNflProps(limit = 6) {
     fairAmerican: number;
     booksUsed: number;
     playerId: string;
+    /** ARCHR's chance on this side (the summary's model), null without a read. */
+    archr: number | null;
+    /** When the slate's prop prices were last polled (ISO). */
+    polledAt: string | null;
   }[] = [];
   for (const prop of slate.props) {
     const player = slate.players[prop.playerId];
@@ -658,6 +662,8 @@ export async function getValueNflProps(limit = 6) {
         fairAmerican: value.fairAmerican,
         booksUsed: value.booksUsed,
         playerId: prop.playerId,
+        archr: s.model ? (side === "over" ? s.model.probOver : s.model.probUnder) : null,
+        polledAt: slate.lastPolledAt,
       });
     }
   }
