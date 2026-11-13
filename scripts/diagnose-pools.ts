@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { POOLS, POOL_KEYS } from "@/lib/pools/registry";
-import { CLAIM_TTL_MS, POOL_STALE_MS } from "@/lib/pools/snapshot";
+import { CLAIM_TTL_MS, POOL_STALE_MS, cacheEntrySize } from "@/lib/pools/snapshot";
 import { etDateOf } from "@/lib/dateEt";
 
 /**
@@ -48,10 +48,11 @@ async function main() {
     console.log(`     game dates (ET) in its rows: ${[...dates].sort().map(([d, n]) => `${d}:${n}`).join(" ") || "—"}`);
     // Pages read each chunk through unstable_cache, whose entries are capped at 2 MB on Vercel.
     const sizes = chunks
-      .map((c) => ({ key: c.key.slice(key.length + 1), mb: Buffer.byteLength(JSON.stringify(c.data ?? null)) / 1_048_576 }))
+      .map((c) => ({ key: c.key.slice(key.length + 1), raw: JSON.stringify(c.data ?? null).length / 1_048_576, mb: cacheEntrySize(c.data ?? null) / 1_048_576 }))
       .filter((c) => c.mb > 0.01)
       .sort((a, b) => a.key.localeCompare(b.key));
-    console.log(`     chunk sizes: ${sizes.map((c) => `${c.key} ${c.mb.toFixed(2)} MB${c.mb > 2 ? " (OVER the 2 MB cache cap)" : ""}`).join(" · ") || "all empty"}`);
+    // Next's measure (cacheEntrySize: the rows' JSON escaped again) against its 2 MB cap; raw JSON in brackets.
+    console.log(`     chunk sizes (as the read cache counts them): ${sizes.map((c) => `${c.key} ${c.mb.toFixed(2)} MB [raw ${c.raw.toFixed(2)}]${c.mb > 2 ? " OVER THE 2 MB CAP: NOT CACHED, PAGES KEEP THE OLD ENTRY" : ""}`).join(" · ") || "all empty"}`);
   }
 
   console.log("\n═══ 2. Builds, timed with no deadline (nothing written) ═══");

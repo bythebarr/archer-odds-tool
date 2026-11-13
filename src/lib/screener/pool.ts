@@ -19,9 +19,16 @@ export const SCREENER_SPORTS = [
 ] as const;
 export type ScreenerSport = (typeof SCREENER_SPORTS)[number]["key"];
 
-/** Rows per chunk, and chunks per part (soccer's main lines alone run ~3 MB, past one cache entry's 2 MB). */
-export const SCREENER_CHUNK_ROWS = 2500;
-export const SCREENER_CHUNKS = 4;
+/**
+ * Rows per chunk, and chunks per part. Each chunk is one unstable_cache entry,
+ * and Next refuses to store an entry over 2 MB: it logs a warning and keeps
+ * serving the OLD entry, so an oversized chunk freezes the page on whatever
+ * slate it last stored (the NBA main chunk ran 1.86 MB at 2,500 rows on
+ * 2026-11-13). 1,000 rows (~0.75 MB) leaves headroom; ten chunks keep the
+ * same 10,000-row reach.
+ */
+export const SCREENER_CHUNK_ROWS = 1000;
+export const SCREENER_CHUNKS = 10;
 
 type Part = "main" | "alt";
 

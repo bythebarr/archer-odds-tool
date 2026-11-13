@@ -17,9 +17,9 @@ import { chunkKey, readChunk, refreshStalePools } from "@/lib/pools/snapshot";
 export type PoolSource = "nba" | "nfl" | "mlb" | "ufc" | "all";
 export const POOL_SOURCES: PoolSource[] = ["nba", "nfl", "mlb", "ufc", "all"];
 
-/** Legs per chunk (an NBA slate runs ~1.1 MB for ~1,800 legs), and chunks per source. */
-export const BUILDER_CHUNK_ROWS = 1500;
-export const BUILDER_CHUNKS = 4;
+/** Legs per chunk (1,500 NBA legs ran 1.16 MB on 2026-11-13), and chunks per source: well under the 2 MB cache entry (see lib/screener/pool), the same 6,000-leg reach. */
+export const BUILDER_CHUNK_ROWS = 1000;
+export const BUILDER_CHUNKS = 6;
 
 const BUILD: Record<PoolSource, () => Promise<BuilderLeg[]>> = {
   nba: () => teamLeagueLegs("nba"),

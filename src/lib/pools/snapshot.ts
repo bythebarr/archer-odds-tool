@@ -48,9 +48,36 @@ export async function claimPool(pool: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+/**
+ * Pages read each chunk through unstable_cache, which won't store an entry over
+ * 2 MB (it keeps serving the old one). A chunk past this is flagged on the
+ * meta row's error, so /api/status shows it before the screener goes stale.
+ */
+export const CHUNK_WARN_BYTES = 1.5 * 1024 * 1024;
+
+/**
+ * A chunk's size as Next measures it against the 2 MB cap: unstable_cache stores
+ * `{ data: { body: JSON.stringify(rows) } }` and checks JSON.stringify of THAT, so
+ * every quote in the rows is escaped again and counts twice.
+ */
+export function cacheEntrySize(rows: unknown): number {
+  return JSON.stringify({ kind: "FETCH", data: { headers: {}, body: JSON.stringify(rows), status: 200, url: "" }, revalidate: 60 }).length;
+}
+
+/** The chunks too big for a cache entry, as "main:0 2.10 MB". */
+export function oversizeChunks(parts: Record<string, unknown[][]>, limit = CHUNK_WARN_BYTES): string[] {
+  return Object.entries(parts).flatMap(([part, chunks]) =>
+    chunks.flatMap((data, i) => {
+      const bytes = cacheEntrySize(data);
+      return bytes > limit ? [`${part}:${i} ${(bytes / 1_048_576).toFixed(2)} MB`] : [];
+    })
+  );
+}
+
 /** Store a finished build: every chunk row, then stamp the meta row built and release the claim. */
 export async function writePool(pool: string, parts: Record<string, unknown[][]>): Promise<number> {
   let total = 0;
+  const oversize = oversizeChunks(parts);
   const writes = Object.entries(parts).flatMap(([part, chunks]) =>
     chunks.map((data, i) => {
       total += data.length;
@@ -61,7 +88,10 @@ export async function writePool(pool: string, parts: Record<string, unknown[][]>
   );
   await prisma.$transaction([
     ...writes,
-    prisma.poolSnapshot.update({ where: { key: pool }, data: { builtAt: new Date(), buildingSince: null, rows: total, error: null } }),
+    prisma.poolSnapshot.update({
+      where: { key: pool },
+      data: { builtAt: new Date(), buildingSince: null, rows: total, error: oversize.length ? `built, but too big for the 2 MB read cache (pages may keep an old slate): ${oversize.join(", ")}` : null },
+    }),
   ]);
   return total;
 }
