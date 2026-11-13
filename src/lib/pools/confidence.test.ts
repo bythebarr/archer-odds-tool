@@ -12,6 +12,15 @@ describe("poolConfidence", () => {
     expect(unproven.why).toMatch(/haven't earned a passing report card/);
   });
 
+  it("with each card's record, track follows the record weighted by its sample", () => {
+    const strong = { "market-blend:nba:points": { n: 2400, belowBaseline: false, skill: 0.012 }, "market-blend:nba:rebounds": { n: 40, belowBaseline: true, skill: -0.002 } };
+    const a = poolConfidence(row, verdicts, strong)!;
+    const b = poolConfidence({ ...row, statKey: "rebounds" }, verdicts, strong)!;
+    expect(a.score - b.score).toBe(15); // +10 (full weight, skill past +10) vs −5 (thin card, record below baseline)
+    const none = poolConfidence({ ...row, statKey: "assists" }, verdicts, strong)!;
+    expect(none.why).toMatch(/No report card/);
+  });
+
   it("uses the source's facts when it attached them", () => {
     const thin = poolConfidence({ ...row, facts: { market: 0.4, injury: "questionable", games: 6, recentMinutes: 20 }, projectedMinutes: 30 }, verdicts)!;
     expect(thin.grade).toBe("D");

@@ -11,6 +11,7 @@
  * one PredictionRun per tracked model per run, append-only. A game is
  * captured once: the latest read before tip, not a re-write every hour.
  */
+import { blendCardOf } from "@/lib/modelBadge";
 import { prisma } from "@/lib/prisma";
 import { formatSpreadPoint } from "@/lib/odds/americanOdds";
 import { todayEt } from "@/lib/dateEt";
@@ -80,6 +81,7 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
       const shared = {
         sampleGames: s.hit.season[1],
         blendVerdict: slate.blendVerdicts?.[s.stat] ?? null,
+        blendCard: blendCardOf(slate.blendGraded?.[s.stat]),
         injury: player?.injury?.level ?? null,
         minutes: s.minutes ? { projected: s.minutes, recent: null } : null,
         z: s.z,
@@ -229,6 +231,7 @@ export function nflPropLeans(slate: NflPropsSlate, gameIds: Set<string>): Lean[]
           rate: record ? [record.rate.hits, record.rate.sampleSize] : [0, 0],
           sampleGames: m.projection.games,
           blendVerdict: slate.blendVerdicts?.[prop.stat] ?? null,
+          blendCard: blendCardOf(slate.blendGraded?.[prop.stat]),
           injury: player.injury?.level ?? null,
           alt: false,
           z: ((m.projection.mean - s.point) / Math.max(m.projection.sd, 1e-6)) * (side === "over" ? 1 : -1),

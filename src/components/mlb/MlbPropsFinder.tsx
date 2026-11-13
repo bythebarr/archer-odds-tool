@@ -27,7 +27,8 @@ import { EvTag } from "@/components/EvTag";
 import { HitMeter, formatRate, rateTone } from "@/components/nba/HitMeter";
 import { SplitGrid } from "@/components/nba/Matchup";
 import { BlendLine } from "@/components/props/ModelPieces";
-import { TrackRecordChip } from "@/components/TrackRecordChip";
+import { ConfidenceChip, ConfidencePanel } from "@/components/props/ConfidencePanel";
+import { mlbConfidence } from "@/lib/propModel/summaryConfidence";
 import { PropGameChart } from "@/components/props/PropGameChart";
 import {
   ArchrLineChip,
@@ -125,7 +126,14 @@ function MlbCard({ row, stat, side, logs, season, startUtc, blendVerdict, blendG
       onOpen={onOpen}
       headshot={[player.headshotUrl]}
       name={player.name}
-      badges={<TrackRecordChip verdict={blendVerdict} graded={blendGraded} />}
+      badges={
+        <span className="ml-1.5 inline-flex align-middle">
+          <ConfidenceChip
+            c={mlbConfidence({ priced, side, priceAmerican: row.projected ? null : (best?.priceAmerican ?? null), l10: row.l10, games: row.prop.projection.games, blendVerdict: blendVerdict ?? null, blendGraded, alt: false })}
+            graded={blendGraded?.n}
+          />
+        </span>
+      }
       tag={player.role === "pitcher" ? "SP" : player.battingOrder ? `#${player.battingOrder}` : undefined}
       teamLogo={player.team.logoUrl}
       teamAbbr={player.team.abbreviation}
@@ -283,9 +291,14 @@ function Sheet({ player, props, logs, season, initialStat, side: initialSide, st
           </>
         }
       >
-        <TrackRecordChip verdict={blendVerdicts[statKey]} graded={blendGraded[statKey]} className="mt-3" />
         <BlendLine model={priced} side={side} />
       </ProjectionCard>
+
+      <ConfidencePanel
+        c={mlbConfidence({ priced, side, priceAmerican: row.projected ? null : ((side === "over" ? row.over : row.under)?.priceAmerican ?? null), l10: row.l10, games: proj.games, blendVerdict: blendVerdicts[statKey] ?? null, blendGraded: blendGraded[statKey], alt: point !== main })}
+        graded={blendGraded[statKey]?.n}
+        sideLabel={`${side === "over" ? "Over" : "Under"} ${point} ${stat.shortLabel}`}
+      />
 
       <SheetSection title="Hit rates">
         <SplitGrid splits={splits} />

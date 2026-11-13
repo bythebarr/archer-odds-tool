@@ -21,7 +21,6 @@ import { getUfcFightModel } from "@/lib/queries/ufcFightModel";
 import { computeUfcWinProbability } from "@/lib/ufc/fighterMath";
 import { blendWithMarket, DEFAULT_MODEL_WEIGHT } from "@/lib/propModel/market";
 import { getScreenerPool } from "@/lib/screener/pool";
-import { fairAmericanOf } from "@/lib/odds/bookVsArchr";
 
 export type { EventArchr } from "@/lib/odds/bookVsArchr";
 import { eventArchrOf, type EventArchr } from "@/lib/odds/bookVsArchr";

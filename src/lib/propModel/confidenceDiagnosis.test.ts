@@ -16,16 +16,16 @@ const solid: ConfidenceInput = {
 };
 
 describe("confidence diagnosis", () => {
-  it("the most the rules can give: 85 with a passing report card, 70 without — under the A cut of 75", () => {
+  it("the most the rules can give: 85 with a passing report card, 77 with a card short of a pass", () => {
     expect(maxPossible(true)).toBe(85);
-    expect(maxPossible(false)).toBe(70);
+    expect(maxPossible(false)).toBe(77);
     expect(maxPossible(undefined)).toBe(75);
   });
 
   it("names the factor that cost the most, and the ceiling without any costs", () => {
     const c = confidenceOf({ ...solid, blendVerdict: "unproven", z: 0.1, side: "over" })!;
     expect(biggestCost(c)!.key).toBe("distance");
-    expect(ceiling(c)).toBe(55 + 5); // only the 30+ games bonus is left
+    expect(ceiling(c)).toBeCloseTo(55 + 5 + 1.2, 6); // the 30+ games bonus and a 5-pt market gap (+1.2, continuous) are left
     expect(biggestCost(confidenceOf(solid)!)).toBeNull();
   });
 
