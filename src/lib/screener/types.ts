@@ -60,6 +60,27 @@ export interface ScreenerProp {
   facts?: LegFacts;
   /** NBA: the L10 and season records with each game weighted by how closely his minutes and role then match tonight's (lib/propModel/cautiousRead). Read only by the evidence cautious read. */
   roleRates?: Record<"l10" | "szn", Rate>;
+  /**
+   * ARCHR's side of this line: the side its projection points to (see
+   * `archrSideOf`), stamped when the pool is built. Absent on rows built before
+   * it existed; the filter then falls back to ARCHR's chance (50%+).
+   */
+  lean?: boolean;
+}
+
+/**
+ * Whether a row is ARCHR's side of its line — the side pick tracking freezes as
+ * ARCHR's lean (lib/tracking/capture): where ARCHR has a projection, the side
+ * it points to (z toward this side ≥ 0, as the NBA standout read picks it,
+ * lib/nba/standouts); where it has none (yes/no props, sports priced without a
+ * projection), the side ARCHR gives 50%+. The shown chance can dip under 50% on
+ * ARCHR's side (the NBA side correction shrinks overs), which is why the
+ * chance alone doesn't pick it.
+ */
+export function archrSideOf(p: { side: ScreenerProp["side"]; archr: number | null; facts?: { z?: number | null } }): boolean {
+  const z = p.facts?.z;
+  if (typeof z === "number" && Number.isFinite(z) && p.side !== "yes") return z > 0 || (z === 0 && p.side === "over");
+  return p.archr !== null && p.archr >= 0.5;
 }
 
 /** The sport's props board for this prop's game or league (kept off the row: the cached slice must stay small). */
@@ -115,6 +136,8 @@ export interface ScreenFilters {
   /** Stats switched off on the stat tiles, sport-scoped ("nba:steals"): lib/props/statTiles. */
   excludeStats: string[];
   side: "over" | "under" | "yes" | null;
+  /** Only ARCHR's side of each line (`archrSideOf`): the side its projection points to. */
+  archrSide: boolean;
   /** Main lines only (default) or every alt rung too. */
   mainOnly: boolean;
   /** A bar on each window (0 = none); `all` applies to every window. */
@@ -140,6 +163,7 @@ export const DEFAULT_FILTERS: ScreenFilters = {
   stat: null,
   excludeStats: [],
   side: null,
+  archrSide: false,
   mainOnly: true,
   min: {},
   all: 0,
@@ -191,6 +215,7 @@ export function passes(p: ScreenerProp, f: ScreenFilters): boolean {
   if (f.stat && p.stat !== f.stat) return false;
   if (f.excludeStats.length && !statShown(f.excludeStats, p.sport, p.stat)) return false;
   if (f.side && p.side !== f.side) return false;
+  if (f.archrSide && !(p.lean ?? (p.archr !== null && p.archr >= 0.5))) return false;
   if (f.mainOnly && !p.main) return false;
   for (const [w, bar] of Object.entries(barsOf(f)) as [ScreenWindow, number][]) {
     const [h, n] = p.rates[w];
