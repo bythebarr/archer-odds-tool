@@ -29,6 +29,8 @@ export const TRACKED_MODELS = {
  */
 export const SHADOW_MODELS = {
   nbaProps: "shadow:nba-props",
+  /** v2: minutes v2, projection corrections, the v2 distribution and the market-value candidate rule (docs/alpha-sprint.md). */
+  nbaPropsV2: "shadow:nba-props-v2",
 } as const;
 
 /** Bumped when the featureSnapshot shape changes. */

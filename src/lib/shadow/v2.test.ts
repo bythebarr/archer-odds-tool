@@ -29,13 +29,20 @@ const proj = (mean: number, minutes = 34, minutesFactor = 1) => ({
 // Three games this season at 26 minutes, then last season's at 36.
 const logs = [...[0, 1, 2].map((i) => log(i, 2026, 26)), ...Array.from({ length: 20 }, (_, i) => log(i + 3, 2025, 36))];
 const prod = { points: proj(20.4), rebounds: proj(6.8), assists: proj(5.1), threes: proj(2) };
+/** No corrections: production's minutes and rates, every departure kept. */
+const ID: V2Params = {
+  ...V2_PARAMS,
+  minutesCoef: V2_PARAMS.minutesCoef.map(() => 0),
+  rate: { points: { a: 0, b: 0 }, rebounds: { a: 0, b: 0 }, assists: { a: 0, b: 0 }, threes: { a: 0, b: 0 } },
+  gamma: { points: 1, rebounds: 1, assists: 1, threes: 1 },
+};
 
 describe("v2 with identity constants", () => {
   it("reproduces production's mean, and a combo is the sum of its components", () => {
-    const pts = v2Projection("points", prod, logs, 2026)!;
+    const pts = v2Projection("points", prod, logs, 2026, ID)!;
     expect(pts.mean).toBeCloseTo(20.4, 9);
     expect(pts.minutes).toBeCloseTo(34, 9);
-    const pra = v2Projection("pointsReboundsAssists", prod, logs, 2026)!;
+    const pra = v2Projection("pointsReboundsAssists", prod, logs, 2026, ID)!;
     expect(pra.mean).toBeCloseTo(20.4 + 6.8 + 5.1, 9);
     expect(pra.components.map((c) => c.key)).toEqual(["points", "rebounds", "assists"]);
   });
@@ -57,7 +64,7 @@ describe("minutes v2", () => {
 
   it("applies the fitted correction before tonight's spread trim, inside 1–48 minutes", () => {
     const coef = MINUTES_V2_FEATURES.map((k) => (k === "seasonGap" ? 1 : 0));
-    const p: V2Params = { ...V2_PARAMS, minutesCoef: coef };
+    const p: V2Params = { ...ID, minutesCoef: coef };
     expect(minutesV2(proj(20, 34), logs, 2026, p)).toBeCloseTo(34 - 3, 9);
     // A 0.95 spread trim: the correction applies to the untrimmed 34, then the trim.
     expect(minutesV2(proj(20, 34 * 0.95, 0.95), logs, 2026, p)).toBeCloseTo((34 - 3) * 0.95, 9);
@@ -74,7 +81,7 @@ describe("rate and displacement", () => {
   });
 
   it("gamma below 1 pulls the projection toward his recent average", () => {
-    const p: V2Params = { ...V2_PARAMS, gamma: { ...V2_PARAMS.gamma, points: 0.5 } };
+    const p: V2Params = { ...ID, gamma: { ...ID.gamma, points: 0.5 } };
     const recent = logs.slice(0, 20).reduce((a, l) => a + l.points, 0) / 20;
     expect(v2Projection("points", prod, logs, 2026, p)!.mean).toBeCloseTo(recent + 0.5 * (20.4 - recent), 9);
   });

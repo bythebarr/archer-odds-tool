@@ -25,7 +25,7 @@ function rows(games: number, signal: number, seed = 5): ForwardRow[] {
         stat: k % 2 ? "points" : "pointsReboundsAssists",
         combo: k % 2 === 0,
         y,
-        p: { market, prodRaw: sig(lg(market) + (next() * 2 - 1)), prodModel: market, prodBlend: market, prodShown: market, s1: truth, s2: truth },
+        p: { market, prodRaw: sig(lg(market) + (next() * 2 - 1)), prodModel: market, prodBlend: market, prodShown: market, s1: truth, s2: truth, corr: market, v2: truth },
         overPrice: -110,
         underPrice: -110,
         closeOver: market,

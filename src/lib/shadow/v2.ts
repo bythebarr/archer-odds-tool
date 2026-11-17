@@ -32,7 +32,7 @@
  */
 import type { PropProjection } from "@/lib/nba/projection";
 import type { GameLogPoint } from "@/lib/nba/propsMath";
-import { SHADOW_PARAMS, shadowDistribution, type ShadowDistribution, type ShadowParams } from "./nbaShadow";
+import { shadowDistribution, type ShadowDistribution, type ShadowParams } from "./nbaShadow";
 
 export const V2_VERSION = "nba-shadow-v2";
 
@@ -98,18 +98,36 @@ export interface V2Params {
 }
 
 /**
- * Fitted by `npm run lab:nba-v2` on the first 70% of 2025-26 (by date). See
- * docs/alpha-sprint.md for the run and the holdout. Until that run is frozen
- * here these are identities (no correction) and v1's distribution.
+ * Fitted once by `npm run lab:nba-v2` (Model lab run #106, 2026-11-17) on the
+ * first 70% of 2025-26 by date (16,020 player-games, to 2026-03-11), pregame
+ * inputs only. Frozen: changing any of them is a new V2_VERSION and a new
+ * forward clock.
+ *
+ * What the untouched holdout (the last 30% of 2025-26, 7,045 player-games)
+ * said, honestly: the v2 distribution beats production's log score on all
+ * eight stats, but the projection corrections (minutes, rate, displacement)
+ * did NOT carry over to the late season — the corrected projection alone is
+ * worse than production on line log loss for six of eight stats and on mean
+ * error for bench, returning and volatile players. On 2026-27 before Nov 17
+ * (early season, already seen) the same corrections help every stat. They
+ * are kept as fitted and judged forward; the candidate rule
+ * (marketValue.ts) does not lean on v2 alone. docs/alpha-sprint.md.
  */
 export const V2_PARAMS: V2Params = {
-  minutesCoef: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  minutesCoef: [0.4339, -0.2795, -0.2052, 0.2721, -0.0124, -0.0707, -0.1257, -0.1612, -0.2751, 0.2192],
   seasonGapGames: 5,
-  rate: { points: { a: 0, b: 0 }, rebounds: { a: 0, b: 0 }, assists: { a: 0, b: 0 }, threes: { a: 0, b: 0 } },
+  rate: { points: { a: 0.0007, b: 0.6944 }, rebounds: { a: 0.0057, b: 0.7942 }, assists: { a: 0.0091, b: 0.6129 }, threes: { a: -0.0045, b: 0.7955 } },
   rateGapMinutes: 300,
-  gamma: { points: 1, rebounds: 1, assists: 1, threes: 1 },
+  gamma: { points: 0.873, rebounds: 0.91, assists: 0.998, threes: 0.937 },
   baseGames: 20,
-  dist: SHADOW_PARAMS,
+  dist: {
+    minutesCoef: [4.0973, 0.2484, 0.0053, 0.1352, 0, 0, 0.2306, 0.1398, 0.0251, 0.1624, -0.0404],
+    minScale: 1.5,
+    nodes: [-2.092, -1.257, -0.799, -0.449, -0.125, 0.179, 0.49, 0.826, 1.247, 2.037],
+    phi0: { points: 2.049, rebounds: 1, assists: 1.591, threes: 1.385, pointsReboundsAssists: 1.737, pointsRebounds: 1.83, pointsAssists: 1.831, reboundsAssists: 1.035 },
+    phiPriorGames: 10,
+    kappa: { points: 1.5, rebounds: 1.1, assists: 0.9, threes: 1, pointsReboundsAssists: 1.5, pointsRebounds: 1.5, pointsAssists: 1.5, reboundsAssists: 1.1 },
+  },
   minutesMixture: true,
 };
 
