@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { loadGradedLeans } from "@/lib/queries/edgeReport";
 import { NBA_PROP_STATS } from "@/lib/nba/propStats";
-import { screenRates } from "@/lib/screener/types";
+import { DEFAULT_FILTERS, passes, screenRates, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
+import { edgeOf } from "@/lib/builder/types";
+import { TRACKED_SCREENS } from "@/lib/tracking/screens";
 import { cautiousEdge } from "@/lib/propModel/canonical";
 import type { GradedLean } from "@/lib/tracking/types";
 import { bootstrapCoef, calibration, impliedOf, logisticWithOffset, logit, segmentPerf, type PerfRow, type SegmentPerf } from "@/lib/audit/performance";
@@ -33,6 +35,10 @@ import { bootstrapCoef, calibration, impliedOf, logisticWithOffset, logit, segme
  */
 
 type Regime = "pre-correction" | "post-correction";
+/** The NBA side correction went live (commit 4241a28, deployed 2026-11-12 22:29 UTC); picks frozen before it were made by the uncorrected model. */
+const CORRECTION_LIVE = Date.parse("2026-11-12T22:29:12Z");
+/** The screener sweep (docs/filter-sweep.md, Model lab run #96) chose its sets on games through this ET date; later games are out of its sample. */
+const SWEEP_SAMPLE_END = "2026-11-12";
 
 interface Row extends PerfRow {
   lean: GradedLean;
@@ -45,6 +51,8 @@ interface Row extends PerfRow {
   /** Rebuilt from prior box scores where not frozen. */
   rates: { l5: [number, number]; l10: [number, number]; l15: [number, number]; szn: [number, number] } | null;
   ratesFrozen: boolean;
+  /** Every screener window (rebuilt), for running the screener's own filters. */
+  allRates: Record<ScreenWindow, [number, number]> | null;
   games: number | null;
   starterShare: number | null;
   cautious: number | null;
@@ -58,7 +66,7 @@ const am = (x: number | null) => (x === null ? "—" : x > 0 ? `+${x}` : `${x}`)
 
 function header() {
   console.log(
-    `    ${"segment".padEnd(34)} ${"n".padStart(5)} ${"games".padStart(5)} ${"win%".padStart(6)} [95%]          ${"ARCHR".padStart(6)} ${"gap".padStart(6)} ${"ROI".padStart(7)} [95%]           ${"avg odds".padStart(8)} ${"Brier".padStart(6)} ${"bk Brier".padStart(8)} ${"logloss".padStart(7)} ${"bk ll".padStart(6)} ${"skill‰".padStart(7)} [95%]        ${"vs no-vig".padStart(9)} [95%]          ${"CLV".padStart(6)} (n, beat)  flag`
+    `    ${"segment".padEnd(34)} ${"n".padStart(5)} ${"games".padStart(5)} ${"win%".padStart(6)} [95%]          ${"ARCHR".padStart(6)} ${"gap".padStart(6)} ${"ROI".padStart(7)} [95%]           ${"avg odds".padStart(8)} ${"Brier".padStart(6)} ${"bk Brier".padStart(8)} ${"logloss".padStart(7)} ${"bk ll".padStart(6)} ${"skill‰".padStart(7)} [95%]        ${"vs no-vig".padStart(9)} [95%]          ${"CLV".padStart(6)} (n: moved toward / away; rest unmoved)  flag`
   );
 }
 function line(label: string, s: SegmentPerf) {
@@ -67,7 +75,7 @@ function line(label: string, s: SegmentPerf) {
       ` ${pc(s.avgP).padStart(6)} ${spt(s.gap).padStart(6)} ${spc(s.roi).padStart(7)} [${spc(s.roiLo, 0)},${spc(s.roiHi, 0)}]`.padEnd(38) +
       ` ${am(s.avgAmerican).padStart(8)} ${f1(s.brier, 4).padStart(6)} ${f1(s.mktBrier, 4).padStart(8)} ${f1(s.logLoss, 3).padStart(7)} ${f1(s.mktLogLoss, 3).padStart(6)} ${f1(s.skill).padStart(7)} [${f1(s.skillLo)},${f1(s.skillHi)}]`.padEnd(70) +
       ` ${spt(s.overMarket).padStart(9)} [${spt(s.overMarketLo)},${spt(s.overMarketHi)}]`.padEnd(30) +
-      ` ${spt(s.clv).padStart(6)} (${s.clvN}, ${pc(s.beatClose, 0)})  ${s.flag ?? ""}`
+      ` ${spt(s.clv).padStart(6)} (${s.clvN}: ${pc(s.beatClose, 0)} toward, ${pc(s.worseClose, 0)} away)  ${s.flag ?? ""}`
   );
 }
 
@@ -131,6 +139,7 @@ const CUTS: Cut[] = [
     seg: (r) => (typeof r.lean.features.z !== "number" ? null : bucket(Math.abs(r.lean.features.z), [["under 0.35", (v) => v < 0.35], ["0.35–0.75", (v) => v < 0.75], ["0.75–6", (v) => v <= 6], ["degenerate (>6)", () => true]])),
   },
   { key: "regime", title: "Model regime", seg: (r) => r.regime },
+  { key: "sidechance", title: "ARCHR's side (projection) vs its chance", seg: (r) => `${r.side} · ARCHR ${r.p < 0.5 ? "under 50%" : "50%+"}` },
 ];
 
 function printCut(rows: Row[], cut: Cut, seed: number): { label: string; s: SegmentPerf }[] {
@@ -220,14 +229,15 @@ async function nbaRows(leans: GradedLean[]): Promise<Row[]> {
       market: f.marketProb,
       price: f.price,
       close: l.closingProb,
-      regime: typeof f.rawProb === "number" && Math.abs(f.rawProb - l.prob) > 1e-9 ? "post-correction" : "pre-correction",
+      regime: (l.capturedAt ?? l.startsAt).getTime() < CORRECTION_LIVE ? "pre-correction" : "post-correction",
       side,
       stat: f.stat,
       date: day,
-      book: f.book ?? "unknown",
+      book: (f.book ?? "unknown").replace(/\s+/g, "").toLowerCase() === "draftkings" ? "DraftKings" : (f.book ?? "unknown"),
       projMinutes: typeof f.minutes === "number" ? f.minutes : null,
       rates,
       ratesFrozen: Boolean(f.rates),
+      allRates: rebuilt,
       games: stat ? prior.length : null,
       starterShare: last10.length >= 5 ? last10.filter((g) => g.starter).length / last10.length : null,
       cautious: rate ? cautiousEdge(l.prob, rate, f.price) : null,
@@ -285,7 +295,7 @@ async function main() {
   console.log(`  post-correction (clean out-of-sample test): ${post.length} picks · ${span(post)}`);
   console.log(`  records frozen at capture: ${rows.filter((r) => r.ratesFrozen).length}; rebuilt from prior box scores: ${rows.filter((r) => !r.ratesFrozen && r.rates).length}; none: ${rows.filter((r) => !r.rates).length}`);
   console.log(`  players with the same stat family on one night are correlated: ${rows.length} picks over ${new Set(rows.map((r) => r.cluster)).size} games (${f1(rows.length / (new Set(rows.map((r) => r.cluster)).size || 1))} per game) — every interval resamples whole games`);
-  console.log("\nColumns: win% [cluster-bootstrap 95%] · ARCHR = avg predicted · gap = actual − predicted (pts) · ROI flat at the recorded price [95%] · avg odds · Brier/log loss for ARCHR and the books' no-vig (bk) on the same picks · skill‰ = bk Brier − ARCHR Brier ×1000 [95%] (+: ARCHR closer) · vs no-vig = won − books' no-vig chance (pts) [95%] · CLV = no-vig move toward the pick, capture → close (pts)");
+  console.log("\nColumns: win% [cluster-bootstrap 95%] · ARCHR = avg predicted · gap = actual − predicted (pts) · ROI flat at the recorded price [95%] · avg odds · Brier/log loss for ARCHR and the books' no-vig (bk) on the same picks · skill‰ = bk Brier − ARCHR Brier ×1000 [95%] (+: ARCHR closer) · vs no-vig = won − books' no-vig chance (pts) [95%] · CLV = no-vig move toward the pick, capture → close (pts), with the share of closes that moved toward / away (the rest didn't move)");
   console.log("Flags: 'too few' under 30 picks, 'small sample' under 200.");
 
   const ranked: { label: string; regime: string; s: SegmentPerf }[] = [];
@@ -318,6 +328,30 @@ async function main() {
       const r = windowAddsInfo(rs, w);
       console.log(`    ${name.padEnd(16)} ${w.padEnd(4)} n=${String(r.n).padStart(5)} · beyond ARCHR: b = ${f1(r.vsArchr.est, 3)} [${f1(r.vsArchr.lo, 3)}, ${f1(r.vsArchr.hi, 3)}] · beyond the books: b = ${f1(r.vsBooks.est, 3)} [${f1(r.vsBooks.lo, 3)}, ${f1(r.vsBooks.hi, 3)}]`);
     }
+
+  // ── The screener sets, on games the sweep never saw.
+  console.log("\n\n═══ THE SWEEP'S SCREENER SETS, BEFORE AND AFTER ITS SAMPLE ═══");
+  console.log(`  The sweep chose its sets on games through ${SWEEP_SAMPLE_END}; later games are out of sample for that choice. Run through the screener's own passes() on rebuilt records; every pick is ARCHR's projection side.`);
+  const asProp = (r: Row): ScreenerProp | null =>
+    r.allRates
+      ? { id: "", sport: "nba", league: "NBA", gameId: "", game: "", startsAt: "", team: "", opponent: "", player: "", stat: r.stat, statLabel: "", side: r.side, point: r.lean.features.point ?? 0, main: true, priceAmerican: r.price, bookName: null, archr: r.p, edge: edgeOf(r.p, r.price), rates: r.allRates, ...(r.projMinutes !== null ? { minutes: r.projMinutes } : {}), lean: true }
+      : null;
+  const sets = [
+    ...TRACKED_SCREENS.map((t) => ({ label: t.label, filters: t.filters })),
+    ...TRACKED_SCREENS.map((t) => ({ label: `${t.label} + ARCHR 50%+`, filters: { ...t.filters, minArchr: 0.5 } })),
+    { label: "ARCHR 50%+ (nothing else)", filters: { ...DEFAULT_FILTERS, minArchr: 0.5 } },
+    { label: "Unders · ARCHR 50%+ (nothing else)", filters: { ...DEFAULT_FILTERS, side: "under" as const, minArchr: 0.5 } },
+  ];
+  header();
+  for (const set of sets) {
+    const kept = rows.filter((r) => {
+      const prop = asProp(r);
+      return prop !== null && passes(prop, set.filters);
+    });
+    line(`${set.label.slice(0, 26)}… in sample`, segmentPerf(kept.filter((r) => r.date <= SWEEP_SAMPLE_END), 19));
+    line(`${set.label.slice(0, 26)}… OUT of sample`, segmentPerf(kept.filter((r) => r.date > SWEEP_SAMPLE_END), 19));
+    console.log(`      ↑ ${set.label}`);
+  }
 
   // ── Ranking.
   console.log("\n\n═══ RANKING (segments with 200+ picks; by the LOWER end of each 95% interval, never by raw win rate) ═══");

@@ -65,9 +65,10 @@ interface Sums {
   clvN: number;
   clv: number;
   beat: number;
+  worse: number;
 }
 
-const zero = (): Sums => ({ n: 0, wins: 0, p: 0, brier: 0, ll: 0, pricedN: 0, profit: 0, dec: 0, mktN: 0, mktBrier: 0, mktLl: 0, archrBrierOnMkt: 0, archrLlOnMkt: 0, resid: 0, clvN: 0, clv: 0, beat: 0 });
+const zero = (): Sums => ({ n: 0, wins: 0, p: 0, brier: 0, ll: 0, pricedN: 0, profit: 0, dec: 0, mktN: 0, mktBrier: 0, mktLl: 0, archrBrierOnMkt: 0, archrLlOnMkt: 0, resid: 0, clvN: 0, clv: 0, beat: 0, worse: 0 });
 
 function add(s: Sums, r: PerfRow) {
   s.n++;
@@ -90,7 +91,8 @@ function add(s: Sums, r: PerfRow) {
     if (r.close !== null) {
       s.clvN++;
       s.clv += r.close - r.market;
-      if (r.close > r.market) s.beat++;
+      if (r.close > r.market + 1e-9) s.beat++;
+      else if (r.close < r.market - 1e-9) s.worse++;
     }
   }
 }
@@ -132,6 +134,8 @@ export interface SegmentPerf {
   clv: number | null;
   clvN: number;
   beatClose: number | null;
+  /** Share of closing lines that moved against the pick; the rest didn't move. */
+  worseClose: number | null;
   games: number;
   flag: "too few" | "small sample" | null;
 }
@@ -202,6 +206,7 @@ export function segmentPerf(rows: PerfRow[], seed = 7, boot = BOOT): SegmentPerf
     clv: ratio(t.clv, t.clvN),
     clvN: t.clvN,
     beatClose: ratio(t.beat, t.clvN),
+    worseClose: ratio(t.worse, t.clvN),
     games: games.length,
     flag: t.n < TOO_FEW ? "too few" : t.n < SMALL ? "small sample" : null,
   };

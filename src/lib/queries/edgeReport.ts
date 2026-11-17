@@ -22,7 +22,7 @@ export async function loadGradedLeans(days: number, now = new Date()): Promise<G
       actual: true,
       closingProb: true,
       closingPrice: true,
-      prediction: { select: { probability: true, featureSnapshot: true, scheduledStartUtc: true, eventRef: true, run: { select: { featureSchemaVersion: true, modelVersion: true, calibrationSnapshot: true } } } },
+      prediction: { select: { probability: true, featureSnapshot: true, scheduledStartUtc: true, eventRef: true, createdAt: true, run: { select: { featureSchemaVersion: true, modelVersion: true, calibrationSnapshot: true } } } },
     },
   });
   // Grades are write-once history; corrections (append-only, lib/tracking/
@@ -47,6 +47,7 @@ export async function loadGradedLeans(days: number, now = new Date()): Promise<G
             features: r.prediction.featureSnapshot as unknown as LeanFeatures,
             prob: r.prediction.probability,
             eventRef: r.prediction.eventRef,
+            capturedAt: r.prediction.createdAt,
             actual: effective.get(r.predictionId)!.actual,
             result: effective.get(r.predictionId)!.result,
             closingProb: effective.get(r.predictionId)!.closingProb,

@@ -91,6 +91,8 @@ export interface GradedLean {
   eventRef?: string;
   /** His stat that night (props), from the settlement. */
   actual?: number | null;
+  /** When the lean was frozen (ModelPrediction.createdAt). */
+  capturedAt?: Date;
   /**
    * NBA props, read AFTER the game (never at capture): his actual minutes and his
    * team's final margin, for the "why it lost" cuts. Undefined where not loaded.
