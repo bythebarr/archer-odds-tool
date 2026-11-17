@@ -193,7 +193,7 @@ Benjamini–Hochberg is applied across the 22 prospective factors at q = 0.10.
 - **No candidate is positive in all three periods with an interval clear of zero.** The bands that improve after the correction are the ones the post-correction data suggested.
 - **No result depends on a single slate or player.** The leave-one-out ranges are narrow, so the losses are broad-based, not one bad night.
 - **Is the improvement noise?**
-  - |z| 0.35–0.75 after the correction beats no-vig by +6.9 pts [−0.3, +14.0]: about a 3% bootstrap chance it's ≤ 0.
+  - |z| 0.35–0.75 after the correction beats no-vig by +6.9 pts [−0.3, +14.0]. The interval only just reaches zero.
   - That's one of roughly 40 band × period readings, after the hypothesis had been seen. Under any multiple-comparison correction it's consistent with noise.
 - **The sportsbook-only baseline wins.** Betting every pick at DraftKings loses the vig (−6.5%), and no filter reliably cuts that.
 
@@ -262,7 +262,7 @@ Evidence strength: strong, moderate, weak or none.
 | Filter (exact) | Historical sample | Out-of-sample ROI [95%] | Calibration · CLV | Per slate | Evidence | Ready to test forward? |
 |---|---|---|---|---|---|---|
 | **`distance-035-v1`**: ARCHR's side, projection 0.35+ past the line, any price | 1,827 picks (80 games) | post +4.6% [−7, +18]; all −0.4% [−7, +6] | +0.2 pts · 0.0 | 171 (median, post) | **weak** | **yes**: already frozen with every pick since Nov 17 |
-| \|z\| 0.35–0.55, any price | 1,143 | post +10.1% [−2, +24]; discovery −2.8% | +2.8 · −0.1 | about 90 | weak (one band among many) | yes, as a pre-registered sub-band |
+| \|z\| 0.35–0.55, any price | 1,143 | post +10.1% [−2, +24]; discovery −2.8% | +2.8 · −0.1 | not computed (the run reports per-slate counts for \|z\| 0.35–0.75 only: median 146 after the correction) | weak (one band among many) | yes, as a pre-registered sub-band |
 | Plus money · \|z\| 0.35–0.75 | 78 | post +10.7% [−35, +57] (25 ⚠) | −9.3 · +0.6 | 7 | **none** (too few) | track only; needs about 1,000 picks |
 | Plus money (+100 and higher), ARCHR's side | 625 | post −2.4% [−16, +11] | **−9.3** · +0.4 | 55 | none (negative) | no |
 
