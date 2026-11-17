@@ -51,7 +51,10 @@ export async function GET(request: Request) {
       }
     })
   );
-  return Response.json({ ran });
+  // Any pool that didn't build (a throw, a call past the deadline, a login page) fails the
+  // whole call, so the tick's status row reads "error" instead of an "ok 200" over a stale pool.
+  const healthy = ran.every((r) => r.status === "built" || String(r.status).startsWith("busy"));
+  return Response.json({ ran }, { status: healthy ? 200 : 502 });
 }
 
 export async function POST(request: Request) {

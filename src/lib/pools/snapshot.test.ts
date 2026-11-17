@@ -4,7 +4,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("next/server", () => ({ after: () => undefined }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 
-const { chunkKey, chunkRows, isStale, CLAIM_TTL_MS, POOL_STALE_MS } = await import("./snapshot");
+const { chunkKey, chunkRows, isStale, oversizeChunks, cacheEntrySize, CHUNK_WARN_BYTES, CLAIM_TTL_MS, POOL_STALE_MS } = await import("./snapshot");
 
 describe("chunkRows", () => {
   it("splits into fixed chunks, empty past the rows, dropping rows past the last chunk", () => {
@@ -40,5 +40,29 @@ describe("isStale", () => {
 
   it("a claim older than its TTL belongs to a dead build: stale again", () => {
     expect(isStale({ builtAt: ago(POOL_STALE_MS * 3), buildingSince: ago(CLAIM_TTL_MS + 1000) }, now)).toBe(true);
+  });
+});
+
+describe("oversizeChunks", () => {
+  it("names each chunk too big for one read-cache entry", () => {
+    const row = { text: "x".repeat(100) };
+    const parts = { main: [Array(30).fill(row), Array(2).fill(row)], alt: [[]] };
+    expect(oversizeChunks(parts, 3000)).toEqual(["main:0 0.00 MB"]);
+    expect(oversizeChunks(parts)).toEqual([]);
+  });
+});
+
+describe("chunk sizing", async () => {
+  const { SCREENER_CHUNK_ROWS, SCREENER_CHUNKS } = await import("@/lib/screener/pool");
+  it("keeps a screener chunk near 0.75 MB at today's ~750-byte rows, with the old 10,000-row reach", () => {
+    expect(SCREENER_CHUNK_ROWS * 750).toBeLessThan(CHUNK_WARN_BYTES);
+    expect(SCREENER_CHUNK_ROWS * SCREENER_CHUNKS).toBeGreaterThanOrEqual(10_000);
+  });
+});
+
+describe("cacheEntrySize", () => {
+  it("counts the rows' quotes twice, the way Next measures an unstable_cache entry", () => {
+    const rows = [{ a: "b" }];
+    expect(cacheEntrySize(rows)).toBeGreaterThan(JSON.stringify(rows).length + 4);
   });
 });
