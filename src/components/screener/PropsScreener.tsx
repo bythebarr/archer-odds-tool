@@ -19,7 +19,7 @@ import { ConfidenceChip } from "@/components/props/ConfidencePanel";
 import { getReportedGraded } from "@/lib/queries/modelTrust";
 import { blendCardKey } from "@/lib/props/provenance";
 
-export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "lean" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>> & {
+export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "lean" | "dist" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>> & {
   /** Stats switched off on the stat tiles (lib/props/statTiles): comma-separated or repeated. */
   xstat?: string | string[];
 };
@@ -30,6 +30,8 @@ const ARCHR = [0, 0.5, 0.55, 0.6, 0.7, 0.8];
 /** NBA projected minutes, at least. */
 const MINUTES = [0, 15, 20, 24, 28, 30, 32, 34, 36];
 const EDGES = ["any", "0", "0.03", "0.05", "0.1"];
+/** Projection beyond the line on the row's side, in its own spreads (docs/performance-audit.md: under 0.35 lost in both periods). */
+const DISTANCES = [0, 0.35, 0.55, 0.75];
 const PRICES = [-1000, -500, -300, -200, -150, -110, 100, 150, 200, 300];
 const SORTS: { key: ScreenSort; label: string }[] = [
   ...SCREEN_WINDOWS.map((w) => ({ key: w.key as ScreenSort, label: `${w.label} rate` })),
@@ -59,6 +61,7 @@ function readFilters(p: ScreenerParams, fixed: ScreenerSport | null): ScreenFilt
     excludeStats: parseStatList(p.xstat),
     side: p.side === "over" || p.side === "under" || p.side === "yes" ? p.side : null,
     archrSide: p.lean === "1",
+    minZ: num(p.dist, DISTANCES, 0),
     mainOnly: p.line !== "all",
     min,
     all: num(p.all, BARS, 0),
@@ -183,7 +186,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
   const results = screen(pool, f);
   const bars = barsOf(f);
   const statsOff = tiles.filter((t) => excludeStats.includes(t.key)).length;
-  const active = [sport ? null : f.sport, f.gameId, f.team, statsOff || null, f.side, f.archrSide || null, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minMinutes || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
+  const active = [sport ? null : f.sport, f.gameId, f.team, statsOff || null, f.side, f.archrSide || null, f.minZ || null, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minMinutes || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
   const query = new URLSearchParams(keep).toString();
   const clearHref = query ? `${basePath}?${query}` : basePath;
   /** The current screen with the stat tiles replaced (All on / All off). */
@@ -274,6 +277,20 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
               </select>
             </Field>
             <p className="mt-1 text-[10px] leading-snug text-muted-foreground">The side ARCHR&apos;s projection points to, the side its tracked picks take.</p>
+          </div>
+          <div>
+            <Field label="Distance from line">
+              <select name="dist" defaultValue={String(f.minZ)} className={selectClass}>
+                {DISTANCES.map((d) => (
+                  <option key={d} value={d}>
+                    {d ? `Projection ${d}+ spreads past it` : "Any"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+              How far ARCHR&apos;s projection sits past the line on this side, in its usual game-to-game swing. Picks within 0.35 lost in both audited periods.
+            </p>
           </div>
 
           <div className="border-t border-border pt-3">
@@ -458,7 +475,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
         <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Each window is how often the prop cashed at tonight&apos;s number in the player&apos;s games: the last 3, 5, 10 and 15, this season and
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
-          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus; for NBA, then corrected for running high on the side it leans (overs and alt lines most), a fix checked on thousands of tracked picks it wasn&apos;t fitted on — and ARCHR&apos;s edge (the first column) is that chance minus the chance the best price implies, in percentage points; hover it for the return per unit staked. A price from a feed that has stopped updating is greyed and dated (&quot;price from Nov 1&quot;). Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, its Confidence carries that blend&apos;s report card: the score weighs the card&apos;s actual record, and the count under the grade is how many outcomes it was graded on (e.g. &quot;C 67 · 412 graded&quot;; the full card is on /models). &quot;ARCHR&apos;s side&quot; keeps, on each line, only the side ARCHR&apos;s projection points to (the side pick tracking records as its lean), or the side it gives 50%+ where it has no projection. Click a column to sort by it. Research only.
+          L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus; for NBA, then corrected for running high on the side it leans (overs and alt lines most), a fix checked on thousands of tracked picks it wasn&apos;t fitted on — and ARCHR&apos;s edge (the first column) is that chance minus the chance the best price implies, in percentage points; hover it for the return per unit staked. A price from a feed that has stopped updating is greyed and dated (&quot;price from Nov 1&quot;). Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, its Confidence carries that blend&apos;s report card: the score weighs the card&apos;s actual record, and the count under the grade is how many outcomes it was graded on (e.g. &quot;C 67 · 412 graded&quot;; the full card is on /models). &quot;ARCHR&apos;s side&quot; keeps, on each line, only the side ARCHR&apos;s projection points to (the side pick tracking records as its lean), or the side it gives 50%+ where it has no projection. &quot;Distance from line&quot; keeps props whose projection sits at least that far past the line on their own side, measured in the projection&apos;s typical swing (z); props with no projection drop out when it&apos;s set. Tracked picks with the projection within 0.35 of the line lost money both before and after the Nov 12 correction (docs/performance-audit.md). Click a column to sort by it. Research only.
         </p>
       </section>
     </div>

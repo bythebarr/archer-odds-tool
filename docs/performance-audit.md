@@ -286,7 +286,7 @@ These rankings use out-of-sample picks only, segments with 200+ picks, and judge
 **What to do:**
 
 5. **Avoid picks whose projection sits close to the line (|z| < 0.35).** This is the only result that holds in both periods and clears zero out of sample.
-   - The screener can't set it yet. Adding a "distance from line" filter is the one change the evidence supports.
+   - **Added since this report:** the screener's "Distance from line" filter (`?dist=0.35`) keeps props whose projection sits at least that far past the line on their own side. It's also tracked forward as the screener set `distance-035-v1`.
    - The 0.35–0.75 band is the only segment where ARCHR beats the books with an interval clear of zero (skill +4.9‰ [+0.4, +9.2]). It's still unproven on profit (+6.9% [−6, +20]).
 6. **Treat everything else as a coin flip at the vig until more weeks settle.** Out of sample covers only 5 slate days and 32 games. Re-run `audit:performance` weekly: the out-of-sample set grows by about 80 games a week.
 

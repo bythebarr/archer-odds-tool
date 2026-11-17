@@ -30,7 +30,7 @@ import { LEAN_FEATURE_SCHEMA, TRACKED_MODELS, type LeanFeatures } from "./types"
 import { regimeSnapshot, type RegimeSnapshot } from "./modelStamp";
 import { confidenceOf, type ConfidenceInput } from "@/lib/propModel/confidence";
 import { NBA_PROP_STATS } from "@/lib/nba/propStats";
-import { screenRates, type ScreenerProp } from "@/lib/screener/types";
+import { distanceOf, screenRates, type ScreenerProp } from "@/lib/screener/types";
 import { edgeOf } from "@/lib/builder/types";
 import { screensPassed } from "./screens";
 
@@ -77,7 +77,7 @@ export function leanConfidence(input: ConfidenceInput): LeanFeatures["confidence
  * passes (lib/tracking/screens). The lean is ARCHR's side by construction.
  */
 export function nbaLeanScreen(
-  s: { stat: string; side: "over" | "under"; point: number; chance: number; priceAmerican: number | null; minutes?: number | null },
+  s: { stat: string; side: "over" | "under"; point: number; chance: number; priceAmerican: number | null; minutes?: number | null; z?: number | null },
   playerLogs: GameLogPoint[],
   season: number
 ): Pick<LeanFeatures, "rates" | "screens"> {
@@ -111,6 +111,8 @@ export function nbaLeanScreen(
     rates,
     ...(s.minutes ? { minutes: Math.round(s.minutes * 10) / 10 } : {}),
     lean: true,
+    // The standout read's z is in over terms; the screener reads it toward the side.
+    z: distanceOf({ side: s.side, facts: { z: typeof s.z === "number" ? (s.side === "over" ? s.z : -s.z) : null } }),
   };
   return { rates: { l5: rates.l5, l10: rates.l10, l15: rates.l15, szn: rates.szn }, screens: screensPassed(row) };
 }

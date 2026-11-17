@@ -66,6 +66,23 @@ export interface ScreenerProp {
    * it existed; the filter then falls back to ARCHR's chance (50%+).
    */
   lean?: boolean;
+  /**
+   * How far ARCHR's projection sits beyond the line ON THIS SIDE, in its own
+   * spread: (projection − line) / sd, signed toward the side (negative: the
+   * projection is on the other side). Stamped when the pool is built; absent
+   * without a projection or where the spread collapsed (`distanceOf`).
+   */
+  z?: number;
+}
+
+/** z above this is a collapsed projection spread (yes/no props), not distance: no value. */
+export const Z_DEGENERATE = 6;
+
+/** A row's distance from the line for the screener, from its projection's z toward the side; undefined when there's none or it's degenerate. */
+export function distanceOf(p: { side: ScreenerProp["side"]; facts?: { z?: number | null } }): number | undefined {
+  const z = p.facts?.z;
+  if (typeof z !== "number" || !Number.isFinite(z) || p.side === "yes" || Math.abs(z) > Z_DEGENERATE) return undefined;
+  return Math.round(z * 100) / 100;
 }
 
 /**
@@ -138,6 +155,8 @@ export interface ScreenFilters {
   side: "over" | "under" | "yes" | null;
   /** Only ARCHR's side of each line (`archrSideOf`): the side its projection points to. */
   archrSide: boolean;
+  /** Projection beyond the line on this side by at least this many spreads (0 = any); rows without a projection drop out when set. */
+  minZ: number;
   /** Main lines only (default) or every alt rung too. */
   mainOnly: boolean;
   /** A bar on each window (0 = none); `all` applies to every window. */
@@ -164,6 +183,7 @@ export const DEFAULT_FILTERS: ScreenFilters = {
   excludeStats: [],
   side: null,
   archrSide: false,
+  minZ: 0,
   mainOnly: true,
   min: {},
   all: 0,
@@ -216,6 +236,7 @@ export function passes(p: ScreenerProp, f: ScreenFilters): boolean {
   if (f.excludeStats.length && !statShown(f.excludeStats, p.sport, p.stat)) return false;
   if (f.side && p.side !== f.side) return false;
   if (f.archrSide && !(p.lean ?? (p.archr !== null && p.archr >= 0.5))) return false;
+  if (f.minZ > 0 && (p.z === undefined || p.z < f.minZ)) return false;
   if (f.mainOnly && !p.main) return false;
   for (const [w, bar] of Object.entries(barsOf(f)) as [ScreenWindow, number][]) {
     const [h, n] = p.rates[w];

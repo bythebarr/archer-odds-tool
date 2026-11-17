@@ -25,3 +25,13 @@ describe("the screener view frozen with an NBA lean", () => {
     expect(nbaLeanScreen({ stat: "nope", side: "under", point: 1.5, chance: 0.6, priceAmerican: -110 }, [], 2026)).toEqual({});
   });
 });
+
+describe("the distance set, tracked forward", () => {
+  it("passes when the standout's z (over terms) puts the projection 0.35+ past the line on the lean's side", () => {
+    const logs = [12, 15, 18, 19, 20].map((p) => log(p));
+    const under = (z: number) => nbaLeanScreen({ stat: "points", side: "under", point: 20.5, chance: 0.55, priceAmerican: -300, minutes: 30, z }, logs, 2026).screens;
+    expect(under(-0.5)).toEqual(["distance-035-v1"]);
+    expect(under(-0.2)).toEqual([]);
+    expect(nbaLeanScreen({ stat: "points", side: "over", point: 10.5, chance: 0.55, priceAmerican: -300, minutes: 30, z: 0.9 }, logs, 2026).screens).toEqual(["distance-035-v1"]);
+  });
+});
