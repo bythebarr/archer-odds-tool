@@ -151,6 +151,9 @@ Each record also freezes both sides' best prices, the projections and the minute
 
 ## Prioritized implementation plan
 
+> **Update (alpha sprint):** items 2–4 were attempted as shadow v2 — minutes v2, projection corrections, the v2 distribution, a market-value engine and a plus-money research screen. Results, including the corrections failing the clean late-season holdout, are in [`alpha-sprint.md`](alpha-sprint.md).
+
+
 1. **Now (this change):**
    - Shadow v1, recorded before every tip from Nov 17, and `eval:shadow`.
    - The root-cause lab (`lab:nba-shadow`) and the shared replay.

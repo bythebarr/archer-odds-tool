@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { GameLogPoint } from "@/lib/nba/propsMath";
 import type { WireNbaPropsSlate } from "@/lib/queries/nbaProps";
 import { nbaStandouts } from "@/lib/nba/standouts";
-import { nbaShadowPredictions, type ShadowFeatures } from "./capture";
+import { nbaShadowPredictions, nbaShadowV2Predictions, type ShadowFeatures, type ShadowV2Features } from "./capture";
 import { SHADOW_VERSION } from "./nbaShadow";
+import { V2_VERSION } from "./v2";
 
 const team = (abbreviation: string) => ({ abbreviation, name: abbreviation, logoUrl: null });
 const logsAt = (points: (i: number) => number): GameLogPoint[] =>
@@ -101,5 +102,32 @@ describe("isolation", () => {
     const { SHADOW_MODELS, TRACKED_MODELS } = await import("@/lib/tracking/types");
     const tracked = new Set<string>(Object.values(TRACKED_MODELS));
     for (const k of Object.values(SHADOW_MODELS)) expect(tracked.has(k)).toBe(false);
+  });
+});
+
+describe("the v2 record", () => {
+  const logs = { hot: logsAt((i) => 29 + (i % 3)), even: logsAt((i) => 22 + (i % 6)) };
+  const now = new Date("2026-11-04T22:00:00Z");
+  const fresh = () => new Date(now.getTime() - 15 * 60_000);
+
+  it("adds the corrected and v2 chances, each side's value and the rule's verdict, beside the v1 fields", () => {
+    const preds = nbaShadowV2Predictions(slate(), logs, new Set(["g1"]), fresh, now);
+    expect(preds.length).toBeGreaterThan(0);
+    const f = preds[0].featureSnapshot as unknown as ShadowV2Features;
+    expect(f.version).toBe(V2_VERSION);
+    expect(preds[0].probability).toBeCloseTo(f.over.v2!, 4);
+    for (const k of ["market", "prodRaw", "s2", "corr", "v2"] as const) expect(f.over[k]).not.toBeNull();
+    expect(f.v2.components.map((c) => c.key)).toEqual(["points"]);
+    expect(f.value.over).toMatchObject({ price: -110, singleBook: true, priceAgeMinutes: 15 });
+    expect(f.value.over!.warnings).toContain("single-book");
+    // -110 is not plus money: never a candidate.
+    expect(f.candidate).toBeNull();
+    expect(f.value.over!.candidateReason).toMatch(/outside/);
+  });
+
+  it("an unknown quote time is never read as fresh", () => {
+    const f = nbaShadowV2Predictions(slate(), logs, new Set(["g1"]), () => null, now)[0].featureSnapshot as unknown as ShadowV2Features;
+    expect(f.value.over!.warnings).toContain("stale-price");
+    expect(f.value.over!.quality).toBe(false);
   });
 });

@@ -31,7 +31,7 @@ export const FORWARD_START = "2026-11-17";
 export const DECISION_GAMES = 250;
 
 /** The forecasters every row carries (chance of the Over at the main line). */
-export const FORECASTERS = ["market", "prodRaw", "prodModel", "prodBlend", "prodShown", "s1", "s2"] as const;
+export const FORECASTERS = ["market", "prodRaw", "prodModel", "prodBlend", "prodShown", "s1", "s2", "corr", "v2"] as const;
 export type Forecaster = (typeof FORECASTERS)[number];
 
 export interface ForwardRow {
@@ -52,6 +52,8 @@ export interface ForwardRow {
   closeOver: number | null;
   /** Production's distance from the line, toward its side (|z|). */
   absZ: number | null;
+  /** v2 records: the side the frozen candidate rule picked before tip, if any. */
+  candidate?: "over" | "under" | null;
 }
 
 const clip = (p: number) => Math.min(Math.max(p, 1e-6), 1 - 1e-6);
@@ -178,21 +180,39 @@ export interface RuleResult {
  * the captured best price, flat stakes, when the forecaster's EV > minEv. A
  * measurement of the forecaster, not a recommended strategy.
  */
-export function evRule(rows: ForwardRow[], f: Forecaster, minEv = 0): RuleResult {
+export function evRule(rows: ForwardRow[], f: Forecaster, minEv = 0, priceRange?: [number, number]): RuleResult {
+  const inRange = (price: number) => !priceRange || (price >= priceRange[0] && price <= priceRange[1]);
   const bets = rows.flatMap((r) => {
     const p = r.p[f];
     if (p === null || r.overPrice === null || r.underPrice === null) return [];
-    const evOver = p * decimalOf(r.overPrice) - 1;
-    const evUnder = (1 - p) * decimalOf(r.underPrice) - 1;
+    const evOver = inRange(r.overPrice) ? p * decimalOf(r.overPrice) - 1 : -Infinity;
+    const evUnder = inRange(r.underPrice) ? (1 - p) * decimalOf(r.underPrice) - 1 : -Infinity;
     const over = evOver >= evUnder;
     const ev = over ? evOver : evUnder;
     if (!(ev > minEv)) return [];
-    const won = over ? r.y === 1 : r.y === 0;
-    const profit = won ? decimalOf(over ? r.overPrice : r.underPrice) - 1 : -1;
-    const at = r.p.market;
-    const clv = at !== null && r.closeOver !== null ? (over ? r.closeOver - at : at - r.closeOver) : null;
-    return [{ cluster: r.cluster, over, profit, clv }];
+    return [bet(r, over)];
   });
+  return ruleResult(bets);
+}
+
+function bet(r: ForwardRow, over: boolean) {
+  const won = over ? r.y === 1 : r.y === 0;
+  const profit = won ? decimalOf((over ? r.overPrice : r.underPrice)!) - 1 : -1;
+  const at = r.p.market;
+  const clv = at !== null && r.closeOver !== null ? (over ? r.closeOver - at : at - r.closeOver) : null;
+  return { cluster: r.cluster, over, profit, clv };
+}
+
+/** The frozen candidate rule's own picks (marked before tip), scored at the captured prices. */
+export function candidateRule(rows: ForwardRow[]): RuleResult & { perDay: Record<string, number> } {
+  const picked = rows.filter((r) => r.candidate && (r.candidate === "over" ? r.overPrice : r.underPrice) !== null);
+  const perDay: Record<string, number> = {};
+  for (const r of rows) perDay[r.day] ??= 0;
+  for (const r of picked) perDay[r.day]++;
+  return { ...ruleResult(picked.map((r) => bet(r, r.candidate === "over"))), perDay };
+}
+
+function ruleResult(bets: ReturnType<typeof bet>[]): RuleResult {
   const withClv = bets.filter((b) => b.clv !== null);
   return {
     bets: bets.length,

@@ -13,12 +13,13 @@ import { EventListHeader, EventRow } from "./EventRow";
 import { LeagueMark } from "@/components/brand/LeagueMark";
 
 /** The tabs every league page and its props page share. Props only where a league has a props product. */
-export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props" | "parlays" | "hot") {
+export function leagueTabs(sport: TeamLeagueSport, active: "lines" | "props" | "parlays" | "hot" | "research") {
   const tabs = [{ label: "Game Lines", href: `/${sport}`, active: active === "lines" }];
   if (sport === "nba") {
     tabs.push({ label: "Player Props", href: "/nba/props", active: active === "props" });
     tabs.push({ label: "Hottest Tonight", href: "/nba/hot", active: active === "hot" });
     tabs.push({ label: "Parlay Finder", href: "/nba/parlays", active: active === "parlays" });
+    tabs.push({ label: "Research", href: "/nba/research", active: active === "research" });
   }
   if (sport === "nfl") {
     tabs.push({ label: "Player Props", href: "/nfl/props", active: active === "props" });
