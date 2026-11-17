@@ -20,6 +20,8 @@
  */
 import { americanToDecimal } from "@/lib/odds/americanOdds";
 import type { GradedLean, LeanFeatures } from "./types";
+import { marginBucket, minutesVsProjection, reasonShares, type ReasonShare } from "./lossReasons";
+import { TRACKED_SCREENS } from "./screens";
 
 /** Fewer graded leans than this and a segment gets no verdict. */
 export const MIN_LEANS = 30;
@@ -136,6 +138,36 @@ const PRICE_BUCKETS: [string, (v: number) => boolean][] = [
   ["+200 or longer", (v) => v >= 200],
 ];
 
+const Z_BUCKETS: [string, (z: number) => boolean][] = [
+  ["Projection near the line (|z| under 0.35)", (z) => z < 0.35],
+  ["|z| 0.35–0.75", (z) => z >= 0.35 && z < 0.75],
+  ["Projection well off the line (|z| 0.75+)", (z) => z >= 0.75 && z <= 6],
+];
+const MINUTES_BUCKETS: [string, (m: number) => boolean][] = [
+  ["Projected under 24 minutes", (m) => m < 24],
+  ["Projected 24–30 minutes", (m) => m >= 24 && m < 30],
+  ["Projected 30+ minutes", (m) => m >= 30],
+];
+const RECORD_BUCKETS: [string, (r: number) => boolean][] = [
+  ["under 60%", (r) => r < 0.6],
+  ["60–79%", (r) => r >= 0.6 && r < 0.8],
+  ["80%+", (r) => r >= 0.8],
+];
+const rateOf = (r: [number, number] | undefined, minGames: number) => (r && r[1] >= minGames ? r[0] / r[1] : null);
+
+/** NBA prop leans with what happened after the game loaded: who lost and why (lib/tracking/lossReasons). */
+export function lossBreakdown(leans: GradedLean[]): { bySide: { side: string; losses: number; reasons: ReasonShare[] }[] } | null {
+  const losses = leans.filter((l) => l.features.sport === "nba" && l.features.kind === "prop" && !l.features.alt && l.result === "miss" && l.post && l.features.point !== null);
+  if (!losses.length) return null;
+  const input = (l: GradedLean) => ({ side: l.features.side, point: l.features.point!, actual: l.actual ?? null, projMinutes: l.features.minutes ?? null, minutes: l.post!.minutes, margin: l.post!.margin });
+  return {
+    bySide: ["over", "under"].map((side) => {
+      const mine = losses.filter((l) => l.features.side === side);
+      return { side, losses: mine.length, reasons: reasonShares(mine.map(input)) };
+    }),
+  };
+}
+
 /** Every dimension, every segment with at least one lean; the largest segments first within a free-form dimension. */
 export function evaluateLeans(leans: GradedLean[]): { overall: SegmentStats; dimensions: Dimension[] } {
   const groupBy = (key: (l: GradedLean) => string | null, label: (k: string) => string) => {
@@ -189,6 +221,36 @@ export function evaluateLeans(leans: GradedLean[]): { overall: SegmentStats; dim
         label: "NBA Hottest Tonight",
         segments: groupBy((l) => (l.features.standout === undefined ? null : l.features.standout ? "Made the page" : "Didn't make the page"), (k) => k),
       },
+      // Tracked screener sets (lib/tracking/screens), frozen with each lean: each set's record going forward.
+      {
+        key: "screen",
+        label: "Screener set (tracked forward)",
+        segments: TRACKED_SCREENS.flatMap((sc) => {
+          const list = leans.filter((l) => l.features.screens?.includes(sc.key));
+          return list.length ? [scoreSegment(sc.key, sc.label, list)] : [];
+        }),
+      },
+      {
+        key: "grade",
+        label: "Confidence grade when frozen",
+        segments: groupBy((l) => (l.features.confidence ? `Grade ${l.features.confidence.grade}` : null), (k) => k).sort((a, b) => a.label.localeCompare(b.label)),
+      },
+      { key: "z", label: "Projection's distance from the line", segments: buckets(Z_BUCKETS, (l) => (typeof l.features.z === "number" ? Math.abs(l.features.z) : null)) },
+      { key: "minutes", label: "NBA projected minutes", segments: buckets(MINUTES_BUCKETS, (l) => (l.features.sport === "nba" && typeof l.features.minutes === "number" ? l.features.minutes : null)) },
+      {
+        key: "injury",
+        label: "Injury tag when frozen",
+        segments: groupBy((l) => (l.features.injury === undefined ? null : l.features.injury ? `Tagged ${l.features.injury}` : "No tag"), (k) => k),
+      },
+      { key: "l5", label: "His L5 at the line (5 games)", segments: buckets(RECORD_BUCKETS.map(([k, t]) => [`L5 ${k}`, t] as [string, (r: number) => boolean]), (l) => rateOf(l.features.rates?.l5, 5)) },
+      { key: "l10", label: "His L10 at the line (8+ games)", segments: buckets(RECORD_BUCKETS.map(([k, t]) => [`L10 ${k}`, t] as [string, (r: number) => boolean]), (l) => rateOf(l.features.rates?.l10, 8)) },
+      // After the game: explains, never picks (none of this is known before tip).
+      {
+        key: "post-minutes",
+        label: "After the game: his minutes vs projected",
+        segments: groupBy((l) => (l.post ? minutesVsProjection(l.post.minutes, l.features.minutes ?? null) : null), (k) => k),
+      },
+      { key: "post-margin", label: "After the game: final margin", segments: groupBy((l) => (l.post ? marginBucket(l.post.margin) : null), (k) => k) },
     ].filter((d) => d.segments.length > 0),
   };
 }

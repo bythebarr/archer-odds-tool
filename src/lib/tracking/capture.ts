@@ -29,6 +29,10 @@ import { createPredictionRunBulk, type PredictionInput } from "@/lib/predictions
 import { LEAN_FEATURE_SCHEMA, TRACKED_MODELS, type LeanFeatures } from "./types";
 import { regimeSnapshot, type RegimeSnapshot } from "./modelStamp";
 import { confidenceOf, type ConfidenceInput } from "@/lib/propModel/confidence";
+import { NBA_PROP_STATS } from "@/lib/nba/propStats";
+import { screenRates, type ScreenerProp } from "@/lib/screener/types";
+import { edgeOf } from "@/lib/builder/types";
+import { screensPassed } from "./screens";
 
 /** A game is captured once it starts within this many hours. */
 export const CAPTURE_HOURS = 3;
@@ -64,6 +68,51 @@ const fairPair = (a: number | null | undefined, b: number | null | undefined) =>
 export function leanConfidence(input: ConfidenceInput): LeanFeatures["confidence"] {
   const c = confidenceOf(input);
   return c ? { grade: c.grade, score: c.score } : undefined;
+}
+
+/**
+ * An NBA main-line lean's screener view, frozen with it: his record at the line
+ * on the side over the screener's windows (games before tonight only: the
+ * slate's logs end at the last game played) and the tracked screener sets it
+ * passes (lib/tracking/screens). The lean is ARCHR's side by construction.
+ */
+export function nbaLeanScreen(
+  s: { stat: string; side: "over" | "under"; point: number; chance: number; priceAmerican: number | null; minutes?: number | null },
+  playerLogs: GameLogPoint[],
+  season: number
+): Pick<LeanFeatures, "rates" | "screens"> {
+  const stat = NBA_PROP_STATS.find((x) => x.key === s.stat);
+  if (!stat) return {};
+  const rates = screenRates(
+    playerLogs.map((l) => ({ season: l.season, value: stat.value(l) })),
+    s.side,
+    s.point,
+    season
+  );
+  const row: ScreenerProp = {
+    id: "",
+    sport: "nba",
+    league: "NBA",
+    gameId: "",
+    game: "",
+    startsAt: "",
+    team: "",
+    opponent: "",
+    player: "",
+    stat: s.stat,
+    statLabel: "",
+    side: s.side,
+    point: s.point,
+    main: true,
+    priceAmerican: s.priceAmerican,
+    bookName: null,
+    archr: s.chance,
+    edge: edgeOf(s.chance, s.priceAmerican),
+    rates,
+    ...(s.minutes ? { minutes: Math.round(s.minutes * 10) / 10 } : {}),
+    lean: true,
+  };
+  return { rates: { l5: rates.l5, l10: rates.l10, l15: rates.l15, szn: rates.szn }, screens: screensPassed(row) };
 }
 
 /** NBA props: every main line the standout read prices, on its side (Hottest Tonight's call, cut or not). */
@@ -123,6 +172,7 @@ export function nbaPropLeans(slate: WireNbaPropsSlate, logs: Record<string, Game
         standout: isStandout(s.z, s.rawChance, s.hit.l10),
         alt: false,
         confidence: leanConfidence({ ...shared, archr: s.chance, marketChance, priceAmerican: s.priceAmerican, rate: record(s.hit.l10), alt: false }),
+        ...nbaLeanScreen(s, logs[s.playerId] ?? [], slate.season),
       },
       };
       if (!s.alt) return [main];
