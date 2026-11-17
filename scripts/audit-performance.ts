@@ -372,7 +372,8 @@ async function main() {
   show("STRONGEST by skill vs the books (Brier) lower bound", by((s) => s.skillLo).slice(0, 8), (s) => s.skillLo);
 
   // Every segment, machine-readable (the report and its charts are built from this).
-  console.log(`@@SEGMENTS_JSON@@${JSON.stringify(ranked.map((x) => ({ regime: x.regime.split(" (")[0], label: x.label, ...x.s })))}`);
+  // One small line each: a single 60 KB+ write overflows the pipe before the process exits.
+  for (const x of ranked) console.log(`@@SEG@@${JSON.stringify({ regime: x.regime.split(" (")[0], label: x.label, ...x.s })}`);
 
   // ── Calibration (chart data).
   const edges = [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8];
@@ -391,7 +392,7 @@ async function main() {
     console.log(`  ${k}`);
     for (const b of bins) console.log(`    ${pc(b.lo, 0)}–${pc(b.hi, 0)}  n=${String(b.n).padStart(5)}  said ${pc(b.meanP)}  won ${pc(b.actual)}  gap ${spt(b.actual - b.meanP)}`);
   }
-  console.log(`@@CALIB_JSON@@${JSON.stringify(calib)}`);
+  for (const [k, bins] of Object.entries(calib)) console.log(`@@CALIB@@${JSON.stringify({ k, bins })}`);
 
   // ── The other tracked picks, briefly.
   console.log("\n\n═══ OTHER TRACKED PICKS ═══");
