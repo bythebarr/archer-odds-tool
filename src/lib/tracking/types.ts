@@ -22,6 +22,15 @@ export const TRACKED_MODELS = {
   nflGames: "track:nfl-games",
 } as const;
 
+/**
+ * Experimental shadow models (lib/shadow): frozen before tip and settled like
+ * the tracked leans, but read only by eval:shadow. Deliberately NOT in
+ * TRACKED_MODELS, so the edge report, diagnosis and report cards never see them.
+ */
+export const SHADOW_MODELS = {
+  nbaProps: "shadow:nba-props",
+} as const;
+
 /** Bumped when the featureSnapshot shape changes. */
 export const LEAN_FEATURE_SCHEMA = "lean-v2";
 

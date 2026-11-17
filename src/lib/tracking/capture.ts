@@ -25,8 +25,9 @@ import { summarizeNflProp, unpackNflLog } from "@/lib/nfl/propsMath";
 import { nflProjectionContext } from "@/lib/nfl/slateContext";
 import { listTeamLeagueGamesWithLines } from "@/lib/queries/teamLeagueGames";
 import { getGameModelView } from "@/lib/queries/gameModel";
-import { createPredictionRunBulk, type PredictionInput } from "@/lib/predictions";
-import { LEAN_FEATURE_SCHEMA, TRACKED_MODELS, type LeanFeatures } from "./types";
+import { createPredictionRunBulk, type PredictionInput, type PredictionRunInput } from "@/lib/predictions";
+import { LEAN_FEATURE_SCHEMA, SHADOW_MODELS, TRACKED_MODELS, type LeanFeatures } from "./types";
+import { SHADOW_FEATURE_SCHEMA, nbaShadowPredictions, shadowRunSnapshot } from "@/lib/shadow/capture";
 import { regimeSnapshot, type RegimeSnapshot } from "./modelStamp";
 import { confidenceOf, type ConfidenceInput } from "@/lib/propModel/confidence";
 import { NBA_PROP_STATS } from "@/lib/nba/propStats";
@@ -369,6 +370,24 @@ async function due(sport: "nba" | "nfl", modelKey: string, now: Date, hours: num
 async function write(sport: "nba" | "nfl", modelKey: string, leans: Lean[], now: Date, snapshot?: RegimeSnapshot): Promise<number> {
   // A run only holds leans for games that haven't started (the storage boundary insists).
   const fresh = leans.filter((l) => l.startsAt > now && Number.isFinite(l.prob));
+  return writeRun(sport, modelKey, fresh.map(toPrediction), now, {
+    schema: LEAN_FEATURE_SCHEMA,
+    // Freeze the fitted state (blend weights / calibration factors / verdicts
+    // + their hash) on the run, so settled leans can later be cut by the
+    // regime that produced them — "the model changed" vs "the model drifted"
+    // (Phase 2 A3). Props models carry fitted state; game-line runs pass none.
+    ...(snapshot ? { calibrationSnapshot: JSON.parse(JSON.stringify(snapshot)) } : {}),
+  });
+}
+
+/** One append-only run of predictions for games not yet captured by this model. */
+async function writeRun(
+  sport: "nba" | "nfl",
+  modelKey: string,
+  fresh: PredictionInput[],
+  now: Date,
+  opts: { schema: string; calibrationSnapshot?: PredictionRunInput["calibrationSnapshot"]; modelVersion?: string }
+): Promise<number> {
   if (!fresh.length) return 0;
   // Capture-once is due()'s check plus this write, with a slow slate build in
   // between: a concurrent run can freeze the same game inside that window and
@@ -384,24 +403,24 @@ async function write(sport: "nba" | "nfl", modelKey: string, leans: Lean[], now:
   const captured = new Set(done.map((d) => d.eventRef));
   const kept = fresh.filter((l) => !captured.has(l.eventRef));
   if (!kept.length) return 0;
+  const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
   await createPredictionRunBulk({
     sportKey: sport,
     modelKey,
-    modelVersion: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
+    modelVersion: opts.modelVersion ? `${opts.modelVersion}@${sha}` : sha,
     lifecycle: "experimental",
     generatedAt: now,
     dataAsOfUtc: now,
-    featureSchemaVersion: LEAN_FEATURE_SCHEMA,
-    // Freeze the fitted state (blend weights / calibration factors / verdicts
-    // + their hash) on the run, so settled leans can later be cut by the
-    // regime that produced them — "the model changed" vs "the model drifted"
-    // (Phase 2 A3). Props models carry fitted state; game-line runs pass none.
-    ...(snapshot ? { calibrationSnapshot: JSON.parse(JSON.stringify(snapshot)) } : {}),
+    featureSchemaVersion: opts.schema,
+    ...(opts.calibrationSnapshot !== undefined ? { calibrationSnapshot: opts.calibrationSnapshot } : {}),
     runMetadata: { games: new Set(kept.map((l) => l.eventRef)).size },
-    predictions: kept.map(toPrediction),
+    predictions: kept,
   });
   return kept.length;
 }
+
+/** The shadow capture runs unless ARCHR_SHADOW_CAPTURE=0 (it never touches the product's leans). */
+export const shadowCaptureOn = () => process.env.ARCHR_SHADOW_CAPTURE !== "0";
 
 export interface CaptureSummary {
   [model: string]: { games: number; leans: number; sample?: Lean[] } | { error: string };
@@ -424,12 +443,35 @@ export async function captureLeans(now = new Date(), opts: { dryRun?: boolean; h
       out[key] = { error: error instanceof Error ? error.message.slice(0, 200) : String(error) };
     }
   };
+  // One NBA slate read, shared by the tracked leans and the shadow: both freeze the same inputs at the same moment.
+  let nbaSlate: Promise<{ slate: WireNbaPropsSlate; logs: Record<string, GameLogPoint[]> }> | null = null;
+  const loadNbaSlate = () =>
+    (nbaSlate ??= (async () => {
+      const days = await getLeagueDays("nba", todayEt());
+      const slate = toWireSlate(await getNbaPropsSlate(days[0] ?? todayEt()));
+      const logs = Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackLog)])) as Record<string, GameLogPoint[]>;
+      return { slate, logs };
+    })());
   await run(TRACKED_MODELS.nbaProps, "nba", async (ids) => {
-    const days = await getLeagueDays("nba", todayEt());
-    const slate = toWireSlate(await getNbaPropsSlate(days[0] ?? todayEt()));
-    const logs = Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackLog)])) as Record<string, GameLogPoint[]>;
+    const { slate, logs } = await loadNbaSlate();
     return { leans: nbaPropLeans(slate, logs, ids), snapshot: regimeSnapshot({ blendVerdicts: slate.blendVerdicts }) };
   });
+  if (shadowCaptureOn()) {
+    const key = SHADOW_MODELS.nbaProps;
+    try {
+      const ids = await due("nba", key, now, opts.hours ?? CAPTURE_HOURS);
+      if (!ids.size) out[key] = { games: 0, leans: 0 };
+      else {
+        const { slate, logs } = await loadNbaSlate();
+        const preds = nbaShadowPredictions(slate, logs, ids).filter((p) => p.scheduledStartUtc > now && Number.isFinite(p.probability));
+        out[key] = opts.dryRun
+          ? { games: ids.size, leans: preds.length }
+          : { games: ids.size, leans: await writeRun("nba", key, preds, now, { schema: SHADOW_FEATURE_SCHEMA, calibrationSnapshot: shadowRunSnapshot(), modelVersion: shadowRunSnapshot().version }) };
+      }
+    } catch (error) {
+      out[key] = { error: error instanceof Error ? error.message.slice(0, 200) : String(error) };
+    }
+  }
   await run(TRACKED_MODELS.nflProps, "nfl", async (ids) => {
     const slate = await getNflPropsSlate(now);
     return {

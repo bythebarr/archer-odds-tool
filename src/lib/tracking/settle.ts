@@ -11,10 +11,12 @@ import type { NbaPropStat, NflPropStat } from "@/generated/prisma/client";
 import { NBA_PROP_STAT_BY_KEY } from "@/lib/nba/propStats";
 import { NFL_PROP_STAT_BY_KEY } from "@/lib/nfl/propStats";
 import type { PropQuote } from "@/lib/nba/propsMath";
-import { TRACKED_MODELS, type SettleResult } from "./types";
+import { SHADOW_MODELS, TRACKED_MODELS, type SettleResult } from "./types";
 
-/** Predictions settled per run (a full NBA night is ~1,000). */
+/** Predictions settled per run (a full NBA night is ~1,000 leans, plus ~600 shadow rows). */
 const BATCH = 4000;
+/** Every model settled here: the tracked leans and the experimental shadows (types.ts). */
+const SETTLED_MODELS = [...Object.values(TRACKED_MODELS), ...Object.values(SHADOW_MODELS)];
 /** A game still not final this long after its start is called off: its leans void. */
 const VOID_AFTER_MS = 3 * 86_400_000;
 
@@ -194,7 +196,7 @@ async function settleGameLines(game: { id: string; scheduledStartUtc: Date; home
 
 export async function settleLeans(now = new Date()): Promise<{ considered: number; settled: number; waiting: number }> {
   const rows = await prisma.modelPrediction.findMany({
-    where: { settlement: null, scheduledStartUtc: { lt: new Date(now.getTime() - 3 * 3_600_000) }, run: { modelKey: { in: Object.values(TRACKED_MODELS) } } },
+    where: { settlement: null, scheduledStartUtc: { lt: new Date(now.getTime() - 3 * 3_600_000) }, run: { modelKey: { in: SETTLED_MODELS } } },
     select: { id: true, eventRef: true, scheduledStartUtc: true, marketKey: true, selectionKey: true, run: { select: { modelKey: true } } },
     orderBy: { scheduledStartUtc: "asc" },
     take: BATCH,
