@@ -35,6 +35,7 @@
     "backtest:confidence": "tsx scripts/backtest-confidence.ts",
     "audit:plus-money": "tsx scripts/audit-plus-money.ts",
     "lab:nba-shadow": "tsx scripts/lab-nba-shadow.ts",
+    "lab:nba-v2": "tsx scripts/lab-nba-v2.ts",
     "eval:shadow": "tsx scripts/eval-shadow.ts",
     "audit:performance": "tsx scripts/audit-performance.ts",
     "sweep:filters": "tsx scripts/sweep-filters.ts",
