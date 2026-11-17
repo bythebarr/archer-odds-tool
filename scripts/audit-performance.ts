@@ -2,13 +2,12 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { etDateOf } from "@/lib/dateEt";
 import { loadGradedLeans } from "@/lib/queries/edgeReport";
-import { NBA_PROP_STATS } from "@/lib/nba/propStats";
-import { DEFAULT_FILTERS, passes, screenRates, type ScreenWindow, type ScreenerProp } from "@/lib/screener/types";
+import { DEFAULT_FILTERS, passes, type ScreenerProp } from "@/lib/screener/types";
+import { SWEEP_SAMPLE_END, nbaAuditRows, type AuditRow } from "./props/nbaAuditRows";
 import { edgeOf } from "@/lib/builder/types";
 import { TRACKED_SCREENS } from "@/lib/tracking/screens";
-import { cautiousEdge } from "@/lib/propModel/canonical";
 import type { GradedLean } from "@/lib/tracking/types";
-import { bootstrapCoef, calibration, impliedOf, logisticWithOffset, logit, segmentPerf, type PerfRow, type SegmentPerf } from "@/lib/audit/performance";
+import { bootstrapCoef, calibration, impliedOf, logisticWithOffset, logit, segmentPerf, type SegmentPerf } from "@/lib/audit/performance";
 
 /**
  * The historical performance audit: every settled lean pick tracking froze
@@ -34,29 +33,8 @@ import { bootstrapCoef, calibration, impliedOf, logisticWithOffset, logit, segme
  * records both chances (prob vs rawProb), so the split is exact.
  */
 
-type Regime = "pre-correction" | "post-correction";
-/** The NBA side correction went live (commit 4241a28, deployed 2026-11-12 22:29 UTC); picks frozen before it were made by the uncorrected model. */
-const CORRECTION_LIVE = Date.parse("2026-11-12T22:29:12Z");
-/** The screener sweep (docs/filter-sweep.md, Model lab run #96) chose its sets on games through this ET date; later games are out of its sample. */
-const SWEEP_SAMPLE_END = "2026-11-12";
 
-interface Row extends PerfRow {
-  lean: GradedLean;
-  regime: Regime;
-  side: "over" | "under";
-  stat: string;
-  date: string;
-  book: string;
-  projMinutes: number | null;
-  /** Rebuilt from prior box scores where not frozen. */
-  rates: { l5: [number, number]; l10: [number, number]; l15: [number, number]; szn: [number, number] } | null;
-  ratesFrozen: boolean;
-  /** Every screener window (rebuilt), for running the screener's own filters. */
-  allRates: Record<ScreenWindow, [number, number]> | null;
-  games: number | null;
-  starterShare: number | null;
-  cautious: number | null;
-}
+type Row = AuditRow;
 
 const f1 = (x: number | null, d = 1) => (x === null || !Number.isFinite(x) ? "—" : x.toFixed(d));
 const pc = (x: number | null, d = 1) => (x === null || !Number.isFinite(x) ? "—" : `${(x * 100).toFixed(d)}%`);
@@ -203,47 +181,7 @@ function windowAddsInfo(rows: Row[], w: "l5" | "l10" | "l15" | "szn") {
   return { n: ok.length, vsArchr, vsBooks };
 }
 
-async function nbaRows(leans: GradedLean[]): Promise<Row[]> {
-  const ids = [...new Set(leans.map((l) => l.features.playerId).filter((x): x is string => Boolean(x)))];
-  const logs = ids.length ? await prisma.nbaPlayerGameLog.findMany({ where: { nbaPlayerId: { in: ids }, minutes: { gt: 0 } } }) : [];
-  const byPlayer = new Map<string, typeof logs>();
-  for (const l of logs) (byPlayer.get(l.nbaPlayerId) ?? byPlayer.set(l.nbaPlayerId, []).get(l.nbaPlayerId)!).push(l);
-  for (const list of byPlayer.values()) list.sort((a, b) => b.gameDate.getTime() - a.gameDate.getTime());
-  return leans.map((l) => {
-    const f = l.features;
-    const day = etDateOf(l.startsAt);
-    // Games strictly before the pick's game date: nothing from that night or later.
-    const prior = (byPlayer.get(f.playerId ?? "") ?? []).filter((g) => etDateOf(g.gameDate) < day);
-    const stat = NBA_PROP_STATS.find((s) => s.key === f.stat);
-    const season = (byPlayer.get(f.playerId ?? "") ?? []).find((g) => etDateOf(g.gameDate) === day)?.season ?? prior[0]?.season ?? 0;
-    const side = f.side === "under" ? "under" : "over";
-    const rebuilt = stat && f.point !== null && prior.length ? screenRates(prior.map((g) => ({ season: g.season, value: stat.value(g) })), side, f.point, season) : null;
-    const rates = f.rates ?? (rebuilt ? { l5: rebuilt.l5, l10: rebuilt.l10, l15: rebuilt.l15, szn: rebuilt.szn } : null);
-    const last10 = prior.slice(0, 10);
-    const rate = rates ? (rates.l10[1] >= 5 ? rates.l10 : rates.szn) : null;
-    return {
-      lean: l,
-      cluster: l.eventRef ?? day,
-      won: l.result === "hit" ? 1 : 0,
-      p: l.prob,
-      market: f.marketProb,
-      price: f.price,
-      close: l.closingProb,
-      regime: (l.capturedAt ?? l.startsAt).getTime() < CORRECTION_LIVE ? "pre-correction" : "post-correction",
-      side,
-      stat: f.stat,
-      date: day,
-      book: (f.book ?? "unknown").replace(/\s+/g, "").toLowerCase() === "draftkings" ? "DraftKings" : (f.book ?? "unknown"),
-      projMinutes: typeof f.minutes === "number" ? f.minutes : null,
-      rates,
-      ratesFrozen: Boolean(f.rates),
-      allRates: rebuilt,
-      games: stat ? prior.length : null,
-      starterShare: last10.length >= 5 ? last10.filter((g) => g.starter).length / last10.length : null,
-      cautious: rate ? cautiousEdge(l.prob, rate, f.price) : null,
-    } satisfies Row;
-  });
-}
+const nbaRows = nbaAuditRows;
 
 async function main() {
   const all = await loadGradedLeans(365);
