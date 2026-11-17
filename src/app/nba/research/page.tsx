@@ -66,6 +66,7 @@ const WARNING_TEXT: Record<Warning, string> = {
   injury: "Injury tag",
   "lineup-unconfirmed": "Lineup not confirmed",
   "extreme-distance": "Far from the line (model overconfident there)",
+  "implausible-disagreement": "Model 12+ pts from the market: more likely a model miss than value",
   "plus-money-calibration": "Plus money: ARCHR has run high here",
   "stale-price": "Stale price",
   "aging-price": "Price over 90 min old",
@@ -73,7 +74,7 @@ const WARNING_TEXT: Record<Warning, string> = {
   "single-book": "Single book: market read is that book's own",
   "no-market": "No two-sided market",
 };
-const GATING = new Set<Warning>(["unstable-minutes", "injury", "extreme-distance", "stale-price", "sparse-history", "no-market"]);
+const GATING = new Set<Warning>(["unstable-minutes", "injury", "extreme-distance", "implausible-disagreement", "stale-price", "sparse-history", "no-market"]);
 
 const STATUS: Record<SideValue["status"], { label: string; cls: string }> = {
   research: { label: "Research candidate", cls: "bg-muted text-muted-foreground" },
@@ -215,7 +216,8 @@ export default async function NbaResearchPage({ searchParams }: { searchParams: 
           Forward-testing candidates <span className="font-normal normal-case text-muted-foreground">· rule {CANDIDATE_RULE.id}, frozen before results</span>
         </h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          A side priced +{CANDIDATE_RULE.minPrice} to +{CANDIDATE_RULE.maxPrice}, passing every data-quality check, with at least +
+          A side priced +{CANDIDATE_RULE.minPrice} to +{CANDIDATE_RULE.maxPrice}, passing every data-quality check (including neither model more
+          than 12 points from the market), with at least +
           {Math.round(CANDIDATE_RULE.minEv * 100)}% expected value at that price under <em>both</em> experimental models (the lower counts); one per
           player, at most {CANDIDATE_RULE.perSlate}. Fewer — or none — is a valid answer. These are recorded before tip and judged on results the
           rule never saw. {validated ? "This rule has been validated forward." : "Status: not validated."}

@@ -58,7 +58,7 @@ export interface ValueInput {
   games: number;
 }
 
-export type Warning = "unstable-minutes" | "injury" | "lineup-unconfirmed" | "extreme-distance" | "plus-money-calibration" | "stale-price" | "aging-price" | "sparse-history" | "single-book" | "no-market";
+export type Warning = "unstable-minutes" | "injury" | "lineup-unconfirmed" | "extreme-distance" | "implausible-disagreement" | "plus-money-calibration" | "stale-price" | "aging-price" | "sparse-history" | "single-book" | "no-market";
 export type EvidenceStatus = "research" | "forward-testing" | "validated";
 
 export interface SideValue {
@@ -124,6 +124,15 @@ export const EXTREME_DISTANCE = 1;
 export const MINUTES_STABLE = 4.5;
 export const MINUTES_UNSTABLE = 6;
 export const MIN_GAMES = 15;
+/**
+ * Either experimental model this far from the books' no-vig chance is far more
+ * likely a model failure (a role or injury change the market has priced and
+ * ARCHR hasn't) than value: the audits found ARCHR's biggest disagreements
+ * were where it was most wrong (edge 10+ pts: said 55%, won 42%). Such a side
+ * is research only — never ranked by EV, never faded. Added 2026-11-17 before
+ * any game it applies to was played (docs/alpha-sprint.md).
+ */
+export const MAX_DISAGREEMENT = 0.12;
 
 const implied = (american: number) => (american < 0 ? -american / (100 - american) : 100 / (american + 100));
 
@@ -167,6 +176,7 @@ function sideValue(row: ValueInput, side: "over" | "under", pairs: Map<string, n
   if (row.injury) warnings.push("injury");
   if (row.lineup === "unconfirmed") warnings.push("lineup-unconfirmed");
   if (distance !== null && Math.abs(distance) > EXTREME_DISTANCE) warnings.push("extreme-distance");
+  if (noVig !== null && [v2Prob, s2Prob].some((p) => p !== null && Math.abs(p - noVig) > MAX_DISAGREEMENT)) warnings.push("implausible-disagreement");
   if (best.priceAmerican >= 100) warnings.push("plus-money-calibration");
   if (age === null || age > STALE_MINUTES) warnings.push("stale-price");
   else if (age > AGING_MINUTES) warnings.push("aging-price");
@@ -175,7 +185,7 @@ function sideValue(row: ValueInput, side: "over" | "under", pairs: Map<string, n
   else if (market.singleBook) warnings.push("single-book");
   // The data-quality gate: EV is only ranked where nothing on this list holds.
   // (Plus-money calibration, single-book and an unconfirmed lineup are shown, not gating: they are the normal case.)
-  const gating: Warning[] = ["unstable-minutes", "injury", "extreme-distance", "stale-price", "sparse-history", "no-market"];
+  const gating: Warning[] = ["unstable-minutes", "injury", "extreme-distance", "implausible-disagreement", "stale-price", "sparse-history", "no-market"];
   const quality = v2Prob !== null && s2Prob !== null && !warnings.some((w) => gating.includes(w));
   const evV2 = v2Prob === null ? null : v2Prob * dec - 1;
   const evS2 = s2Prob === null ? null : s2Prob * dec - 1;

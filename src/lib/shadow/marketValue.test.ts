@@ -65,6 +65,8 @@ describe("a side's value", () => {
       [{ v2Z: 1.4 }, "extreme-distance"],
       [{ quotes: [q("dk", "over", 130, STALE_MINUTES + 5), q("dk", "under", -160, STALE_MINUTES + 5)] }, "stale-price"],
       [{ games: 9 }, "sparse-history"],
+      // The book says 38% for the over (no-vig of +130 / -160); a model at 55% is 17 pts away.
+      [{ s2Over: 0.55, v2Over: 0.4 }, "implausible-disagreement"],
       [{ quotes: [q("dk", "over", 130)] }, "no-market"],
     ];
     for (const [over, warning] of cases) {
