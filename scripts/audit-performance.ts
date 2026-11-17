@@ -303,7 +303,9 @@ async function main() {
     console.log(`\n\n═══ ${name} — ${rs.length} picks ═══`);
     console.log("  ── Overall");
     header();
-    line("every pick", segmentPerf(rs, seed));
+    const overall = segmentPerf(rs, seed);
+    line("every pick", overall);
+    ranked.push({ label: "Overall · every pick", regime: name, s: overall });
     for (const cut of CUTS) {
       if (name !== "ALL NBA MAIN-LINE PICKS" && cut.key === "regime") continue;
       for (const x of printCut(rs, cut, seed)) ranked.push({ ...x, regime: name });
@@ -348,8 +350,11 @@ async function main() {
       const prop = asProp(r);
       return prop !== null && passes(prop, set.filters);
     });
-    line(`${set.label.slice(0, 26)}… in sample`, segmentPerf(kept.filter((r) => r.date <= SWEEP_SAMPLE_END), 19));
-    line(`${set.label.slice(0, 26)}… OUT of sample`, segmentPerf(kept.filter((r) => r.date > SWEEP_SAMPLE_END), 19));
+    const ins = segmentPerf(kept.filter((r) => r.date <= SWEEP_SAMPLE_END), 19);
+    const outs = segmentPerf(kept.filter((r) => r.date > SWEEP_SAMPLE_END), 19);
+    line(`${set.label.slice(0, 26)}… in sample`, ins);
+    line(`${set.label.slice(0, 26)}… OUT of sample`, outs);
+    console.log(`@@SET_JSON@@${JSON.stringify({ label: set.label, ins, outs })}`);
     console.log(`      ↑ ${set.label}`);
   }
 
@@ -366,11 +371,16 @@ async function main() {
   show("STRONGEST by win − no-vig lower bound (predictive, odds-adjusted)", by((s) => s.overMarketLo).slice(0, 12), (s) => s.overMarketLo);
   show("STRONGEST by skill vs the books (Brier) lower bound", by((s) => s.skillLo).slice(0, 8), (s) => s.skillLo);
 
+  // Every segment, machine-readable (the report and its charts are built from this).
+  console.log(`@@SEGMENTS_JSON@@${JSON.stringify(ranked.map((x) => ({ regime: x.regime.split(" (")[0], label: x.label, ...x.s })))}`);
+
   // ── Calibration (chart data).
   const edges = [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8];
   const calib = {
     archrAll: calibration(rows.map((r) => ({ p: r.p, won: r.won })), edges),
     booksAll: calibration(rows.filter((r) => r.market !== null).map((r) => ({ p: r.market!, won: r.won })), edges),
+    archrPre: calibration(pre.map((r) => ({ p: r.p, won: r.won })), edges),
+    booksPre: calibration(pre.filter((r) => r.market !== null).map((r) => ({ p: r.market!, won: r.won })), edges),
     archrPost: calibration(post.map((r) => ({ p: r.p, won: r.won })), edges),
     booksPost: calibration(post.filter((r) => r.market !== null).map((r) => ({ p: r.market!, won: r.won })), edges),
     archrOver: calibration(rows.filter((r) => r.side === "over").map((r) => ({ p: r.p, won: r.won })), edges),
