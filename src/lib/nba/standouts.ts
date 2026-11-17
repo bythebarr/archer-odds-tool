@@ -182,6 +182,19 @@ export function reasonsFor(
   return out.sort((a, b) => order(a) - order(b));
 }
 
+/** The props context a standout is priced with (shared with the shadow model's capture, lib/shadow/capture). */
+export function standoutContext(slate: WireNbaPropsSlate, player: SlatePlayer, stat: string): PropContext {
+  return {
+    season: slate.season,
+    venue: player.venue,
+    opponent: player.opponent?.abbreviation,
+    projection: nbaProjectionContext(slate, player),
+    injury: player.injury?.level ?? null,
+    modelWeight: slate.modelWeights[stat as keyof typeof slate.modelWeights],
+    calibrationFactor: slate.calibrationFactors?.[stat as keyof typeof slate.calibrationFactors],
+  };
+}
+
 /** Whether a call clears the page's bar: the gap, ARCHR's raw chance, and a last-ten record that doesn't flatly disagree. */
 export function isStandout(z: number, chance: number, [hits, games]: [number, number]): boolean {
   return Math.abs(z) >= MIN_Z && chance >= MIN_CHANCE && !(games >= 5 && hits / games < MIN_L10);
@@ -209,15 +222,7 @@ export function nbaStandouts(slate: WireNbaPropsSlate, logs: Record<string, Game
     const l10Values = playerLogs.filter((l) => l.minutes > 0).slice(0, 10).map((l) => stat.value(l));
     const l10Avg = l10Values.reduce((a, b) => a + b, 0) / l10Values.length;
     if (l10Avg >= 2 && (main < LINE_RANGE[0] * l10Avg || main > LINE_RANGE[1] * l10Avg)) continue;
-    const context: PropContext = {
-      season: slate.season,
-      venue: player.venue,
-      opponent: player.opponent?.abbreviation,
-      projection: nbaProjectionContext(slate, player),
-      injury: player.injury?.level ?? null,
-      modelWeight: slate.modelWeights[prop.stat],
-      calibrationFactor: slate.calibrationFactors?.[prop.stat],
-    };
+    const context = standoutContext(slate, player, prop.stat);
     const base = summarizeProp(prop, playerLogs, stat, "over", context, main);
     const proj = base?.model?.projection;
     if (!base?.model || !proj || proj.sd <= 0) continue;

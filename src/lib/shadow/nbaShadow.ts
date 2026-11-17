@@ -34,7 +34,6 @@
  */
 import type { PropProjection } from "@/lib/nba/projection";
 import type { GameLogPoint } from "@/lib/nba/propsMath";
-import type { NbaPropStatDef } from "@/lib/nba/propStats";
 
 /** Bumped whenever the shadow's method or constants change: forward results are only ever read within one version. */
 export const SHADOW_VERSION = "nba-shadow-v1";
@@ -80,18 +79,23 @@ export interface ShadowParams {
 }
 
 /**
- * The shadow's constants, fitted by `npm run lab:nba-shadow` on the 2025-26
- * season only (walk-forward, pregame inputs) and checked once on 2026-27
- * before Nov 17. Frozen for the forward test: changing any of them is a new
+ * The shadow's constants, fitted once by `npm run lab:nba-shadow` (Model lab
+ * run #103, 2026-11-17) on the 2025-26 season only — 23,038 player-games,
+ * walk-forward, pregame inputs — and checked once on 2026-27 before Nov 17
+ * (4,082). Frozen for the forward test: changing any of them is a new
  * SHADOW_VERSION, and the forward clock restarts.
+ *
+ * Known gap: the 2025-26 games have no stored closing lines, so the spread
+ * term could not be fitted (0) and the projections it was fitted on had no
+ * blowout or total adjustment.
  */
 export const SHADOW_PARAMS: ShadowParams = {
-  minutesCoef: [2.1, 0.3, 0.6, 1.2, 0.4, 0.04, 0.2, 0.4, 0.8, 0.5, 0.02],
+  minutesCoef: [4.9569, 0.3468, -0.5669, -0.1555, 0.6687, 0, 0.1229, -0.0348, -0.2162, 0.2927, -0.083],
   minScale: 1.5,
-  nodes: [-2.6, -1.4, -0.9, -0.5, -0.2, 0.1, 0.4, 0.7, 1.0, 1.6],
-  phi0: { points: 1.6, rebounds: 1.2, assists: 1.2, threes: 1.1, pointsReboundsAssists: 1.8, pointsRebounds: 1.7, pointsAssists: 1.7, reboundsAssists: 1.2 },
+  nodes: [-2.223, -1.335, -0.886, -0.533, -0.223, 0.08, 0.381, 0.725, 1.165, 1.96],
+  phi0: { points: 2.074, rebounds: 1, assists: 1, threes: 1.249, pointsReboundsAssists: 1.748, pointsRebounds: 1.845, pointsAssists: 1.859, reboundsAssists: 1.041 },
   phiPriorGames: 10,
-  kappa: { points: 1, rebounds: 1, assists: 1, threes: 1, pointsReboundsAssists: 1, pointsRebounds: 1, pointsAssists: 1, reboundsAssists: 1 },
+  kappa: { points: 1.5, rebounds: 1, assists: 1, threes: 1.1, pointsReboundsAssists: 1.5, pointsRebounds: 1.5, pointsAssists: 1.5, reboundsAssists: 1.1 },
 };
 
 const MAX_MINUTES = 48;
@@ -194,7 +198,7 @@ export type ShadowVariant = "s1" | "s2";
 export function shadowDistribution(
   proj: Pick<PropProjection, "mean" | "minutes" | "minutesDetail" | "env" | "absence">,
   logs: GameLogPoint[],
-  stat: Pick<NbaPropStatDef, "key" | "value">,
+  stat: { key: string; value: (l: GameLogPoint) => number },
   variant: ShadowVariant,
   p: ShadowParams = SHADOW_PARAMS
 ): ShadowDistribution | null {
