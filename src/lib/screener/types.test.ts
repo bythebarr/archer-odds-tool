@@ -158,3 +158,21 @@ describe("ARCHR's side", () => {
     expect(screen(pool, { ...DEFAULT_FILTERS, archrSide: true, side: "under" })).toEqual([]);
   });
 });
+
+describe("distance from the line", () => {
+  it("reads the projection's z toward the row's side, dropping yes/no and collapsed spreads", async () => {
+    const { distanceOf } = await import("./types");
+    expect(distanceOf({ side: "over", facts: { z: 0.4567 } })).toBe(0.46);
+    expect(distanceOf({ side: "under", facts: { z: -0.2 } })).toBe(-0.2);
+    expect(distanceOf({ side: "yes", facts: { z: 0.9 } })).toBeUndefined();
+    expect(distanceOf({ side: "over", facts: { z: 499421 } })).toBeUndefined();
+    expect(distanceOf({ side: "over" })).toBeUndefined();
+  });
+
+  it("keeps only props whose projection is at least that far past the line on their side", () => {
+    const pool = [prop("far", { z: 0.8 }), prop("mid", { z: 0.4 }), prop("near", { z: 0.1 }), prop("wrongSide", { z: -0.9 }), prop("noProjection")];
+    expect(screen(pool, DEFAULT_FILTERS).length).toBe(5);
+    expect(screen(pool, { ...DEFAULT_FILTERS, minZ: 0.35 }).map((p) => p.id).sort()).toEqual(["far", "mid"]);
+    expect(screen(pool, { ...DEFAULT_FILTERS, minZ: 0.75 }).map((p) => p.id)).toEqual(["far"]);
+  });
+});

@@ -3,7 +3,7 @@
  * into chunk parts. Server-only: building reads whole slates.
  */
 import { mlbScreener, nbaScreener, nflScreener, soccerScreener, tennisScreener, ufcScreener } from "@/lib/screener/sources";
-import { archrSideOf, type ScreenerProp } from "@/lib/screener/types";
+import { archrSideOf, distanceOf, type ScreenerProp } from "@/lib/screener/types";
 import { BUILDER_CHUNKS, BUILDER_CHUNK_ROWS, buildPoolSlice, POOL_SOURCES, type PoolSource } from "@/lib/builder/pool";
 import { chunkRows } from "./snapshot";
 import { poolConfidence, recordOf } from "./confidence";
@@ -34,6 +34,8 @@ export const POOLS: Record<string, Build> = {
           ...r,
           // ARCHR's side of the line, read from the projection before `facts` is dropped.
           lean: archrSideOf({ side: r.side, archr: r.archr, facts }),
+          // Distance from the line toward this side (absent without a usable projection).
+          z: distanceOf({ side: r.side, facts }),
           confidence: poolConfidence(
             {
               sport: r.sport,

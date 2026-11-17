@@ -24,6 +24,13 @@ export const TRACKED_SCREENS: TrackedScreen[] = [
     filters: { ...DEFAULT_FILTERS, min: { l5: 0.8 }, side: "under", shortest: -200, longest: 100, minMinutes: 24, archrSide: true },
   },
   {
+    // docs/performance-audit.md: picks with the projection within 0.35 spreads of the line lost in both periods;
+    // this is ARCHR's side with that band left out, tracked forward to see if leaving it out pays.
+    key: "distance-035-v1",
+    label: "Distance: ARCHR's side · projection 0.35+ beyond the line",
+    filters: { ...DEFAULT_FILTERS, archrSide: true, minZ: 0.35 },
+  },
+  {
     // The same sweep's widest set whose ROI interval cleared zero.
     key: "unders-base-v1",
     label: "Unders base: unders · −200 to +100 · minutes 24+ · ARCHR's side",
