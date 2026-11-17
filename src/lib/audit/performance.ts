@@ -26,6 +26,8 @@ export interface PerfRow {
   price: number | null;
   /** The books' no-vig chance on the side at the close; null without closing quotes. */
   close: number | null;
+  /** The slate day (ET date), for counting independent days. */
+  day?: string;
 }
 
 const EPS = 1e-6;
@@ -66,9 +68,13 @@ interface Sums {
   clv: number;
   beat: number;
   worse: number;
+  /** Sums for the averages: the no-vig chance, the price's break-even chance, ARCHR's expected value at the price. */
+  mktP: number;
+  be: number;
+  ev: number;
 }
 
-const zero = (): Sums => ({ n: 0, wins: 0, p: 0, brier: 0, ll: 0, pricedN: 0, profit: 0, dec: 0, mktN: 0, mktBrier: 0, mktLl: 0, archrBrierOnMkt: 0, archrLlOnMkt: 0, resid: 0, clvN: 0, clv: 0, beat: 0, worse: 0 });
+const zero = (): Sums => ({ n: 0, wins: 0, p: 0, brier: 0, ll: 0, pricedN: 0, profit: 0, dec: 0, mktN: 0, mktBrier: 0, mktLl: 0, archrBrierOnMkt: 0, archrLlOnMkt: 0, resid: 0, clvN: 0, clv: 0, beat: 0, worse: 0, mktP: 0, be: 0, ev: 0 });
 
 function add(s: Sums, r: PerfRow) {
   s.n++;
@@ -80,9 +86,12 @@ function add(s: Sums, r: PerfRow) {
     s.pricedN++;
     s.profit += r.won ? decimalOf(r.price) - 1 : -1;
     s.dec += decimalOf(r.price);
+    s.be += 1 / decimalOf(r.price);
+    s.ev += r.p * decimalOf(r.price) - 1;
   }
   if (r.market !== null) {
     s.mktN++;
+    s.mktP += r.market;
     s.mktBrier += (r.market - r.won) ** 2;
     s.mktLl += logLoss(r.market, r.won);
     s.archrBrierOnMkt += (r.p - r.won) ** 2;
@@ -137,6 +146,14 @@ export interface SegmentPerf {
   /** Share of closing lines that moved against the pick; the rest didn't move. */
   worseClose: number | null;
   games: number;
+  /** Distinct slate days (where rows carry `day`). */
+  days: number;
+  /** The books' average no-vig chance on these picks (rows with a market). */
+  avgMarket: number | null;
+  /** The average break-even chance at the offered price (1 / decimal odds). */
+  avgBreakEven: number | null;
+  /** ARCHR's own expected value at the price, averaged (p × decimal − 1). */
+  archrEv: number | null;
   flag: "too few" | "small sample" | null;
 }
 
@@ -208,6 +225,10 @@ export function segmentPerf(rows: PerfRow[], seed = 7, boot = BOOT): SegmentPerf
     beatClose: ratio(t.beat, t.clvN),
     worseClose: ratio(t.worse, t.clvN),
     games: games.length,
+    days: new Set(rows.map((r) => r.day).filter(Boolean)).size,
+    avgMarket: ratio(t.mktP, t.mktN),
+    avgBreakEven: ratio(t.be, t.pricedN),
+    archrEv: ratio(t.ev, t.pricedN),
     flag: t.n < TOO_FEW ? "too few" : t.n < SMALL ? "small sample" : null,
   };
 }
@@ -277,7 +298,7 @@ export function logisticWithOffset(rows: { y: 0 | 1; offset: number; x: number[]
 }
 
 /** A coefficient's cluster-bootstrap 95% interval (resampling games). */
-export function bootstrapCoef<R extends { cluster: string }>(rows: R[], fit: (rows: R[]) => number | null, seed = 11, boot = 200): { est: number | null; lo: number | null; hi: number | null } {
+export function bootstrapCoef<R extends { cluster: string }>(rows: R[], fit: (rows: R[]) => number | null, seed = 11, boot = 200): { est: number | null; lo: number | null; hi: number | null; p: number | null } {
   const est = fit(rows);
   const byGame = new Map<string, R[]>();
   for (const r of rows) (byGame.get(r.cluster) ?? byGame.set(r.cluster, []).get(r.cluster)!).push(r);
@@ -290,7 +311,21 @@ export function bootstrapCoef<R extends { cluster: string }>(rows: R[], fit: (ro
     const v = fit(sample);
     if (v !== null && Number.isFinite(v)) draws.push(v);
   }
-  return { est, lo: quantile(draws, 0.025), hi: quantile(draws, 0.975) };
+  // Two-sided bootstrap p: how often the resampled coefficient lands on the other side of zero, doubled.
+  const p = draws.length ? Math.min(1, (2 * Math.min(draws.filter((d) => d <= 0).length, draws.filter((d) => d >= 0).length) + 1) / (draws.length + 1)) : null;
+  return { est, lo: quantile(draws, 0.025), hi: quantile(draws, 0.975), p };
+}
+
+/** Benjamini–Hochberg: which of these p-values survive a false-discovery rate of q (same order as given). */
+export function benjaminiHochberg(ps: (number | null)[], q = 0.1): boolean[] {
+  const idx = ps.map((p, i) => ({ p, i })).filter((x): x is { p: number; i: number } => x.p !== null).sort((a, b) => a.p - b.p);
+  const m = idx.length;
+  let cut = -1;
+  idx.forEach((x, k) => {
+    if (x.p <= ((k + 1) / m) * q) cut = k;
+  });
+  const keep = new Set(idx.slice(0, cut + 1).map((x) => x.i));
+  return ps.map((_, i) => keep.has(i));
 }
 
 export { logit, sigmoid };

@@ -71,3 +71,19 @@ describe("logisticWithOffset", () => {
     expect(r.hi!).toBeGreaterThan(r.est!);
   });
 });
+
+describe("plus-money additions", () => {
+  it("averages the no-vig chance, the break-even chance and ARCHR's expected value, and counts slate days", () => {
+    const s = segmentPerf([row(1, { price: 150, p: 0.45, market: 0.38, day: "2026-11-13" }), row(0, { price: 150, p: 0.45, market: 0.38, day: "2026-11-14", cluster: "g2" })]);
+    expect(s.days).toBe(2);
+    expect(s.avgMarket).toBeCloseTo(0.38);
+    expect(s.avgBreakEven).toBeCloseTo(0.4);
+    expect(s.archrEv).toBeCloseTo(0.45 * 2.5 - 1);
+  });
+
+  it("controls the false-discovery rate across many tests", async () => {
+    const { benjaminiHochberg } = await import("./performance");
+    expect(benjaminiHochberg([0.001, 0.02, 0.04, 0.5, null], 0.1)).toEqual([true, true, true, false, false]);
+    expect(benjaminiHochberg([0.04, 0.5, 0.6, 0.7], 0.1)).toEqual([false, false, false, false]);
+  });
+});
