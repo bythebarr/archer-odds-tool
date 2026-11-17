@@ -102,7 +102,7 @@ Each was tried on top of the recommended set (319 picks, 60.8%, +8.7%) where the
 
 | Filter | Result | Read |
 |---|---|---|
-| **ARCHR's side only** (the lean side) | — (it *is* the sample) | The screener shows both sides, so the set above can't be reproduced exactly. This is the gap that matters most. |
+| **ARCHR's side only** (the lean side) | — (it *is* the sample) | **Added since:** the screener's "Whose side → ARCHR's side" (`?lean=1`) keeps the side ARCHR's projection points to, the rule the NBA leans use. With it on, the set above can be set in the screener. |
 | Projection distance \|z\| ≥ 0.75 | 11 picks · 36.4% · −37.5% | Nothing to add. It nearly empties the set and loses. |
 | ARCHR within 8 pts of the books | 311 · 60.8% · +8.7% | No change: nearly every pick already qualifies. |
 | ARCHR 3–15 pts above the books | 112 · 58.0% · +10.5% | Halves disagree (+2.3 / +22.7). Not established. |
@@ -123,7 +123,7 @@ If volume matters more than accuracy, drop the L5 bar. That gives 1,265 picks at
 
 Either way:
 - treat it as one week of evidence;
-- add an "ARCHR's side" filter so the screener can show exactly this set;
+- set it with "Whose side → ARCHR's side" on (added since this report), which is how the leans were picked;
 - re-run the sweep weekly as leans accumulate.
 
 ## Reproduce
