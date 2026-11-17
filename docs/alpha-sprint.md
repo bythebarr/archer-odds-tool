@@ -172,7 +172,7 @@ The rule and every model constant are frozen. Confirmation needs games that were
    - the candidate rule's ROI and CLV.
 4. **Beats sportsbook probabilities on untouched games?** Unknown. No experimental record has settled yet: v1 records from tonight, v2 from its deploy. It's read at 250 settled games.
 5. **Any plus-money filter independently validated?** No.
-6. **Can the screen identify candidates today?** See "Tonight" below. It reports what the frozen rule finds, which may be none.
+6. **Can the screen identify candidates today?** Yes, mechanically. Tonight the frozen rule finds 6 forward-testing candidates (see "Tonight"). Their estimated EVs (+13% to +19%) rest entirely on ARCHR against a single book, at the size of ARCHR's known plus-money bias, so they are unvalidated hypotheses.
 7. **Highest-value remaining blocker:** **independent market prices.** Nearly every NBA prop quote comes from one book (DraftKings via ESPN). So:
    - the no-vig "baseline" is that book's own pair;
    - the leave-one-out consensus can't be formed;
@@ -197,9 +197,25 @@ A rule or model change moves from forward-testing toward production only when **
 
 Better calibration alone never qualifies as a betting edge.
 
-## Tonight
+## Tonight (2026-11-17, read-only production checks)
 
-Read-only production checks for this PR (`diagnose:research`, `diagnose:leans` dry run): see the PR description.
+`diagnose:leans` (Model lab #108, a dry run that writes nothing) froze 450 v2 records across the next 17 games, beside v1's 450 and production's 542 leans.
+
+`diagnose:research` read tonight's board twice, both before tip and before any result existed.
+
+**Run #107, before the disagreement gate:**
+- 450 props, every quote from **DraftKings** (4,203 quotes, one book).
+- 153 sides at +100 to +175; 137 passed the quality gate, and 52 showed positive EV.
+- The rule picked 6, all unders, with estimated EV of **+29% to +77%**.
+- Example: Josh Okogie under 5.5 points at +102. ARCHR raw said 93%, v2 85%, the book's no-vig 47%.
+
+Gaps that size are almost certainly model failures, not value. So the `implausible-disagreement` gate (either model more than 12 points from the no-vig chance means research only) was added then, after seeing tonight's unsettled candidate list and before any outcome.
+
+**Run #109, after the gate:**
+- 47 plus-money sides flagged implausible; 92 pass the gate, and 26 show positive EV.
+- The rule finds **6 forward-testing candidates**, EV +13% to +19%: Keyonte George U1.5 3PM +144, Brandon Miller U2.5 AST +120, Kevin Huerter U2.5 AST +122, Sion James O3.5 AST +134, Coby White U5.5 R+A +114, Jalen Brunson O2.5 3PM +122.
+- Each sits 7–11 points above DraftKings' no-vig chance, about the size of ARCHR's documented plus-money overconfidence (about 9 points).
+- Read them as hypotheses to be judged forward, not edges. Their market EV against DraftKings' own no-vig is about −6% each, which is the vig.
 
 ## Reproduce
 
