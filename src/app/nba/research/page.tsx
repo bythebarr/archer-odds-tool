@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { unstable_cache } from "next/cache";
 import { todayEt } from "@/lib/dateEt";
 import { getLeagueDays } from "@/lib/queries/lobby";
-import { getNbaPropsSlate, toWireSlate } from "@/lib/queries/nbaProps";
-import { unpackLog, type GameLogPoint } from "@/lib/nba/propsMath";
 import { formatAmerican } from "@/lib/odds/americanOdds";
 import { refreshOnView } from "@/lib/ops/refreshOnView";
-import { nbaShadowRows, nbaValueBoard } from "@/lib/shadow/capture";
-import { nbaQuoteAges } from "@/lib/shadow/quoteAges";
+import { getNbaResearchBoard } from "@/lib/shadow/board";
 import { CANDIDATE_RULE, VALIDATED_RULES, screenOrder, type SideValue, type ValueRow, type Warning } from "@/lib/shadow/marketValue";
 import { V2_VERSION } from "@/lib/shadow/v2";
 import { SportCarousel } from "@/components/book/SportCarousel";
@@ -31,29 +27,6 @@ export const metadata: Metadata = {
   title: "NBA — plus-money research (experimental)",
   description: "Experimental: NBA main-line props at plus money, ARCHR's experimental chances against the books' no-vig chance, with data-quality warnings. Research only.",
 };
-
-interface Board {
-  values: ValueRow[];
-  candidates: string[];
-  computedAt: string;
-  books: string[];
-}
-
-/** The slate's value board, kept five minutes (prices are polled about hourly). */
-const boardFor = unstable_cache(
-  async (date: string): Promise<Board> => {
-    const slate = toWireSlate(await getNbaPropsSlate(date));
-    const logs = Object.fromEntries(Object.entries(slate.logs).map(([id, l]) => [id, l.map(unpackLog)])) as Record<string, GameLogPoint[]>;
-    const now = new Date();
-    const upcoming = new Set(slate.games.filter((g) => new Date(g.startUtc) > now).map((g) => g.id));
-    const ages = await nbaQuoteAges([...upcoming]);
-    const board = nbaValueBoard(slate, nbaShadowRows(slate, logs, upcoming), ages, now);
-    const books = [...new Set(slate.props.flatMap((p) => p.quotes.map((q) => q.bookName)))].sort();
-    return { values: board.values, candidates: board.candidates, computedAt: now.toISOString(), books };
-  },
-  ["nba-research-board-v2"],
-  { revalidate: 300 }
-);
 
 const pct = (x: number | null, d = 0) => (x === null ? "—" : `${(x * 100).toFixed(d)}%`);
 const signed = (x: number | null) => (x === null ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`);
@@ -178,7 +151,7 @@ export default async function NbaResearchPage({ searchParams }: { searchParams: 
   const params = await searchParams;
   await refreshOnView([["sync-injuries", 20], ["espn-props", 30], ["espn-odds", 30]]);
   const days = await getLeagueDays("nba", todayEt());
-  const board = await boardFor(days[0] ?? todayEt());
+  const board = await getNbaResearchBoard(days[0] ?? todayEt());
   const range = RANGES.find((r) => r.key === params.range) ?? RANGES[0];
   const sides = board.values.flatMap((r) => [r.over, r.under].filter((s): s is SideValue => s !== null && s.price >= range.lo && s.price <= range.hi).map((s) => ({ r, s })));
   const ordered = screenOrder(sides);
