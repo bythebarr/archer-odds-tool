@@ -176,6 +176,38 @@ export default async function EdgesPage({ searchParams }: { searchParams: Promis
           {report.dimensions.map((d) => (
             <Table key={d.key} title={d.label} segments={d.segments} />
           ))}
+          {report.losses ? (
+            <section className="mt-6">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Why NBA prop leans lost (read after the game)</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Each loss, by the first reason that fits: within 1 of the line; a 20+ point blowout that cut his minutes; 6+ minutes short of
+                projected (overs); 6+ minutes over (unders); minutes about as projected but his output per minute missed; or a projection miss
+                with nothing else to point at. Compare with the minutes and margin cuts above, which include the wins.
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {report.losses.bySide.map((b) => (
+                  <div key={b.side} className="rounded-xl border border-border bg-card p-3">
+                    <p className="text-sm font-semibold capitalize text-foreground">
+                      {b.side}s · {b.losses.toLocaleString()} losses
+                    </p>
+                    <ul className="mt-2 space-y-1">
+                      {b.reasons.map((r) => (
+                        <li key={r.reason} className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="w-28 shrink-0 capitalize">{r.reason}</span>
+                          <span className="h-1.5 flex-1 overflow-hidden rounded bg-muted">
+                            <span className="block h-full bg-foreground" style={{ width: `${Math.round(r.share * 100)}%` }} />
+                          </span>
+                          <span className="w-16 shrink-0 text-right tabular-nums">
+                            {r.n} · {Math.round(r.share * 100)}%
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </>
       )}
 

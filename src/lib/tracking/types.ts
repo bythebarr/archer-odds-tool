@@ -76,6 +76,10 @@ export interface LeanFeatures {
   /** Props: the Confidence grade (lib/propModel/confidence) as the product showed it when the lean was frozen —
    * so the grade is checked on real games going forward, not only on replayed closing lines. */
   confidence?: { grade: "A" | "B" | "C" | "D"; score: number };
+  /** NBA props: his record at this line on this side before the game, as the screener counts it (L5, L10, L15, this season). Absent before 2026-11-17. */
+  rates?: { l5: [number, number]; l10: [number, number]; l15: [number, number]; szn: [number, number] };
+  /** NBA props: the named screener sets (lib/tracking/screens) this lean passed when frozen. Absent before 2026-11-17. */
+  screens?: string[];
 }
 
 export type SettleResult = "hit" | "miss" | "push" | "void";
@@ -83,6 +87,15 @@ export type SettleResult = "hit" | "miss" | "push" | "void";
 /** One settled lean, as evaluation reads it. */
 export interface GradedLean {
   features: LeanFeatures;
+  /** The game (Game.id). */
+  eventRef?: string;
+  /** His stat that night (props), from the settlement. */
+  actual?: number | null;
+  /**
+   * NBA props, read AFTER the game (never at capture): his actual minutes and his
+   * team's final margin, for the "why it lost" cuts. Undefined where not loaded.
+   */
+  post?: { minutes: number | null; margin: number | null };
   /** The displayed chance on this side when captured (NBA props: calibrated; the pre-calibration blend is kept in features.rawProb). */
   prob: number;
   result: SettleResult;

@@ -79,3 +79,23 @@ describe("evaluateLeans", () => {
     expect(dimensions.find((d) => d.key === "stat")!.segments.map((s) => s.label)).toContain("NFL Rec Yards");
   });
 });
+
+describe("the tracker's newer cuts", () => {
+  it("cuts by tracked screener set, grade, distance, minutes, L5, and after-game minutes; explains the losses", async () => {
+    const { lossBreakdown } = await import("./evaluate");
+    const leans = [
+      ...many(40, 25, { post: { minutes: 33, margin: 5 }, actual: 25 }, { side: "under", screens: ["most-accurate-v1"], confidence: { grade: "B", score: 64 }, z: -0.8, minutes: 32, rates: { l5: [5, 5], l10: [8, 10], l15: [11, 15], szn: [8, 10] } }),
+      ...many(40, 18, { post: { minutes: 20, margin: 25 }, actual: 15 }, { side: "over", confidence: { grade: "C", score: 50 }, z: 0.2, minutes: 32 }),
+    ];
+    const dims = Object.fromEntries(evaluateLeans(leans).dimensions.map((d) => [d.key, d.segments.map((s) => `${s.label}:${s.n}`)]));
+    expect(dims.screen).toEqual(["Most accurate: L5 80%+ · unders · −200 to +100 · minutes 24+ · ARCHR's side:40"]);
+    expect(dims.grade).toEqual(["Grade B:40", "Grade C:40"]);
+    expect(dims.z).toEqual(["Projection near the line (|z| under 0.35):40", "Projection well off the line (|z| 0.75+):40"]);
+    expect(dims.l5).toEqual(["L5 80%+:40"]);
+    expect(dims["post-minutes"]?.sort()).toEqual(["6+ minutes short of projected:40", "Within 6 minutes of projected:40"]);
+    const losses = lossBreakdown(leans)!;
+    const over = losses.bySide.find((b) => b.side === "over")!;
+    expect(over.losses).toBe(22);
+    expect(over.reasons.find((r) => r.reason === "blowout")!.n).toBe(22);
+  });
+});
