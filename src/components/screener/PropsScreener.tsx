@@ -18,8 +18,13 @@ import { StatTileLinks } from "@/components/props/StatTiles";
 import { ConfidenceChip } from "@/components/props/ConfidencePanel";
 import { getReportedGraded } from "@/lib/queries/modelTrust";
 import { blendCardKey } from "@/lib/props/provenance";
+import { todayEt } from "@/lib/dateEt";
+import { getLeagueDays } from "@/lib/queries/lobby";
+import { getNbaResearchBoard } from "@/lib/shadow/board";
+import { RESEARCH_DEFAULT_DISTANCE, RESEARCH_SORTS, attachResearch, researchDistance, researchOrder, type ResearchSort, type ResearchView } from "@/lib/screener/research";
+import type { Warning } from "@/lib/shadow/marketValue";
 
-export type ScreenerParams = Partial<Record<"view" | "sport" | "game" | "team" | "stat" | "side" | "lean" | "dist" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>> & {
+export type ScreenerParams = Partial<Record<"view" | "mode" | "sport" | "game" | "team" | "stat" | "side" | "lean" | "dist" | "line" | "all" | "games" | "archr" | "mins" | "edge" | "pmin" | "pmax" | "sort" | ScreenWindow, string>> & {
   /** Stats switched off on the stat tiles (lib/props/statTiles): comma-separated or repeated. */
   xstat?: string | string[];
 };
@@ -31,7 +36,7 @@ const ARCHR = [0, 0.5, 0.55, 0.6, 0.7, 0.8];
 const MINUTES = [0, 15, 20, 24, 28, 30, 32, 34, 36];
 const EDGES = ["any", "0", "0.03", "0.05", "0.1"];
 /** Projection beyond the line on the row's side, in its own spreads (docs/performance-audit.md: under 0.35 lost in both periods). */
-const DISTANCES = [0, 0.35, 0.55, 0.75];
+const DISTANCES = [0, 0.25, 0.35, 0.45, 0.55, 0.75, 1];
 const PRICES = [-1000, -500, -300, -200, -150, -110, 100, 150, 200, 300];
 const SORTS: { key: ScreenSort; label: string }[] = [
   ...SCREEN_WINDOWS.map((w) => ({ key: w.key as ScreenSort, label: `${w.label} rate` })),
@@ -46,7 +51,7 @@ const SPORT_LABEL: Record<string, string> = Object.fromEntries(SCREENER_SPORTS.m
 
 const num = (v: string | undefined, allowed: number[], d: number) => (v !== undefined && allowed.includes(Number(v)) ? Number(v) : d);
 
-function readFilters(p: ScreenerParams, fixed: ScreenerSport | null): ScreenFilters {
+function readFilters(p: ScreenerParams, fixed: ScreenerSport | null, research = false): ScreenFilters {
   const min: Partial<Record<ScreenWindow, number>> = {};
   for (const { key } of SCREEN_WINDOWS) {
     const v = num(p[key], BARS, 0);
@@ -61,7 +66,8 @@ function readFilters(p: ScreenerParams, fixed: ScreenerSport | null): ScreenFilt
     excludeStats: parseStatList(p.xstat),
     side: p.side === "over" || p.side === "under" || p.side === "yes" ? p.side : null,
     archrSide: p.lean === "1",
-    minZ: num(p.dist, DISTANCES, 0),
+    // Research mode starts at 0.35 (adjustable; 0 turns it off). No other mode gets a default distance.
+    minZ: research ? researchDistance(p.dist, DISTANCES) : num(p.dist, DISTANCES, 0),
     mainOnly: p.line !== "all",
     min,
     all: num(p.all, BARS, 0),
@@ -163,9 +169,17 @@ function sideText(p: ScreenerProp): string {
   return `${p.side === "over" ? "Over" : "Under"} ${p.point} ${p.statLabel}`;
 }
 
-export async function PropsScreener({ params, basePath, sport = null, keep = {} }: { params: ScreenerParams; basePath: string; sport?: ScreenerSport | null; keep?: Record<string, string> }) {
-  const read = readFilters(params, sport);
-  const [pool, graded] = await Promise.all([getScreenerPool(read.sport, !read.mainOnly), getReportedGraded()]);
+export async function PropsScreener({ params, basePath, sport = null, keep: baseKeep = {} }: { params: ScreenerParams; basePath: string; sport?: ScreenerSport | null; keep?: Record<string, string> }) {
+  // Research mode: the NBA screener with each row's experimental read beside it (lib/screener/research).
+  const research = sport === "nba" && params.mode === "research";
+  const keep = research ? { ...baseKeep, mode: "research" } : baseKeep;
+  const researchSort = research && RESEARCH_SORTS.some((r) => r.key === params.sort) ? (params.sort as ResearchSort) : null;
+  const read = readFilters(params, sport, research);
+  const [pool, graded, board] = await Promise.all([
+    getScreenerPool(read.sport, !read.mainOnly),
+    getReportedGraded(),
+    research ? getLeagueDays("nba", todayEt()).then((days) => getNbaResearchBoard(days[0] ?? todayEt())) : Promise.resolve(null),
+  ]);
   // A game, team or stat left over from another sport would screen everything out: drop it.
   const scoped: ScreenFilters = {
     ...read,
@@ -183,7 +197,17 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
   );
   const excludeStats = read.stat && !read.excludeStats.length ? tiles.filter((t) => !t.key.endsWith(`:${read.stat}`)).map((t) => t.key) : read.excludeStats;
   const f: ScreenFilters = { ...scoped, stat: null, excludeStats };
-  const results = screen(pool, f);
+  const screened = screen(pool, f);
+  const views = board ? attachResearch(screened, board.values) : new Map<string, ResearchView>();
+  const results = researchSort ? researchOrder(screened, views, researchSort) : screened;
+  /** The same screen in the other mode: every filter kept (a research sort only means something in research mode). */
+  const modeHref = (on: boolean) => {
+    const rest = Object.entries(params).filter(
+      ([k, v]) => k !== "mode" && typeof v === "string" && v !== "" && !(k === "sort" && !on && RESEARCH_SORTS.some((r) => r.key === v))
+    ) as [string, string][];
+    const qs = new URLSearchParams({ ...Object.fromEntries(rest), ...baseKeep, ...(on ? { mode: "research" } : {}) }).toString();
+    return qs ? `${basePath}?${qs}` : basePath;
+  };
   const bars = barsOf(f);
   const statsOff = tiles.filter((t) => excludeStats.includes(t.key)).length;
   const active = [sport ? null : f.sport, f.gameId, f.team, statsOff || null, f.side, f.archrSide || null, f.minZ || null, f.mainOnly ? null : "alt", f.all || null, ...Object.values(f.min), f.minArchr || null, f.minMinutes || null, f.minEdge, f.shortest, f.longest].filter((v) => v !== null && v !== undefined && v !== 0).length;
@@ -196,7 +220,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
     return `${basePath}?${qs.toString()}`;
   };
   /** The same screen sorted by another column (the table's headers are links). */
-  const sortHref = (sort: ScreenSort) => {
+  const sortHref = (sort: ScreenSort | ResearchSort) => {
     const rest = Object.entries(params).filter(([k, v]) => k !== "xstat" && k !== "stat" && typeof v === "string" && v !== "") as [string, string][];
     const qs = new URLSearchParams({ ...Object.fromEntries(rest), ...keep, ...(excludeStats.length ? { xstat: excludeStats.join(",") } : {}), sort });
     return `${basePath}?${qs.toString()}`;
@@ -290,6 +314,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
             </Field>
             <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
               How far ARCHR&apos;s projection sits past the line on this side, in its usual game-to-game swing. Picks within 0.35 lost in both audited periods.
+              {research && ` Research mode starts at ${RESEARCH_DEFAULT_DISTANCE}; pick "Any" to turn it off. The cut is the audits', not a validated edge.`}
             </p>
           </div>
 
@@ -386,12 +411,18 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
           </div>
 
           <Field label="Sort by">
-            <select name="sort" defaultValue={f.sort} className={selectClass}>
+            <select name="sort" defaultValue={researchSort ?? f.sort} className={selectClass}>
               {SORTS.map((s) => (
                 <option key={s.key} value={s.key}>
                   {s.label}
                 </option>
               ))}
+              {research &&
+                RESEARCH_SORTS.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    Research: {s.label}
+                  </option>
+                ))}
             </select>
           </Field>
           <div className="flex items-center justify-between gap-2">
@@ -406,6 +437,23 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
       </FilterPanel>
 
       <section className="min-w-0">
+        {sport === "nba" && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 rounded-full bg-muted p-1">
+              <Link href={modeHref(false)} scroll={false} className={`rounded-full px-3 py-1 text-xs font-semibold ${research ? "text-muted-foreground hover:text-foreground" : "bg-foreground text-background"}`} aria-current={!research ? "page" : undefined}>
+                Standard
+              </Link>
+              <Link href={modeHref(true)} scroll={false} className={`rounded-full px-3 py-1 text-xs font-semibold ${research ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`} aria-current={research ? "page" : undefined}>
+                Research mode · v2
+              </Link>
+            </div>
+            {research && (
+              <span className="text-[11px] text-muted-foreground">
+                Experimental model beside each row (same numbers as <Link href="/nba/research" className="underline">Research</Link>). Not validated; not a recommendation.
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           {results.length.toLocaleString()} of {pool.length.toLocaleString()} props pass
           {results.length > ROWS ? ` · the top ${ROWS} shown` : ""}
@@ -417,30 +465,46 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
           </div>
         ) : (
           <div className="mt-2 overflow-x-auto rounded-xl border border-border">
-            <table className="w-full min-w-[900px] text-left text-xs">
+            <table className={`w-full text-left text-xs ${research ? "min-w-[1180px]" : "min-w-[900px]"}`}>
               <thead className="bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <SortHead href={sortHref("edge")} active={f.sort === "edge"} className="px-3 text-right">
+                  <SortHead href={sortHref("edge")} active={!researchSort && f.sort === "edge"} className="px-3 text-right">
                     <span title="ARCHR's chance minus the chance the price implies, in percentage points. Hover a row for the return per unit.">Edge</span>
                   </SortHead>
                   <th className="px-3 py-2 font-semibold">Player · prop</th>
-                  <SortHead href={sortHref("price")} active={f.sort === "price"} className="px-2 text-right">
+                  <SortHead href={sortHref("price")} active={!researchSort && f.sort === "price"} className="px-2 text-right">
                     Price
                   </SortHead>
                   {SCREEN_WINDOWS.map((w) => (
-                    <SortHead key={w.key} href={sortHref(w.key)} active={f.sort === w.key} className={`px-1.5 text-center ${bars[w.key] ? "text-foreground" : ""}`}>
+                    <SortHead key={w.key} href={sortHref(w.key)} active={!researchSort && f.sort === w.key} className={`px-1.5 text-center ${bars[w.key] ? "text-foreground" : ""}`}>
                       {w.label}
                     </SortHead>
                   ))}
-                  <SortHead href={sortHref("archr")} active={f.sort === "archr"} className="px-2 text-center">
+                  <SortHead href={sortHref("archr")} active={!researchSort && f.sort === "archr"} className="px-2 text-center">
                     ARCHR
                   </SortHead>
-                  <SortHead href={sortHref("conf")} active={f.sort === "conf"} className="px-2 text-center">
+                  <SortHead href={sortHref("conf")} active={!researchSort && f.sort === "conf"} className="px-2 text-center">
                     <span title="Confidence: how far to trust ARCHR's chance and edge on this prop (A–D), not a chance. Open a player for the reasons behind it.">Conf.</span>
                   </SortHead>
-                  <SortHead href={sortHref("minutes")} active={f.sort === "minutes"} className="px-2 text-center">
+                  <SortHead href={sortHref("minutes")} active={!researchSort && f.sort === "minutes"} className="px-2 text-center">
                     <span title="NBA: ARCHR's projected minutes tonight, if he plays">Proj min</span>
                   </SortHead>
+                  {research && (
+                    <>
+                      <SortHead href={sortHref("dist")} active={researchSort === "dist"} className="px-2 text-center">
+                        <span title="Production's projection distance past the line on this side, in its own spread (the screener's z)">Dist</span>
+                      </SortHead>
+                      <SortHead href={sortHref("v2prob")} active={researchSort === "v2prob"} className="px-2 text-center">
+                        <span title="Experimental v2 chance on this side; the arrow says whether v2 points to this side as production does">v2</span>
+                      </SortHead>
+                      <SortHead href={sortHref("v2gap")} active={researchSort === "v2gap"} className="px-2 text-center">
+                        <span title="The books' no-vig chance on this side (and v2 minus it)">Book</span>
+                      </SortHead>
+                      <SortHead href={sortHref("v2ev")} active={researchSort === "v2ev"} className="px-2 text-center">
+                        <span title="Experimental expected value at the offered price: the lower of s2's and v2's. Not validated.">Exp. EV</span>
+                      </SortHead>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -456,6 +520,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                       <span className="block text-[11px] text-muted-foreground">
                         {p.league} · {p.team ? `${p.team} vs ${p.opponent}` : `vs ${p.opponent}`} · {p.game}
                       </span>
+                      {research && <ResearchDetails p={p} view={views.get(p.id)} />}
                     </td>
                     <PriceCell p={p} />
                     {SCREEN_WINDOWS.map((w) => (
@@ -466,6 +531,7 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
                     </td>
                     <ConfidenceCell p={p} graded={graded[blendCardKey(p.sport, p.stat)]?.n} />
                     <td className="px-2 py-2 text-center font-mono text-[11px] text-foreground">{p.minutes !== undefined ? p.minutes.toFixed(1) : <span className="text-muted-foreground">—</span>}</td>
+                    {research && <ResearchCells p={p} view={views.get(p.id)} />}
                   </tr>
                 ))}
               </tbody>
@@ -477,7 +543,126 @@ export async function PropsScreener({ params, basePath, sport = null, keep = {} 
           last. A window with fewer games than the floor you set can&apos;t meet its bar. Soccer keeps a player&apos;s last ten matches here, so its
           L15 and season columns read &quot;—&quot;. UFC and tennis have no book prop lines in the feed: they&apos;re screened at ARCHR&apos;s own line, and a fighter&apos;s season is the calendar year. Prices are the best one posted (&quot;—&quot;: a number posted before its price). ARCHR chance is the one probability on this page — the model&apos;s projection blended with the books&apos; no-vig consensus; for NBA, then corrected for running high on the side it leans (overs and alt lines most), a fix checked on thousands of tracked picks it wasn&apos;t fitted on — and ARCHR&apos;s edge (the first column) is that chance minus the chance the best price implies, in percentage points; hover it for the return per unit staked. A price from a feed that has stopped updating is greyed and dated (&quot;price from Nov 1&quot;). Confidence (A–D) says how far to trust that chance and edge on this prop, not how likely it is: it weighs the stat&apos;s report card, how much history the projection has, whether his record at this line backs the price (the old cautious edge, now one factor), how far ARCHR sits from the books, his minutes, injury tags and alt lines. Hover a grade for what moved it; open the player for every reason. NBA projected minutes (if he plays) weigh his latest games and current role, discount nights he left early, and adjust for teammates out, back-to-backs, his first game back after missing time and blowout risk from the spread: off by about 5.4 minutes on average over two seasons, against 5.5 for his last-10 average. Where a prop&apos;s ARCHR number is priced by the market blend, its Confidence carries that blend&apos;s report card: the score weighs the card&apos;s actual record, and the count under the grade is how many outcomes it was graded on (e.g. &quot;C 67 · 412 graded&quot;; the full card is on /models). &quot;ARCHR&apos;s side&quot; keeps, on each line, only the side ARCHR&apos;s projection points to (the side pick tracking records as its lean), or the side it gives 50%+ where it has no projection. &quot;Distance from line&quot; keeps props whose projection sits at least that far past the line on their own side, measured in the projection&apos;s typical swing (z); props with no projection drop out when it&apos;s set. Tracked picks with the projection within 0.35 of the line lost money both before and after the Nov 12 correction (docs/performance-audit.md). Click a column to sort by it. Research only.
         </p>
+        {research && (
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            Research mode: the same screen, with each NBA main line&apos;s experimental read from the research board (v2 and the v1 shadow s2, the
+            books&apos; no-vig chance with the offered book left out where another book prices the line, break-even, and expected value at the
+            offered price). Exp. EV is the lower of s2&apos;s and v2&apos;s — an experimental estimate being forward-tested, not validated value;
+            Market EV is what the books&apos; own no-vig chance says the price is worth. ▲ means v2 points to this side as production&apos;s projection
+            does; ▼ means it points the other way. A row with no read says why (stat or line v2 doesn&apos;t price, or not on the board). Starting
+            distance {RESEARCH_DEFAULT_DISTANCE} is the audits&apos; cut, not a validated threshold; positive experimental EV guarantees nothing.
+          </p>
+        )}
       </section>
+    </div>
+  );
+}
+
+const pctOrDash = (x: number | null | undefined, d = 0) => (x === null || x === undefined ? "—" : `${(x * 100).toFixed(d)}%`);
+const signedPct = (x: number | null | undefined) => (x === null || x === undefined ? "—" : `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%`);
+
+/** The warnings research mode surfaces on every row (the rest are in the details). */
+const ROW_WARNINGS: { w: Warning; label: string }[] = [
+  { w: "unstable-minutes", label: "Unstable minutes" },
+  { w: "lineup-unconfirmed", label: "Lineup unconfirmed" },
+  { w: "stale-price", label: "Stale price" },
+  { w: "single-book", label: "Single-book market" },
+  { w: "plus-money-calibration", label: "Plus-money overconfidence" },
+];
+const WARNING_TEXT: Record<Warning, string> = {
+  "unstable-minutes": "Unstable minutes",
+  injury: "Injury tag",
+  "lineup-unconfirmed": "Lineup not confirmed",
+  "extreme-distance": "Far from the line (model overconfident there)",
+  "implausible-disagreement": "Model 12+ pts from the market: more likely a model miss than value",
+  "plus-money-calibration": "Plus money: ARCHR has run high here",
+  "stale-price": "Stale price",
+  "aging-price": "Price over 90 min old",
+  "sparse-history": "Thin history",
+  "single-book": "Single book: the market read is that book's own pair",
+  "no-market": "No two-sided market",
+};
+const STATUS_TEXT = { research: "Research candidate", "forward-testing": "Forward-testing candidate (plus-money-v1)", validated: "Independently validated +EV" } as const;
+
+/** Research mode's compact columns: production distance, v2 (with agreement), the books' chance, experimental EV. */
+function ResearchCells({ p, view }: { p: ScreenerProp; view: ResearchView | undefined }) {
+  const cell = "px-2 py-2 text-center font-mono text-[11px]";
+  const dist = <td className={cell}>{p.z !== undefined ? `${p.z >= 0 ? "+" : "−"}${Math.abs(p.z).toFixed(2)}` : <span className="text-muted-foreground">—</span>}</td>;
+  if (!view || view.kind !== "read")
+    return (
+      <>
+        {dist}
+        <td colSpan={3} className="px-2 py-2 text-center font-sans text-[10px] text-muted-foreground">
+          no experimental read
+        </td>
+      </>
+    );
+  const s = view.side;
+  const gap = s.v2Prob !== null && s.noVig !== null ? s.v2Prob - s.noVig : null;
+  return (
+    <>
+      {dist}
+      <td className={cell} title={view.agreement === "disagrees" ? "v2 points to the other side of this line from production's projection" : view.agreement === "agrees" ? "v2 points to this side, as production does" : "Agreement unknown"}>
+        {pctOrDash(s.v2Prob)}
+        <span className={`ml-0.5 ${view.agreement === "disagrees" ? "text-rose-600 dark:text-rose-400" : view.agreement === "agrees" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+          {view.agreement === "disagrees" ? "▼" : view.agreement === "agrees" ? "▲" : "·"}
+        </span>
+      </td>
+      <td className={cell} title={s.noVig === null ? "No two-sided market at this line" : `${s.singleBook ? "One book's own pair" : `${s.noVigBooks} other book(s)`} · v2 minus book ${gap === null ? "—" : `${(gap * 100).toFixed(1)} pts`}`}>
+        {s.noVig === null ? <span className="font-sans text-[10px] text-muted-foreground">no market</span> : pctOrDash(s.noVig)}
+        {s.singleBook && <span className="block font-sans text-[9px] text-muted-foreground">1 book</span>}
+      </td>
+      <td className={`${cell} ${s.ev !== null && s.ev > 0 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`} title="Experimental (lower of s2 and v2) at the offered price. Not validated value.">
+        {signedPct(s.ev)}
+        <span className="block font-sans text-[9px] text-muted-foreground">exp.</span>
+      </td>
+    </>
+  );
+}
+
+/** The row's research panel: warnings in one line, every technical number behind "details". */
+function ResearchDetails({ p, view }: { p: ScreenerProp; view: ResearchView | undefined }) {
+  if (!view) return null;
+  if (view.kind === "missing") return <span className="mt-1 block text-[10px] text-muted-foreground">Experimental: {view.reason}</span>;
+  const s = view.side;
+  const shown = ROW_WARNINGS.filter((x) => s.warnings.includes(x.w));
+  const item = (label: string, value: React.ReactNode) => (
+    <div className="flex justify-between gap-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-mono text-foreground">{value}</span>
+    </div>
+  );
+  return (
+    <div className="mt-1">
+      {shown.length > 0 && (
+        <span className="flex flex-wrap gap-1">
+          {shown.map((x) => (
+            <span key={x.w} className="rounded bg-muted px-1 text-[9px] font-semibold text-muted-foreground">
+              {x.label}
+            </span>
+          ))}
+        </span>
+      )}
+      <details className="mt-1 text-[11px]">
+        <summary className="cursor-pointer select-none text-[10px] font-semibold text-muted-foreground hover:text-foreground">Research details</summary>
+        <div className="mt-1 grid max-w-[340px] gap-0.5 rounded-lg border border-border bg-muted/30 p-2">
+          {item("Status", STATUS_TEXT[s.status])}
+          {item("Offered", `${formatAmerican(s.price)} ${s.book}${view.priceDiffers ? ` (row shows ${p.priceAmerican !== null ? formatAmerican(p.priceAmerican) : "—"})` : ""}`)}
+          {item("Break-even", pctOrDash(s.breakEven, 1))}
+          {item("ARCHR (original)", pctOrDash(p.archr, 1))}
+          {item("ARCHR raw projection", pctOrDash(s.rawProb, 1))}
+          {item("v2 / s2", `${pctOrDash(s.v2Prob, 1)} / ${pctOrDash(s.s2Prob, 1)}`)}
+          {item(`Book no-vig${s.singleBook ? " (1 book)" : s.noVigBooks ? ` (${s.noVigBooks} books)` : ""}`, s.noVig === null ? "no market" : pctOrDash(s.noVig, 1))}
+          {item("Exp. EV (s2 / v2)", `${signedPct(s.ev)} (${signedPct(s.evS2)} / ${signedPct(s.evV2)})`)}
+          {item("Market EV", signedPct(s.marketEv))}
+          {item("Distance: production / v2", `${p.z !== undefined ? p.z.toFixed(2) : "—"} / ${s.distance !== null ? s.distance.toFixed(2) : "—"}`)}
+          {item("v2 minutes", view.minutes === null ? "—" : `${view.minutes.toFixed(1)} ± ${view.minutesScale?.toFixed(1) ?? "?"} (${s.minutesReliability})`)}
+          {item("Injury / lineup", `${view.injury ?? "none"} · ${view.lineup === "unconfirmed" ? "unconfirmed" : view.lineup === "confirmed-starter" ? "starting" : "bench"}`)}
+          {item("Price age", s.priceAgeMinutes === null ? "unknown (treated as stale)" : `${s.priceAgeMinutes} min`)}
+          {item("Rule", s.candidateReason)}
+          {s.warnings.length > 0 && <span className="mt-1 text-[10px] text-muted-foreground">{s.warnings.map((w) => WARNING_TEXT[w]).join(" · ")}</span>}
+        </div>
+      </details>
     </div>
   );
 }
