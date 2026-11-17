@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FILTERS, edgePoints, mainPoint, screen, screenRates, type ScreenerProp } from "./types";
+import { DEFAULT_FILTERS, archrSideOf, edgePoints, mainPoint, screen, screenRates, type ScreenerProp } from "./types";
 
 const prop = (id: string, over: Partial<ScreenerProp> = {}): ScreenerProp => ({
   id,
@@ -128,5 +128,33 @@ describe("edgePoints", () => {
     expect(edgePoints({ archr: 0.2, priceAmerican: 1400 })).toBeCloseTo(0.2 - 100 / 1500, 6);
     expect(edgePoints({ archr: null, priceAmerican: -110 })).toBeNull();
     expect(edgePoints({ archr: 0.5, priceAmerican: null })).toBeNull();
+  });
+});
+
+describe("ARCHR's side", () => {
+  it("is the side the projection points to, even where the shown chance dips under 50%", () => {
+    expect(archrSideOf({ side: "over", archr: 0.47, facts: { z: 0.3 } })).toBe(true);
+    expect(archrSideOf({ side: "under", archr: 0.53, facts: { z: -0.3 } })).toBe(false);
+    expect(archrSideOf({ side: "over", archr: 0.5, facts: { z: 0 } })).toBe(true);
+    expect(archrSideOf({ side: "under", archr: 0.5, facts: { z: 0 } })).toBe(false);
+  });
+
+  it("falls back to ARCHR's chance with no projection (yes/no props, other sports)", () => {
+    expect(archrSideOf({ side: "yes", archr: 0.62, facts: { z: 999 } })).toBe(true);
+    expect(archrSideOf({ side: "yes", archr: 0.3 })).toBe(false);
+    expect(archrSideOf({ side: "under", archr: 0.51, facts: { z: null } })).toBe(true);
+    expect(archrSideOf({ side: "over", archr: null })).toBe(false);
+  });
+
+  it("filters to ARCHR's side only when asked, reading the stamped flag and the chance where there is none", () => {
+    const pool = [
+      prop("leanOver", { lean: true, archr: 0.47 }),
+      prop("otherUnder", { side: "under", lean: false, archr: 0.53 }),
+      prop("oldRow", { archr: 0.6 }),
+      prop("oldRowOther", { archr: 0.4 }),
+    ];
+    expect(screen(pool, DEFAULT_FILTERS).length).toBe(4);
+    expect(screen(pool, { ...DEFAULT_FILTERS, archrSide: true }).map((p) => p.id).sort()).toEqual(["leanOver", "oldRow"]);
+    expect(screen(pool, { ...DEFAULT_FILTERS, archrSide: true, side: "under" })).toEqual([]);
   });
 });
