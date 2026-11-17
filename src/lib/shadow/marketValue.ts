@@ -228,16 +228,18 @@ export function valueRows(inputs: ValueInput[], now: Date): ValueRow[] {
  * Apply the frozen candidate rule to a slate: sides passing it, best v2 EV
  * first, one per player, at most CANDIDATE_RULE.perSlate. Marks them
  * forward-testing (or validated, only if the rule is in VALIDATED_RULES).
- * Returns the candidates' ids ("rowId|side"), in rank order.
+ * `limit`: the slots left on this slate (capture runs game by game through
+ * the night, so earlier batches' picks count against the six). Returns the
+ * candidates' ids ("rowId|side"), in rank order.
  */
-export function markCandidates(rows: ValueRow[]): string[] {
+export function markCandidates(rows: ValueRow[], limit: number = CANDIDATE_RULE.perSlate): string[] {
   const passing = rows
     .flatMap((r) => [r.over, r.under].filter((s): s is SideValue => s !== null && s.candidateReason === "passes the frozen rule").map((s) => ({ r, s })))
     .sort((a, b) => (b.s.ev ?? 0) - (a.s.ev ?? 0));
   const players = new Set<string>();
   const picked: string[] = [];
   for (const { r, s } of passing) {
-    if (players.has(r.playerId) || picked.length >= CANDIDATE_RULE.perSlate) continue;
+    if (players.has(r.playerId) || picked.length >= Math.min(limit, CANDIDATE_RULE.perSlate)) continue;
     players.add(r.playerId);
     s.status = VALIDATED_RULES.includes(CANDIDATE_RULE.id) ? "validated" : "forward-testing";
     picked.push(`${r.id}|${s.side}`);

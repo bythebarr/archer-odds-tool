@@ -29,6 +29,7 @@ import { createPredictionRunBulk, type PredictionInput, type PredictionRunInput 
 import { LEAN_FEATURE_SCHEMA, SHADOW_MODELS, TRACKED_MODELS, type LeanFeatures } from "./types";
 import { SHADOW_FEATURE_SCHEMA, SHADOW_V2_FEATURE_SCHEMA, nbaShadowPredictions, nbaShadowV2Predictions, shadowRunSnapshot, shadowV2RunSnapshot } from "@/lib/shadow/capture";
 import { nbaQuoteAges } from "@/lib/shadow/quoteAges";
+import { CANDIDATE_RULE } from "@/lib/shadow/marketValue";
 import { regimeSnapshot, type RegimeSnapshot } from "./modelStamp";
 import { confidenceOf, type ConfidenceInput } from "@/lib/propModel/confidence";
 import { NBA_PROP_STATS } from "@/lib/nba/propStats";
@@ -387,7 +388,7 @@ async function writeRun(
   modelKey: string,
   fresh: PredictionInput[],
   now: Date,
-  opts: { schema: string; calibrationSnapshot?: PredictionRunInput["calibrationSnapshot"]; modelVersion?: string }
+  opts: { schema: string; calibrationSnapshot?: PredictionRunInput["calibrationSnapshot"]; modelVersion?: string; slate?: string }
 ): Promise<number> {
   if (!fresh.length) return 0;
   // Capture-once is due()'s check plus this write, with a slow slate build in
@@ -414,10 +415,22 @@ async function writeRun(
     dataAsOfUtc: now,
     featureSchemaVersion: opts.schema,
     ...(opts.calibrationSnapshot !== undefined ? { calibrationSnapshot: opts.calibrationSnapshot } : {}),
-    runMetadata: { games: new Set(kept.map((l) => l.eventRef)).size },
+    runMetadata: { games: new Set(kept.map((l) => l.eventRef)).size, ...(opts.slate ? { slate: opts.slate, candidates: kept.filter((p) => (p.featureSnapshot as { candidate?: unknown } | null)?.candidate).length } : {}) },
     predictions: kept,
   });
   return kept.length;
+}
+
+/** Candidates the frozen rule already recorded for this slate (ET date), from the v2 runs' metadata. */
+async function candidatesRecorded(modelKey: string, slate: string): Promise<number> {
+  const runs = await prisma.predictionRun.findMany({
+    where: { modelKey, generatedAt: { gte: new Date(Date.parse(`${slate}T00:00:00Z`) - 86_400_000) } },
+    select: { runMetadata: true },
+  });
+  return runs.reduce((a, r) => {
+    const m = r.runMetadata as { slate?: string; candidates?: number } | null;
+    return a + (m?.slate === slate ? (m.candidates ?? 0) : 0);
+  }, 0);
 }
 
 /** The shadow capture runs unless ARCHR_SHADOW_CAPTURE=0 (it never touches the product's leans). */
@@ -480,11 +493,13 @@ export async function captureLeans(now = new Date(), opts: { dryRun?: boolean; h
       else {
         const { slate, logs } = await loadNbaSlate();
         const ages = await nbaQuoteAges([...ids]);
-        const preds = nbaShadowV2Predictions(slate, logs, ids, ages, now).filter((p) => p.scheduledStartUtc > now && Number.isFinite(p.probability));
+        // The frozen rule's six are per slate (ET day): earlier batches tonight already used some.
+        const used = await candidatesRecorded(key2, slate.date);
+        const preds = nbaShadowV2Predictions(slate, logs, ids, ages, now, Math.max(0, CANDIDATE_RULE.perSlate - used)).filter((p) => p.scheduledStartUtc > now && Number.isFinite(p.probability));
         const snapshot = shadowV2RunSnapshot();
         out[key2] = opts.dryRun
           ? { games: ids.size, leans: preds.length, candidates: preds.filter((p) => (p.featureSnapshot as { candidate?: unknown }).candidate).length }
-          : { games: ids.size, leans: await writeRun("nba", key2, preds, now, { schema: SHADOW_V2_FEATURE_SCHEMA, calibrationSnapshot: snapshot, modelVersion: snapshot.version }) };
+          : { games: ids.size, leans: await writeRun("nba", key2, preds, now, { schema: SHADOW_V2_FEATURE_SCHEMA, calibrationSnapshot: snapshot, modelVersion: snapshot.version, slate: slate.date }) };
       }
     } catch (error) {
       out[key2] = { error: error instanceof Error ? error.message.slice(0, 200) : String(error) };

@@ -114,6 +114,12 @@ describe("the frozen candidate rule", () => {
     expect(byId.get("e")!.over!.candidateReason).toMatch(/outside/);
   });
 
+  it("only fills the slots left on the slate", () => {
+    const rows = () => valueRows(Array.from({ length: 5 }, (_, i) => strong(`y${i}`, `py${i}`, 0.5)), now);
+    expect(markCandidates(rows(), 2)).toHaveLength(2);
+    expect(markCandidates(rows(), 0)).toEqual([]);
+  });
+
   it("is allowed to pick nobody", () => {
     expect(markCandidates(valueRows([input({ s2Over: 0.42, v2Over: 0.42 })], now))).toEqual([]);
   });

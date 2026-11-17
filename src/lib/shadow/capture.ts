@@ -191,13 +191,19 @@ export function valueInputOf(r: ShadowRow, quotes: WireNbaPropsSlate["props"][nu
 }
 
 /** The slate's shadow rows with their market value, the frozen rule applied. */
-export function nbaValueBoard(slate: WireNbaPropsSlate, rows: ShadowRow[], polledAt: (key: string) => Date | null, now: Date): { rows: ShadowRow[]; values: ValueRow[]; candidates: string[] } {
+export function nbaValueBoard(
+  slate: WireNbaPropsSlate,
+  rows: ShadowRow[],
+  polledAt: (key: string) => Date | null,
+  now: Date,
+  slots: number = CANDIDATE_RULE.perSlate
+): { rows: ShadowRow[]; values: ValueRow[]; candidates: string[] } {
   const props = new Map(slate.props.map((p) => [`${p.playerId}|${p.stat}`, p]));
   const values = valueRows(
     rows.map((r) => valueInputOf(r, props.get(`${r.s.playerId}|${r.s.stat}`)?.quotes ?? [], polledAt)),
     now
   );
-  const candidates = markCandidates(values);
+  const candidates = markCandidates(values, slots);
   return { rows, values, candidates };
 }
 
@@ -275,9 +281,10 @@ export function nbaShadowV2Predictions(
   logs: Record<string, GameLogPoint[]>,
   gameIds: Set<string>,
   polledAt: (key: string) => Date | null,
-  now: Date
+  now: Date,
+  slots: number = CANDIDATE_RULE.perSlate
 ): PredictionInput[] {
-  const board = nbaValueBoard(slate, nbaShadowRows(slate, logs, gameIds), polledAt, now);
+  const board = nbaValueBoard(slate, nbaShadowRows(slate, logs, gameIds), polledAt, now, slots);
   const rank = new Map(board.candidates.map((id, i) => [id, i + 1]));
   return board.rows.flatMap((r, i) => {
     if (!r.v2 || r.over.v2 === null) return [];
